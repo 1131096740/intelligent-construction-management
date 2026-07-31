@@ -27,6 +27,7 @@ export interface ContractSummaryItem {
 
 export interface ContractLedgerRow {
   id: string;
+  contractId?: string;
   contractNo: string;
   name: string;
   project: string;
@@ -43,6 +44,12 @@ export interface ContractLedgerRow {
   nextAction: string;
   updatedAt: string;
   paymentTermsVersion?: string;
+}
+
+export function contractWorkbenchRouteContractId(
+  row: Pick<ContractLedgerRow, "id" | "contractId">
+) {
+  return row.contractId?.trim() || row.id;
 }
 
 export const contractFilterFields: ContractFilterField[] = [

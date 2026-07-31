@@ -615,6 +615,7 @@ describe("ContractController authorization wiring", () => {
   it.each([
     ["create", "contract.create"],
     ["createChangeDraft", "contract.create"],
+    ["abandonDraft", "contract.create"],
     ["changeEligibility", "contract.create"],
     ["settlementCreateOptions", "settlement.create"],
     ["paymentCreateOptions", "payment.create"],
@@ -639,7 +640,7 @@ describe("ContractController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler as object)).toBe(action);
   });
 
-  it.each(["createChangeDraft", "changeEligibility"])(
+  it.each(["createChangeDraft", "abandonDraft", "changeEligibility"])(
     "keeps %s on the PermissionGuard contractVersionId route coordinate",
     (method) => {
       const handler = (ContractController.prototype as unknown as Record<string, object>)[method];

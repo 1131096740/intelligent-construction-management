@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
@@ -36,6 +37,7 @@ export class ContractDraftController {
   ) {}
 
   @Get(":contractVersionId/workbench")
+  @RequireProjectRole("contract.create")
   workbench(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -59,6 +61,7 @@ export class ContractDraftController {
   }
 
   @Delete(":contractVersionId")
+  @RequireProjectRole("contract.create")
   deleteDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: DeleteContractDraftDto,
@@ -80,6 +83,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/submission")
+  @RequireProjectRole("contract.submit")
   submitDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string,

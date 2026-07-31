@@ -14,6 +14,7 @@ import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
@@ -97,13 +98,27 @@ export class ContractDocumentService {
     let contestedKey: string | undefined;
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        const { version, contract } = await this.loadOwnedVersionForUpdate(
+        const {
+          version,
+          contract,
+          formalBlockers
+        } = await this.loadOwnedVersionForUpdate(
           tx,
           contractVersionId,
           actorUserId
         );
+        if (version.changeType === "historical_takeover") {
+          throw new BadRequestException(
+            "历史接管草稿必须在历史接管工作台办理"
+          );
+        }
         if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
           throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
+        }
+        if (formalBlockers.length > 0) {
+          throw new BadRequestException(
+            "合同已存在正式业务事实，不能生成或修订草稿文档"
+          );
         }
         if (
           command &&
@@ -288,12 +303,17 @@ export class ContractDocumentService {
 
   async list(contractVersionId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.loadOwnedVersionForUpdate(
+      const { version, formalBlockers } = await this.loadOwnedVersionForUpdate(
         tx,
         contractVersionId,
         actorUserId
       );
-      await this.markOriginalDraftCompanyDrift(tx, version);
+      if (
+        version.changeType !== "historical_takeover" &&
+        formalBlockers.length === 0
+      ) {
+        await this.markOriginalDraftCompanyDrift(tx, version);
+      }
       return tx.contractGeneratedDocument.findMany({
         where: { contractVersionId },
         orderBy: { createdAt: "desc" }
@@ -308,13 +328,27 @@ export class ContractDocumentService {
   ) {
     const input = this.parseOfflineRevisionInput(rawInput);
     const result = await this.prisma.$transaction(async (tx) => {
-      const { version, contract } = await this.loadOwnedVersionForUpdate(
+      const {
+        version,
+        contract,
+        formalBlockers
+      } = await this.loadOwnedVersionForUpdate(
         tx,
         contractVersionId,
         actorUserId
       );
+      if (version.changeType === "historical_takeover") {
+        throw new BadRequestException(
+          "历史接管草稿必须在历史接管工作台办理"
+        );
+      }
       if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
         throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
+      }
+      if (formalBlockers.length > 0) {
+        throw new BadRequestException(
+          "合同已存在正式业务事实，不能生成或修订草稿文档"
+        );
       }
       if (await this.markOriginalDraftCompanyDrift(tx, version)) {
         return COMPANY_ENTITY_DRIFT;
@@ -435,11 +469,25 @@ export class ContractDocumentService {
         where: { id: documentId }
       });
       if (!document) throw new NotFoundException("未找到合同文档记录，请刷新后重试");
-      const { version, contract } = await this.loadOwnedVersionForUpdate(
+      const {
+        version,
+        contract,
+        formalBlockers
+      } = await this.loadOwnedVersionForUpdate(
         tx,
         document.contractVersionId,
         actorUserId
       );
+      if (version.changeType === "historical_takeover") {
+        throw new BadRequestException(
+          "历史接管草稿必须在历史接管工作台办理"
+        );
+      }
+      if (formalBlockers.length > 0) {
+        throw new BadRequestException(
+          "合同已存在正式业务事实，不能重试草稿文档"
+        );
+      }
       if (await this.markOriginalDraftCompanyDrift(tx, version)) {
         return COMPANY_ENTITY_DRIFT;
       }
@@ -636,13 +684,29 @@ export class ContractDocumentService {
     contractVersionId: string,
     actorUserId: string
   ) {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id"
-      FROM "ContractVersion"
-      WHERE "id" = ${contractVersionId}
-      FOR UPDATE
-    `);
-    return this.loadOwnedVersion(tx, contractVersionId, actorUserId);
+    const mutationBoundary = await lockContractDraftMutationBoundary(
+      tx,
+      contractVersionId
+    );
+    if (!mutationBoundary) {
+      throw new NotFoundException(
+        "未找到合同草稿版本，请刷新合同工作台后重试"
+      );
+    }
+    const owned = await this.loadOwnedVersion(
+      tx,
+      contractVersionId,
+      actorUserId
+    );
+    if (owned.contract.id !== mutationBoundary.contractId) {
+      throw new NotFoundException(
+        "合同草稿版本坐标已变化，请刷新合同工作台后重试"
+      );
+    }
+    return {
+      ...owned,
+      formalBlockers: mutationBoundary.formalBlockers
+    };
   }
 
   private async markOriginalDraftCompanyDrift(

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import { lockContractDraftMutationBoundary } from "./contract-draft-lifecycle";
 import { ContractFormalFileService, ContractGovernanceDenial } from "./contract-formal-file.service";
 import type { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 
@@ -14,6 +15,12 @@ type GovernedVersion = {
   status: string;
   draftRevision: number;
   contractGovernanceVersion: number | null;
+  changeType: string;
+};
+type GovernedContract = {
+  id: string;
+  ownerUserId: string | null;
+  voidedAt: Date | null;
 };
 
 @Injectable()
@@ -450,27 +457,26 @@ export class ContractAuthorizationService {
     versionId: string,
     actorUserId: string
   ) {
-    const [contract] = await tx.$queryRaw<Array<{
-      id: string;
-      ownerUserId: string | null;
-      voidedAt: Date | null;
-    }>>(Prisma.sql`
-      SELECT c."id", c."ownerUserId", c."voidedAt"
-      FROM "Contract" c INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id"
-      WHERE cv."id" = ${versionId} FOR UPDATE OF c
-    `);
-    const [version] = await tx.$queryRaw<GovernedVersion[]>(Prisma.sql`
-      SELECT "id", "contractId", "status", "draftRevision", "contractGovernanceVersion"
-      FROM "ContractVersion" WHERE "id" = ${versionId} FOR UPDATE
-    `);
-    if (!contract || !version || contract.voidedAt) {
+    const mutationBoundary =
+      await lockContractDraftMutationBoundary<
+        GovernedVersion,
+        GovernedContract
+      >(tx, versionId);
+    if (!mutationBoundary || mutationBoundary.contract.voidedAt) {
       throw new BadRequestException("合同草稿不存在或已作废，请刷新后重试");
     }
+    const { contract, version } = mutationBoundary;
     if (contract.ownerUserId !== actorUserId) {
       throw new BadRequestException("只有合同经办人可以维护授权资料");
     }
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException("当前合同不在可编辑状态，不能维护授权资料");
+    }
+    if (version.changeType === "historical_takeover") {
+      throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
+    }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException("合同已存在正式业务事实，不能维护授权资料");
     }
     if (version.contractGovernanceVersion !== 1) {
       throw new BadRequestException("该存量合同沿用原签署流程，不能使用新授权入口");

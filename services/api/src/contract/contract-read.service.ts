@@ -46,6 +46,11 @@ import {
 } from "../payment/contract-takeover-balance";
 import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
 import { contractChangeVersionsReadModel } from "./contract-change-read-model";
+import {
+  classifyContractDraftLifecycle,
+  type ContractDraftLifecycleClassification,
+  type ContractDraftLifecycleFacts
+} from "./contract-draft-lifecycle";
 import { loadContractOwnerRisk } from "./contract-owner-risk";
 import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
 
@@ -300,6 +305,209 @@ export class ContractReadService {
     };
   }
 
+  private async contractDraftLifecycleByVersion<
+    V extends {
+      id: string;
+      changeType?: string | null;
+      versionNo?: number | null;
+      status: string;
+      firstSubmittedAt?: Date | null;
+    }
+  >(
+    versions: V[]
+  ): Promise<Map<string, ContractDraftLifecycleClassification>> {
+    const versionIds = versions.map((version) => version.id);
+    if (!versionIds.length) return new Map();
+
+    type VersionFact = { contractVersionId?: string };
+    const client = this.prisma as unknown as {
+      approvalInstance?: {
+        findMany(args: unknown): Promise<Array<{ id?: string; businessId?: string }>>;
+      };
+      approvalActionLog?: {
+        findMany(args: unknown): Promise<Array<{ approvalInstanceId?: string }>>;
+      };
+      contractFormalFile?: {
+        findMany(args: unknown): Promise<Array<VersionFact & { purpose?: string }>>;
+      };
+      contractAuthorization?: {
+        findMany(args: unknown): Promise<Array<{ originContractVersionId?: string }>>;
+      };
+      contractVersionAuthorizationLink?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+      contractSealTask?: {
+        findMany(args: unknown): Promise<Array<VersionFact & { status?: string }>>;
+      };
+      contractArchiveFile?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+      settlement?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+      paymentRequest?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+    };
+    const [
+      approvalInstances,
+      formalFiles,
+      authorizations,
+      authorizationLinks,
+      sealTasks,
+      archiveFiles,
+      settlements,
+      paymentRequests
+    ] = await Promise.all([
+      client.approvalInstance?.findMany({
+        where: {
+          businessType: "contract_version",
+          businessId: { in: versionIds }
+        },
+        select: { id: true, businessId: true }
+      }) ?? Promise.resolve([]),
+      client.contractFormalFile?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true, purpose: true }
+      }) ?? Promise.resolve([]),
+      client.contractAuthorization?.findMany({
+        where: { originContractVersionId: { in: versionIds } },
+        select: { originContractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.contractVersionAuthorizationLink?.findMany({
+        where: {
+          contractVersionId: { in: versionIds },
+          authorizationId: { not: null }
+        },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.contractSealTask?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true, status: true }
+      }) ?? Promise.resolve([]),
+      client.contractArchiveFile?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.settlement?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.paymentRequest?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([])
+    ]);
+    const versionIdSet = new Set(versionIds);
+    const soleVersionId = versionIds.length === 1 ? versionIds[0] : undefined;
+    const versionIdOf = (value?: string) => value
+      ? versionIdSet.has(value) ? value : undefined
+      : soleVersionId;
+    const approvalVersionById = new Map<string, string>();
+    const approvalInstanceCounts = new Map<string, number>();
+    for (const instance of approvalInstances) {
+      const versionId = versionIdOf(instance.businessId);
+      if (!versionId) continue;
+      approvalInstanceCounts.set(
+        versionId,
+        (approvalInstanceCounts.get(versionId) ?? 0) + 1
+      );
+      if (instance.id) approvalVersionById.set(instance.id, versionId);
+    }
+    const approvalInstanceIds = [...approvalVersionById.keys()];
+    const approvalActions = approvalInstanceIds.length
+      ? await client.approvalActionLog?.findMany({
+          where: { approvalInstanceId: { in: approvalInstanceIds } },
+          select: { approvalInstanceId: true }
+        }) ?? []
+      : [];
+    const approvalActionCounts = new Map<string, number>();
+    for (const action of approvalActions) {
+      const versionId = action.approvalInstanceId
+        ? approvalVersionById.get(action.approvalInstanceId)
+        : undefined;
+      if (!versionId) continue;
+      approvalActionCounts.set(
+        versionId,
+        (approvalActionCounts.get(versionId) ?? 0) + 1
+      );
+    }
+    const countByVersion = <T>(
+      rows: T[],
+      readVersionId: (row: T) => string | undefined,
+      predicate: (row: T) => boolean = () => true
+    ) => {
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        if (!predicate(row)) continue;
+        const versionId = versionIdOf(readVersionId(row));
+        if (!versionId) continue;
+        counts.set(versionId, (counts.get(versionId) ?? 0) + 1);
+      }
+      return counts;
+    };
+    const formalFileCounts = countByVersion(
+      formalFiles,
+      (row) => row.contractVersionId
+    );
+    const signedFormalFileCounts = countByVersion(
+      formalFiles,
+      (row) => row.contractVersionId,
+      (row) => row.purpose === "mutually_signed_final"
+    );
+    const authorizationCounts = countByVersion(
+      authorizations,
+      (row) => row.originContractVersionId
+    );
+    const authorizationLinkCounts = countByVersion(
+      authorizationLinks,
+      (row) => row.contractVersionId
+    );
+    const sealTaskCounts = countByVersion(
+      sealTasks,
+      (row) => row.contractVersionId
+    );
+    const activeSealTaskCounts = countByVersion(
+      sealTasks,
+      (row) => row.contractVersionId,
+      (row) => row.status !== "cancelled"
+    );
+    const archiveFileCounts = countByVersion(
+      archiveFiles,
+      (row) => row.contractVersionId
+    );
+    const settlementCounts = countByVersion(
+      settlements,
+      (row) => row.contractVersionId
+    );
+    const paymentRequestCounts = countByVersion(
+      paymentRequests,
+      (row) => row.contractVersionId
+    );
+
+    return new Map(versions.map((version) => {
+      const facts: ContractDraftLifecycleFacts = {
+        changeType: version.changeType ?? "original",
+        versionNo: version.versionNo ?? 1,
+        // An ended row retains the lifecycle it had before the controlled close.
+        status: version.status === "abandoned" ? "draft" : version.status,
+        firstSubmittedAt: version.firstSubmittedAt ?? null,
+        approvalInstanceCount: approvalInstanceCounts.get(version.id) ?? 0,
+        approvalActionCount: approvalActionCounts.get(version.id) ?? 0,
+        formalFileCount: formalFileCounts.get(version.id) ?? 0,
+        signedFormalFileCount: signedFormalFileCounts.get(version.id) ?? 0,
+        authorizationCount: authorizationCounts.get(version.id) ?? 0,
+        authorizationLinkCount: authorizationLinkCounts.get(version.id) ?? 0,
+        sealTaskCount: sealTaskCounts.get(version.id) ?? 0,
+        activeSealTaskCount: activeSealTaskCounts.get(version.id) ?? 0,
+        archiveFileCount: archiveFileCounts.get(version.id) ?? 0,
+        settlementCount: settlementCounts.get(version.id) ?? 0,
+        paymentRequestCount: paymentRequestCounts.get(version.id) ?? 0
+      };
+      return [version.id, classifyContractDraftLifecycle(facts)];
+    }));
+  }
+
   async lifecycleLedger(
     view: DraftLedgerView,
     rawPage: string | number | undefined,
@@ -329,33 +537,7 @@ export class ContractReadService {
     const projects = visibleProjectIds.length
       ? await this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
       : [];
-    const versionIds = versions.map((version) => version.id);
-    const evidenceReaders = this.prisma as unknown as {
-      approvalInstance?: { findMany(args: unknown): Promise<Array<{ businessId: string }>> };
-      contractFormalFile?: { findMany(args: unknown): Promise<Array<{ contractVersionId: string }>> };
-      contractVersionAuthorizationLink?: {
-        findMany(args: unknown): Promise<Array<{ contractVersionId: string }>>;
-      };
-    };
-    const [approvalFacts, formalFileFacts, authorizationFacts] = versionIds.length
-      ? await Promise.all([
-          evidenceReaders.approvalInstance?.findMany({
-            where: { businessType: "contract_version", businessId: { in: versionIds } },
-            select: { businessId: true }
-          }) ?? Promise.resolve([]),
-          evidenceReaders.contractFormalFile?.findMany({
-            where: { contractVersionId: { in: versionIds } },
-            select: { contractVersionId: true }
-          }) ?? Promise.resolve([]),
-          evidenceReaders.contractVersionAuthorizationLink?.findMany({
-            where: { contractVersionId: { in: versionIds } },
-            select: { contractVersionId: true }
-          }) ?? Promise.resolve([])
-        ])
-      : [[], [], []];
-    const approvedVersionIds = new Set(approvalFacts.map((fact) => fact.businessId));
-    const formalFileVersionIds = new Set(formalFileFacts.map((fact) => fact.contractVersionId));
-    const authorizedVersionIds = new Set(authorizationFacts.map((fact) => fact.contractVersionId));
+    const lifecycleByVersion = await this.contractDraftLifecycleByVersion(versions);
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
@@ -367,9 +549,16 @@ export class ContractReadService {
     const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
     const classified = contracts.flatMap((contract) => {
       const all = versionsByContract.get(contract.id) ?? [];
-      const lifecycle = this.classifyContractLifecycle(contract, all, actorUserId);
+      const lifecycle = this.classifyContractLifecycle(
+        contract,
+        all,
+        lifecycleByVersion,
+        actorUserId
+      );
       const rowVersion = lifecycle.versionByView[view];
       if (!lifecycle.matches[view] || !rowVersion) return [];
+      const draftLifecycle = lifecycleByVersion.get(rowVersion.id);
+      if (!draftLifecycle) return [];
       return [this.contractLedgerRow(
         contract,
         rowVersion,
@@ -377,18 +566,8 @@ export class ContractReadService {
         projectById.get(contract.projectId),
         {
           contractVersionId: rowVersion.id,
-          lifecycleKind: this.contractLedgerLifecycleKind(rowVersion, {
-            hasApproval: approvedVersionIds.has(rowVersion.id),
-            hasFormalFile: formalFileVersionIds.has(rowVersion.id),
-            hasAuthorization: authorizedVersionIds.has(rowVersion.id)
-          }),
-          lifecycleBlockers: [
-            ...(rowVersion.changeType !== "original" || rowVersion.versionNo !== 1
-              ? ["合同变更或派生版本"] : []),
-            ...(approvedVersionIds.has(rowVersion.id) ? ["存在审批记录"] : []),
-            ...(formalFileVersionIds.has(rowVersion.id) ? ["存在正式合同文件"] : []),
-            ...(authorizedVersionIds.has(rowVersion.id) ? ["存在授权委托书"] : [])
-          ],
+          lifecycleKind: draftLifecycle.lifecycleKind,
+          lifecycleBlockers: draftLifecycle.blockers,
           draftRevision: rowVersion.draftRevision,
           lifecycleUpdatedAt: rowVersion.updatedAt.toISOString(),
           abandonedAt: rowVersion.abandonedAt?.toISOString() ?? null,
@@ -400,10 +579,34 @@ export class ContractReadService {
       )];
     });
     const summary = {
-      formal_ledger: this.lifecycleCount(contracts, versionsByContract, actorUserId, "formal_ledger"),
-      my_drafts: this.lifecycleCount(contracts, versionsByContract, actorUserId, "my_drafts"),
-      returned_for_revision: this.lifecycleCount(contracts, versionsByContract, actorUserId, "returned_for_revision"),
-      ended: this.lifecycleCount(contracts, versionsByContract, actorUserId, "ended")
+      formal_ledger: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "formal_ledger"
+      ),
+      my_drafts: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "my_drafts"
+      ),
+      returned_for_revision: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "returned_for_revision"
+      ),
+      ended: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "ended"
+      )
     };
     const start = (page - 1) * pageSize;
     return {
@@ -450,6 +653,7 @@ export class ContractReadService {
         .map((item) => item.businessId)
         .filter((businessId): businessId is string => Boolean(businessId))
     );
+    const lifecycleByVersion = await this.contractDraftLifecycleByVersion(versions);
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
       versionsByContract.set(version.contractId, [...(versionsByContract.get(version.contractId) ?? []), version]);
@@ -458,7 +662,17 @@ export class ContractReadService {
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const classified = contracts.flatMap((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
-      if (!version || !this.matchesWorkbenchView(view, version, contract.ownerUserId, actorUserId, pendingVersionIds)) return [];
+      if (!version) return [];
+      const draftLifecycle = lifecycleByVersion.get(version.id);
+      if (!draftLifecycle) return [];
+      if (!this.matchesWorkbenchView(
+        view,
+        version,
+        draftLifecycle,
+        contract.ownerUserId,
+        actorUserId,
+        pendingVersionIds
+      )) return [];
       return [this.contractLedgerRow(
         contract,
         version,
@@ -467,7 +681,12 @@ export class ContractReadService {
         {
           contractVersionId: version.id,
           status: version.status,
-          workbenchEditable: ["draft", "approval_rejected"].includes(version.status),
+          lifecycleKind: draftLifecycle.lifecycleKind,
+          lifecycleBlockers: draftLifecycle.blockers,
+          draftRevision: version.draftRevision,
+          workbenchEditable:
+            Boolean(draftLifecycle.expectedAction) &&
+            ["draft", "approval_rejected"].includes(version.status),
           copyAvailable: view === "all" && version.status === "abandoned" &&
             version.changeType === "original" && version.versionNo === 1 &&
             contract.ownerUserId === actorUserId,
@@ -478,7 +697,19 @@ export class ContractReadService {
     });
     const count = (targetView: ContractWorkbenchView) => contracts.filter((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
-      return Boolean(version && this.matchesWorkbenchView(targetView, version, contract.ownerUserId, actorUserId, pendingVersionIds));
+      if (!version) return false;
+      const draftLifecycle = lifecycleByVersion.get(version.id);
+      return Boolean(
+        draftLifecycle &&
+        this.matchesWorkbenchView(
+          targetView,
+          version,
+          draftLifecycle,
+          contract.ownerUserId,
+          actorUserId,
+          pendingVersionIds
+        )
+      );
     }).length;
     const summary = {
       pending_action: count("pending_action"),
@@ -850,6 +1081,12 @@ export class ContractReadService {
       contract.projectId,
       signingFacts.sealTask
     );
+    const draftLifecycle = (
+      await this.contractDraftLifecycleByVersion([version])
+    ).get(version.id);
+    if (!draftLifecycle) {
+      throw new NotFoundException("未找到合同版本生命周期，请刷新合同台账后重试");
+    }
     const ownerRiskClient = this.prisma as unknown as {
       projectOwnerContract?: { findMany?: unknown };
       contract?: { findMany?: unknown };
@@ -885,38 +1122,26 @@ export class ContractReadService {
             select: { id: true }
           })
         )),
-        canUploadGovernedFinal
+        canUploadGovernedFinal,
+        genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction)
       }
     );
 
-    const lifecycleBlockers = [
-      ...(version.changeType !== "original" || version.versionNo !== 1
-        ? ["合同变更或派生版本"]
-        : []),
-      ...(version.status !== "draft" ? ["合同曾进入审批或正式流程"] : []),
-      ...(approvalTimeline.length ? ["存在审批记录"] : []),
-      ...(signingFacts.formalFiles.length ? ["存在正式合同文件"] : []),
-      ...(signingFacts.sealTask ? ["存在用印记录"] : []),
-      ...(contractArchiveFiles.length ? ["存在归档记录"] : []),
-      ...(settlements.length ? ["存在关联结算"] : []),
-      ...(paymentRequests.length ? ["存在关联付款"] : [])
-    ];
-    const lifecycleKind = ["draft", "approval_rejected"].includes(version.status)
-      ? lifecycleBlockers.length === 0 ? "pristine_draft" : "approval_draft"
-      : "formal_record";
     if (
-      lifecycleKind !== "formal_record" &&
+      draftLifecycle.expectedAction &&
       actorUserId && actorUserId === contract.ownerUserId
     ) {
       availableActions.push(detailAction({
-        key: lifecycleKind === "pristine_draft"
-          ? "delete_pristine_draft"
-          : "abandon_application",
-        label: lifecycleKind === "pristine_draft" ? "删除草稿" : "放弃申请",
+        key: draftLifecycle.expectedAction,
+        label: draftLifecycle.expectedAction === "delete_pristine_draft"
+          ? "删除草稿"
+          : "放弃申请",
         kind: "danger",
         roleKeys,
         skipRoleCheck: true,
-        enabled: true
+        enabled: true,
+        requiresComment:
+          draftLifecycle.expectedAction === "abandon_application"
       }));
     }
 
@@ -1016,8 +1241,8 @@ export class ContractReadService {
       sealTask: signingFacts.sealTask,
       approvalTimeline,
       availableActions,
-      lifecycleKind,
-      lifecycleBlockers,
+      lifecycleKind: draftLifecycle.lifecycleKind,
+      lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       primaryAction: primaryActionKey(availableActions),
@@ -1535,6 +1760,7 @@ export class ContractReadService {
       approvalFormAvailable: boolean;
       approvalParticipant: boolean;
       canUploadGovernedFinal: boolean;
+      genericDraftActionsAllowed: boolean;
     }
   ): DetailActionReadModel[] {
     const workflowActions = [
@@ -1598,6 +1824,9 @@ export class ContractReadService {
     ];
 
     if (status === "draft") {
+      if (context?.genericDraftActionsAllowed === false) {
+        return [];
+      }
       return [
         detailAction({
           key: "submit_approval",
@@ -2133,6 +2362,7 @@ export class ContractReadService {
     const pendingOwner = this.currentOwnerLabel(version.status);
     return {
       id: contract.code ?? contract.id,
+      contractId: contract.id,
       contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
       name: contract.name,
       project: project?.name ?? contract.projectId,
@@ -2155,36 +2385,60 @@ export class ContractReadService {
 
   private lifecycleCount(
     contracts: Array<{ id: string; ownerUserId: string | null; voidedAt: Date | null }>,
-    versionsByContract: Map<string, Array<{ status: string }>>,
+    versionsByContract: Map<string, Array<{ id: string; status: string }>>,
+    lifecycleByVersion: ReadonlyMap<
+      string,
+      ContractDraftLifecycleClassification
+    >,
     actorUserId: string,
     view: DraftLedgerView
   ) {
     return contracts.filter((contract) => this.classifyContractLifecycle(
       contract,
       versionsByContract.get(contract.id) ?? [],
+      lifecycleByVersion,
       actorUserId
     ).matches[view]).length;
   }
 
-  private classifyContractLifecycle<V extends { status: string }>(
+  private classifyContractLifecycle<V extends { id: string; status: string }>(
     contract: { ownerUserId: string | null; voidedAt: Date | null },
     versions: V[],
+    lifecycleByVersion: ReadonlyMap<
+      string,
+      ContractDraftLifecycleClassification
+    >,
     actorUserId: string
   ) {
     const latest = versions[0];
     const latestNotAbandoned = versions.find((candidate) => candidate.status !== "abandoned");
     const latestFormal = versions.find((candidate) =>
-      !["draft", "approval_rejected", "abandoned", "voided"].includes(candidate.status)
+      (
+        !["draft", "approval_rejected", "abandoned", "voided"].includes(
+          candidate.status
+        ) ||
+        lifecycleByVersion.get(candidate.id)?.lifecycleKind === "formal_record"
+      ) &&
+      !["abandoned", "voided"].includes(candidate.status)
     );
+    const latestDraftLifecycle = latestNotAbandoned
+      ? lifecycleByVersion.get(latestNotAbandoned.id)
+      : undefined;
     const matches = {
       formal_ledger: Boolean(
         latest && !contract.voidedAt && latest.status !== "voided" && latestFormal
       ),
       my_drafts: Boolean(
-        latestNotAbandoned?.status === "draft" && contract.ownerUserId === actorUserId
+        latestNotAbandoned?.status === "draft" &&
+        latestDraftLifecycle?.lifecycleKind === "pristine_draft" &&
+        contract.ownerUserId === actorUserId
       ),
       returned_for_revision: Boolean(
-        latestNotAbandoned?.status === "approval_rejected" && contract.ownerUserId === actorUserId
+        latestNotAbandoned &&
+        ["draft", "approval_rejected"].includes(latestNotAbandoned.status) &&
+        latestDraftLifecycle?.lifecycleKind === "approval_draft" &&
+        latestDraftLifecycle.expectedAction === "abandon_application" &&
+        contract.ownerUserId === actorUserId
       ),
       ended: Boolean(
         latest && (contract.voidedAt || ["abandoned", "voided"].includes(latest.status))
@@ -2210,6 +2464,7 @@ export class ContractReadService {
   private matchesWorkbenchView(
     view: ContractWorkbenchView,
     version: { id: string; status: string },
+    draftLifecycle: ContractDraftLifecycleClassification,
     ownerUserId: string | null,
     actorUserId: string,
     pendingVersionIds: ReadonlySet<string>
@@ -2220,29 +2475,17 @@ export class ContractReadService {
       return pendingVersionIds.has(version.id) ||
         (status === "approval_rejected" && ownerUserId === actorUserId);
     }
-    if (view === "my_drafts") return status === "draft" && ownerUserId === actorUserId;
+    if (view === "my_drafts") {
+      return status === "draft" &&
+        draftLifecycle.lifecycleKind === "pristine_draft" &&
+        ownerUserId === actorUserId;
+    }
     if (view === "in_approval") return ["in_approval", "approval_pending"].includes(status);
     if (view === "pending_seal") return ["approved", "approved_pending_seal", "in_seal"].includes(status);
     if (view === "pending_archive") {
       return ["seal_approved_pending_archive", "pending_archive_confirm", "sealed_pending_archive"].includes(status);
     }
     return status === "effective";
-  }
-
-  private contractLedgerLifecycleKind(
-    version: { status: string; changeType: string; versionNo: number },
-    evidence: { hasApproval: boolean; hasFormalFile: boolean; hasAuthorization: boolean }
-  ): "pristine_draft" | "approval_draft" | "formal_record" {
-    if (version.status === "voided") return "formal_record";
-    if (version.status === "abandoned") {
-      return version.changeType !== "original" || version.versionNo !== 1 ||
-        evidence.hasApproval || evidence.hasFormalFile || evidence.hasAuthorization
-        ? "approval_draft"
-        : "pristine_draft";
-    }
-    if (version.status === "draft") return "pristine_draft";
-    if (version.status === "approval_rejected") return "approval_draft";
-    return "formal_record";
   }
 
   private page(raw?: string | number) {

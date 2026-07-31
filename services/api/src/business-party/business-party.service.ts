@@ -7,6 +7,7 @@ import {
 import type { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import { AuditService } from "../audit/audit.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import type {
@@ -469,17 +470,39 @@ export class BusinessPartyService {
     contractVersionId: string,
     actorUserId: string
   ) {
+    const mutationBoundary = await lockContractDraftMutationBoundary(
+      tx,
+      contractVersionId
+    );
+    if (!mutationBoundary) {
+      throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+    }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException(
+        "合同已存在正式业务事实，不能变更合作单位"
+      );
+    }
     const version = await tx.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
     if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+    if (version.contractId !== mutationBoundary.contractId) {
+      throw new NotFoundException("合同草稿版本与合同不匹配，请刷新后重试");
+    }
     if (version.status !== "draft") {
       throw new BadRequestException("当前合同版本不是草稿状态，不能变更合作单位");
+    }
+    if (version.changeType === "historical_takeover") {
+      throw new BadRequestException(
+        "历史接管草稿必须在历史接管工作台办理"
+      );
     }
     if (version.changeType === "change" || version.changeType === "supplement") {
       throw new BadRequestException("合同变更不得修改签约主体；如需变更主体请另行办理新合同");
     }
-    const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+    const contract = await tx.contract.findUnique({
+      where: { id: mutationBoundary.contractId }
+    });
     if (!contract) throw new NotFoundException("未找到合同草稿，请刷新后重试");
     if (contract.ownerUserId !== actorUserId) {
       throw new ForbiddenException("只有合同草稿经办人可以变更合同合作单位");

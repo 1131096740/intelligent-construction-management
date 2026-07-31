@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { appendDocxImageAttachments } from "./docx-attachment-appender";
@@ -291,10 +292,31 @@ export class ContractDocumentProcessor
       uploadedPdfFileId = preview.id;
       const completedAt = new Date();
       await this.prisma.$transaction(async (tx) => {
+        const mutationBoundary = await lockContractDraftMutationBoundary<{
+          id: string;
+          contractId: string;
+          draftRevision: number;
+          status: string;
+          changeType: string | null;
+        }, {
+          id: string;
+          voidedAt: Date | null;
+        }>(tx, job.contractVersionId);
         const currentRound = await tx.contractNegotiationRound.findUnique({
           where: { id: job.negotiationRoundId! }
         });
-        if (!currentRound || currentRound.status !== "open") {
+        const version = mutationBoundary?.version;
+        if (
+          !mutationBoundary ||
+          mutationBoundary.contract.voidedAt ||
+          mutationBoundary.formalBlockers.length > 0 ||
+          !version ||
+          version.changeType === "historical_takeover" ||
+          !["draft", "approval_rejected"].includes(version.status) ||
+          version.draftRevision !== job.sourceRevision ||
+          !currentRound ||
+          currentRound.status !== "open"
+        ) {
           const revisionUpdated = await tx.contractOfflineRevision.updateMany({
             where: { id: job.id, status: "processing" },
             data: { status: "stale", completedAt, errorMessage: null }
@@ -536,25 +558,27 @@ export class ContractDocumentProcessor
       uploadedFileIds.push(pdfFile.id);
       const completedAt = new Date();
       const outcome = await this.prisma.$transaction(async (tx) => {
-        const [version] = await tx.$queryRaw<
-          Array<{
-            draftRevision: number;
-            status: string;
-            changeType: string | null;
-            draftData: Prisma.JsonValue;
-            latestDraftPreviewDocumentId: string | null;
-          }>
-        >(Prisma.sql`
-          SELECT "draftRevision", "status", "changeType", "draftData",
-                 "latestDraftPreviewDocumentId"
-          FROM "ContractVersion"
-          WHERE "id" = ${job.contractVersionId}
-          FOR UPDATE
-        `);
+        const mutationBoundary = await lockContractDraftMutationBoundary<{
+          id: string;
+          contractId: string;
+          draftRevision: number;
+          status: string;
+          changeType: string | null;
+          draftData: Prisma.JsonValue;
+          latestDraftPreviewDocumentId: string | null;
+        }, {
+          id: string;
+          voidedAt: Date | null;
+        }>(tx, job.contractVersionId);
+        const version = mutationBoundary?.version;
         if (
+          !mutationBoundary ||
+          mutationBoundary.contract.voidedAt ||
+          mutationBoundary.formalBlockers.length > 0 ||
           !version ||
           version.draftRevision !== job.sourceRevision ||
-          !["draft", "approval_rejected"].includes(version.status)
+          !["draft", "approval_rejected"].includes(version.status) ||
+          version.changeType === "historical_takeover"
         ) {
           await tx.contractGeneratedDocument.updateMany({
             where: {

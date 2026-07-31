@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ContractWorkbenchService } from "./contract-workbench.service";
@@ -40,6 +41,9 @@ export class ContractDraftAggregateService {
     }
     if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)) {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
+    }
+    if (version.changeType === "historical_takeover") {
+      throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
     }
 
     const legacyReadModel = await this.workbench.getDraftFromExactVersion(
@@ -114,41 +118,16 @@ export class ContractDraftAggregateService {
     const requestSha256 = this.sha256(this.stableJson(input));
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const versionIdentity = await tx.contractVersion.findUnique({
-          where: { id: contractVersionId },
-          select: { id: true, contractId: true }
+        const mutationBoundary = await lockContractDraftMutationBoundary(
+          tx,
+          contractVersionId
+        );
+        if (!mutationBoundary) {
+          throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+        }
+        const receipt = await tx.contractDraftSaveRequest.findUnique({
+          where: { idempotencyKey: input.idempotencyKey }
         });
-        if (!versionIdentity) {
-          throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
-        }
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "id" FROM "Contract"
-          WHERE "id" = ${versionIdentity.contractId}
-          FOR UPDATE
-        `);
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "id" FROM "ContractVersion"
-          WHERE "id" = ${contractVersionId}
-          FOR UPDATE
-        `);
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "contractVersionId" FROM "ContractDraftEditLease"
-          WHERE "contractVersionId" = ${contractVersionId}
-          FOR UPDATE
-        `);
-        const [contract, version, receipt, lease] = await Promise.all([
-          tx.contract.findUnique({ where: { id: versionIdentity.contractId } }),
-          tx.contractVersion.findUnique({ where: { id: contractVersionId } }),
-          tx.contractDraftSaveRequest.findUnique({
-            where: { idempotencyKey: input.idempotencyKey }
-          }),
-          tx.contractDraftEditLease.findUnique({
-            where: { contractVersionId }
-          })
-        ]);
-        if (!contract || !version) {
-          throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
-        }
         if (receipt) {
           if (
             receipt.contractVersionId !== contractVersionId ||
@@ -163,6 +142,31 @@ export class ContractDraftAggregateService {
           }
           return receipt.responseSnapshot;
         }
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "contractVersionId" FROM "ContractDraftEditLease"
+          WHERE "contractVersionId" = ${contractVersionId}
+          FOR UPDATE
+        `);
+        const [contract, version] = await Promise.all([
+          tx.contract.findUnique({ where: { id: mutationBoundary.contractId } }),
+          tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+        ]);
+        if (!contract || !version) {
+          throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+        }
+        if (version.changeType === "historical_takeover") {
+          throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
+        }
+        if (mutationBoundary.formalBlockers.length > 0) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: "DRAFT_NOT_EDITABLE",
+            message: "合同已存在正式业务事实，不能继续编辑草稿"
+          });
+        }
+        const lease = await tx.contractDraftEditLease.findUnique({
+          where: { contractVersionId }
+        });
         if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status) || contract.voidedAt) {
           throw new ConflictException({
             statusCode: 409,

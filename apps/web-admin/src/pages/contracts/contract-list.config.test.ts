@@ -4,6 +4,7 @@ import {
   contractFilterFields,
   contractLedgerColumns,
   contractLedgerFilterOptions,
+  contractWorkbenchRouteContractId,
   contractPaginationBlockReason,
   contractSummaryItems,
   emptyContractLedgerFilters,
@@ -61,30 +62,74 @@ describe("contract ledger page configuration", () => {
 
   it("executes only server-advertised workbench actions without forcing an invalid save", () => {
     const source = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("<BusinessDraftAction");
-    expect(source).toContain("workbench.value?.availableActions ?? []");
+    expect(source).not.toContain("<BusinessDraftAction");
+    expect(source).not.toContain('from "../../components/BusinessDraftAction.vue"');
+    expect(source).toContain(
+      "contractDraftActionEnabled('delete_pristine_draft')"
+    );
+    expect(source).toContain(
+      "contractDraftActionEnabled('abandon_application')"
+    );
+    expect(source).toContain('@confirm="confirmDeletePristineDraft"');
+    expect(source).toContain('@confirm="confirmAbandonApplication"');
     expect(source).toContain("useUnsavedChangesGuard");
     expect(source).toContain("suspendAutosaveForLifecycleAction");
+    expect(source).toContain(
+      "const capability = await fetchContractDraftWorkbench(expectedVersionId)"
+    );
+    expect(source).toContain("contractDraftLifecycleContextCurrent");
+    expect(source).toContain("executeContractDraftLifecycleAction({");
     expect(source).toContain("expectedRevision: savedRevision.value");
-    const lifecycleActionSource = source.slice(
-      source.indexOf("async function executeContractDraftAction"),
+    expect(source).toContain(
+      "contractDraftAvailableActions.value = capability.availableActions!"
+    );
+    expect(source).not.toContain(
+      "contractDraftAvailableActions.value = structuredClone("
+    );
+    const deleteActionSource = source.slice(
+      source.indexOf("async function confirmDeletePristineDraft"),
+      source.indexOf("async function confirmAbandonApplication")
+    );
+    const abandonActionSource = source.slice(
+      source.indexOf("async function confirmAbandonApplication"),
       source.indexOf("// Sections are presentational")
     );
-    expect(lifecycleActionSource).not.toContain("saveNow()");
+    expect(deleteActionSource).toContain('action: "delete_pristine_draft"');
+    expect(abandonActionSource).toContain('action: "abandon_application"');
+    expect(deleteActionSource).not.toContain("saveNow()");
+    expect(abandonActionSource).not.toContain("saveNow()");
     expect(source).not.toContain("enabled: true");
   });
 
-  it("offers a guarded direct deletion only for server-classified pristine drafts", () => {
+  it("routes pristine-draft deletion through the exact workbench instead of mutating from the ledger", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("v-if=\"canDeleteDraftFromLedger(row)\"");
-    expect(source).toContain("<SensitiveActionDialog");
-    expect(source).toContain("businessDraftActionConfig.delete_pristine_draft");
-    expect(source).toContain("action: \"delete_pristine_draft\"");
-    expect(source).toContain("expectedRevision: draftRevision");
+    expect(source).toContain(
+      'canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台"'
+    );
+    expect(source).toContain("@click=\"openLifecycleRow(row)\"");
+    expect(source).toContain(
+      "path: `/contracts/${contractWorkbenchRouteContractId(row)}/workbench`"
+    );
+    expect(source).toContain(
+      "query: row.contractVersionId ? { versionId: row.contractVersionId } : undefined"
+    );
     expect(source).toContain('activeTab.value === "my_drafts"');
     expect(source).toContain('row.lifecycleKind === "pristine_draft"');
     expect(source).toContain('row.workbenchEditable === true');
-    expect(source).not.toContain("window.confirm");
+    expect(source).not.toContain("abandonContractDraft");
+    expect(source).not.toContain("confirmDraftDeletion");
+    expect(source).not.toContain("<SensitiveActionDialog");
+  });
+
+  it("routes a coded draft by its internal contract id", () => {
+    expect(
+      contractWorkbenchRouteContractId(
+        contractRow({
+          id: "HT-2026-001",
+          contractId: "contract-internal-1"
+        })
+      )
+    ).toBe("contract-internal-1");
   });
 
   it("builds stable select options from the currently loaded contract ledger", () => {

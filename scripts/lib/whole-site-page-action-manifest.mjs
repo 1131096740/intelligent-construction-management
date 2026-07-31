@@ -217,7 +217,9 @@ function registryEntryIssue(entry) {
       (wrapper) =>
         !isRecord(wrapper) ||
         !isNonEmptyString(wrapper.apiFile) ||
-        !isNonEmptyString(wrapper.name)
+        !isNonEmptyString(wrapper.name) ||
+        (wrapper.variant !== undefined &&
+          !isNonEmptyString(wrapper.variant))
     )
   ) {
     return "wrappers_invalid";
@@ -269,7 +271,10 @@ function normalizeRegistry(registry) {
       wrappers: entry.wrappers
         .map((wrapper) => ({
           apiFile: posixPath(wrapper.apiFile),
-          name: wrapper.name
+          name: wrapper.name,
+          ...(wrapper.variant
+            ? { variant: wrapper.variant }
+            : {})
         }))
         .sort(
           (left, right) =>
@@ -11951,7 +11956,9 @@ function actionBindings({
           symbols,
           {
             candidate,
-            variant: action.trigger.variant,
+            variant:
+              declared.variant ??
+              action.trigger.variant,
             businessDraftActionTrusted
           }
         )
@@ -12024,7 +12031,10 @@ function actionBindings({
         acceptedProductionConsumers: [],
         causalVerified: causalProof.verified,
         causalProof: {
-          localCallChain: causalProof.localCallChain
+          localCallChain: causalProof.localCallChain,
+          ...(declared.variant
+            ? { variant: declared.variant }
+            : {})
         },
         ticketFollowups: followups
       });

@@ -404,13 +404,43 @@
         </div>
       </div>
 
-      <BusinessDraftAction
-        v-if="workbench && contractDraftActions.length"
-        :actions="contractDraftActions"
-        :blocked-reasons="workbench.lifecycleBlockers ?? []"
-        :subject="contractDraftActionSubject"
-        :execute="executeContractDraftAction"
-      />
+      <section
+        v-if="
+          workbench &&
+            (
+              contractDraftActionEnabled('delete_pristine_draft') ||
+              contractDraftActionEnabled('abandon_application') ||
+              workbench.lifecycleBlockers?.length
+            )
+        "
+        class="contract-draft-lifecycle-actions"
+      >
+        <t-alert
+          v-for="reason in workbench.lifecycleBlockers ?? []"
+          :key="reason"
+          theme="warning"
+          title="当前操作受阻"
+          :message="reason"
+        />
+        <div class="contract-draft-lifecycle-buttons">
+          <t-button
+            v-if="contractDraftActionEnabled('delete_pristine_draft')"
+            theme="danger"
+            :disabled="contractDraftLifecycleActionBusy"
+            @click="openDeletePristineDraft"
+          >
+            {{ deletePristineDraftConfig.label }}
+          </t-button>
+          <t-button
+            v-if="contractDraftActionEnabled('abandon_application')"
+            theme="danger"
+            :disabled="contractDraftLifecycleActionBusy"
+            @click="openAbandonApplication"
+          >
+            {{ abandonApplicationConfig.label }}
+          </t-button>
+        </div>
+      </section>
 
       <t-alert
         v-if="workbench && !exactVersionError && isChangeVersion"
@@ -876,6 +906,72 @@
       @confirm="confirmLeaseTakeover"
     />
 
+    <SensitiveActionDialog
+      v-if="contractDraftActionEnabled('delete_pristine_draft')"
+      v-model="deletePristineDraftVisible"
+      :title="deletePristineDraftConfig.label"
+      :description="deletePristineDraftConfig.description"
+      :confirm-text="deletePristineDraftConfig.confirmText"
+      confirm-theme="danger"
+      :require-reason="contractDraftActionRequiresComment('delete_pristine_draft')"
+      :require-password="contractDraftActionRequiresPassword('delete_pristine_draft')"
+      :loading="contractDraftLifecycleActionBusy"
+      :error="deletePristineDraftError"
+      @confirm="confirmDeletePristineDraft"
+    >
+      <dl class="contract-draft-lifecycle-subject">
+        <div>
+          <dt>业务编号</dt>
+          <dd>{{ contractDraftActionSubject.businessCode }}</dd>
+        </div>
+        <div>
+          <dt>业务名称</dt>
+          <dd>{{ contractDraftActionSubject.name }}</dd>
+        </div>
+        <div>
+          <dt>最后保存时间</dt>
+          <dd>{{ contractDraftActionSubject.lastSavedAt }}</dd>
+        </div>
+        <div>
+          <dt>影响范围</dt>
+          <dd>{{ contractDraftActionSubject.impactScope }}</dd>
+        </div>
+      </dl>
+    </SensitiveActionDialog>
+
+    <SensitiveActionDialog
+      v-if="contractDraftActionEnabled('abandon_application')"
+      v-model="abandonApplicationVisible"
+      :title="abandonApplicationConfig.label"
+      :description="abandonApplicationConfig.description"
+      :confirm-text="abandonApplicationConfig.confirmText"
+      confirm-theme="danger"
+      :require-reason="contractDraftActionRequiresComment('abandon_application')"
+      :require-password="contractDraftActionRequiresPassword('abandon_application')"
+      :loading="contractDraftLifecycleActionBusy"
+      :error="abandonApplicationError"
+      @confirm="confirmAbandonApplication"
+    >
+      <dl class="contract-draft-lifecycle-subject">
+        <div>
+          <dt>业务编号</dt>
+          <dd>{{ contractDraftActionSubject.businessCode }}</dd>
+        </div>
+        <div>
+          <dt>业务名称</dt>
+          <dd>{{ contractDraftActionSubject.name }}</dd>
+        </div>
+        <div>
+          <dt>最后保存时间</dt>
+          <dd>{{ contractDraftActionSubject.lastSavedAt }}</dd>
+        </div>
+        <div>
+          <dt>影响范围</dt>
+          <dd>{{ contractDraftActionSubject.impactScope }}</dd>
+        </div>
+      </dl>
+    </SensitiveActionDialog>
+
     <t-dialog
       v-model:visible="navigationConfirmVisible"
       :header="navigationPrompt?.title ?? ''"
@@ -934,21 +1030,34 @@
 import type {
   ContractReadinessResult,
   ContractSettlementMode,
-  ContractWorkbenchReadModel
+  ContractWorkbenchReadModel,
+  DetailActionReadModel
 } from "@jiangkong/shared-domain";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import {
-  abandonContractDraft,
   applyContractTypeChange,
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
+  executeContractDraftLifecycleAction,
+  fetchContractDraftWorkbench,
   listPublishedContractTemplates,
   previewContractTypeChange,
   transferContractDraft,
   type ContractDraftChangedSection,
+  type ContractDraftLifecycleAction,
+  type ContractDraftLifecycleOperationContext,
   type ContractDraftPartyModel,
+  type ExecuteContractDraftLifecycleActionResult,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 import {
@@ -960,9 +1069,7 @@ import {
   recommendContractScenarioTemplates
 } from "../../api/contract-scenario.api";
 import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
-import BusinessDraftAction, {
-  type BusinessDraftActionRequest
-} from "../../components/BusinessDraftAction.vue";
+import { businessDraftActionConfig } from "../../components/business-draft-action.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
@@ -1110,6 +1217,21 @@ const leaveSave = createContractWorkbenchLeaveSave({
   state: () => navigationState.value,
   flushBeforeLeave: saveNow
 });
+const contractDraftAvailableActions =
+  shallowRef<DetailActionReadModel[] | null>(null);
+const contractDraftLifecycleVersionId = computed(
+  () => workbench.value?.version.id ?? ""
+);
+const deletePristineDraftConfig =
+  businessDraftActionConfig.delete_pristine_draft;
+const abandonApplicationConfig =
+  businessDraftActionConfig.abandon_application;
+const deletePristineDraftVisible = ref(false);
+const abandonApplicationVisible = ref(false);
+const contractDraftLifecycleActionBusy = ref(false);
+const deletePristineDraftError = ref("");
+const abandonApplicationError = ref("");
+let contractWorkbenchComponentAlive = true;
 
 useUnsavedChangesGuard({
   isDirty: () =>
@@ -1146,7 +1268,6 @@ async function flushNavigationAndLeave() {
   resolve?.(true);
 }
 
-const contractDraftActions = computed(() => workbench.value?.availableActions ?? []);
 const contractDraftActionSubject = computed(() => ({
   businessCode: workbench.value?.contract.code ?? workbench.value?.contract.temporaryCode ?? "—",
   name: workbench.value?.contract.name ?? "合同草稿",
@@ -1156,35 +1277,186 @@ const contractDraftActionSubject = computed(() => ({
     : "结束当前纯净草稿；不影响正式合同"
 }));
 
-async function executeContractDraftAction(request: BusinessDraftActionRequest) {
-  if (
-    request.action !== "delete_pristine_draft" &&
-    request.action !== "abandon_application"
-  ) {
-    throw new Error("当前合同草稿不支持该操作，请刷新后重试");
-  }
-  const current = workbench.value;
-  if (!current) throw new Error("合同草稿尚未加载，请刷新后重试");
-  const allowed = contractDraftActions.value.find(
-    (action) => action.key === request.action && action.enabled
+const deletePristineDraftCapability = computed(() =>
+  contractDraftAvailableActions.value?.find(
+    (action) => action.key === "delete_pristine_draft" && action.enabled
+  )
+);
+const abandonApplicationCapability = computed(() =>
+  contractDraftAvailableActions.value?.find(
+    (action) => action.key === "abandon_application" && action.enabled
+  )
+);
+const deletePristineDraftRequiresComment = computed(
+  () => deletePristineDraftCapability.value?.requiresComment === true
+);
+const deletePristineDraftRequiresPassword = computed(
+  () => deletePristineDraftCapability.value?.requiresPassword === true
+);
+const abandonApplicationRequiresComment = computed(
+  () => abandonApplicationCapability.value?.requiresComment === true
+);
+const abandonApplicationRequiresPassword = computed(
+  () => abandonApplicationCapability.value?.requiresPassword === true
+);
+
+function contractDraftActionEnabled(key: ContractDraftLifecycleAction) {
+  return Boolean(
+    contractDraftAvailableActions.value?.some(
+      (action) => action.key === key && action.enabled
+    )
   );
-  if (!allowed) throw new Error("当前结束操作已不可用，请刷新合同工作台后重试");
-  if (!suspendAutosaveForLifecycleAction()) {
-    throw new Error("合同草稿正在保存，请等待保存完成后再结束草稿");
+}
+
+function contractDraftActionRequiresComment(key: ContractDraftLifecycleAction) {
+  return Boolean(
+    contractDraftAvailableActions.value?.some(
+      (action) =>
+        action.key === key &&
+        action.enabled &&
+        action.requiresComment
+    )
+  );
+}
+
+function contractDraftActionRequiresPassword(key: ContractDraftLifecycleAction) {
+  return Boolean(
+    contractDraftAvailableActions.value?.some(
+      (action) =>
+        action.key === key &&
+        action.enabled &&
+        action.requiresPassword
+    )
+  );
+}
+
+function openDeletePristineDraft() {
+  deletePristineDraftError.value = "";
+  deletePristineDraftVisible.value = true;
+}
+
+function openAbandonApplication() {
+  abandonApplicationError.value = "";
+  abandonApplicationVisible.value = true;
+}
+
+function contractDraftLifecycleContextCurrent(
+  context: ContractDraftLifecycleOperationContext
+) {
+  return contractWorkbenchComponentAlive &&
+    context.generation === workbenchLoadRequestId &&
+    contractId.value === context.contractId &&
+    queryText(route.query.versionId).trim() === context.versionId &&
+    workbench.value?.contract.id === context.contractId &&
+    workbench.value.version.id === context.versionId &&
+    savedRevision.value === context.expectedRevision;
+}
+
+async function finishContractDraftLifecycleAction(
+  result: ExecuteContractDraftLifecycleActionResult
+) {
+  if (result.status === "stale") return;
+  discardLocalState();
+  navigationBypass.value = true;
+  await router.push({ path: "/contracts", query: { view: "ended" } });
+}
+
+function hideInvalidContractDraftLifecycleCapability(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+  if (
+    code === "CONTRACT_DRAFT_LIFECYCLE_INVALID_CONTEXT" ||
+    code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
+    code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+  ) {
+    contractDraftAvailableActions.value = null;
+    deletePristineDraftVisible.value = false;
+    abandonApplicationVisible.value = false;
   }
-  try {
-    await abandonContractDraft(current.version.id, {
-      expectedRevision: savedRevision.value,
-      action: request.action,
-      ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
-    });
-    discardLocalState();
-    navigationBypass.value = true;
-    await router.push({ path: "/contracts", query: { view: "ended" } });
-  } catch (error) {
-    resumeAutosaveAfterLifecycleAction();
-    throw error;
-  }
+}
+
+async function finishDeletePristineDraft(
+  result: ExecuteContractDraftLifecycleActionResult
+) {
+  await finishContractDraftLifecycleAction(result);
+  deletePristineDraftVisible.value = false;
+}
+
+async function finishAbandonApplication(
+  result: ExecuteContractDraftLifecycleActionResult
+) {
+  await finishContractDraftLifecycleAction(result);
+  abandonApplicationVisible.value = false;
+}
+
+function setDeletePristineDraftError(error: unknown) {
+  deletePristineDraftError.value =
+    error instanceof Error ? error.message : "删除草稿失败，请刷新后重试";
+}
+
+function setAbandonApplicationError(error: unknown) {
+  abandonApplicationError.value =
+    error instanceof Error ? error.message : "放弃申请失败，请刷新后重试";
+}
+
+function settleContractDraftLifecycleAction() {
+  contractDraftLifecycleActionBusy.value = false;
+}
+
+async function confirmDeletePristineDraft(request: {
+  reason: string;
+  password: string;
+}) {
+  contractDraftLifecycleActionBusy.value = true;
+  deletePristineDraftError.value = "";
+  await executeContractDraftLifecycleAction({
+    generation: workbenchLoadRequestId,
+    contractId: contractId.value,
+    versionId: contractDraftLifecycleVersionId.value,
+    expectedRevision: savedRevision.value,
+    action: "delete_pristine_draft",
+    reason: request.reason,
+    currentPassword: request.password,
+    expectedRequiresComment: deletePristineDraftRequiresComment.value,
+    expectedRequiresPassword: deletePristineDraftRequiresPassword.value,
+    isCurrent: contractDraftLifecycleContextCurrent,
+    beforeWrite: suspendAutosaveForLifecycleAction,
+    onWriteFailure: resumeAutosaveAfterLifecycleAction,
+    onResult: finishDeletePristineDraft,
+    onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
+    onOperationFailure: setDeletePristineDraftError,
+    onOperationSettled: settleContractDraftLifecycleAction,
+    swallowOperationFailure: true
+  });
+}
+
+async function confirmAbandonApplication(request: {
+  reason: string;
+  password: string;
+}) {
+  contractDraftLifecycleActionBusy.value = true;
+  abandonApplicationError.value = "";
+  await executeContractDraftLifecycleAction({
+    generation: workbenchLoadRequestId,
+    contractId: contractId.value,
+    versionId: contractDraftLifecycleVersionId.value,
+    expectedRevision: savedRevision.value,
+    action: "abandon_application",
+    reason: request.reason,
+    currentPassword: request.password,
+    expectedRequiresComment: abandonApplicationRequiresComment.value,
+    expectedRequiresPassword: abandonApplicationRequiresPassword.value,
+    isCurrent: contractDraftLifecycleContextCurrent,
+    beforeWrite: suspendAutosaveForLifecycleAction,
+    onWriteFailure: resumeAutosaveAfterLifecycleAction,
+    onResult: finishAbandonApplication,
+    onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
+    onOperationFailure: setAbandonApplicationError,
+    onOperationSettled: settleContractDraftLifecycleAction,
+    swallowOperationFailure: true
+  });
 }
 
 // Sections are presentational: they emit a patch instead of mutating the shared
@@ -1685,6 +1957,11 @@ watch([saveState, isDirty], ([state, draftDirty]) => {
 });
 
 onBeforeUnmount(() => {
+  contractWorkbenchComponentAlive = false;
+  workbenchLoadRequestId += 1;
+  contractDraftAvailableActions.value = null;
+  deletePristineDraftVisible.value = false;
+  abandonApplicationVisible.value = false;
   clearManualSaveMessage();
   cancelPendingNavigation();
   disconnectSectionObserver();
@@ -2378,20 +2655,32 @@ async function loadExisting() {
 async function loadExpectedWorkbench(id: string) {
   const requestId = ++workbenchLoadRequestId;
   const expectedVersionId = queryText(route.query.versionId).trim();
+  contractDraftAvailableActions.value = null;
+  deletePristineDraftVisible.value = false;
+  abandonApplicationVisible.value = false;
+  deletePristineDraftError.value = "";
+  abandonApplicationError.value = "";
   if (!expectedVersionId) {
     throw new Error("工作台缺少合同版本编号，已停止读取最新草稿");
   }
   await load(expectedVersionId);
   if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
+  const capability = await fetchContractDraftWorkbench(expectedVersionId);
+  if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
   if (
+    capability.contract.id !== id ||
+    capability.version.id !== expectedVersionId ||
+    capability.version.draftRevision !== savedRevision.value ||
     workbench.value?.contract.id !== id ||
-    workbench.value.version.id !== expectedVersionId
+    workbench.value.version.id !== expectedVersionId ||
+    workbench.value.version.draftRevision !== savedRevision.value
   ) {
     exactVersionError.value =
       "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
     workbench.value = null;
     throw new Error(exactVersionError.value);
   }
+  contractDraftAvailableActions.value = capability.availableActions!;
 }
 
 function returnToContractDetail() {
@@ -2419,6 +2708,7 @@ watch(contractId, (next, previous) => {
     clearSessionSaveReceipt();
     focusedBillKey.value = "";
     workbenchLoadRequestId += 1;
+    contractDraftAvailableActions.value = null;
     workbench.value = null;
     exactVersionError.value = "";
     void loadExisting();
@@ -2430,6 +2720,7 @@ watch(() => route.query.versionId, (next, previous) => {
     clearManualSaveMessage();
     clearSessionSaveReceipt();
     workbenchLoadRequestId += 1;
+    contractDraftAvailableActions.value = null;
     workbench.value = null;
     exactVersionError.value = "";
     void loadExisting();
@@ -2731,6 +3022,42 @@ function initializeDraftFromQuery() {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--jg-space-md);
   margin-top: var(--jg-space-md);
+}
+
+.contract-draft-lifecycle-actions {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin-top: var(--jg-space-md);
+}
+
+.contract-draft-lifecycle-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
+}
+
+.contract-draft-lifecycle-subject {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin: 0;
+}
+
+.contract-draft-lifecycle-subject div {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  gap: var(--jg-space-md);
+}
+
+.contract-draft-lifecycle-subject dt {
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
+}
+
+.contract-draft-lifecycle-subject dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--jg-color-text-primary);
+  overflow-wrap: anywhere;
 }
 
 .change-workbench-banner {

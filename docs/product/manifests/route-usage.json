@@ -118,10 +118,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -923,10 +923,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -938,11 +938,22 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "executeContractDraftLifecycleAction",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/workbench",
+            "normalizedKey": "GET /contract-drafts/:param/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
             "wrapper": "fetchContractDraftWorkbench",
             "method": "GET",
             "normalizedPath": "/contract-drafts/:param/workbench",
             "normalizedKey": "GET /contract-drafts/:param/workbench",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
@@ -6431,10 +6442,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -7851,12 +7862,11 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "abandonContractDraft",
+            "wrapper": "executeContractDraftLifecycleAction",
             "method": "POST",
             "normalizedPath": "/contracts/:param/abandonment",
             "normalizedKey": "POST /contracts/:param/abandonment",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractListPage.vue",
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
             ]
           }

@@ -412,6 +412,52 @@ describe("useContractDraft", () => {
     expect(draft.canEdit.value).toBe(false);
   });
 
+  it.each(["available", "expired"] as const)(
+    "keeps a director readonly without acquiring an %s lease owned by another handler",
+    async (state) => {
+      const draft = useContractDraft({
+        replace: vi.fn(),
+        userId: () => "director-1"
+      });
+      const lifecycleAction = {
+        key: "delete_pristine_draft",
+        label: "删除草稿",
+        kind: "danger" as const,
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true,
+        requiresPassword: true
+      };
+      const serverSnapshot = makeWorkbench({
+        contract: {
+          ...makeWorkbench().contract,
+          ownerUserId: "owner-1"
+        },
+        lease: {
+          state,
+          holderDisplayName: null,
+          expiresAt:
+            state === "expired" ? "2026-07-27T23:58:00.000Z" : null,
+          canTakeOver: false
+        },
+        availableActions: [lifecycleAction]
+      });
+      mockFetchWorkbench.mockResolvedValue(serverSnapshot);
+
+      await expect(draft.load("cv-1")).resolves.toBe(serverSnapshot);
+
+      expect(mockAcquireLease).not.toHaveBeenCalled();
+      expect(draft.canEdit.value).toBe(false);
+      expect(draft.lease.value).toEqual({
+        kind: "available",
+        canTakeOver: false
+      });
+      expect(draft.workbench.value?.availableActions).toEqual([
+        lifecycleAction
+      ]);
+    }
+  );
+
   it("turns readonly on the next heartbeat after takeover while preserving recovery", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
@@ -739,6 +785,28 @@ describe("useContractDraft", () => {
     expect(draft.workbench.value?.version.id).toBe("cv-2");
   });
 
+  it("returns the exact validated GET snapshot while isolating the mutable workbench clone", async () => {
+    const draft = makeDraft();
+    const serverSnapshot = makeWorkbench({
+      availableActions: [{
+        key: "delete_pristine_draft",
+        label: "删除草稿",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: false
+      }]
+    });
+    mockFetchWorkbench.mockResolvedValue(serverSnapshot);
+
+    const capability = await draft.load("cv-1");
+
+    expect(capability).toBe(serverSnapshot);
+    expect(draft.workbench.value).not.toBe(serverSnapshot);
+    draft.workbench.value!.availableActions![0]!.label = "页面本地改写";
+    expect(capability?.availableActions?.[0]?.label).toBe("删除草稿");
+  });
+
   it("reloads every workbench projection and advances the next ordinary save revision after a bill batch", async () => {
     const draft = makeDraft();
     const initial = makeWorkbench();
@@ -1053,6 +1121,44 @@ describe("useContractDraft", () => {
     expect(draft.workbench.value?.draft["documentsOutdated"]).toBe(true);
   });
 
+  it("keeps lifecycle actions from the authoritative GET instead of trusting a save response", async () => {
+    const draft = makeDraft();
+    const getActions = [{
+      key: "delete_pristine_draft",
+      label: "删除草稿",
+      kind: "danger" as const,
+      enabled: true,
+      disabledReason: null,
+      requiresComment: false
+    }];
+    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench({
+      availableActions: getActions
+    }));
+    mockSaveDraft.mockResolvedValue({
+      ...saveResult("cv-1", 4),
+      readiness: {
+        ready: true,
+        blockingMessages: [],
+        warningMessages: []
+      },
+      availableActions: [{
+        key: "abandon_application",
+        label: "伪造的放弃申请",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true
+      }]
+    });
+    await draft.load("cv-1");
+
+    draft.model.contractName = "保存后仍只信 GET 动作";
+    draft.markDirty();
+    await expect(draft.saveNow()).resolves.toBe(true);
+
+    expect(draft.workbench.value?.availableActions).toEqual(getActions);
+  });
+
   it("does not merge stale derived facts when their source changed in flight", async () => {
     const draft = makeDraft();
     const pendingSave = deferred<SaveContractDraftAggregateResult>();
@@ -1208,7 +1314,9 @@ describe("useContractDraft", () => {
     expect(mockFetchWorkbench).toHaveBeenCalledTimes(1);
     pendingSave.resolve(saveResult("cv-1", 4));
     await expect(save).resolves.toBe(true);
-    await expect(loadNextVersion).resolves.toBeUndefined();
+    await expect(loadNextVersion).resolves.toMatchObject({
+      version: expect.objectContaining({ id: "cv-2" })
+    });
 
     expect(mockFetchWorkbench).toHaveBeenCalledTimes(2);
     expect(mockSaveDraft).toHaveBeenCalledWith(

@@ -284,7 +284,9 @@ export interface UseContractDraft {
     ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
   >;
   initializeDraft: InitializeDraftController;
-  load: (contractVersionId: string) => Promise<void>;
+  load: (
+    contractVersionId: string
+  ) => Promise<ContractDraftWorkbenchReadModel | null>;
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
   reload: () => Promise<void>;
   markDirty: (section?: ContractDraftChangedSection) => void;
@@ -1320,7 +1322,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   // -- Loading ----------------------------------------------------------------
 
-  async function load(requestedVersionId: string): Promise<void> {
+  async function load(
+    requestedVersionId: string
+  ): Promise<ContractDraftWorkbenchReadModel | null> {
     const currentVersionId = contractVersionId.value;
     if (
       conflict.value &&
@@ -1328,7 +1332,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       currentVersionId
     ) {
       await readConflictServerVersion(currentVersionId);
-      return;
+      return null;
     }
 
     cancelScheduledSave();
@@ -1338,8 +1342,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     let overlappingSave = conflict.value ? null : activeSave;
     while (overlappingSave) {
       const saved = await overlappingSave;
-      if (disposed || requestId !== loadRequestId) return;
-      if (!saved) return;
+      if (disposed || requestId !== loadRequestId) return null;
+      if (!saved) return null;
       overlappingSave =
         activeSave && activeSave !== overlappingSave
           ? activeSave
@@ -1355,7 +1359,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
       throw error;
     }
-    if (disposed || requestId !== loadRequestId) return;
+    if (disposed || requestId !== loadRequestId) return null;
     if (result.version.id !== requestedVersionId) {
       throw new Error(
         "合同草稿协议错误：响应版本与请求版本不一致，已保留当前编辑内容"
@@ -1366,14 +1370,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       result.version.draftRevision < currentRevision.value
     ) {
       scheduleSave();
-      return;
+      return null;
     }
 
     const nextAggregate = aggregateModelFromWorkbench(result);
     if (!sameVersionReload) {
       releaseCurrentLease();
     }
-    workbench.value = result;
+    workbench.value = structuredClone(result);
     contractVersionId.value = result.version.id;
     aggregateSaveState.value = createAggregateSaveState(
       result.version.draftRevision
@@ -1391,17 +1395,24 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     assignAggregateModel(aggregateModel, nextAggregate);
 
     inspectLocalRecovery();
+    const viewerUserId = options.userId?.()?.trim() ?? "";
+    const ownerUserId = result.contract.ownerUserId?.trim() ?? "";
+    const canAutoAcquireLease = Boolean(
+      viewerUserId && ownerUserId && viewerUserId === ownerUserId
+    );
     if (
       !leaseToken &&
+      canAutoAcquireLease &&
       (result.lease.state === "available" || result.lease.state === "expired")
     ) {
       const lease = await acquireContractDraftEditLease(requestedVersionId);
-      if (disposed || requestId !== loadRequestId) return;
+      if (disposed || requestId !== loadRequestId) return null;
       setLeaseGrant(lease);
     } else if (!leaseToken) {
       lease.value = contractDraftLeaseViewFromWorkbench(result.lease);
     }
     scheduleSave();
+    return result;
   }
 
   // -- Dirty tracking ----------------------------------------------------------
@@ -1474,7 +1485,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       isContractReadinessResult(result.readiness)
     ) {
       currentWorkbench.readiness = result.readiness;
-      currentWorkbench.availableActions = [...result.availableActions];
     }
     if (canMergeAggregateSaveDerivedFacts(savingState, allSections)) {
       currentWorkbench.draft["issueCounts"] = { ...result.issueCounts };

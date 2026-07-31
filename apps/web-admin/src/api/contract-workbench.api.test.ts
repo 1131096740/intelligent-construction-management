@@ -28,6 +28,7 @@ import {
   discardStandardClauseVersion,
   downloadBillExcelTemplate,
   downloadContractDraftBillExcelTemplate,
+  executeContractDraftLifecycleAction,
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
   fetchContractDraftWorkbench,
@@ -111,6 +112,72 @@ function makeOkBlob(content: string, contentType: string, disposition: string) {
       }
     })
   );
+}
+
+function deferred<T>() {
+  let resolvePromise!: (value: T | PromiseLike<T>) => void;
+  let rejectPromise!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve: resolvePromise,
+    reject: rejectPromise
+  };
+}
+
+function contractDraftLifecycleWorkbench(
+  overrides: {
+    contractId?: string;
+    versionId?: string;
+    revision?: number;
+    action?: "delete_pristine_draft" | "abandon_application";
+    requiresComment?: boolean;
+    requiresPassword?: boolean;
+  } = {}
+) {
+  const action = overrides.action ?? "delete_pristine_draft";
+  return {
+    contract: { id: overrides.contractId ?? "contract-1" },
+    version: {
+      id: overrides.versionId ?? "version-1",
+      draftRevision: overrides.revision ?? 12
+    },
+    availableActions: [{
+      key: action,
+      label: action,
+      kind: "danger",
+      enabled: true,
+      disabledReason: null,
+      requiresComment:
+        overrides.requiresComment ?? action === "abandon_application",
+      requiresPassword: overrides.requiresPassword ?? false
+    }]
+  };
+}
+
+function contractDraftLifecycleInput(
+  overrides: Partial<Parameters<typeof executeContractDraftLifecycleAction>[0]> = {}
+) {
+  return {
+    generation: 7,
+    contractId: "contract-1",
+    versionId: "version-1",
+    expectedRevision: 12,
+    action: "delete_pristine_draft",
+    reason: "用户确认结束",
+    currentPassword: "",
+    expectedRequiresComment: false,
+    expectedRequiresPassword: false,
+    isCurrent: vi.fn(() => true),
+    beforeWrite: vi.fn(() => true),
+    onWriteFailure: vi.fn(),
+    onResult: vi.fn(),
+    onCapabilityFailure: vi.fn(),
+    ...overrides
+  };
 }
 
 describe("contract workbench API client", () => {
@@ -370,6 +437,266 @@ describe("contract workbench API client", () => {
       expectedRevision: 6,
       action: "delete_pristine_draft"
     })).rejects.toThrow("合同草稿已被更新，请刷新后再处理");
+  });
+
+  it("coalesces one governed lifecycle operation without persisting the password in its fingerprint", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: "2026-07-30T00:00:00.000Z",
+        abandonedByUserId: "user-1",
+        reason: "用户确认结束",
+        idempotent: false
+      }));
+
+    const onResult = vi.fn();
+    const duplicateOnResult = vi.fn();
+    const first = executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        currentPassword: "first-password",
+        onResult
+      })
+    );
+    const duplicate = executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        currentPassword: "different-password",
+        onResult: duplicateOnResult
+      })
+    );
+
+    expect(duplicate).toBe(first);
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
+    await expect(first).resolves.toBeUndefined();
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed" })
+    );
+    expect(duplicateOnResult).not.toHaveBeenCalled();
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contracts/version-1/abandonment",
+      expect.objectContaining({
+        body: JSON.stringify({
+          expectedRevision: 12,
+          action: "delete_pristine_draft",
+          reason: "用户确认结束",
+          currentPassword: "first-password"
+        })
+      })
+    );
+    expect(JSON.stringify(mockApiFetch.mock.calls)).not.toContain(
+      "different-password"
+    );
+  });
+
+  it("rejects a different lifecycle operation while one owner is active", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: "用户确认结束",
+        idempotent: false
+      }));
+    const first = executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput()
+    );
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({ reason: "另一项结束原因" })
+    )).rejects.toMatchObject({
+      code: "CONTRACT_DRAFT_LIFECYCLE_BUSY"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+    pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
+    await first;
+  });
+
+  it("does not settle page feedback when a different lifecycle operation is rejected as busy", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: "用户确认结束",
+        idempotent: false
+      }));
+    const ownerSettled = vi.fn();
+    const rejectedSettled = vi.fn();
+    const rejectedFailure = vi.fn();
+    const first = executeContractDraftLifecycleAction({
+      ...contractDraftLifecycleInput(),
+      onOperationFailure: vi.fn(),
+      onOperationSettled: ownerSettled,
+      swallowOperationFailure: true
+    });
+
+    await executeContractDraftLifecycleAction({
+      ...contractDraftLifecycleInput({ reason: "另一项结束原因" }),
+      onOperationFailure: rejectedFailure,
+      onOperationSettled: rejectedSettled,
+      swallowOperationFailure: true
+    });
+
+    expect(rejectedFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "CONTRACT_DRAFT_LIFECYCLE_BUSY" })
+    );
+    expect(rejectedSettled).not.toHaveBeenCalled();
+    expect(ownerSettled).not.toHaveBeenCalled();
+
+    pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
+    await first;
+    expect(ownerSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before POST when the fresh capability coordinates or action change", async () => {
+    mockApiFetch.mockReturnValueOnce(
+      makeOkJson(contractDraftLifecycleWorkbench({
+        revision: 13,
+        action: "abandon_application"
+      }))
+    );
+    const beforeWrite = vi.fn(() => true);
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({ beforeWrite })
+    )).rejects.toMatchObject({
+      code: "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(beforeWrite).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["comment", true, false],
+    ["password", false, true]
+  ] as const)(
+    "fails closed before POST when the fresh capability changes its %s requirement",
+    async (_requirement, requiresComment, requiresPassword) => {
+      mockApiFetch.mockReturnValueOnce(
+        makeOkJson(contractDraftLifecycleWorkbench({
+          requiresComment,
+          requiresPassword
+        }))
+      );
+      const beforeWrite = vi.fn(() => true);
+      const onCapabilityFailure = vi.fn();
+
+      await expect(executeContractDraftLifecycleAction(
+        contractDraftLifecycleInput({
+          expectedRequiresComment: false,
+          expectedRequiresPassword: false,
+          beforeWrite,
+          onCapabilityFailure
+        })
+      )).rejects.toMatchObject({
+        code: "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+      });
+
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+      expect(beforeWrite).not.toHaveBeenCalled();
+      expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("returns stale without POST when the component generation changes after the fresh GET", async () => {
+    mockApiFetch.mockReturnValueOnce(
+      makeOkJson(contractDraftLifecycleWorkbench())
+    );
+    const onResult = vi.fn();
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        isCurrent: vi.fn(() => false),
+        onResult
+      })
+    )).resolves.toBeUndefined();
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "stale" })
+    );
+  });
+
+  it("fails closed after a mismatched POST response and keeps autosave suspended", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-other",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: null,
+        idempotent: false
+    }));
+    const onWriteFailure = vi.fn();
+    const onCapabilityFailure = vi.fn();
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        onWriteFailure,
+        onCapabilityFailure
+      })
+    )).rejects.toMatchObject({
+      code: "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+    });
+
+    expect(onWriteFailure).not.toHaveBeenCalled();
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the lifecycle owner and resumes autosave after a POST failure", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        message: "结束接口暂时不可用"
+      }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" }
+      }))
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: null,
+        idempotent: false
+      }));
+    const onWriteFailure = vi.fn();
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({ onWriteFailure })
+    )).rejects.toThrow("结束接口暂时不可用");
+    expect(onWriteFailure).toHaveBeenCalledTimes(1);
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput()
+    )).resolves.toBeUndefined();
+    expect(mockApiFetch).toHaveBeenCalledTimes(4);
   });
 
   it("connects the governed signing facts and unique workbench submission routes", async () => {

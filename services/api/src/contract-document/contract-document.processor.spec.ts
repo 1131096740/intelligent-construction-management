@@ -123,14 +123,35 @@ describe("ContractDocumentProcessor", () => {
           currentVersionNo: 1
         })
       },
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          draftRevision: 3,
-          status: "draft",
-          changeType: null,
-          draftData: {}
+      $queryRaw: jest.fn().mockImplementation(
+        async (query: { strings?: string[] }) => {
+          const sql = query.strings?.join(" ") ?? "";
+          if (sql.includes("FOR UPDATE OF cv")) {
+            return [{
+              id: "version-1",
+              contractId: "contract-1",
+              draftRevision: 3,
+              status: "draft",
+              changeType: "original",
+              draftData: {}
+            }];
+          }
+          if (sql.includes("FOR UPDATE OF c")) {
+            return [{
+              id: "contract-1",
+              ownerUserId: "owner-1",
+              voidedAt: null
+            }];
+          }
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
         }
-      ]),
+      ),
       auditLog: { create: jest.fn() }
     };
     return {
@@ -276,6 +297,30 @@ describe("ContractDocumentProcessor", () => {
       id: "round-1",
       status: "open"
     });
+    prisma.tx.$queryRaw.mockImplementation(
+      async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            draftRevision: 7,
+            status: "draft",
+            changeType: "original"
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", voidedAt: null }];
+        }
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+    );
     (prisma as unknown as { contractGeneratedDocument: { findUnique: jest.Mock } })
       .contractGeneratedDocument.findUnique = jest.fn().mockResolvedValue({
         id: "document-source",
@@ -1182,7 +1227,7 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
-    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
         id: "document-1",
@@ -1203,18 +1248,223 @@ describe("ContractDocumentProcessor", () => {
     expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 
+  it("marks a generated document stale when the locked draft has formal business evidence", async () => {
+    const prisma = makePrisma();
+    const terminalQueries: string[] = [];
+    prisma.tx.$queryRaw.mockImplementation(
+      async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        terminalQueries.push(sql);
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            draftRevision: 3,
+            status: "draft",
+            changeType: "original",
+            draftData: {}
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{
+            id: "contract-1",
+            ownerUserId: "owner-1",
+            voidedAt: null
+          }];
+        }
+        return [{
+          hasSignedFormalFile: true,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+    );
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(
+      queuedDocument()
+    );
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(terminalQueries[0]).toContain("FOR UPDATE OF c");
+    expect(terminalQueries[1]).toContain("FOR UPDATE OF cv");
+    expect(terminalQueries[2]).toContain('"ContractFormalFile"');
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "document-1",
+        status: "processing",
+        sourceRevision: 3
+      },
+      data: {
+        status: "stale",
+        completedAt: expect.any(Date),
+        errorMessage: null
+      }
+    });
+    expect(audit.record).not.toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({ action: "contract.document.success" })
+    );
+    expect(prisma.tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+  });
+
+  it("stales an offline comparison when the locked draft is no longer mutable", async () => {
+    const prisma = makePrisma();
+    prisma.contractOfflineRevision.findFirst.mockResolvedValue({
+      id: "revision-1",
+      contractVersionId: "version-1",
+      negotiationRoundId: "round-1",
+      sourceGeneratedDocumentId: "document-source",
+      sourceRevision: 7,
+      fileId: "revision-docx",
+      previewPdfFileId: null,
+      label: "第一轮修订稿",
+      confirmedByUserId: "owner-1",
+      status: "queued",
+      createdAt: new Date()
+    });
+    prisma.contractDocumentComparison.findUnique.mockResolvedValue({
+      id: "comparison-1",
+      offlineRevisionId: "revision-1",
+      status: "queued"
+    });
+    prisma.contractVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      clauseSnapshot: [],
+      templateSnapshot: {}
+    });
+    prisma.contractNegotiationRound.findUnique.mockResolvedValue({
+      id: "round-1",
+      status: "open",
+      sourceGeneratedDocumentId: "document-source"
+    });
+    prisma.tx.contractNegotiationRound.findUnique.mockResolvedValue({
+      id: "round-1",
+      status: "open"
+    });
+    (prisma as unknown as {
+      contractGeneratedDocument: { findUnique: jest.Mock };
+    }).contractGeneratedDocument.findUnique = jest.fn().mockResolvedValue({
+      id: "document-source",
+      contractVersionId: "version-1",
+      sourceRevision: 7,
+      docxFileId: "source-docx"
+    });
+    const terminalQueries: string[] = [];
+    prisma.tx.$queryRaw.mockImplementation(
+      async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        terminalQueries.push(sql);
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            draftRevision: 8,
+            status: "draft",
+            changeType: "original",
+            draftData: {},
+            clauseSnapshot: [],
+            templateSnapshot: {}
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", voidedAt: null }];
+        }
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+    );
+    const files = {
+      getFileBuffer: jest.fn()
+        .mockResolvedValueOnce({ buffer: Buffer.from("revision") })
+        .mockResolvedValueOnce({ buffer: Buffer.from("source") }),
+      uploadPrivateFile: jest.fn().mockResolvedValue({
+        id: "revision-preview-pdf"
+      }),
+      linkFileReplacement: jest.fn(),
+      discardUnlinkedGeneratedFiles: jest.fn().mockResolvedValue(undefined)
+    };
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(terminalQueries[0]).toContain("FOR UPDATE OF c");
+    expect(terminalQueries[1]).toContain("FOR UPDATE OF cv");
+    expect(prisma.tx.contractDocumentDifference.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.tx.contractOfflineRevision.updateMany).toHaveBeenCalledWith({
+      where: { id: "revision-1", status: "processing" },
+      data: {
+        status: "stale",
+        completedAt: expect.any(Date),
+        errorMessage: null
+      }
+    });
+    expect(prisma.tx.contractDocumentComparison.updateMany).toHaveBeenCalledWith({
+      where: { id: "comparison-1", status: "processing" },
+      data: {
+        status: "stale",
+        completedAt: expect.any(Date),
+        errorMessage: null
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.offline_revision.process_stale"
+      })
+    );
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+  });
+
   it("marks a document stale when the selected company version drifts before terminal success", async () => {
     const prisma = makePrisma();
-    prisma.tx.$queryRaw
-      .mockResolvedValueOnce([{
-        draftRevision: 3,
-        status: "draft",
-        changeType: "original",
-        draftData: {
-          companyEntitySelection: { id: "company-1", versionNo: 1 }
+    prisma.tx.$queryRaw.mockImplementation(
+      async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            draftRevision: 3,
+            status: "draft",
+            changeType: "original",
+            draftData: {
+              companyEntitySelection: { id: "company-1", versionNo: 1 }
+            }
+          }];
         }
-      }])
-      .mockResolvedValueOnce([{ id: "company-1" }]);
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", voidedAt: null }];
+        }
+        if (sql.includes('"CompanyEntity"')) {
+          return [{ id: "company-1" }];
+        }
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+    );
     prisma.tx.companyEntity.findUnique.mockResolvedValue({
       id: "company-1",
       isActive: true,
@@ -1231,7 +1481,7 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
-    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(4);
     expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
         id: "document-1",

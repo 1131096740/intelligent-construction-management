@@ -14,17 +14,43 @@ const targetVersion = {
   id: "version-2",
   contractId: "contract-1",
   status: "draft",
+  changeType: "change",
   baseVersionId: "version-1",
   draftRevision: 4
 };
 
-function context() {
+function context(
+  targetOverrides: Partial<typeof targetVersion> = {},
+  boundaryOverrides: Partial<{
+    hasSignedFormalFile: boolean;
+    hasActiveSealTask: boolean;
+    hasArchiveFile: boolean;
+    hasSettlement: boolean;
+    hasPaymentRequest: boolean;
+  }> = {}
+) {
+  const selectedTargetVersion = { ...targetVersion, ...targetOverrides };
   const tx = {
-    $queryRaw: jest.fn(),
+    $queryRaw: jest.fn()
+      .mockResolvedValueOnce([{ id: "contract-1", ownerUserId: "handler-1" }])
+      .mockResolvedValueOnce([{ ...selectedTargetVersion }])
+      .mockResolvedValueOnce([{
+        hasSignedFormalFile: false,
+        hasActiveSealTask: false,
+        hasArchiveFile: false,
+        hasSettlement: false,
+        hasPaymentRequest: false,
+        ...boundaryOverrides
+      }])
+      .mockResolvedValue([]),
     contractVersion: {
-      findUnique: jest.fn()
-        .mockResolvedValueOnce(targetVersion)
-        .mockResolvedValueOnce(sourceVersion),
+      findUnique: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === selectedTargetVersion.id
+            ? selectedTargetVersion
+            : sourceVersion
+        )
+      ),
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "handler-1" }) },
@@ -48,7 +74,132 @@ function context() {
   return { tx, prisma, service: new ContractBillTransitionService(prisma as never, { record: jest.fn((client, input) => client.auditLog.create({ data: input })) } as never) };
 }
 
+type TestContext = ReturnType<typeof context>;
+type MutationKind = "save" | "confirm" | "discard";
+
+function expectDraftBoundaryLockOrder(query: jest.Mock) {
+  const statements = query.mock.calls
+    .slice(0, 3)
+    .map(([sql]) => (sql?.strings as string[] | undefined)?.join(" ") ?? "");
+  expect(statements[0]).toContain('FROM "Contract" c');
+  expect(statements[0]).toContain("FOR UPDATE OF c");
+  expect(statements[1]).toContain('FROM "ContractVersion" cv');
+  expect(statements[1]).toContain("FOR UPDATE OF cv");
+  expect(statements[2]).toContain('FROM "ContractFormalFile"');
+}
+
+function prepareSuccessfulMutation(current: TestContext, kind: MutationKind) {
+  if (kind === "save") {
+    current.tx.contractBillRow.findMany.mockResolvedValue([
+      { id: "source-row", contractBillId: "source-bill", unit: "m" },
+      { id: "target-row", contractBillId: "target-bill", unit: "m" }
+    ]);
+    current.tx.contractBill.findMany.mockResolvedValue([
+      { id: "source-bill", contractVersionId: "version-1" },
+      { id: "target-bill", contractVersionId: "version-2" }
+    ]);
+    current.tx.contractBillRowTransition.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    return;
+  }
+  if (kind === "confirm") {
+    current.tx.userPosition.findMany.mockResolvedValue([
+      { positionId: "position-contract-director" }
+    ]);
+    current.tx.position.findMany.mockResolvedValue([
+      { id: "position-contract-director", key: "contract_director" }
+    ]);
+    current.tx.contractBillRowTransition.findMany
+      .mockResolvedValueOnce([{
+        id: "transition-1",
+        sourceContractBillRowId: "source-row",
+        targetContractBillRowId: "target-row",
+        sourceSettledQuantityAllocated: new Prisma.Decimal("30"),
+        targetOpeningQuantity: new Prisma.Decimal("30"),
+        settledAmountAllocatedCents: 3000n
+      }])
+      .mockResolvedValueOnce([]);
+    current.tx.contractBillRow.findMany.mockResolvedValue([
+      { id: "source-row", contractBillId: "source-bill", unit: "m" }
+    ]);
+    current.tx.settlement.findMany.mockResolvedValue([{ id: "settlement-1" }]);
+    current.tx.settlementLine.findMany.mockResolvedValue([{
+      contractBillRowId: "source-row",
+      quantity: new Prisma.Decimal("30"),
+      amountCents: 3000n
+    }]);
+    current.tx.contractBillRowTransition.updateMany.mockResolvedValue({
+      count: 1
+    });
+    return;
+  }
+  current.tx.contractBillRowTransition.updateMany.mockResolvedValue({
+    count: 1
+  });
+  current.tx.contractBillRowTransition.findMany.mockResolvedValue([]);
+}
+
+function invokeMutation(current: TestContext, kind: MutationKind) {
+  if (kind === "save") {
+    return current.service.saveDraftMappings("version-2", "handler-1", {
+      fromContractVersionId: "version-1",
+      expectedTargetVersionRevision: 4,
+      mappings: [{
+        sourceContractBillRowId: "source-row",
+        targetContractBillRowId: "target-row",
+        sourceSettledQuantityAllocated: "30",
+        targetOpeningQuantity: "30",
+        settledAmountAllocatedCents: "3000"
+      }]
+    });
+  }
+  if (kind === "confirm") {
+    return current.service.confirmDraftMappings("version-2", "director-1", {
+      expectedTargetVersionRevision: 4
+    });
+  }
+  return current.service.discardDraftMappings("version-2", "handler-1", {
+    fromContractVersionId: "version-1",
+    expectedTargetVersionRevision: 4
+  });
+}
+
 describe("ContractBillTransitionService", () => {
+  it.each<MutationKind>(["save", "confirm", "discard"])(
+    "rejects %s after hard formal evidence without writes or audit",
+    async (kind) => {
+      const current = context({}, { hasSignedFormalFile: true });
+      prepareSuccessfulMutation(current, kind);
+
+      await expect(invokeMutation(current, kind)).rejects.toBeInstanceOf(
+        BadRequestException
+      );
+      expectDraftBoundaryLockOrder(current.tx.$queryRaw);
+      expect(current.tx.contractBillRowTransition.updateMany).not.toHaveBeenCalled();
+      expect(current.tx.contractBillRowTransition.upsert).not.toHaveBeenCalled();
+      expect(current.tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(current.tx.auditLog.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each<MutationKind>(["save", "confirm", "discard"])(
+    "rejects %s for a historical takeover without writes or audit",
+    async (kind) => {
+      const current = context({ changeType: "historical_takeover" });
+      prepareSuccessfulMutation(current, kind);
+
+      await expect(invokeMutation(current, kind)).rejects.toBeInstanceOf(
+        BadRequestException
+      );
+      expectDraftBoundaryLockOrder(current.tx.$queryRaw);
+      expect(current.tx.contractBillRowTransition.updateMany).not.toHaveBeenCalled();
+      expect(current.tx.contractBillRowTransition.upsert).not.toHaveBeenCalled();
+      expect(current.tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(current.tx.auditLog.create).not.toHaveBeenCalled();
+    }
+  );
+
   it("lets the draft owner replace automatic same-row mappings with an explicit split", async () => {
     const current = context();
     current.tx.contractBillRow.findMany.mockResolvedValue([

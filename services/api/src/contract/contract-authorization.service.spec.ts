@@ -9,10 +9,23 @@ function createHarness() {
     contractGovernanceVersion: 1,
     readinessSnapshot: { ready: true }
   };
+  const formalFacts = {
+    hasSignedFormalFile: false,
+    hasActiveSealTask: false,
+    hasArchiveFile: false,
+    hasSettlement: false,
+    hasPaymentRequest: false
+  };
   const tx = {
-    $queryRaw: jest.fn()
-      .mockResolvedValueOnce([{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }])
-      .mockResolvedValueOnce([version]),
+    $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes("FOR UPDATE OF cv")) return [version];
+      if (sql.includes("FOR UPDATE OF c")) {
+        return [{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }];
+      }
+      if (sql.includes('AS "hasSignedFormalFile"')) return [formalFacts];
+      return [];
+    }),
     contractVersionAuthorizationLink: {
       findUnique: jest.fn().mockResolvedValue(null),
       upsert: jest.fn().mockImplementation(({ create }) => ({ id: "link-1", ...create })),
@@ -35,7 +48,7 @@ function createHarness() {
     auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
   };
   const prisma = { $transaction: jest.fn((fn) => fn(tx)) };
-  return { version, tx, prisma };
+  return { version, formalFacts, tx, prisma };
 }
 
 describe("ContractAuthorizationService", () => {
@@ -82,7 +95,7 @@ describe("ContractAuthorizationService", () => {
   });
 
   it("明确保存双方不需要授权，重复请求不递增修订", async () => {
-    const { tx, prisma } = createHarness();
+    const { version, tx, prisma } = createHarness();
     const service = new ContractAuthorizationService(prisma as never);
     await service.setSide("version-1", "owner-1", {
       side: "first_party",
@@ -93,9 +106,7 @@ describe("ContractAuthorizationService", () => {
       data: expect.objectContaining({ draftRevision: { increment: 1 }, readinessSnapshot: expect.anything() })
     }));
 
-    tx.$queryRaw
-      .mockResolvedValueOnce([{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }])
-      .mockResolvedValueOnce([{ ...createHarness().version, draftRevision: 3 }]);
+    version.draftRevision = 3;
     tx.contractVersionAuthorizationLink.findUnique.mockResolvedValue({
       id: "link-1", contractVersionId: "version-1", side: "first_party", required: false,
       authorizationId: null, reusedFromContractVersionId: null
@@ -104,6 +115,22 @@ describe("ContractAuthorizationService", () => {
       side: "first_party", expectedRevision: 2, required: false
     });
     expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("draft 状态已有双方签署事实时禁止继续修改授权", async () => {
+    const { formalFacts, tx, prisma } = createHarness();
+    formalFacts.hasSignedFormalFile = true;
+    const service = new ContractAuthorizationService(prisma as never);
+
+    await expect(
+      service.setSide("version-1", "owner-1", {
+        side: "first_party",
+        expectedRevision: 2,
+        required: false
+      })
+    ).rejects.toThrow("正式业务事实");
+    expect(tx.contractVersionAuthorizationLink.upsert).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it("link 缺失不能当成不需要授权", async () => {

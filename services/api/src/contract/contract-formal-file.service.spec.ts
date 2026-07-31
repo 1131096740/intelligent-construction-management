@@ -31,11 +31,24 @@ function harness(overrides: Record<string, unknown> = {}) {
     sizeBytes: 0,
     contentSha256: null
   };
+  const formalFacts = {
+    hasSignedFormalFile: false,
+    hasActiveSealTask: false,
+    hasArchiveFile: false,
+    hasSettlement: false,
+    hasPaymentRequest: false
+  };
   const tx = {
-    $queryRaw: jest.fn()
-      .mockResolvedValueOnce([{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }])
-      .mockResolvedValueOnce([version])
-      .mockResolvedValueOnce([file]),
+    $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes("FOR UPDATE OF cv")) return [version];
+      if (sql.includes("FOR UPDATE OF c")) {
+        return [{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }];
+      }
+      if (sql.includes('AS "hasSignedFormalFile"')) return [formalFacts];
+      if (sql.includes('FROM "FileObject"')) return [file];
+      return [];
+    }),
     contractFormalFile: {
       findFirst: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -62,7 +75,7 @@ function harness(overrides: Record<string, unknown> = {}) {
   const files = {
     getFileBuffer: jest.fn().mockResolvedValue({ file, buffer: bytes })
   };
-  return { version, file, tx, prisma, files };
+  return { version, file, formalFacts, tx, prisma, files };
 }
 
 describe("ContractFormalFileService", () => {
@@ -92,10 +105,6 @@ describe("ContractFormalFileService", () => {
     const firstData = tx.contractFormalFile.create.mock.calls[0][0].data;
     expect(firstData).toMatchObject({ purpose: "approval_original" });
     tx.contractFormalFile.findFirst.mockResolvedValue({ id: "formal-1", ...firstData });
-    tx.$queryRaw
-      .mockResolvedValueOnce([{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }])
-      .mockResolvedValueOnce([{ ...harness().version }])
-      .mockResolvedValueOnce([file]);
     await service.uploadApprovalVersion("version-1", "owner-1", input);
     expect(tx.contractFormalFile.create).toHaveBeenCalledTimes(1);
   });
@@ -116,6 +125,30 @@ describe("ContractFormalFileService", () => {
       documentOrderConfirmed: true,
       authorizationsBeforeSignaturePageConfirmed: true
     })).rejects.toThrow();
+    expect(files.getFileBuffer).not.toHaveBeenCalled();
+  });
+
+  it("draft 状态已有有效用印事实时禁止继续替换签前文件", async () => {
+    const { formalFacts, tx, prisma, files } = harness();
+    formalFacts.hasActiveSealTask = true;
+    const service = new ContractFormalFileService(
+      prisma as never,
+      undefined,
+      files as never
+    );
+
+    await expect(
+      service.uploadApprovalVersion("version-1", "owner-1", {
+        fileId: "file-1",
+        sourceRevision: 3,
+        counterpartySigned: true,
+        counterpartyStamped: true,
+        crossPageSealCompleted: true,
+        documentOrderConfirmed: true,
+        authorizationsBeforeSignaturePageConfirmed: true
+      })
+    ).rejects.toThrow("正式业务事实");
+    expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
     expect(files.getFileBuffer).not.toHaveBeenCalled();
   });
 
@@ -228,7 +261,12 @@ describe("ContractFormalFileService", () => {
       documentOrderConfirmed: true,
       authorizationsBeforeSignaturePageConfirmed: true
     })).rejects.toThrow("该文件已关联其他合同签署事实");
-    expect(tx.$queryRaw.mock.invocationCallOrder[2])
+    const fileLockIndex = tx.$queryRaw.mock.calls.findIndex(
+      ([query]: [{ strings?: readonly string[] }]) =>
+        (query.strings?.join(" ") ?? "").includes('FROM "FileObject"')
+    );
+    expect(fileLockIndex).toBeGreaterThanOrEqual(0);
+    expect(tx.$queryRaw.mock.invocationCallOrder[fileLockIndex])
       .toBeLessThan(tx.contractFormalFile.findFirst.mock.invocationCallOrder[2]);
     expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
   });

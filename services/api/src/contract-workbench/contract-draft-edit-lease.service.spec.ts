@@ -13,17 +13,38 @@ describe("ContractDraftEditLeaseService", () => {
   let now: Date;
   let ownerUserId: string;
   let director: boolean;
+  let versionChangeType = "original";
+  let formalEvidence = false;
 
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
   const auth = { confirmPassword: jest.fn().mockResolvedValue({ ok: true }) };
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([{ id: "cv-1" }]),
+    $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes("FOR UPDATE OF cv")) {
+        return [{
+          id: "cv-1",
+          contractId: "contract-1"
+        }];
+      }
+      if (sql.includes('FROM "ContractFormalFile"')) {
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: formalEvidence,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+      return [{ id: "contract-1", contractId: "contract-1" }];
+    }),
     contractVersion: {
-      findUnique: jest.fn().mockResolvedValue({
+      findUnique: jest.fn().mockImplementation(async () => ({
         id: "cv-1",
         contractId: "contract-1",
-        status: "draft"
-      })
+        status: "draft",
+        changeType: versionChangeType
+      }))
     },
     contract: {
       findUnique: jest.fn().mockImplementation(async () => ({
@@ -93,11 +114,24 @@ describe("ContractDraftEditLeaseService", () => {
     );
   }
 
+  function expectDraftBoundaryLockOrder() {
+    const statements = tx.$queryRaw.mock.calls
+      .slice(0, 3)
+      .map(([sql]) => (sql?.strings as string[] | undefined)?.join(" ") ?? "");
+    expect(statements[0]).toContain('FROM "Contract" c');
+    expect(statements[0]).toContain("FOR UPDATE OF c");
+    expect(statements[1]).toContain('FROM "ContractVersion" cv');
+    expect(statements[1]).toContain("FOR UPDATE OF cv");
+    expect(statements[2]).toContain('FROM "ContractFormalFile"');
+  }
+
   beforeEach(() => {
     lease = null;
     now = new Date("2026-07-28T10:00:00.000Z");
     ownerUserId = "owner-1";
     director = false;
+    versionChangeType = "original";
+    formalEvidence = false;
     jest.clearAllMocks();
   });
 
@@ -124,6 +158,42 @@ describe("ContractDraftEditLeaseService", () => {
 
     expect(lease?.leaseRevision).toBe(revision);
     expect(lease?.heartbeatAt).toEqual(now);
+  });
+
+  it("does not acquire or continue a generic lease for a historical takeover", async () => {
+    versionChangeType = "historical_takeover";
+    await expect(
+      service().acquire("cv-1", "owner-1")
+    ).rejects.toThrow("历史接管工作台");
+
+    versionChangeType = "original";
+    const acquired = await service().acquire("cv-1", "owner-1");
+    versionChangeType = "historical_takeover";
+    await expect(
+      service().heartbeat("cv-1", acquired.token)
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("blocks acquire, takeover and heartbeat once hard formal evidence exists", async () => {
+    formalEvidence = true;
+    await expect(
+      service().acquire("cv-1", "owner-1")
+    ).rejects.toThrow("正式业务事实");
+    expectDraftBoundaryLockOrder();
+    director = true;
+    await expect(
+      service().takeOver("cv-1", "director-1", {
+        currentPassword: "current-password"
+      })
+    ).rejects.toThrow("正式业务事实");
+
+    formalEvidence = false;
+    director = false;
+    const acquired = await service().acquire("cv-1", "owner-1");
+    formalEvidence = true;
+    await expect(
+      service().heartbeat("cv-1", acquired.token)
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("does not let another user silently acquire the active owner lease", async () => {

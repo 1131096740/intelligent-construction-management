@@ -45,6 +45,51 @@ describe("ContractWorkbenchService", () => {
     return new ContractWorkbenchService(prisma, audit as never);
   }
 
+  function withEmptyDraftLifecycleModels<T extends Record<string, unknown>>(
+    prisma: T
+  ) {
+    const existing = prisma as Record<string, Record<string, unknown> | undefined>;
+    return {
+      ...prisma,
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([]),
+        ...existing.approvalInstance
+      },
+      approvalActionLog: {
+        count: jest.fn().mockResolvedValue(0),
+        ...existing.approvalActionLog
+      },
+      contractFormalFile: {
+        findMany: jest.fn().mockResolvedValue([]),
+        ...existing.contractFormalFile
+      },
+      contractAuthorization: {
+        count: jest.fn().mockResolvedValue(0),
+        ...existing.contractAuthorization
+      },
+      contractVersionAuthorizationLink: {
+        count: jest.fn().mockResolvedValue(0),
+        ...existing.contractVersionAuthorizationLink
+      },
+      contractSealTask: {
+        findMany: jest.fn().mockResolvedValue([]),
+        ...existing.contractSealTask
+      },
+      contractArchiveFile: {
+        count: jest.fn().mockResolvedValue(0),
+        ...existing.contractArchiveFile
+      },
+      settlement: {
+        count: jest.fn().mockResolvedValue(0),
+        ...existing.settlement
+      },
+      paymentRequest: {
+        count: jest.fn().mockResolvedValue(0),
+        ...existing.paymentRequest
+      }
+    };
+  }
+
   function ownedVersionTx(overrides: Record<string, unknown> = {}) {
     return {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
@@ -128,6 +173,140 @@ describe("ContractWorkbenchService", () => {
       ...overrides
     };
   }
+
+  function hardFormalDraftTx() {
+    return ownedVersionTx({
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([
+          { id: "contract-1", contractId: "contract-1" }
+        ])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft"
+        }])
+        .mockResolvedValueOnce([{
+          hasSignedFormalFile: true,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }])
+        .mockResolvedValue([{ id: "version-1" }]),
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionId: "position-1", projectId: null }
+        ])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-1", key: "contract_director" }
+        ])
+      }
+    });
+  }
+
+  function contractDraftBoundaryQuery(hardFormal = false) {
+    let callIndex = 0;
+    return jest.fn().mockImplementation(async () => {
+      callIndex += 1;
+      const boundaryStep = (callIndex - 1) % 3;
+      if (boundaryStep === 0) {
+        return [{ id: "contract-1", contractId: "contract-1" }];
+      }
+      if (boundaryStep === 1) {
+        return [{
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft"
+        }];
+      }
+      return [{
+        hasSignedFormalFile: hardFormal,
+        hasActiveSealTask: false,
+        hasArchiveFile: false,
+        hasSettlement: false,
+        hasPaymentRequest: false
+      }];
+    });
+  }
+
+  function editableContractVersionModel(
+    changeType = "original"
+  ) {
+    return {
+      findFirst: jest.fn().mockResolvedValue({ id: "version-1" }),
+      findUnique: jest.fn().mockResolvedValue({
+        id: "version-1",
+        contractId: "contract-1",
+        versionNo: 1,
+        status: "draft",
+        changeType
+      })
+    };
+  }
+
+  it.each([
+    [
+      "save",
+      (service: ContractWorkbenchService) =>
+        service.saveDraft("version-1", "owner-1", {
+          expectedRevision: 4,
+          draftData: { project_name: "新名称" },
+          clauses: [],
+          pricingNature: "fixed_total",
+          amountSource: "manual",
+          manualAmountCents: "1000000",
+          taxFacts: VALID_TAX_FACTS
+        })
+    ],
+    [
+      "settlement-mode confirmation",
+      (service: ContractWorkbenchService) =>
+        service.confirmSettlementMode("version-1", "director-1", {
+          expectedRevision: 4,
+          settlementMode: "settlement_required"
+        })
+    ],
+    [
+      "checkpoint creation",
+      (service: ContractWorkbenchService) =>
+        service.createCheckpoint("version-1", "owner-1", { name: "保存点" })
+    ],
+    [
+      "checkpoint restore",
+      (service: ContractWorkbenchService) =>
+        service.restoreCheckpoint("version-1", "checkpoint-1", "owner-1")
+    ],
+    [
+      "contract-type change",
+      (service: ContractWorkbenchService) =>
+        service.applyTypeChange("version-1", "owner-1", {
+          targetBusinessTemplateVersionId: "template-version-2",
+          expectedRevision: 4,
+          confirmed: true
+        })
+    ]
+  ])(
+    "fails closed before %s when a draft-status version already has hard formal evidence",
+    async (_name, mutate) => {
+      const tx = hardFormalDraftTx();
+      const service = makeService(tx);
+
+      await expect(mutate(service)).rejects.toThrow(
+        "合同已存在正式业务事实，不能继续编辑草稿"
+      );
+
+      const lockSql = tx.$queryRaw.mock.calls
+        .slice(0, 2)
+        .map(([query]) => (query as { strings?: readonly string[] }).strings?.join(" ") ?? "");
+      expect(lockSql[0]).toContain("FOR UPDATE OF c");
+      expect(lockSql[1]).toContain("FOR UPDATE OF cv");
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
 
   it("saves when expectedRevision matches and increments revision", async () => {
     const tx = ownedVersionTx();
@@ -1405,6 +1584,7 @@ describe("ContractWorkbenchService", () => {
 
   it("allows a contract director to view and transfer a draft", async () => {
     const tx = {
+      $queryRaw: contractDraftBoundaryQuery(),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1414,9 +1594,7 @@ describe("ContractWorkbenchService", () => {
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      contractVersion: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 })
-      },
+      contractVersion: editableContractVersionModel(),
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }]),
         findFirst: jest.fn().mockResolvedValue(null)
@@ -1483,7 +1661,7 @@ describe("ContractWorkbenchService", () => {
   });
 
   it("allows a contract director to view another owner's draft", async () => {
-    const prisma = {
+    const prisma = withEmptyDraftLifecycleModels({
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1491,7 +1669,21 @@ describe("ContractWorkbenchService", () => {
         })
       },
       contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: "version-1", status: "draft" })
+        findFirst: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          versionNo: 1,
+          changeType: "original",
+          status: "draft",
+          draftRevision: 3,
+          firstSubmittedAt: null,
+          contractGovernanceVersion: 0,
+          amountCents: 0n,
+          amountLimitType: "capped",
+          draftData: {},
+          templateSnapshot: TEMPLATE_SNAPSHOT,
+          clauseSnapshot: []
+        })
       },
       contractBill: { findMany: jest.fn().mockResolvedValue([]) },
       contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1507,13 +1699,110 @@ describe("ContractWorkbenchService", () => {
           { id: "pos-director", key: "contract_director" }
         ])
       }
+    }) as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    const result = await service.getDraft("contract-1", "director-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({ contract: expect.objectContaining({ id: "contract-1" }) })
+    );
+    expect(result.availableActions).toEqual([
+      expect.objectContaining({
+        key: "delete_pristine_draft",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true,
+        requiresPassword: true
+      })
+    ]);
+  });
+
+  it.each([
+    [
+      "approval evidence",
+      null,
+      [{ id: "approval-1" }],
+      1,
+      "存在审批记录"
+    ],
+    [
+      "firstSubmittedAt",
+      new Date("2026-07-30T01:00:00.000Z"),
+      [],
+      0,
+      "合同曾进入审批"
+    ]
+  ] as const)(
+    "advertises abandon_application when an otherwise draft version has %s",
+    async (
+      _evidence,
+      firstSubmittedAt,
+      approvalInstances,
+      approvalActionCount,
+      blocker
+    ) => {
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      versionNo: 1,
+      changeType: "original",
+      status: "draft",
+      draftRevision: 3,
+      firstSubmittedAt,
+      contractGovernanceVersion: 0,
+      amountCents: 0n,
+      amountLimitType: "capped",
+      draftData: {},
+      templateSnapshot: TEMPLATE_SNAPSHOT,
+      clauseSnapshot: []
+    };
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue(approvalInstances)
+      },
+      approvalActionLog: {
+        count: jest.fn().mockResolvedValue(approvalActionCount)
+      },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractAuthorization: { count: jest.fn().mockResolvedValue(0) },
+      contractVersionAuthorizationLink: { count: jest.fn().mockResolvedValue(0) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractArchiveFile: { count: jest.fn().mockResolvedValue(0) },
+      settlement: { count: jest.fn().mockResolvedValue(0) },
+      paymentRequest: { count: jest.fn().mockResolvedValue(0) }
     } as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
-    await expect(service.getDraft("contract-1", "director-1")).resolves.toEqual(
-      expect.objectContaining({ contract: expect.objectContaining({ id: "contract-1" }) })
-    );
-  });
+    const result = await service.getDraftFromExactVersion(version as never, "owner-1");
+
+    expect(result.lifecycleKind).toBe("approval_draft");
+    expect(result.lifecycleBlockers).toContain(blocker);
+    expect(result.availableActions).toEqual([
+      expect.objectContaining({
+        key: "abandon_application",
+        enabled: true,
+        requiresComment: true
+      })
+    ]);
+    }
+  );
 
   it("returns only safe same-contract authorization reuse candidates", async () => {
     const version = {
@@ -1533,7 +1822,7 @@ describe("ContractWorkbenchService", () => {
       templateSnapshot: TEMPLATE_SNAPSHOT,
       clauseSnapshot: []
     };
-    const prisma = {
+    const prisma = withEmptyDraftLifecycleModels({
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1597,7 +1886,7 @@ describe("ContractWorkbenchService", () => {
           }
         ])
       }
-    } as unknown as PrismaService;
+    }) as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
     const result = await service.getDraft("contract-1", "owner-1");
@@ -1621,8 +1910,7 @@ describe("ContractWorkbenchService", () => {
     expect(result.governance?.authorizationReuseCandidates[0]).not.toHaveProperty("objectKey");
   });
 
-  it("stales drifted company documents in the first workbench read and returns no success", async () => {
-    let documentStatus = "success";
+  it("projects drifted company documents as stale without writing during a workbench GET", async () => {
     const version = {
       id: "version-1",
       contractId: "contract-1",
@@ -1646,35 +1934,20 @@ describe("ContractWorkbenchService", () => {
       templateSnapshot: TEMPLATE_SNAPSHOT,
       clauseSnapshot: []
     };
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
-      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
-      companyEntity: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "entity-1",
-          isActive: true,
-          dataStatus: "complete",
-          currentVersionNo: 4
-        })
-      },
-      contractGeneratedDocument: {
-        updateMany: jest.fn().mockImplementation(() => {
-          documentStatus = "stale";
-          return { count: 1 };
-        }),
-        findMany: jest.fn().mockImplementation(() => [{
+    const contractGeneratedDocument = {
+      updateMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([{
           id: "document-1",
           purpose: "draft",
-          status: documentStatus,
+          status: "success",
           sourceRevision: 3,
           docxFileId: "docx-1",
           pdfFileId: "pdf-1",
           createdAt: new Date("2026-07-17T01:00:00.000Z"),
           completedAt: new Date("2026-07-17T01:01:00.000Z")
         }])
-      }
     };
-    const prisma = {
+    const prisma = withEmptyDraftLifecycleModels({
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1685,22 +1958,25 @@ describe("ContractWorkbenchService", () => {
       contractBill: { findMany: jest.fn().mockResolvedValue([]) },
       contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
       contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument,
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 4
+        })
+      },
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
-      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
-    } as unknown as PrismaService;
+      $transaction: jest.fn()
+    }) as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
     const result = await service.getDraft("contract-1", "owner-1");
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: { in: ["queued", "processing", "success"] }
-      },
-      data: { status: "stale" }
-    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(result.documents).toEqual([
       expect.objectContaining({ id: "document-1", status: "stale" })
     ]);
@@ -1709,8 +1985,98 @@ describe("ContractWorkbenchService", () => {
     ]);
   });
 
+  it.each([
+    [
+      "hard formal evidence",
+      "original",
+      [{ purpose: "mutually_signed_final" }],
+      "合同版本当前不可按草稿办理，请刷新后重试"
+    ],
+    [
+      "a historical takeover",
+      "historical_takeover",
+      [],
+      "历史接管草稿必须在历史接管工作台办理"
+    ]
+  ] as const)(
+    "rejects a workbench GET with %s before document drift can write",
+    async (_reason, changeType, formalFiles, expectedMessage) => {
+      const version = {
+        id: "version-1",
+        contractId: "contract-1",
+        versionNo: 1,
+        status: "draft",
+        draftRevision: 3,
+        changeType,
+        firstSubmittedAt: null,
+        contractGovernanceVersion: 0,
+        draftData: {
+          companyEntitySelection: {
+            id: "entity-1",
+            versionId: "entity-version-3",
+            versionNo: 3,
+            name: "我方公司",
+            unifiedSocialCreditCode: "91350211M000100Y46",
+            registeredAddress: null
+          }
+        },
+        amountCents: 1_000_000n,
+        amountLimitType: "capped",
+        cumulativeIncreaseCents: 0n,
+        cumulativeDecreaseCents: 0n,
+        templateSnapshot: TEMPLATE_SNAPSHOT,
+        clauseSnapshot: []
+      };
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
+        contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+        companyEntity: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "entity-1",
+            isActive: true,
+            dataStatus: "complete",
+            currentVersionNo: 4
+          })
+        },
+        contractGeneratedDocument: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findMany: jest.fn().mockResolvedValue([])
+        }
+      };
+      const prisma = withEmptyDraftLifecycleModels({
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            ownerUserId: "owner-1"
+          })
+        },
+        contractVersion: { findFirst: jest.fn().mockResolvedValue(version) },
+        contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+        contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+        contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+        paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+        paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+        contractFormalFile: {
+          findMany: jest.fn().mockResolvedValue(formalFiles)
+        },
+        $transaction: jest.fn(
+          async (callback: (client: typeof tx) => unknown) => callback(tx)
+        )
+      }) as unknown as PrismaService;
+      const service = new ContractWorkbenchService(prisma, audit as never);
+
+      await expect(
+        service.getDraft("contract-1", "owner-1")
+      ).rejects.toThrow(expectedMessage);
+
+      expect(tx.$queryRaw).not.toHaveBeenCalled();
+      expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("exposes the single contract change route without threshold enhancement or budget approval", async () => {
-    const prisma = {
+    const prisma = withEmptyDraftLifecycleModels({
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1747,7 +2113,7 @@ describe("ContractWorkbenchService", () => {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
-    } as unknown as PrismaService;
+    }) as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
     const result = await service.getDraft("contract-1", "owner-1");
@@ -1765,7 +2131,7 @@ describe("ContractWorkbenchService", () => {
   });
 
   it("marks an unfrozen historical supplement route explicitly instead of returning an ambiguous empty route", async () => {
-    const prisma = {
+    const prisma = withEmptyDraftLifecycleModels({
       contract: { findUnique: jest.fn().mockResolvedValue({ id: "contract-1", ownerUserId: "owner-1" }) },
       contractVersion: {
         findFirst: jest.fn().mockResolvedValue({
@@ -1786,7 +2152,7 @@ describe("ContractWorkbenchService", () => {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
-    } as unknown as PrismaService;
+    }) as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
     const result = await service.getDraft("contract-1", "owner-1");
@@ -1796,7 +2162,7 @@ describe("ContractWorkbenchService", () => {
   });
 
   it("returns a JSON-safe detail read model with string money and string decimals", async () => {
-    const prisma = {
+    const prisma = withEmptyDraftLifecycleModels({
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -1891,7 +2257,7 @@ describe("ContractWorkbenchService", () => {
           }
         ])
       }
-    } as unknown as PrismaService;
+    }) as unknown as PrismaService;
     const service = new ContractWorkbenchService(prisma, audit as never);
 
     const result = await service.getDraft("contract-1", "owner-1");
@@ -2436,8 +2802,133 @@ describe("ContractWorkbenchService", () => {
     });
   });
 
+  it.each([
+    [
+      "void",
+      (service: ContractWorkbenchService) =>
+        service.voidDraft("contract-1", "owner-1", { reason: "作废" })
+    ],
+    [
+      "restore",
+      (service: ContractWorkbenchService) =>
+        service.restoreDraft("contract-1", "owner-1")
+    ],
+    [
+      "transfer",
+      (service: ContractWorkbenchService) =>
+        service.transferDraft("contract-1", "director-1", {
+          toUserId: "owner-2"
+        })
+    ]
+  ])(
+    "fails closed before contract-level %s when the latest draft has hard formal evidence",
+    async (_name, mutate) => {
+      const tx = {
+        $queryRaw: contractDraftBoundaryQuery(true),
+        contractVersion: editableContractVersionModel(),
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            projectId: "project-1",
+            ownerUserId: "owner-1",
+            voidedAt: null
+          }),
+          updateMany: jest.fn()
+        },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([
+            { positionId: "pos-director", projectId: null }
+          ])
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: "pos-director", key: "contract_director" }
+          ])
+        }
+      };
+      const service = makeService(tx);
+
+      await expect(mutate(service)).rejects.toThrow(
+        "合同已存在正式业务事实，不能继续编辑草稿"
+      );
+
+      expect(tx.contractVersion.findFirst).toHaveBeenCalledWith({
+        where: {
+          contractId: "contract-1",
+          status: { in: ["draft", "approval_rejected"] }
+        },
+        orderBy: { versionNo: "desc" },
+        select: { id: true }
+      });
+      const lockSql = tx.$queryRaw.mock.calls
+        .slice(0, 2)
+        .map(([query]) => (query as { strings?: readonly string[] }).strings?.join(" ") ?? "");
+      expect(lockSql[0]).toContain("FOR UPDATE OF c");
+      expect(lockSql[1]).toContain("FOR UPDATE OF cv");
+      expect(tx.contract.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [
+      "void",
+      (service: ContractWorkbenchService) =>
+        service.voidDraft("contract-1", "owner-1", { reason: "作废" })
+    ],
+    [
+      "restore",
+      (service: ContractWorkbenchService) =>
+        service.restoreDraft("contract-1", "owner-1")
+    ],
+    [
+      "transfer",
+      (service: ContractWorkbenchService) =>
+        service.transferDraft("contract-1", "director-1", {
+          toUserId: "owner-2"
+        })
+    ]
+  ])(
+    "routes contract-level %s for a historical takeover draft to its dedicated workbench",
+    async (_name, mutate) => {
+      const tx = {
+        $queryRaw: contractDraftBoundaryQuery(),
+        contractVersion: editableContractVersionModel("historical_takeover"),
+        contract: {
+          findUnique: jest.fn(),
+          updateMany: jest.fn()
+        },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([
+            { positionId: "pos-director", projectId: null }
+          ])
+        },
+        position: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: "pos-director", key: "contract_director" }
+          ])
+        }
+      };
+      const service = makeService(tx);
+
+      await expect(mutate(service)).rejects.toThrow(
+        "历史接管草稿必须在历史接管工作台办理"
+      );
+
+      const lockSql = tx.$queryRaw.mock.calls
+        .slice(0, 2)
+        .map(([query]) => (query as { strings?: readonly string[] }).strings?.join(" ") ?? "");
+      expect(lockSql[0]).toContain("FOR UPDATE OF c");
+      expect(lockSql[1]).toContain("FOR UPDATE OF cv");
+      expect(tx.contract.findUnique).not.toHaveBeenCalled();
+      expect(tx.contract.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("voids and restores a draft without physical deletion", async () => {
     const tx = {
+      $queryRaw: contractDraftBoundaryQuery(),
       contract: {
         findUnique: jest
           .fn()
@@ -2447,9 +2938,7 @@ describe("ContractWorkbenchService", () => {
           .mockResolvedValueOnce({ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
-      contractVersion: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 })
-      },
+      contractVersion: editableContractVersionModel(),
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       position: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn() }
@@ -2459,13 +2948,14 @@ describe("ContractWorkbenchService", () => {
     await service.voidDraft("contract-1", "owner-1", { reason: "重复" });
     await service.restoreDraft("contract-1", "owner-1");
 
-    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(2);
-    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+    expect(tx.contractVersion.findFirst).toHaveBeenCalledTimes(2);
+    expect(tx.contractVersion.findFirst).toHaveBeenCalledWith({
       where: {
         contractId: "contract-1",
         status: { in: ["draft", "approval_rejected"] }
       },
-      data: { draftRevision: { increment: 0 } }
+      orderBy: { versionNo: "desc" },
+      select: { id: true }
     });
     expect(tx.contract.updateMany).toHaveBeenNthCalledWith(
       1,
@@ -2482,7 +2972,6 @@ describe("ContractWorkbenchService", () => {
   });
 
   it("rejects void, restore, and transfer CAS conflicts without auditing", async () => {
-    const editableVersion = { updateMany: jest.fn().mockResolvedValue({ count: 1 }) };
     const ownerContract = {
       findUnique: jest.fn().mockResolvedValue({
         id: "contract-1",
@@ -2493,13 +2982,15 @@ describe("ContractWorkbenchService", () => {
     };
     await expect(
       makeService({
+        $queryRaw: contractDraftBoundaryQuery(),
         contract: ownerContract,
-        contractVersion: editableVersion
+        contractVersion: editableContractVersionModel()
       }).voidDraft("contract-1", "owner-1", { reason: "作废" })
     ).rejects.toThrow("合同草稿状态已变化，请刷新后重试");
 
     await expect(
       makeService({
+        $queryRaw: contractDraftBoundaryQuery(),
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             id: "contract-1",
@@ -2508,12 +2999,13 @@ describe("ContractWorkbenchService", () => {
           }),
           updateMany: jest.fn().mockResolvedValue({ count: 0 })
         },
-        contractVersion: editableVersion
+        contractVersion: editableContractVersionModel()
       }).restoreDraft("contract-1", "owner-1")
     ).rejects.toThrow("合同草稿状态已变化，请刷新后重试");
 
     await expect(
       makeService({
+        $queryRaw: contractDraftBoundaryQuery(),
         contract: {
           findUnique: jest.fn().mockResolvedValue({
             id: "contract-1",
@@ -2523,7 +3015,7 @@ describe("ContractWorkbenchService", () => {
           }),
           updateMany: jest.fn().mockResolvedValue({ count: 0 })
         },
-        contractVersion: editableVersion,
+        contractVersion: editableContractVersionModel(),
         userPosition: {
           findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }]),
           findFirst: jest.fn().mockResolvedValue({ userId: "owner-2" })
@@ -2556,7 +3048,7 @@ describe("ContractWorkbenchService", () => {
           update: jest.fn()
         },
         contractVersion: {
-          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findFirst: jest.fn().mockResolvedValue(null),
           findMany: jest.fn().mockResolvedValue([{ status }])
         }
       };
@@ -2579,7 +3071,7 @@ describe("ContractWorkbenchService", () => {
         }),
         update: jest.fn()
       },
-      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) }
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
     };
     const service = makeService(tx);
 
@@ -2598,7 +3090,7 @@ describe("ContractWorkbenchService", () => {
         }),
         update: jest.fn()
       },
-      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
@@ -2619,6 +3111,7 @@ describe("ContractWorkbenchService", () => {
     ["inactive", { id: "owner-2", isActive: false }]
   ])("rejects transfer to a %s user", async (_label, targetUser) => {
     const tx = {
+      $queryRaw: contractDraftBoundaryQuery(),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -2627,7 +3120,7 @@ describe("ContractWorkbenchService", () => {
         }),
         updateMany: jest.fn()
       },
-      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractVersion: editableContractVersionModel(),
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
       },
@@ -2646,6 +3139,7 @@ describe("ContractWorkbenchService", () => {
 
   it("rejects transfer to a user outside the contract project", async () => {
     const tx = {
+      $queryRaw: contractDraftBoundaryQuery(),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -2655,7 +3149,7 @@ describe("ContractWorkbenchService", () => {
         }),
         updateMany: jest.fn()
       },
-      contractVersion: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      contractVersion: editableContractVersionModel(),
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }]),
         findFirst: jest.fn().mockResolvedValue(null)

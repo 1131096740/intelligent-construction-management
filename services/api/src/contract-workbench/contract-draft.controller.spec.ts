@@ -1,6 +1,7 @@
 import { ContractDraftController } from "./contract-draft.controller";
 import { RequestMethod } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 
 describe("ContractDraftController", () => {
   function makeController() {
@@ -58,6 +59,15 @@ describe("ContractDraftController", () => {
       controller.workbench("cv-1", { id: "actor-1" } as never)
     ).resolves.toEqual({ version: { id: "cv-1" } });
     expect(aggregate.getWorkbench).toHaveBeenCalledWith("cv-1", "actor-1");
+  });
+
+  it("protects the lifecycle capability GET with the same project action as abandonment", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.workbench
+      )
+    ).toBe("contract.create");
   });
 
   it("queues preview generation for the exact saved revision", async () => {
@@ -161,6 +171,12 @@ describe("ContractDraftController", () => {
         ContractDraftController.prototype.deleteDraft
       )
     ).toBe(":contractVersionId");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.deleteDraft
+      )
+    ).toBe("contract.create");
   });
 
   it("delegates daily deletion to the existing logical draft lifecycle", async () => {
@@ -223,5 +239,11 @@ describe("ContractDraftController", () => {
         ContractDraftController.prototype.submitDraft
       )
     ).toBe(":contractVersionId/submission");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.submitDraft
+      )
+    ).toBe("contract.submit");
   });
 });

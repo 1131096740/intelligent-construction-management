@@ -2179,6 +2179,7 @@ export function fetchContractLedger() {
 }
 
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
+  contractId?: string;
   contractVersionId?: string;
   typePricing?: string;
   status?: string;

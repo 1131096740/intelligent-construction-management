@@ -1166,6 +1166,146 @@ async function submit() { await persist(); }
   );
 });
 
+test("binds independent handlers to declared wrapper payload variants", async () => {
+  const compositeWrapper = wrapper({
+    requests: [
+      {
+        kind: "main",
+        sourceLine: 1,
+        method: "GET",
+        path: "/examples/:param",
+        normalizedPath: "/examples/:param",
+        normalizedKey: "GET /examples/:param",
+        bodyKind: "none"
+      },
+      {
+        kind: "main",
+        sourceLine: 2,
+        method: "POST",
+        path: "/examples/:param/submission",
+        normalizedPath: "/examples/:param/submission",
+        normalizedKey: "POST /examples/:param/submission",
+        bodyKind: "json"
+      }
+    ]
+  });
+  const action = (id, key, handler, variant) =>
+    registryAction({
+      id,
+      trigger: {
+        element: "t-button",
+        event: "click",
+        handler
+      },
+      capability: {
+        kind: "detail_action",
+        source: "detail.availableActions",
+        key
+      },
+      wrappers: [
+        {
+          apiFile: "apps/web-admin/src/api/example.api.ts",
+          name: "submitExample",
+          variant
+        }
+      ]
+    });
+  const actions = [
+    action(
+      "example.delete-pristine",
+      "delete_pristine_draft",
+      "deletePristine",
+      "delete_pristine_draft"
+    ),
+    action(
+      "example.abandon-application",
+      "abandon_application",
+      "abandonApplication",
+      "abandon_application"
+    )
+  ];
+  const page = (deleteAction) => `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+function actionEnabled(key: string) {
+  return detail.availableActions.some((item) => item.key === key && item.enabled);
+}
+async function deletePristine() {
+  await submitExample({ action: "${deleteAction}" });
+}
+async function abandonApplication() {
+  await submitExample({ action: "abandon_application" });
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('delete_pristine_draft')" @click="deletePristine">删除</t-button>
+  <t-button v-if="actionEnabled('abandon_application')" @click="abandonApplication">放弃</t-button>
+</template>
+`;
+  const routes = [
+    route("GET /examples/:param"),
+    route("POST /examples/:param/submission")
+  ];
+  const root = await fixture({
+    actions,
+    wrappers: [compositeWrapper],
+    routes,
+    page: page("delete_pristine_draft")
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "ready", JSON.stringify(manifest.blockers));
+  assert.equal(manifest.actions.length, 2);
+  assert.ok(
+    manifest.actions.every(
+      (entry) =>
+        entry.bindings.length === 2 &&
+        entry.bindings.every((binding) => binding.causalVerified)
+    )
+  );
+
+  const mismatchedRoot = await fixture({
+    actions,
+    wrappers: [compositeWrapper],
+    routes,
+    page: page("abandon_application")
+  });
+  const mismatched = await inspectWholeSitePageActionManifest({
+    root: mismatchedRoot
+  });
+  const deleteAction = mismatched.actions.find(
+    (entry) => entry.id === "example.delete-pristine"
+  );
+  const abandonAction = mismatched.actions.find(
+    (entry) => entry.id === "example.abandon-application"
+  );
+
+  assert.equal(mismatched.status, "blocked");
+  assert.ok(
+    deleteAction.bindings.every((binding) => !binding.causalVerified)
+  );
+  assert.ok(
+    abandonAction.bindings.every((binding) => binding.causalVerified)
+  );
+});
+
+test("rejects an empty declared wrapper payload variant", async () => {
+  const action = registryAction({
+    wrappers: [
+      {
+        apiFile: "apps/web-admin/src/api/example.api.ts",
+        name: "submitExample",
+        variant: ""
+      }
+    ]
+  });
+  const root = await fixture({ actions: [action] });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.ok(blockerCodes(manifest).has("wrappers_invalid"));
+});
+
 test("requires write calls and template handlers to resolve to their actual bindings", async () => {
   const shadowedCalls = [
     {

@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
 const LEASE_TOKEN_PREFIX = "contract-draft-aggregate-concurrency-lease";
@@ -356,6 +357,313 @@ describe("contract draft aggregate PostgreSQL evidence", () => {
     },
     120_000
   );
+
+  integrationTest(
+    "reads formal blockers from a fresh PostgreSQL snapshot after waiting for the version lock",
+    async () => {
+      const databaseUrl = contractDraftAggregateDatabaseUrl(
+        process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+      );
+      const writer = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      const reader = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      const observer = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      const ids = makeIds("formal-snapshot");
+      const formalFileId = `formal-file-${randomUUID()}`;
+      const pendingTransactions: Promise<unknown>[] = [];
+      let releaseWriter!: () => void;
+      const writerRelease = new Promise<void>((resolve) => {
+        releaseWriter = resolve;
+      });
+      let formalInserted!: (pid: number) => void;
+      const formalInsertReady = new Promise<number>((resolve) => {
+        formalInserted = resolve;
+      });
+      let readerPidReady!: (pid: number) => void;
+      const readerPid = new Promise<number>((resolve) => {
+        readerPidReady = resolve;
+      });
+
+      try {
+        await seedDraft(writer, ids);
+        await writer.fileObject.create({
+          data: {
+            id: formalFileId,
+            bucket: "local-test",
+            objectKey: `contract-draft-boundary/${formalFileId}.pdf`,
+            originalName: "合同草稿正式化边界验证.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1,
+            uploadedByUserId: ids.owner,
+            contentSha256: "a".repeat(64)
+          }
+        });
+        const writerTransaction = writer.$transaction(async (tx) => {
+          const [writerPid] = await tx.$queryRaw<Array<{ pid: number }>>(
+            Prisma.sql`SELECT pg_backend_pid()::int AS pid`
+          );
+          if (!writerPid) throw new Error("无法读取 PostgreSQL writer 连接 pid");
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id"
+            FROM "ContractVersion"
+            WHERE "id" = ${ids.version}
+            FOR UPDATE
+          `);
+          await tx.contractFormalFile.create({
+            data: {
+              contractVersionId: ids.version,
+              purpose: "mutually_signed_final",
+              fileId: formalFileId,
+              contentSha256: "a".repeat(64),
+              pageCount: 1,
+              sourceRevision: 1,
+              status: "active",
+              uploadedByUserId: ids.owner,
+              declarationSnapshot: {},
+              declaredByUserId: ids.owner,
+              declaredAt: new Date()
+            }
+          });
+          formalInserted(writerPid.pid);
+          await writerRelease;
+        });
+        pendingTransactions.push(writerTransaction);
+        const writerPid = await Promise.race([
+          formalInsertReady,
+          writerTransaction.then(
+            () => {
+              throw new Error("正式文件 writer 在发出插入信号前意外结束");
+            },
+            (error: unknown) => {
+              throw error;
+            }
+          )
+        ]);
+
+        const boundaryTransaction = reader.$transaction(
+          async (tx) => {
+            const [pidRow] = await tx.$queryRaw<Array<{ pid: number }>>(
+              Prisma.sql`SELECT pg_backend_pid()::int AS pid`
+            );
+            if (!pidRow) throw new Error("无法读取 PostgreSQL 测试连接 pid");
+            readerPidReady(pidRow.pid);
+            return lockContractDraftMutationBoundary(tx, ids.version);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+        );
+        pendingTransactions.push(boundaryTransaction);
+        const pid = await Promise.race([
+          readerPid,
+          boundaryTransaction.then(
+            () => {
+              throw new Error("草稿边界 reader 在发出连接 pid 前意外结束");
+            },
+            (error: unknown) => {
+              throw error;
+            }
+          )
+        ]);
+        await waitForPostgresLockWait(observer, pid, writerPid);
+
+        releaseWriter();
+        const [boundary] = await Promise.all([
+          boundaryTransaction,
+          writerTransaction
+        ]);
+
+        expect(boundary?.formalBlockers).toContain("存在双方签署正式文件");
+      } finally {
+        releaseWriter();
+        await Promise.allSettled(pendingTransactions);
+        await writer.contractFormalFile.deleteMany({
+          where: { contractVersionId: ids.version }
+        });
+        await writer.fileObject.deleteMany({ where: { id: formalFileId } });
+        await cleanupDraft(writer, ids);
+        await Promise.allSettled([
+          writer.$disconnect(),
+          reader.$disconnect(),
+          observer.$disconnect()
+        ]);
+      }
+    },
+    30_000
+  );
+
+  integrationTest(
+    "maps a Serializable aggregate save to conflict when formalization commits while it waits",
+    async () => {
+      const databaseUrl = contractDraftAggregateDatabaseUrl(
+        process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+      );
+      const readerUrl = new URL(databaseUrl);
+      readerUrl.searchParams.set(
+        "application_name",
+        "contract-draft-aggregate-formal-reader"
+      );
+      const writer = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      const reader = new PrismaClient({
+        datasources: { db: { url: readerUrl.toString() } }
+      });
+      const observer = new PrismaClient({
+        datasources: { db: { url: databaseUrl } }
+      });
+      const audit = new AuditService();
+      const aggregate = new ContractDraftAggregateService(
+        reader as never,
+        new ContractWorkbenchService(reader as never, audit),
+        new ContractBillService(reader as never, audit),
+        new BusinessPartyService(reader as never, audit),
+        {
+          assertCanBindContractDraftAttachments: async () => undefined
+        } as never,
+        audit
+      );
+      const ids = makeIds("serializable-formalization");
+      const formalFileId = `formal-file-${randomUUID()}`;
+      const pendingTransactions: Promise<unknown>[] = [];
+      let releaseWriter!: () => void;
+      const writerRelease = new Promise<void>((resolve) => {
+        releaseWriter = resolve;
+      });
+      let formalizationReady!: (pid: number) => void;
+      const formalizationPid = new Promise<number>((resolve) => {
+        formalizationReady = resolve;
+      });
+
+      try {
+        await seedDraft(writer, ids);
+        await writer.fileObject.create({
+          data: {
+            id: formalFileId,
+            bucket: "local-test",
+            objectKey: `contract-draft-boundary/${formalFileId}.pdf`,
+            originalName: "合同正式化并发验证.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1,
+            uploadedByUserId: ids.owner,
+            contentSha256: "b".repeat(64)
+          }
+        });
+        const writerTransaction = writer.$transaction(
+          async (tx) => {
+            const [writerPid] = await tx.$queryRaw<Array<{ pid: number }>>(
+              Prisma.sql`SELECT pg_backend_pid()::int AS pid`
+            );
+            if (!writerPid) throw new Error("无法读取 PostgreSQL writer 连接 pid");
+            await tx.$queryRaw(Prisma.sql`
+              SELECT "id"
+              FROM "Contract"
+              WHERE "id" = ${ids.contract}
+              FOR UPDATE
+            `);
+            await tx.$queryRaw(Prisma.sql`
+              SELECT "id"
+              FROM "ContractVersion"
+              WHERE "id" = ${ids.version}
+              FOR UPDATE
+            `);
+            await tx.contractFormalFile.create({
+              data: {
+                contractVersionId: ids.version,
+                purpose: "mutually_signed_final",
+                fileId: formalFileId,
+                contentSha256: "b".repeat(64),
+                pageCount: 1,
+                sourceRevision: 1,
+                status: "active",
+                uploadedByUserId: ids.owner,
+                declarationSnapshot: {},
+                declaredByUserId: ids.owner,
+                declaredAt: new Date()
+              }
+            });
+            await tx.contractVersion.update({
+              where: { id: ids.version },
+              data: { status: "pending_archive_confirm" }
+            });
+            formalizationReady(writerPid.pid);
+            await writerRelease;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        );
+        pendingTransactions.push(writerTransaction);
+        const writerPid = await Promise.race([
+          formalizationPid,
+          writerTransaction.then(
+            () => {
+              throw new Error("正式化 writer 在发出锁信号前意外结束");
+            },
+            (error: unknown) => {
+              throw error;
+            }
+          )
+        ]);
+
+        const aggregateSave = aggregate.saveAggregate(
+          ids.version,
+          ids.owner,
+          leaseToken(ids),
+          aggregateInput(randomUUID()) as never
+        );
+        void aggregateSave.catch(() => undefined);
+        pendingTransactions.push(aggregateSave);
+        await waitForBlockedApplication(
+          observer,
+          "contract-draft-aggregate-formal-reader",
+          writerPid
+        );
+
+        releaseWriter();
+        await expect(aggregateSave).rejects.toMatchObject({
+          response: expect.objectContaining({
+            code: "DRAFT_REVISION_CONFLICT",
+            conflictReason: "serialization_failure"
+          })
+        });
+        await expect(
+          writer.contractVersion.findUnique({ where: { id: ids.version } })
+        ).resolves.toMatchObject({
+          draftRevision: 1,
+          status: "pending_archive_confirm"
+        });
+        await expect(
+          writer.contractDraftSaveRequest.count({
+            where: { contractVersionId: ids.version }
+          })
+        ).resolves.toBe(0);
+        await expect(
+          writer.auditLog.count({
+            where: {
+              action: "contract.draft.save",
+              businessId: ids.version
+            }
+          })
+        ).resolves.toBe(0);
+      } finally {
+        releaseWriter();
+        await Promise.allSettled(pendingTransactions);
+        await writer.contractFormalFile.deleteMany({
+          where: { contractVersionId: ids.version }
+        });
+        await writer.fileObject.deleteMany({ where: { id: formalFileId } });
+        await cleanupDraft(writer, ids);
+        await Promise.allSettled([
+          writer.$disconnect(),
+          reader.$disconnect(),
+          observer.$disconnect()
+        ]);
+      }
+    },
+    30_000
+  );
 });
 
 function makeIds(kind: string) {
@@ -555,10 +863,71 @@ function elapsedMilliseconds(startedAt: bigint) {
   return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 }
 
+async function waitForPostgresLockWait(
+  client: PrismaClient,
+  pid: number,
+  blockerPid: number
+) {
+  for (let attempt = 0; attempt < 800; attempt += 1) {
+    const [activity] = await client.$queryRaw<Array<{
+      waitEventType: string | null;
+      blockingPids: number[];
+    }>>(Prisma.sql`
+      SELECT
+        "wait_event_type" AS "waitEventType",
+        pg_blocking_pids("pid") AS "blockingPids"
+      FROM "pg_stat_activity"
+      WHERE "pid" = ${pid}
+    `);
+    if (
+      activity?.waitEventType === "Lock" &&
+      activity.blockingPids.includes(blockerPid)
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("合同草稿边界未在预期时间内等待指定 writer 锁");
+}
+
+async function waitForBlockedApplication(
+  client: PrismaClient,
+  applicationName: string,
+  blockerPid: number
+) {
+  for (let attempt = 0; attempt < 800; attempt += 1) {
+    const [activity] = await client.$queryRaw<Array<{
+      waitEventType: string | null;
+      blockingPids: number[];
+    }>>(Prisma.sql`
+      SELECT
+        "wait_event_type" AS "waitEventType",
+        pg_blocking_pids("pid") AS "blockingPids"
+      FROM "pg_stat_activity"
+      WHERE "application_name" = ${applicationName}
+        AND "datname" = current_database()
+        AND "wait_event_type" = 'Lock'
+      ORDER BY "query_start" DESC
+      LIMIT 1
+    `);
+    if (
+      activity?.waitEventType === "Lock" &&
+      activity.blockingPids.includes(blockerPid)
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("合同草稿聚合保存未在预期时间内等待正式化 writer 锁");
+}
+
 async function cleanupDraft(
   client: PrismaClient,
   ids: ReturnType<typeof makeIds>
 ) {
+  await client.contractFormalFile.deleteMany({
+    where: { contractVersionId: ids.version }
+  });
   await client.contractDraftSaveRequest.deleteMany({
     where: { contractVersionId: ids.version }
   });

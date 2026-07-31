@@ -60,21 +60,21 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
       "trigger": {
-        "element": "business-draft-action",
-        "event": "execute",
-        "handler": "executeContractDraftAction",
-        "variant": "abandon_application"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAbandonApplication"
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "contractDraftActions",
+        "source": "contractDraftAvailableActions",
         "key": "abandon_application"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "abandonContractDraft"
+          "name": "executeContractDraftLifecycleAction",
+          "variant": "abandon_application"
         }
       ]
     },
@@ -87,21 +87,21 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
       "trigger": {
-        "element": "business-draft-action",
-        "event": "execute",
-        "handler": "executeContractDraftAction",
-        "variant": "delete_pristine_draft"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmDeletePristineDraft"
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "contractDraftActions",
+        "source": "contractDraftAvailableActions",
         "key": "delete_pristine_draft"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "abandonContractDraft"
+          "name": "executeContractDraftLifecycleAction",
+          "variant": "delete_pristine_draft"
         }
       ]
     },

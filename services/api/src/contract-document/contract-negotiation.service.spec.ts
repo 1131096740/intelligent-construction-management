@@ -27,43 +27,66 @@ describe("ContractNegotiationService", () => {
     });
   });
 
-  function makeTx() {
-    return {
-      $queryRaw: jest.fn().mockResolvedValue([
+  function makeTx(options: { formalEvidence?: boolean } = {}) {
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      changeType: "original",
+      draftRevision: 7,
+      amountCents: 12_300n,
+      draftData: { fieldValues: { signingDate: "2026-07-12" } },
+      templateSnapshot: {
+        fieldSchema: [{ key: "signingDate", label: "签订日期" }]
+      },
+      clauseSnapshot: [
         {
-          id: "round-1",
-          contractVersionId: "version-1",
-          roundNo: 1,
-          status: "open",
-          sourceGeneratedDocumentId: "generated-1",
-          sourceRevision: 7,
-          note: null,
-          openedAt: new Date("2026-07-12T10:00:00.000Z"),
-          closedAt: null
+          key: "payment",
+          title: "付款条款",
+          content: { text: "付款条款：按月结算" }
         }
-      ]),
+      ]
+    };
+    const contract = {
+      id: "contract-1",
+      ownerUserId: "owner-1",
+      voidedAt: null
+    };
+    const round = {
+      id: "round-1",
+      contractVersionId: "version-1",
+      roundNo: 1,
+      status: "open",
+      sourceGeneratedDocumentId: "generated-1",
+      sourceRevision: 7,
+      note: null,
+      openedAt: new Date("2026-07-12T10:00:00.000Z"),
+      closedAt: null
+    };
+    return {
+      $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [version];
+        }
+        if (sql.includes("FOR UPDATE OF c")) return [contract];
+        if (sql.includes('AS "hasSignedFormalFile"')) {
+          return [{
+            hasSignedFormalFile: options.formalEvidence ?? false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
+        }
+        if (sql.includes('FROM "ContractNegotiationRound"')) return [round];
+        return [];
+      }),
       contractVersion: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "version-1",
-          contractId: "contract-1",
-          status: "draft",
-          draftRevision: 7,
-          amountCents: 12_300n,
-          draftData: { fieldValues: { signingDate: "2026-07-12" } },
-          templateSnapshot: {
-            fieldSchema: [{ key: "signingDate", label: "签订日期" }]
-          },
-          clauseSnapshot: [
-            { key: "payment", title: "付款条款", content: { text: "付款条款：按月结算" } }
-          ]
-        })
+        findUnique: jest.fn().mockResolvedValue(version)
       },
       contract: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "contract-1",
-          ownerUserId: "owner-1",
-          voidedAt: null
-        })
+        findUnique: jest.fn().mockResolvedValue(contract)
       },
       contractGeneratedDocument: {
         findFirst: jest.fn().mockResolvedValue({
@@ -149,6 +172,22 @@ describe("ContractNegotiationService", () => {
     };
   }
 
+  function expectContractThenVersionBoundary(tx: ReturnType<typeof makeTx>) {
+    const sql = tx.$queryRaw.mock.calls.map(
+      ([query]: [{ strings?: readonly string[] }]) =>
+        query.strings?.join(" ") ?? ""
+    );
+    expect(sql[0]).toContain("FOR UPDATE OF c");
+    expect(sql[1]).toContain("FOR UPDATE OF cv");
+    expect(sql[2]).toContain('AS "hasSignedFormalFile"');
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[1]
+    );
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[2]
+    );
+  }
+
   it("opens a round from the latest current successful DOCX without accepting a client source", async () => {
     const { service: subject, tx } = service();
 
@@ -175,6 +214,17 @@ describe("ContractNegotiationService", () => {
       tx,
       expect.objectContaining({ action: "contract.negotiation_round.open" })
     );
+  });
+
+  it("does not open a negotiation round after signed formal evidence exists", async () => {
+    const tx = makeTx({ formalEvidence: true });
+    const { service: subject } = service(tx);
+
+    await expect(
+      subject.openRound("version-1", "owner-1")
+    ).rejects.toThrow("正式业务事实");
+    expect(tx.contractNegotiationRound.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("derives upload source and source revision only from the open round", async () => {
@@ -224,10 +274,14 @@ describe("ContractNegotiationService", () => {
     expect(JSON.stringify(result)).not.toContain("revision-file");
     expect(JSON.stringify(result)).not.toContain("generated-1");
     expect(JSON.stringify(result)).not.toContain("owner-1");
-    expect(tx.contractNegotiationRound.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
-      tx.$queryRaw.mock.invocationCallOrder[0]
+    expectContractThenVersionBoundary(tx);
+    expect(tx.$queryRaw.mock.invocationCallOrder[2]).toBeLessThan(
+      tx.contractNegotiationRound.findFirst.mock.invocationCallOrder[0]
     );
-    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(tx.contractNegotiationRound.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[3]
+    );
+    expect(tx.$queryRaw.mock.invocationCallOrder[3]).toBeLessThan(
       tx.contractOfflineRevision.create.mock.invocationCallOrder[0]
     );
   });
@@ -246,7 +300,8 @@ describe("ContractNegotiationService", () => {
       subject.disposeDifference("difference-1", "owner-1", { disposition: "confirmed" })
     ).rejects.toThrow("结构候选与当前合同账本不一致");
     expect(tx.contractDocumentDifference.updateMany).not.toHaveBeenCalled();
-    expect(tx.contractVersion.findUnique).toHaveBeenCalled();
+    expectContractThenVersionBoundary(tx);
+    expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -281,7 +336,8 @@ describe("ContractNegotiationService", () => {
     await expect(
       subject.disposeDifference("difference-1", "owner-1", { disposition: "confirmed" })
     ).resolves.toBeDefined();
-    expect(tx.contractVersion.findUnique).toHaveBeenCalled();
+    expectContractThenVersionBoundary(tx);
+    expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
     expect(tx.contractVersion).not.toHaveProperty("update");
     expect(audit.record).toHaveBeenCalledWith(
       tx,

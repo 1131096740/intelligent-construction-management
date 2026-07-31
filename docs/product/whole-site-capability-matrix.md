@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `e91721f541271a4d6f07885e965ca21179b1f7848c5736038df262a73af618db` |
-| webApiWrappers | blocked | `b570994094defc1a16ac70b12a645913e8b3feb8c6c91a44ab7dc5e97e636c9c` |
-| webPageActions | blocked | `9b39f8210de09e746c34c957c599b2a881a6db0389b3de0d032ff15d8ac51126` |
-| routeUsage | blocked | `5e2b092056a415e189fe1051f7892247ba86b4f51f4653987b9af1a3499eeea2` |
+| nestRoutes | ready | `77494c39bf8081c3d1f68cfc611842095672689acdc402238f7a600fd7cfd30f` |
+| webApiWrappers | blocked | `0d048f05112ae97aa086ad8764642b21d30437521eed6b3ab75d6e07319a72c7` |
+| webPageActions | blocked | `5b9c1161a63845edeeb198878abe909d9d1cfe30c1bc6990e601016f0dd460ab` |
+| routeUsage | blocked | `52306ff8730d52bd2c984516e52c7fc4215897beeb709d19c7715c284387a268` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 378 |
+| mainRequestBindingCount | 380 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 43 |
+| orphanWrapperCount | 44 |
 | duplicateMutationRouteCount | 4 |
 | registeredActionCount | 42 |
-| actionBindingCount | 46 |
-| acceptedActionBindingCount | 10 |
+| actionBindingCount | 48 |
+| acceptedActionBindingCount | 12 |
 | unresolvedActionBindingCount | 36 |
-| productionMutationConsumerPairCount | 274 |
-| coveredProductionMutationConsumerPairCount | 9 |
-| uncoveredProductionMutationConsumerPairCount | 265 |
-| blockerCount | 378 |
+| productionMutationConsumerPairCount | 273 |
+| coveredProductionMutationConsumerPairCount | 10 |
+| uncoveredProductionMutationConsumerPairCount | 263 |
+| blockerCount | 377 |
 
 ## 路由矩阵
 
@@ -61,7 +61,7 @@
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
 | GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | — | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | ACTION_BINDING_UNRESOLVED |
 | GET | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
 | GET | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedLayoutTemplates | — | not_applicable | — |
@@ -231,7 +231,7 @@
 | POST | /contract-workbench/:contractVersionId/type-change-preview | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#previewContractTypeChange | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-workbench/:contractVersionId/type-change | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-workbench/:contractId/void | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#voidContractDraft | — | not_applicable | ORPHAN_WRAPPER |
-| POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft | contract-draft.abandon-application<br>contract-draft.delete-pristine | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction | contract-draft.abandon-application<br>contract-draft.delete-pristine | covered | ORPHAN_WRAPPER |
 | POST | /contracts/:contractVersionId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval-submission | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#submitContractFromWorkbench<br>apps/web-admin/src/api/core-flow-read.api.ts#submitContractApproval | — | not_applicable | DUPLICATE_MUTATION_ROUTE<br>ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
@@ -447,6 +447,7 @@
 
 ### 孤儿 wrapper
 
+- apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#addBillRow（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#addContractParty（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#applyBillExcelImport（test_only）
@@ -512,8 +513,6 @@
 - apps/web-admin/src/api/contract-tax-facts.api.ts#reviewContractTaxFactRevisionByFinance → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-tax-facts.api.ts#submitContractTaxFactRevisionForFinanceReview → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft → apps/web-admin/src/pages/contracts/ContractListPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#acquireContractDraftEditLease → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
@@ -761,9 +760,9 @@
 
 ### 未解决动作绑定
 
-- contract-draft.abandon-application#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.abandon-application#0 — binding_not_mutation
 - contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-draft.delete-pristine#0 — binding_not_mutation
 - contract-draft.lease-acquire#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.lease-heartbeat#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.lease-release#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

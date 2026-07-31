@@ -11,13 +11,32 @@ describe("loadOwnedEditableBill", () => {
   const validVersion = {
     id: "version-1",
     contractId: "contract-1",
-    status: "draft"
+    status: "draft",
+    changeType: "original"
   };
   const validContract = {
     id: "contract-1",
     ownerUserId: "owner-1",
     voidedAt: null
   };
+  const noFormalEvidence = {
+    hasSignedFormalFile: false,
+    hasActiveSealTask: false,
+    hasArchiveFile: false,
+    hasSettlement: false,
+    hasPaymentRequest: false
+  };
+
+  function expectDraftBoundaryLockOrder(query: jest.Mock) {
+    const statements = query.mock.calls
+      .slice(0, 3)
+      .map(([sql]) => (sql?.strings as string[] | undefined)?.join(" ") ?? "");
+    expect(statements[0]).toContain('FROM "Contract" c');
+    expect(statements[0]).toContain("FOR UPDATE OF c");
+    expect(statements[1]).toContain('FROM "ContractVersion" cv');
+    expect(statements[1]).toContain("FOR UPDATE OF cv");
+    expect(statements[2]).toContain('FROM "ContractFormalFile"');
+  }
 
   it.each([
     {
@@ -72,7 +91,17 @@ describe("loadOwnedEditableBill", () => {
   ])("用中文说明$name", async ({ bill, version, contract, message }) => {
     const tx = {
       contractBill: { findUnique: jest.fn().mockResolvedValue(bill) },
-      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        if (!version) return [];
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{ ...version }];
+        }
+        if (sql.includes('FROM "ContractFormalFile"')) {
+          return [{ ...noFormalEvidence }];
+        }
+        return [{ id: version.contractId, contractId: version.contractId }];
+      }),
       contract: { findUnique: jest.fn().mockResolvedValue(contract) }
     };
 
@@ -80,6 +109,47 @@ describe("loadOwnedEditableBill", () => {
       loadOwnedEditableBill(tx as never, "bill-1", "owner-1")
     ).rejects.toThrow(message);
   });
+
+  it.each([
+    ["historical takeover", { changeType: "historical_takeover" }, {}],
+    ["signed final", {}, { hasSignedFormalFile: true }],
+    ["active seal", {}, { hasActiveSealTask: true }],
+    ["archive", {}, { hasArchiveFile: true }],
+    ["settlement", {}, { hasSettlement: true }],
+    ["payment", {}, { hasPaymentRequest: true }]
+  ])(
+    "fails closed for %s even while the version status remains draft",
+    async (_case, versionOverrides, evidence) => {
+      const version = { ...validVersion, ...versionOverrides };
+      const tx = {
+        contractBill: {
+          findUnique: jest.fn().mockResolvedValue(validBill)
+        },
+        $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+          const sql = query.strings?.join(" ") ?? "";
+          if (sql.includes("FOR UPDATE OF cv")) {
+            return [{ ...version }];
+          }
+          if (sql.includes('FROM "ContractFormalFile"')) {
+            return [{ ...noFormalEvidence, ...evidence }];
+          }
+          return [{ id: "contract-1", contractId: "contract-1" }];
+        }),
+        contract: {
+          findUnique: jest.fn().mockResolvedValue(validContract)
+        }
+      };
+
+      await expect(
+        loadOwnedEditableBill(tx as never, "bill-1", "owner-1")
+      ).rejects.toThrow(
+        _case === "historical takeover"
+          ? "历史接管工作台"
+          : "正式业务事实"
+      );
+      expectDraftBoundaryLockOrder(tx.$queryRaw);
+    }
+  );
 });
 
 describe("contract bill row tax normalization", () => {

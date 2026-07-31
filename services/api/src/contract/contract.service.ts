@@ -76,6 +76,10 @@ import {
   loadContractOwnerRisk,
   type ContractOwnerRisk
 } from "./contract-owner-risk";
+import {
+  loadContractDraftLifecycle,
+  lockContractDraftMutationBoundary
+} from "./contract-draft-lifecycle";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -118,6 +122,25 @@ const PAYMENT_STAGE_BASES = new Set([
   "fixed_amount",
   "manual_amount"
 ]);
+
+function isContractDraftSerializationConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  if (code === "P2034" || code === "40001" || code === "40P01") {
+    return true;
+  }
+  if (code !== "P2010" || !("meta" in error)) {
+    return false;
+  }
+  const meta = (error as { meta?: unknown }).meta;
+  if (!meta || typeof meta !== "object" || !("code" in meta)) {
+    return false;
+  }
+  const databaseCode = (meta as { code?: unknown }).code;
+  return databaseCode === "40001" || databaseCode === "40P01";
+}
 const PAYMENT_STAGE_TRIGGER_ANCHORS = new Set([
   "contract_effective",
   "settlement_effective",
@@ -956,6 +979,7 @@ export class ContractService {
           changeType: string;
           status: string;
           draftRevision: number;
+          firstSubmittedAt: Date | null;
           abandonedAt: Date | null;
           abandonedByUserId: string | null;
           abandonReason: string | null;
@@ -963,7 +987,8 @@ export class ContractService {
         }>>(Prisma.sql`
           SELECT
             v."id", v."contractId", v."versionNo", v."changeType", v."status",
-            v."draftRevision", v."abandonedAt", v."abandonedByUserId", v."abandonReason",
+            v."draftRevision", v."firstSubmittedAt", v."abandonedAt",
+            v."abandonedByUserId", v."abandonReason",
             c."ownerUserId"
           FROM "Contract" c
           JOIN "ContractVersion" v ON v."contractId" = c."id"
@@ -1010,6 +1035,11 @@ export class ContractService {
           const terminalAction = locked.abandonReason
             ? "abandon_application"
             : "delete_pristine_draft";
+          if (input.action !== terminalAction) {
+            throw new ConflictException(
+              "合同草稿已按另一种方式结束，请刷新后核对"
+            );
+          }
           return {
             contractVersionId: locked.id,
             status: "abandoned",
@@ -1019,7 +1049,7 @@ export class ContractService {
             action: terminalAction,
             abandonedAt: locked.abandonedAt,
             abandonedByUserId: locked.abandonedByUserId,
-            reason: locked.abandonReason ?? (proxyCleanup ? reason : null),
+            reason: locked.abandonReason,
             idempotent: true
           };
         }
@@ -1031,52 +1061,25 @@ export class ContractService {
         }
 
         // 固定读取顺序：审批 -> 正式文件 -> 授权 -> 用章/归档 -> 下游业务。
-        const approvalInstances = await tx.approvalInstance.findMany({
-          where: { businessType: "contract_version", businessId: locked.id },
-          orderBy: { createdAt: "asc" },
-          select: { id: true }
+        const lifecycle = await loadContractDraftLifecycle(tx, {
+          id: locked.id,
+          changeType: locked.changeType,
+          versionNo: locked.versionNo,
+          status: locked.status,
+          firstSubmittedAt: locked.firstSubmittedAt
         });
-        const approvalActionCount = approvalInstances.length
-          ? await tx.approvalActionLog.count({
-              where: { approvalInstanceId: { in: approvalInstances.map((item) => item.id) } }
-            })
-          : 0;
-        const formalFileCount = await tx.contractFormalFile.count({
-          where: { contractVersionId: locked.id }
-        });
-        const authorizationCount = await tx.contractAuthorization.count({
-          where: { originContractVersionId: locked.id }
-        });
-        const authorizationLinkCount = await tx.contractVersionAuthorizationLink.count({
-          where: { contractVersionId: locked.id, authorizationId: { not: null } }
-        });
-        const sealTaskCount = await tx.contractSealTask.count({
-          where: { contractVersionId: locked.id }
-        });
-        const archiveFileCount = await tx.contractArchiveFile.count({
-          where: { contractVersionId: locked.id }
-        });
-        const settlementCount = await tx.settlement.count({
-          where: { contractVersionId: locked.id }
-        });
-        const paymentRequestCount = await tx.paymentRequest.count({
-          where: { contractVersionId: locked.id }
-        });
-
-        const blockers = [
-          ...(locked.changeType !== "original" || locked.versionNo !== 1 ? ["合同变更或派生版本"] : []),
-          ...(locked.status !== "draft" ? ["合同曾进入审批"] : []),
-          ...(approvalInstances.length || approvalActionCount ? ["存在审批记录"] : []),
-          ...(formalFileCount ? ["存在正式合同文件"] : []),
-          ...(authorizationCount || authorizationLinkCount ? ["存在授权委托书"] : []),
-          ...(sealTaskCount ? ["存在用印记录"] : []),
-          ...(archiveFileCount ? ["存在归档记录"] : []),
-          ...(settlementCount ? ["存在关联结算"] : []),
-          ...(paymentRequestCount ? ["存在关联付款"] : [])
-        ];
-        const expectedAction = blockers.length === 0
-          ? "delete_pristine_draft"
-          : "abandon_application";
+        const blockers = lifecycle.blockers;
+        const expectedAction = lifecycle.expectedAction;
+        if (!expectedAction) {
+          if (locked.changeType === "historical_takeover") {
+            throw new ConflictException(
+              "历史接管草稿必须在历史接管工作台使用专用关闭入口"
+            );
+          }
+          throw new ConflictException(
+            `合同已存在正式业务事实，不能通过草稿入口结束：${blockers.join("、")}`
+          );
+        }
         if (input.action !== expectedAction) {
           throw new ConflictException(
             expectedAction === "delete_pristine_draft"
@@ -1105,10 +1108,112 @@ export class ContractService {
           throw new ConflictException("合同草稿已被其他操作更新，请刷新后重试");
         }
 
+        if (
+          expectedAction === "abandon_application" &&
+          lifecycle.approvalInstanceIds.length > 0
+        ) {
+          await tx.approvalInstance.updateMany({
+            where: {
+              id: { in: lifecycle.approvalInstanceIds },
+              status: {
+                in: [
+                  "approval_pending",
+                  "in_progress",
+                  "returned_to_applicant"
+                ]
+              }
+            },
+            data: { status: "cancelled" }
+          });
+        }
+
+        const releasedLease = await tx.contractDraftEditLease.deleteMany({
+          where: { contractVersionId: locked.id }
+        });
         await tx.contractGeneratedDocument.updateMany({
           where: { contractVersionId: locked.id, status: { in: ["queued", "processing"] } },
           data: { status: "stale", completedAt: now, errorMessage: null }
         });
+        const openNegotiationRounds = await tx.contractNegotiationRound.findMany({
+          where: {
+            contractVersionId: locked.id,
+            status: "open"
+          },
+          orderBy: { id: "asc" },
+          select: { id: true }
+        });
+        const negotiationRoundIds = openNegotiationRounds.map((round) => round.id);
+        const negotiationRoundsClosed = negotiationRoundIds.length
+          ? await tx.contractNegotiationRound.updateMany({
+              where: {
+                id: { in: negotiationRoundIds },
+                status: "open"
+              },
+              data: {
+                status: "closed",
+                closedByUserId: actorUserId,
+                closedAt: now
+              }
+            })
+          : { count: 0 };
+        const activeOfflineRevisions = await tx.contractOfflineRevision.findMany({
+          where: {
+            contractVersionId: locked.id,
+            status: { in: ["queued", "processing"] }
+          },
+          orderBy: { id: "asc" },
+          select: { id: true }
+        });
+        const activeOfflineRevisionIds = activeOfflineRevisions.map(
+          (revision) => revision.id
+        );
+        const offlineRevisionsStaled = activeOfflineRevisionIds.length
+          ? await tx.contractOfflineRevision.updateMany({
+              where: {
+                id: { in: activeOfflineRevisionIds },
+                status: { in: ["queued", "processing"] }
+              },
+              data: {
+                status: "stale",
+                completedAt: now,
+                errorMessage: null
+              }
+            })
+          : { count: 0 };
+        const comparisonScopes = [
+          ...(negotiationRoundIds.length
+            ? [{ negotiationRoundId: { in: negotiationRoundIds } }]
+            : []),
+          ...(activeOfflineRevisionIds.length
+            ? [{ offlineRevisionId: { in: activeOfflineRevisionIds } }]
+            : [])
+        ];
+        const activeComparisons = comparisonScopes.length
+          ? await tx.contractDocumentComparison.findMany({
+              where: {
+                status: { in: ["queued", "processing"] },
+                OR: comparisonScopes
+              },
+              orderBy: { id: "asc" },
+              select: { id: true }
+            })
+          : [];
+        const activeComparisonIds = activeComparisons.map(
+          (comparison) => comparison.id
+        );
+        const documentComparisonsStaled = activeComparisonIds.length
+          ? await tx.contractDocumentComparison.updateMany({
+              where: {
+                id: { in: activeComparisonIds },
+                status: { in: ["queued", "processing"] }
+              },
+              data: {
+                status: "stale",
+                completedAt: now,
+                errorMessage: null
+              }
+            })
+          : { count: 0 };
         await tx.contractFormalFile.updateMany({
           where: { contractVersionId: locked.id, status: "active" },
           data: {
@@ -1143,6 +1248,10 @@ export class ContractService {
               ? reason
               : null,
             proxyCleanup,
+            editLeaseClosedCount: releasedLease.count,
+            negotiationRoundsClosedCount: negotiationRoundsClosed.count,
+            offlineRevisionsStaledCount: offlineRevisionsStaled.count,
+            documentComparisonsStaledCount: documentComparisonsStaled.count,
             ...(proxyCleanup ? { ownerUserId: locked.ownerUserId } : {})
           }
         });
@@ -1168,7 +1277,7 @@ export class ContractService {
           error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
       }
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      if (isContractDraftSerializationConflict(error)) {
         throw new ConflictException("合同草稿正在被其他操作处理，请刷新后重试");
       }
       throw error;
@@ -1634,25 +1743,16 @@ export class ContractService {
       : null;
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-          SELECT c."id"
-          FROM "Contract" c
-          INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id"
-          WHERE cv."id" = ${contractVersionId}
-          FOR UPDATE OF c
-        `);
-        if (contractLocks.length !== 1) {
+        const mutationBoundary =
+          await lockContractDraftMutationBoundary<
+            NonNullable<
+              Awaited<ReturnType<typeof tx.contractVersion.findUnique>>
+            >
+          >(tx, contractVersionId);
+        if (!mutationBoundary) {
           throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
         }
-        const [version] = await tx.$queryRaw<
-          Array<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>
-        >(Prisma.sql`
-          SELECT *
-          FROM "ContractVersion"
-          WHERE "id" = ${contractVersionId}
-          FOR UPDATE
-        `);
-        if (!version) throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
+        const version = mutationBoundary.version;
         if (submissionRequest) {
           const receipt = await tx.contractDraftSubmissionRequest.findUnique({
             where: { idempotencyKey: submissionRequest.idempotencyKey }
@@ -1673,6 +1773,18 @@ export class ContractService {
             return receipt.responseSnapshot;
           }
         }
+        if (version.changeType === "historical_takeover") {
+          throw new BadRequestException(
+            "历史接管草稿必须在历史接管工作台办理"
+          );
+        }
+        if (mutationBoundary.formalBlockers.length > 0) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: "DRAFT_NOT_EDITABLE",
+            message: "合同已存在正式业务事实，不能通过草稿入口提交审批"
+          });
+        }
         if (version.status !== "draft") {
           if (submissionRequest) {
             throw new ConflictException({
@@ -1689,8 +1801,15 @@ export class ContractService {
         });
         if (!contract) throw new Error("未找到合同主信息，请刷新合同后重试");
         if (contract.voidedAt) throw new Error("作废合同不能提交审批，请重新选择有效合同");
-        if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
-          throw new Error("只有合同经办人可以提交该合同审批");
+        if (
+          submissionRequest
+            ? contract.ownerUserId !== actorUserId
+            : Boolean(
+                contract.ownerUserId &&
+                contract.ownerUserId !== actorUserId
+              )
+        ) {
+          throw new ForbiddenException("只有合同经办人可以提交该合同审批");
         }
         if (submissionRequest) {
           await tx.$queryRaw(Prisma.sql`
@@ -2014,18 +2133,7 @@ export class ContractService {
         }
         throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
       }
-      const serializationFailure =
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error.code === "P2034" ||
-          (error.code === "P2010" &&
-            "meta" in error &&
-            error.meta !== null &&
-            typeof error.meta === "object" &&
-            "code" in error.meta &&
-            error.meta.code === "40001"));
-      if (serializationFailure) {
+      if (isContractDraftSerializationConflict(error)) {
         if (submissionRequest) {
           const conflict = await this.contractSubmissionConflictSnapshot(
             contractVersionId,

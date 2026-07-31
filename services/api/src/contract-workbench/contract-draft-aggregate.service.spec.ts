@@ -12,6 +12,7 @@ describe("ContractDraftAggregateService", () => {
     id: "cv-1",
     contractId: "contract-1",
     status: "draft",
+    changeType: "original",
     draftRevision: 3,
     draftData: { fieldValues: { name: "精确版本一" } }
   };
@@ -113,6 +114,17 @@ describe("ContractDraftAggregateService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("rejects a historical takeover version before opening the generic workbench", async () => {
+    const { workbench, service } = makeService({
+      foundVersion: { ...version, changeType: "historical_takeover" }
+    });
+
+    await expect(
+      service.getWorkbench("cv-1", "actor-1")
+    ).rejects.toThrow("历史接管工作台");
+    expect(workbench.getDraftFromExactVersion).not.toHaveBeenCalled();
+  });
+
   it("preserves the workbench permission failure", async () => {
     await expect(
       makeService({
@@ -195,8 +207,16 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     leaseMissing?: boolean;
     versionRevision?: number;
     versionStatus?: string;
+    versionChangeType?: string;
     fieldChanged?: boolean;
     referencesChanged?: boolean;
+    formalEvidence?: Partial<{
+      hasSignedFormalFile: boolean;
+      hasActiveSealTask: boolean;
+      hasArchiveFile: boolean;
+      hasSettlement: boolean;
+      hasPaymentRequest: boolean;
+    }>;
     failParties?: boolean;
     validationError?: boolean;
     failFiles?: boolean;
@@ -236,7 +256,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       },
       clauseSnapshot: [],
       templateSnapshot: {},
-      changeType: "initial",
+      changeType: options.versionChangeType ?? "original",
       baseVersionId: null,
       settlementMode: "settlement_required"
     };
@@ -248,7 +268,29 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       code: null
     };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes('FROM "ContractFormalFile"')) {
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false,
+            ...options.formalEvidence
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "cv-1",
+            contractId: "contract-1"
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", contractId: "contract-1" }];
+        }
+        return [];
+      }),
       contractVersion: {
         findUnique: jest.fn().mockImplementation(async (query) =>
           query.select ? { id: "cv-1", contractId: "contract-1" } : version
@@ -373,6 +415,75 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     );
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a historical takeover before replaying or writing a generic save", async () => {
+    const { service, tx } = makeSaveService({
+      versionChangeType: "historical_takeover"
+    });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toThrow("历史接管工作台");
+    expect(tx.contractDraftSaveRequest.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["signed final", { hasSignedFormalFile: true }],
+    ["active seal", { hasActiveSealTask: true }],
+    ["archive", { hasArchiveFile: true }],
+    ["settlement", { hasSettlement: true }],
+    ["payment", { hasPaymentRequest: true }]
+  ])(
+    "rejects a draft-status aggregate save after %s becomes formal evidence",
+    async (_case, formalEvidence) => {
+      const { service, tx } = makeSaveService({ formalEvidence });
+
+      await expect(
+        service.saveAggregate(
+          "cv-1",
+          "owner-1",
+          leaseToken,
+          aggregateInput() as never
+        )
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: "DRAFT_NOT_EDITABLE"
+        })
+      });
+      expect(tx.contractDraftSaveRequest.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    }
+  );
+
+  it("replays a committed save receipt after the draft later gains formal evidence", async () => {
+    const formalEvidence = { hasArchiveFile: false };
+    const { service, tx } = makeSaveService({ formalEvidence });
+    const input = aggregateInput();
+
+    const first = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      input as never
+    );
+    formalEvidence.hasArchiveFile = true;
+    const replay = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      input as never
+    );
+
+    expect(replay).toEqual(first);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
   });
 
   it("returns the original authoritative receipt for an identical retry", async () => {

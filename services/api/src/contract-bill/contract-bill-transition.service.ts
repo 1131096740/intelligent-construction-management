@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import type {
   ConfirmContractBillTransitionsDto,
@@ -313,13 +314,29 @@ export class ContractBillTransitionService {
       throw new BadRequestException("合同草稿版本号不正确，请刷新后重试");
     }
     if (requireDirector) await this.assertGlobalContractDirector(tx, actorUserId);
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id" FROM "ContractVersion" WHERE "id" = ${toContractVersionId} FOR UPDATE
-    `);
-    const toVersion = await tx.contractVersion.findUnique({ where: { id: toContractVersionId } });
-    if (!toVersion) throw new NotFoundException("合同草稿版本不存在");
+    const mutationBoundary =
+      await lockContractDraftMutationBoundary<
+        NonNullable<
+          Awaited<ReturnType<typeof tx.contractVersion.findUnique>>
+        >,
+        NonNullable<
+          Awaited<ReturnType<typeof tx.contract.findUnique>>
+        >
+      >(tx, toContractVersionId);
+    if (!mutationBoundary) {
+      throw new NotFoundException("合同草稿版本不存在");
+    }
+    const { version: toVersion, contract } = mutationBoundary;
     if (!EDITABLE_VERSION_STATUSES.has(toVersion.status)) {
       throw new BadRequestException("当前合同草稿状态不可维护跨版本映射");
+    }
+    if (toVersion.changeType === "historical_takeover") {
+      throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
+    }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException(
+        "合同已存在正式业务事实，不能维护跨版本映射"
+      );
     }
     if (toVersion.draftRevision !== expectedTargetVersionRevision) {
       throw new ConflictException("合同草稿已被他人更新，请刷新后重新编辑");
@@ -338,8 +355,6 @@ export class ContractBillTransitionService {
       throw new BadRequestException("直接来源合同版本无效，请刷新后重试");
     }
     if (!requireDirector) {
-      const contract = await tx.contract.findUnique({ where: { id: toVersion.contractId } });
-      if (!contract) throw new NotFoundException("合同不存在");
       if (contract.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只有合同草稿经办人可以维护未确认跨版本映射");
       }
