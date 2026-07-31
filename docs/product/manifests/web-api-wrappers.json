@@ -8,17 +8,17 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 385,
-    "transportWrapperCount": 381,
-    "pureExportCount": 4,
-    "mainRequestBindingCount": 385,
+    "exportedFunctionCount": 387,
+    "transportWrapperCount": 382,
+    "pureExportCount": 5,
+    "mainRequestBindingCount": 388,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 385,
+    "requestEdgeCount": 388,
     "productionConsumerCount": 336,
-    "orphanWrapperCount": 45,
-    "testOnlyWrapperCount": 43,
+    "orphanWrapperCount": 46,
+    "testOnlyWrapperCount": 44,
     "unreferencedWrapperCount": 2,
-    "duplicateNormalizedRouteGroupCount": 6,
+    "duplicateNormalizedRouteGroupCount": 8,
     "authTransportExceptionCount": 5
   },
   "evidence": {
@@ -4352,6 +4352,20 @@
       "unreachableConsumers": []
     },
     {
+      "name": "createPaymentExecutionRecordAttemptState",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createPaymentRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -4617,7 +4631,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3502,
+          "sourceLine": 3791,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4647,7 +4661,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3486,
+          "sourceLine": 3775,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4677,7 +4691,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3486,
+          "sourceLine": 3775,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4707,7 +4721,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2670,
+          "sourceLine": 2959,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4736,7 +4750,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3486,
+          "sourceLine": 3775,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4826,7 +4840,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3529,
+          "sourceLine": 3818,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4855,7 +4869,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3516,
+          "sourceLine": 3805,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4884,7 +4898,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3544,
+          "sourceLine": 3833,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4913,7 +4927,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3486,
+          "sourceLine": 3775,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -6387,6 +6401,71 @@
           "bodyKind": "json",
           "localCallChains": [
             [
+              "recordPaymentExecution",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "recordPaymentExecutionWithUpload",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 45,
+          "method": "GET",
+          "path": "/payments/:param",
+          "normalizedPath": "/payments/:param",
+          "normalizedKey": "GET /payments/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "recordPaymentExecutionWithUpload",
+              "executePaymentExecutionRecord",
+              "verifyPaymentExecutionPreflight",
+              "fetchPaymentDetail",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 81,
+          "method": "POST",
+          "path": "/files",
+          "normalizedPath": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "recordPaymentExecutionWithUpload",
+              "executePaymentExecutionRecord",
+              "uploadPrivateFile",
+              "postForm"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 51,
+          "method": "POST",
+          "path": "/payments/:param/executions",
+          "normalizedPath": "/payments/:param/executions",
+          "normalizedKey": "POST /payments/:param/executions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordPaymentExecutionWithUpload",
+              "executePaymentExecutionRecord",
               "recordPaymentExecution",
               "postJson"
             ]
@@ -11609,6 +11688,23 @@
       ]
     },
     {
+      "normalizedKey": "GET /payments/:param",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchPaymentDetail"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "preparePaymentApprovalReviewAction"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload"
+        }
+      ]
+    },
+    {
       "normalizedKey": "POST /contracts",
       "wrappers": [
         {
@@ -11631,6 +11727,23 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "submitContractApproval"
+        }
+      ]
+    },
+    {
+      "normalizedKey": "POST /files",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile"
         }
       ]
     },
@@ -11820,6 +11933,11 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "recordPaymentExecution",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordProjectAffiliateCompanyContract",
         "classification": "test_only"
       },
@@ -11913,6 +12031,23 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "submitContractApproval"
+          }
+        ]
+      },
+      {
+        "normalizedKey": "POST /files",
+        "wrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordPaymentExecutionWithUpload"
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadPrivateFile"
           }
         ]
       },

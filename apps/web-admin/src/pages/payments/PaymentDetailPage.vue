@@ -675,7 +675,22 @@
       @cancel="cancelPaymentApprovalReview"
     />
     <SensitiveActionDialog
-      v-if="sensitiveAction.kind !== 'approvalApprove' && sensitiveAction.kind !== 'approvalReject'"
+      v-if="paymentExecutionActionEnabled() && sensitiveAction.kind === 'execution'"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-reason="sensitiveAction.requireReason"
+      :require-password="sensitiveAction.requirePassword"
+      :reason-label="sensitiveAction.reasonLabel"
+      :loading="actionBusy === 'execution'"
+      :error="sensitiveAction.error"
+      @confirm="confirmPaymentExecution"
+      @cancel="cancelPaymentExecution"
+    />
+    <SensitiveActionDialog
+      v-if="sensitiveAction.kind !== 'approvalApprove' && sensitiveAction.kind !== 'approvalReject' && sensitiveAction.kind !== 'execution'"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
       :description="sensitiveAction.description"
@@ -706,6 +721,7 @@ import {
 import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
+  createPaymentExecutionRecordAttemptState,
   abandonPaymentRequest,
   delegatePaymentApproval,
   downloadApprovalForm as downloadApprovalFormRequest,
@@ -714,7 +730,7 @@ import {
   fetchPaymentDetail,
   generatePaymentPdfArchive,
   preparePaymentApprovalReviewAction,
-  recordPaymentExecution,
+  recordPaymentExecutionWithUpload,
   recordPaymentFinance,
   recordPaymentPdfArchive,
   remindPaymentApproval,
@@ -723,6 +739,7 @@ import {
   withdrawPaymentApproval,
   type PaymentApprovalReviewActionContext,
   type PaymentApprovalReviewActionDecision,
+  type PaymentExecutionRecordAttemptState,
   type PaymentLifecycleDetailReadModel,
   type PreparePaymentApprovalReviewActionResult
 } from "../../api/core-flow-read.api";
@@ -792,11 +809,29 @@ interface PaymentReviewConfirmationState {
   requiresSelfReviewConfirmation: boolean;
 }
 
+interface PaymentExecutionSelection {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  capabilityGeneration: number;
+  paymentId: string;
+  expectedPaymentUpdatedAt: string;
+  amountCents: string;
+  paidAt: string;
+  idempotencyKey: string;
+  file: File;
+  fileName: string;
+  attemptState: PaymentExecutionRecordAttemptState;
+}
+
 const route = useRoute();
 const router = useRouter();
+const currentPaymentRouteId = computed(routePaymentId);
 const paymentDetail = ref<PaymentLifecycleDetailReadModel | null>(null);
 const paymentApprovalCapability =
   ref<PaymentLifecycleDetailReadModel | null>(null);
+let paymentApprovalCapabilityGeneration = 0;
 const detailLoading = ref(false);
 const paymentDetailLoadError = ref("");
 const activeTab = ref("overview");
@@ -814,6 +849,19 @@ let paymentReviewOperationSequence = 0;
 let paymentReviewBusyOwnerId = 0;
 let paymentReviewComponentActive = true;
 const paymentReviewOwnerScope = globalThis.crypto.randomUUID();
+let paymentExecutionDialogGeneration = 0;
+let paymentExecutionOperationSequence = 0;
+let paymentExecutionBusyOwnerId = 0;
+let paymentExecutionComponentActive = true;
+let paymentExecutionDialogReady = false;
+let paymentExecutionSelection:
+  | Readonly<PaymentExecutionSelection>
+  | null = null;
+let paymentExecutionOperationPromise:
+  | Promise<unknown>
+  | null = null;
+const paymentExecutionOwnerScope =
+  globalThis.crypto.randomUUID();
 const sensitiveAction = reactive<SensitiveActionState>({
   visible: false,
   kind: null,
@@ -979,6 +1027,14 @@ function paymentReviewActionEnabled(key: "review_approval") {
     )
   );
 }
+function paymentExecutionActionEnabled() {
+  return Boolean(
+    paymentApprovalCapability.value?.availableActions.some(
+      (action) =>
+        action.key === "record_execution" && action.enabled
+    )
+  );
+}
 const paymentReviewEnabled = computed(() => {
   const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
   return (
@@ -1074,6 +1130,8 @@ async function reloadPaymentDetail() {
   const paymentId = routePaymentId();
   paymentDetailEpoch += 1;
   invalidatePaymentReviewDialog(true);
+  invalidatePaymentExecutionDialog(true);
+  paymentApprovalCapabilityGeneration += 1;
   paymentApprovalCapability.value = null;
   if (!paymentId) {
     paymentDetail.value = null;
@@ -1098,6 +1156,7 @@ async function reloadPaymentDetail() {
     const evidenceFileIds = viewDetail.evidenceFiles.map(
       (file) => file.fileId
     );
+    paymentApprovalCapabilityGeneration += 1;
     paymentApprovalCapability.value = serverDetail;
     paymentDetail.value = viewDetail;
     if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
@@ -1112,6 +1171,7 @@ async function reloadPaymentDetail() {
     ) {
       return false;
     }
+    paymentApprovalCapabilityGeneration += 1;
     paymentApprovalCapability.value = null;
     paymentDetail.value = null;
     const reason = error instanceof Error ? error.message : "未知错误";
@@ -1169,6 +1229,22 @@ function invalidatePaymentReviewDialog(close: boolean) {
   }
 }
 
+function invalidatePaymentExecutionDialog(close: boolean) {
+  paymentExecutionDialogGeneration += 1;
+  paymentExecutionDialogReady = false;
+  paymentExecutionSelection = null;
+  paymentExecutionOperationPromise = null;
+  paymentExecutionBusyOwnerId = 0;
+  if (actionBusy.value === "execution") {
+    actionBusy.value = "";
+  }
+  if (close && sensitiveAction.kind === "execution") {
+    sensitiveAction.visible = false;
+    sensitiveAction.kind = null;
+    sensitiveAction.error = "";
+  }
+}
+
 function clearPaymentDetailTransientState() {
   const reviewOwnedBusy =
     paymentReviewBusyOwnerId !== 0 && actionBusy.value === "approval";
@@ -1176,7 +1252,9 @@ function clearPaymentDetailTransientState() {
   paymentDetailRequestId += 1;
   paymentDetailEpoch += 1;
   invalidatePaymentReviewDialog(true);
+  invalidatePaymentExecutionDialog(true);
   paymentReviewBusyOwnerId = 0;
+  paymentApprovalCapabilityGeneration += 1;
   paymentApprovalCapability.value = null;
   paymentDetail.value = null;
   detailLoading.value = false;
@@ -1620,11 +1698,56 @@ function requestApprovalFormDownload() {
 }
 
 function requestExecution() {
+  const capability = paymentApprovalCapability.value;
+  const executionContext = capability?.executionContext;
   try {
-    currentPaymentId();
-    if (!selectedPaymentVoucherFile.value) throw new Error("付款凭证文件不能为空");
-    parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额");
-    toIsoDatetime(paymentActionForm.paidAt, "付款时间");
+    if (
+      !capability ||
+      !executionContext ||
+      !paymentExecutionActionEnabled() ||
+      capability.id !== routePaymentId() ||
+      capability.lifecycleUpdatedAt !==
+        executionContext.expectedPaymentUpdatedAt
+    ) {
+      throw new Error(
+        "付款执行资格或版本未读取，请刷新详情后重试"
+      );
+    }
+    if (actionBusy.value || paymentExecutionBusyOwnerId !== 0) {
+      throw new Error(
+        "当前实际付款正在提交，请等待本次操作完成"
+      );
+    }
+    const file = selectedPaymentVoucherFile.value;
+    if (!file) throw new Error("付款凭证文件不能为空");
+    const amountCents = parseYuanAmount(
+      paymentActionForm.executionAmountYuan,
+      "实付金额"
+    );
+    const paidAt = toIsoDatetime(
+      paymentActionForm.paidAt,
+      "付款时间"
+    );
+    paymentExecutionDialogGeneration += 1;
+    paymentExecutionSelection = Object.freeze({
+      ownerScope: paymentExecutionOwnerScope,
+      routeGeneration: paymentDetailRouteGeneration,
+      detailEpoch: paymentDetailEpoch,
+      dialogGeneration: paymentExecutionDialogGeneration,
+      capabilityGeneration:
+        paymentApprovalCapabilityGeneration,
+      paymentId: capability.id,
+      expectedPaymentUpdatedAt:
+        executionContext.expectedPaymentUpdatedAt,
+      amountCents,
+      paidAt,
+      idempotencyKey: globalThis.crypto.randomUUID(),
+      file,
+      fileName: file.name,
+      attemptState:
+        createPaymentExecutionRecordAttemptState()
+    });
+    paymentExecutionDialogReady = true;
   } catch (error) {
     setActionError(error, "实付信息不完整，请修正后重试。");
     return;
@@ -1635,6 +1758,129 @@ function requestExecution() {
     confirmText: "确认登记实付",
     requirePassword: true
   });
+}
+
+function paymentExecutionSelectionIsCurrent(
+  selection: Readonly<PaymentExecutionSelection>
+) {
+  const capability = paymentApprovalCapability.value;
+  return (
+    paymentExecutionComponentActive &&
+    selection.ownerScope === paymentExecutionOwnerScope &&
+    selection.routeGeneration === paymentDetailRouteGeneration &&
+    selection.detailEpoch === paymentDetailEpoch &&
+    selection.dialogGeneration ===
+      paymentExecutionDialogGeneration &&
+    selection.paymentId === currentPaymentRouteId.value &&
+    paymentExecutionSelection === selection &&
+    sensitiveAction.visible &&
+    sensitiveAction.kind === "execution" &&
+    selection.capabilityGeneration ===
+      paymentApprovalCapabilityGeneration &&
+    capability?.id === selection.paymentId &&
+    capability.lifecycleUpdatedAt ===
+      selection.expectedPaymentUpdatedAt &&
+    capability.executionContext?.expectedPaymentUpdatedAt ===
+      selection.expectedPaymentUpdatedAt
+  );
+}
+
+function confirmPaymentExecution(values: {
+  reason: string;
+  password: string;
+}) {
+  if (paymentExecutionOperationPromise) {
+    return paymentExecutionOperationPromise;
+  }
+  const selection = paymentExecutionSelection;
+  if (!selection || !paymentExecutionDialogReady) {
+    sensitiveAction.error =
+      "实际付款上下文已失效，请重新打开确认窗口";
+    return Promise.resolve({ status: "not_started" });
+  }
+  if (paymentExecutionBusyOwnerId !== 0) {
+    sensitiveAction.error =
+      "当前实际付款正在提交，请等待本次操作完成";
+    return Promise.resolve({ status: "not_started" });
+  }
+
+  const ownerId = ++paymentExecutionOperationSequence;
+  paymentExecutionBusyOwnerId = ownerId;
+  actionBusy.value = "execution";
+  actionMessage.value = "";
+  sensitiveAction.error = "";
+  const request = recordPaymentExecutionWithUpload(
+    selection.paymentId,
+    {
+      amountCents: selection.amountCents,
+      paidAt: selection.paidAt,
+      confirmationPassword: values.password,
+      expectedPaymentUpdatedAt:
+        selection.expectedPaymentUpdatedAt,
+      idempotencyKey: selection.idempotencyKey,
+      file: selection.file,
+      fileName: selection.fileName,
+      context: selection,
+      isCurrent:
+        paymentExecutionSelectionIsCurrent
+    },
+    selection.attemptState
+  );
+  let operation!: Promise<unknown>;
+  operation = request
+    .then(async (response) => {
+      if (!paymentExecutionSelectionIsCurrent(selection)) {
+        return { status: "stale" as const };
+      }
+      paymentVoucherFiles.value = [];
+      sensitiveAction.visible = false;
+      sensitiveAction.kind = null;
+      sensitiveAction.error = "";
+      actionMessageTone.value = "success";
+      actionMessage.value =
+        "实际付款已登记，付款详情已刷新。";
+      await reloadPaymentDetail();
+      return {
+        status: "completed" as const,
+        response
+      };
+    })
+    .catch((error) => {
+      if (paymentExecutionSelectionIsCurrent(selection)) {
+        const reason =
+          error instanceof Error
+            ? error.message
+            : "实际付款登记失败";
+        actionMessageTone.value = "danger";
+        actionMessage.value =
+          `操作未完成：${reason}。已保留当前凭证与幂等请求，可直接重试。`;
+        sensitiveAction.error = reason;
+      }
+      return { status: "failed" as const };
+    })
+    .finally(() => {
+      if (paymentExecutionBusyOwnerId === ownerId) {
+        paymentExecutionBusyOwnerId = 0;
+        if (actionBusy.value === "execution") {
+          actionBusy.value = "";
+        }
+      }
+      if (paymentExecutionOperationPromise === operation) {
+        paymentExecutionOperationPromise = null;
+      }
+    });
+  paymentExecutionOperationPromise = operation;
+  return operation;
+}
+
+function cancelPaymentExecution() {
+  if (paymentExecutionBusyOwnerId !== 0) {
+    sensitiveAction.visible = true;
+    sensitiveAction.error =
+      "当前实际付款正在提交，请等待本次操作完成";
+    return;
+  }
+  invalidatePaymentExecutionDialog(true);
 }
 
 function requestFinance() {
@@ -1724,9 +1970,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
       case "approvalFormDownload":
         succeeded = await performApprovalFormDownload(values);
         break;
-      case "execution":
-        succeeded = await performExecution(values.password);
-        break;
       case "finance":
         succeeded = await performFinance(values.password);
         break;
@@ -1793,22 +2036,6 @@ function performApprovalFormDownload(values: { reason: string; password: string 
   );
 }
 
-function performExecution(password: string) {
-  const file = selectedPaymentVoucherFile.value;
-  if (!file) throw new Error("付款凭证文件不能为空");
-  return runPaymentAction("execution", async () => {
-    const uploadedFileId = (await uploadPrivateFile(file, file.name)).id;
-    const result = await recordPaymentExecution(currentPaymentId(), {
-      amountCents: parseYuanAmount(paymentActionForm.executionAmountYuan, "实付金额"),
-      paidAt: toIsoDatetime(paymentActionForm.paidAt, "付款时间"),
-      voucherFileId: uploadedFileId,
-      confirmationPassword: password
-    });
-    paymentVoucherFiles.value = [];
-    return result;
-  });
-}
-
 function performFinance(password: string) {
   return runPaymentAction("finance", () =>
     recordPaymentFinance(currentPaymentId(), {
@@ -1867,6 +2094,7 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   paymentReviewComponentActive = false;
+  paymentExecutionComponentActive = false;
   clearPaymentDetailTransientState();
 });
 </script>
@@ -1893,8 +2121,13 @@ onBeforeUnmount(() => {
 }
 
 .detail-navigation {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   padding: 0 var(--jg-space-lg);
   border-bottom: var(--jg-border-width-base) solid var(--jg-color-border);
+  overflow-x: auto;
 }
 
 .detail-navigation :deep(.t-tabs__content) {
@@ -2101,13 +2334,19 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: var(--jg-space-md);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin-top: var(--jg-space-lg);
 }
 
 .action-group {
+  box-sizing: border-box;
   display: grid;
   align-content: start;
   gap: var(--jg-space-md);
+  max-width: 100%;
+  min-width: 0;
   padding: var(--jg-space-md);
   border: var(--jg-border-width-base) solid var(--jg-color-border);
   border-radius: var(--jg-radius-panel);
@@ -2255,6 +2494,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 760px) {
+  .action-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .meta-grid,
   .action-fields {
     grid-template-columns: 1fr;

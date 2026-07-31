@@ -2483,6 +2483,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordPaymentExecutionWithUpload",
+            "method": "GET",
+            "normalizedPath": "/payments/:param",
+            "normalizedKey": "GET /payments/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -9331,6 +9341,16 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordPaymentExecutionWithUpload",
+            "method": "POST",
+            "normalizedPath": "/files",
+            "normalizedKey": "POST /files",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
             "method": "POST",
             "normalizedPath": "/files",
@@ -10242,7 +10262,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordPaymentExecution",
+            "wrapper": "recordPaymentExecutionWithUpload",
             "method": "POST",
             "normalizedPath": "/payments/:param/executions",
             "normalizedKey": "POST /payments/:param/executions",

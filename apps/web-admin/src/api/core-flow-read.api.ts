@@ -159,11 +159,16 @@ export interface PaymentReviewApprovalContext {
   expectedApprovalUpdatedAt: string;
 }
 
+export interface PaymentExecutionContext {
+  expectedPaymentUpdatedAt: string;
+}
+
 export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   lifecycleKind: "approval_draft" | "formal_record";
   ledgerView: DraftLedgerView;
   lifecycleUpdatedAt: string | null;
   reviewApprovalContext: PaymentReviewApprovalContext | null;
+  executionContext: PaymentExecutionContext | null;
   blockedReasons: string[];
 };
 
@@ -958,6 +963,42 @@ export interface RecordPaymentExecutionPayload {
   paidAt: string;
   voucherFileId: string;
   confirmationPassword: string;
+  expectedPaymentUpdatedAt: string;
+  idempotencyKey: string;
+}
+
+export interface RecordPaymentExecutionWithUploadInput<TContext> {
+  amountCents: string;
+  paidAt: string;
+  confirmationPassword: string;
+  expectedPaymentUpdatedAt: string;
+  idempotencyKey: string;
+  file: Blob;
+  fileName: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface PaymentExecutionRecordSubmission {
+  paymentId: string;
+  amountCents: string;
+  paidAt: string;
+  confirmationPassword: string;
+  expectedPaymentUpdatedAt: string;
+  idempotencyKey: string;
+  file: Blob;
+  fileName: string;
+  isCurrent: () => boolean;
+}
+
+export interface PaymentExecutionRecordAttemptState {
+  submission: PaymentExecutionRecordSubmission | null;
+  confirmationPasswordRejected: boolean;
+  preflightVerified: boolean;
+  preflightPromise: Promise<PaymentLifecycleDetailReadModel> | null;
+  uploadedFileId: string | null;
+  uploadPromise: Promise<PrivateFileReadModel> | null;
+  requestPromise: Promise<unknown> | null;
 }
 
 export interface RecordPaymentFinancePayload {
@@ -2466,6 +2507,254 @@ export function uploadPrivateFile(
   return postForm<PrivateFileReadModel>("/files", form);
 }
 
+export function createPaymentExecutionRecordAttemptState(): PaymentExecutionRecordAttemptState {
+  return {
+    submission: null,
+    confirmationPasswordRejected: false,
+    preflightVerified: false,
+    preflightPromise: null,
+    uploadedFileId: null,
+    uploadPromise: null,
+    requestPromise: null
+  };
+}
+
+export function recordPaymentExecutionWithUpload<TContext>(
+  paymentId: string,
+  input: RecordPaymentExecutionWithUploadInput<TContext>,
+  state: PaymentExecutionRecordAttemptState
+) {
+  if (state.requestPromise) return state.requestPromise;
+  let submission: PaymentExecutionRecordSubmission;
+  try {
+    const existingSubmission = state.submission;
+    submission =
+      existingSubmission && state.confirmationPasswordRejected
+        ? Object.freeze({
+            ...existingSubmission,
+            confirmationPassword:
+              requiredPaymentExecutionText(
+                input.confirmationPassword,
+                "当前密码",
+                false
+              )
+          })
+        : existingSubmission ??
+          normalizePaymentExecutionRecord(paymentId, input);
+    if (submission.paymentId !== paymentId.trim()) {
+      throw new Error(
+        "实际付款重试单据已变化，请重新打开确认窗口"
+      );
+    }
+    state.submission = submission;
+    state.confirmationPasswordRejected = false;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const request = executePaymentExecutionRecord(
+    submission,
+    state
+  );
+  state.requestPromise = request;
+  void request.catch(() => {
+    if (state.requestPromise === request) {
+      state.requestPromise = null;
+    }
+  });
+  return request;
+}
+
+function normalizePaymentExecutionRecord<TContext>(
+  paymentId: string,
+  input: RecordPaymentExecutionWithUploadInput<TContext>
+): PaymentExecutionRecordSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error(
+      "实际付款上下文已失效，请重新读取当前单据"
+    );
+  }
+  if (!(input.file instanceof Blob)) {
+    throw new Error("付款凭证文件不能为空");
+  }
+  const normalizedIdempotencyKey =
+    requiredPaymentExecutionText(
+      input.idempotencyKey,
+      "实际付款幂等键"
+    ).toLowerCase();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      normalizedIdempotencyKey
+    )
+  ) {
+    throw new Error("实际付款幂等键必须为 UUIDv4");
+  }
+  const amountCents = requiredPaymentExecutionText(
+    input.amountCents,
+    "实付金额"
+  );
+  if (!/^[1-9]\d*$/u.test(amountCents)) {
+    throw new Error("实付金额必须为正整数分");
+  }
+  const paidAt = requiredPaymentExecutionText(
+    input.paidAt,
+    "付款时间"
+  );
+  if (Number.isNaN(new Date(paidAt).getTime())) {
+    throw new Error("付款时间格式不正确");
+  }
+  return Object.freeze({
+    paymentId: requiredPaymentExecutionText(
+      paymentId,
+      "付款编号"
+    ),
+    amountCents,
+    paidAt,
+    confirmationPassword: requiredPaymentExecutionText(
+      input.confirmationPassword,
+      "当前密码",
+      false
+    ),
+    expectedPaymentUpdatedAt:
+      requiredPaymentExecutionText(
+        input.expectedPaymentUpdatedAt,
+        "付款版本"
+      ),
+    idempotencyKey: normalizedIdempotencyKey,
+    file: input.file,
+    fileName: requiredPaymentExecutionText(
+      input.fileName,
+      "付款凭证文件名"
+    ),
+    isCurrent: () => input.isCurrent(input.context)
+  });
+}
+
+async function executePaymentExecutionRecord(
+  submission: PaymentExecutionRecordSubmission,
+  state: PaymentExecutionRecordAttemptState
+) {
+  assertPaymentExecutionCurrent(submission);
+  await verifyPaymentExecutionPreflight(submission, state);
+  assertPaymentExecutionCurrent(submission);
+
+  let fileId = state.uploadedFileId;
+  if (fileId === null) {
+    const upload =
+      state.uploadPromise ??
+      uploadPrivateFile(
+        submission.file,
+        submission.fileName,
+        submission.idempotencyKey
+      );
+    state.uploadPromise = upload;
+    try {
+      const uploaded = await upload;
+      assertPaymentExecutionCurrent(submission);
+      if (uploaded.id !== submission.idempotencyKey) {
+        throw new Error(
+          "付款凭证上传幂等响应不一致，请刷新后重试"
+        );
+      }
+      fileId = uploaded.id;
+      state.uploadedFileId = uploaded.id;
+    } catch (error) {
+      if (state.uploadPromise === upload) {
+        state.uploadPromise = null;
+      }
+      throw error;
+    }
+  }
+  assertPaymentExecutionCurrent(submission);
+
+  let response: unknown;
+  try {
+    response = await recordPaymentExecution(
+      submission.paymentId,
+      {
+        amountCents: submission.amountCents,
+        paidAt: submission.paidAt,
+        voucherFileId: fileId,
+        confirmationPassword:
+          submission.confirmationPassword,
+        expectedPaymentUpdatedAt:
+          submission.expectedPaymentUpdatedAt,
+        idempotencyKey: submission.idempotencyKey
+      }
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("当前密码不正确")
+    ) {
+      state.confirmationPasswordRejected = true;
+    }
+    throw error;
+  }
+  assertPaymentExecutionCurrent(submission);
+  return response;
+}
+
+async function verifyPaymentExecutionPreflight(
+  submission: PaymentExecutionRecordSubmission,
+  state: PaymentExecutionRecordAttemptState
+) {
+  if (state.preflightVerified) return;
+  const preflight =
+    state.preflightPromise ??
+    fetchPaymentDetail(submission.paymentId);
+  state.preflightPromise = preflight;
+  let detail: PaymentLifecycleDetailReadModel;
+  try {
+    detail = await preflight;
+  } catch (error) {
+    if (state.preflightPromise === preflight) {
+      state.preflightPromise = null;
+    }
+    throw error;
+  }
+  assertPaymentExecutionCurrent(submission);
+  const enabledActions = detail.availableActions.filter(
+    (action) =>
+      action.key === "record_execution" && action.enabled
+  );
+  if (
+    detail.id !== submission.paymentId ||
+    enabledActions.length !== 1 ||
+    detail.lifecycleUpdatedAt !==
+      submission.expectedPaymentUpdatedAt ||
+    detail.executionContext
+      ?.expectedPaymentUpdatedAt !==
+      submission.expectedPaymentUpdatedAt
+  ) {
+    state.preflightPromise = null;
+    throw new Error(
+      "付款执行资格或版本已变化，请刷新详情后重试"
+    );
+  }
+  state.preflightVerified = true;
+}
+
+function assertPaymentExecutionCurrent(
+  submission: PaymentExecutionRecordSubmission
+) {
+  if (!submission.isCurrent()) {
+    throw new Error(
+      "实际付款上下文已失效，请重新读取当前单据"
+    );
+  }
+}
+
+function requiredPaymentExecutionText(
+  value: string,
+  label: string,
+  trim = true
+) {
+  const normalized = trim ? value.trim() : value;
+  if (!normalized.trim()) throw new Error(`请填写${label}`);
+  return normalized;
+}
+
 export function createProjectAffiliateCompanyContractRecordAttemptState(): ProjectAffiliateCompanyContractRecordAttemptState {
   return {
     submission: null,
@@ -3594,7 +3883,10 @@ export function getSignatureTicket() {
 }
 
 export function recordPaymentExecution(paymentId: string, body: RecordPaymentExecutionPayload) {
-  return postJson<unknown>(`/payments/${paymentId}/executions`, body);
+  return postJson<unknown>(
+    `/payments/${encodeURIComponent(paymentId)}/executions`,
+    body
+  );
 }
 
 export function recordPaymentFinance(paymentId: string, body: RecordPaymentFinancePayload) {

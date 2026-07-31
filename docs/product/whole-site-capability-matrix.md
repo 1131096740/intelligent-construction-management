@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `159b19c1737a577a2def4147ca101cd20901195e12d0560d64d7e19eb59c27d2` |
-| webApiWrappers | blocked | `548c28d8f61331eaf717227d710484532aecdc42dc66a069eec2ac2d20d4dd35` |
-| webPageActions | blocked | `dbab3d2cdc72afc0df7a4185b236c8b8efb9b42ccdae6fae36312eea26478f28` |
-| routeUsage | blocked | `9f503a5d0d5ad7c051585b73586161fddacc2947416cfc334533a3a0e7c28f36` |
+| webApiWrappers | blocked | `87cea9929c2147382a747525c6742c7bd5dc1ae2aa7676420ab4296ad65f403d` |
+| webPageActions | blocked | `baf7cf41e4fcb38100f8805c5c5f3f5008aab2f519915b11e946225ebd59e203` |
+| routeUsage | blocked | `5f586a7770a0f6b86648339b65893ef1c296f2bddc7067903e0f9aea003e4e7d` |
 
 ## 汇总
 
@@ -21,18 +21,18 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 385 |
+| mainRequestBindingCount | 388 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 45 |
-| duplicateMutationRouteCount | 4 |
+| orphanWrapperCount | 46 |
+| duplicateMutationRouteCount | 5 |
 | registeredActionCount | 42 |
-| actionBindingCount | 50 |
-| acceptedActionBindingCount | 18 |
-| unresolvedActionBindingCount | 32 |
+| actionBindingCount | 51 |
+| acceptedActionBindingCount | 20 |
+| unresolvedActionBindingCount | 31 |
 | productionMutationConsumerPairCount | 274 |
-| coveredProductionMutationConsumerPairCount | 13 |
-| uncoveredProductionMutationConsumerPairCount | 261 |
+| coveredProductionMutationConsumerPairCount | 14 |
+| uncoveredProductionMutationConsumerPairCount | 260 |
 | blockerCount | 372 |
 
 ## 路由矩阵
@@ -97,7 +97,7 @@
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
-| GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction | — | not_applicable | — |
+| GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | ACTION_BINDING_UNRESOLVED |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
 | GET | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLedger<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLifecycleLedger | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateBusinessFacts | — | not_applicable | — |
@@ -270,7 +270,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | affiliate-company-contract.record<br>payment-execution.record<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | affiliate-company-contract.record<br>payment-execution.record<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /invoice-allocations/:allocationId/reversal | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -289,7 +289,7 @@
 | POST | /payments/:paymentId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executePaymentApprovalReviewAction | payment-approval.approve<br>payment-approval.reject | covered | — |
-| POST | /payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution | payment-execution.record | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | covered | ORPHAN_WRAPPER |
 | POST | /payments/:paymentId/finance-records | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/pdf-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /payments/:paymentId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -478,6 +478,7 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordContractTakeoverCorrection（test_only）
+- apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContract（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerContract（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment（test_only）
@@ -613,7 +614,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#precheckContractTakeoverImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverBatchAbandonment → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecution → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -773,8 +773,7 @@
 - contract-takeover.update-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-workbench.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- payment-execution.record#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- payment-execution.record#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- payment-execution.record#0 — binding_not_mutation
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.execution-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

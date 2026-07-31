@@ -1166,6 +1166,301 @@ async function submit() { await persist(); }
   );
 });
 
+test("accepts fail-closed early-return guards before the direct wrapper call", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+let operation = null;
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+function submit() {
+  if (operation) {
+    return operation;
+  }
+  if (!detail) {
+    return Promise.resolve({ status: "not_started" });
+  }
+  const request = submitExample("example-1");
+  operation = request.finally(() => undefined);
+  return operation;
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(
+    manifest.actions[0].bindings[0].causalVerified,
+    true
+  );
+  assert.deepEqual(
+    manifest.actions[0].bindings[0].causalProof
+      .localCallChain,
+    ["submit", "submitExample"]
+  );
+});
+
+test("rejects custom same-named collection methods in early-return guards", async () => {
+  const root = await fixture({
+    page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+const custom = {
+  some() {
+    while (true) {
+      // A user-defined method with an Array-like name is not a pure read.
+    }
+  }
+};
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+function guard() {
+  return custom.some();
+}
+function submit() {
+  if (guard()) return;
+  return submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.equal(
+    manifest.actions[0].bindings[0].causalVerified,
+    false
+  );
+  assert.ok(
+    blockerCodes(manifest).has(
+      "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+    )
+  );
+});
+
+test("rejects coercive operations in fail-closed early-return guards", async () => {
+  const cases = [
+    {
+      name: "Number coercion",
+      setup:
+        "let value = { [Symbol.toPrimitive]() { while (true) {} } };",
+      guard: "Number(value)"
+    },
+    {
+      name: "String coercion",
+      setup:
+        'let value = { toString() { throw new Error("blocked"); } };',
+      guard: "String(value)"
+    },
+    {
+      name: "loose equality coercion",
+      setup:
+        "let value = { valueOf() { while (true) {} } };",
+      guard: "value == 1"
+    },
+    {
+      name: "relational coercion",
+      setup:
+        "let value = { valueOf() { while (true) {} } };",
+      guard: "value > 0"
+    },
+    {
+      name: "unary numeric coercion",
+      setup:
+        "let value = { valueOf() { while (true) {} } };",
+      guard: "+value"
+    },
+    {
+      name: "template interpolation coercion",
+      setup:
+        'let value = { toString() { throw new Error("blocked"); } };',
+      guard: "`${value}`"
+    },
+    {
+      name: "computed object key coercion",
+      setup:
+        'let value = { toString() { throw new Error("blocked"); } };',
+      guard: "Boolean({ [value]: true })"
+    },
+    {
+      name: "default parameter execution",
+      setup: `let value;
+function guard(candidate = (() => { while (true) {} })()) {
+  return Boolean(candidate);
+}`,
+      guard: "guard(value)"
+    },
+    {
+      name: "destructured parameter getter",
+      setup: `let value = { get flag() { while (true) {} } };
+function guard({ flag }) {
+  return Boolean(flag);
+}`,
+      guard: "guard(value)"
+    }
+  ];
+
+  for (const current of cases) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+${current.setup}
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+function submit() {
+  if (${current.guard}) return;
+  return submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(manifest.status, "blocked", current.name);
+    assert.equal(
+      manifest.actions[0].bindings[0].causalVerified,
+      false,
+      current.name
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+      ),
+      current.name
+    );
+  }
+});
+
+test("excludes wrapper calls behind statically truthy early-return guards", async () => {
+  const cases = [
+    {
+      name: "immutable const",
+      setup: "const always = true;",
+      guard: "always"
+    },
+    {
+      name: "literal comparison",
+      setup: "",
+      guard: "1 === 1"
+    },
+    {
+      name: "literal arithmetic",
+      setup: "",
+      guard: "1 + 1 === 2"
+    },
+    {
+      name: "pure global coercion",
+      setup: "",
+      guard: "Boolean(true)"
+    },
+    {
+      name: "pure helper",
+      setup: "function always() { return true; }",
+      guard: "always()"
+    },
+    {
+      name: "immutable object member",
+      setup: "const flags = { always: true };",
+      guard: "flags.always"
+    },
+    {
+      name: "local accessor",
+      setup:
+        "const flags = { get always() { while (true) {} } };",
+      guard: "flags.always"
+    },
+    {
+      name: "mutable local accessor",
+      setup:
+        "let flags = { get always() { while (true) {} } };",
+      guard: "flags.always"
+    },
+    {
+      name: "mutable throwing accessor",
+      setup:
+        'let flags = { get always() { throw new Error("blocked"); } };',
+      guard: "flags.always"
+    },
+    {
+      name: "delete expression",
+      setup: "const flags = { always: true };",
+      guard: "delete flags.always"
+    },
+    {
+      name: "truthy literal coercion",
+      setup: "",
+      guard: "!![]"
+    },
+    {
+      name: "pure identity helper",
+      setup: "function identity(value: boolean) { return value; }",
+      guard: "identity(true)"
+    }
+  ];
+
+  for (const current of cases) {
+    const root = await fixture({
+      page: `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+const detail = await getExample("example-1");
+${current.setup}
+function actionEnabled(key: string) {
+  return detail.availableActions.some((action) => action.key === key && action.enabled);
+}
+function submit() {
+  if (${current.guard}) return;
+  return submitExample("example-1");
+}
+</script>
+<template>
+  <t-button v-if="actionEnabled('submit_approval')" @click="submit">提交审批</t-button>
+</template>
+`
+    });
+    const manifest =
+      await inspectWholeSitePageActionManifest({ root });
+
+    assert.equal(
+      manifest.status,
+      "blocked",
+      current.name
+    );
+    assert.equal(
+      manifest.actions[0].bindings[0].causalVerified,
+      false,
+      current.name
+    );
+    assert.ok(
+      blockerCodes(manifest).has(
+        "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED"
+      ),
+      current.name
+    );
+  }
+});
+
 test("binds independent handlers to declared wrapper payload variants", async () => {
   const compositeWrapper = wrapper({
     requests: [
@@ -1635,6 +1930,30 @@ test("rejects non-terminating, side-effecting, dual-branch, try, and loop prefli
     throw new Error("stale");
   }
   return id;`
+    },
+    {
+      name: "default-parameter-side-effect",
+      setup: "let input;",
+      parameters:
+        "id = (() => { while (true) {} })()",
+      skipIdInitialization: true,
+      call: "preflightId(input)",
+      body: `if (!id) {
+    throw new Error("stale");
+  }
+  return id;`
+    },
+    {
+      name: "destructured-parameter-getter",
+      setup:
+        "let context = { get id() { while (true) {} } };",
+      parameters: "{ id }",
+      skipIdInitialization: true,
+      call: "preflightId(context)",
+      body: `if (!id) {
+    throw new Error("stale");
+  }
+  return id;`
     }
   ];
 
@@ -1645,16 +1964,17 @@ import { getExample, submitExample } from "../api/example.api";
 const detail = await getExample("example-1");
 const currentId = "example-1";
 let error = "";
+${entry.setup ?? ""}
 function actionEnabled(key: string) {
   return detail.availableActions.some((action) => action.key === key && action.enabled);
 }
 ${entry.extra ?? ""}
-function preflightId() {
-  const id = currentId;
+function preflightId(${entry.parameters ?? ""}) {
+  ${entry.skipIdInitialization ? "" : "const id = currentId;"}
   ${entry.body}
 }
 function submit() {
-  return submitExample(preflightId());
+  return submitExample(${entry.call ?? "preflightId()"});
 }
 </script>
 <template>
@@ -1940,6 +2260,54 @@ void archiveForLater;
     manifest.blockers.uncoveredMutationWrappers.some(
       (entry) => entry.wrapper === "archiveExample"
     )
+  );
+});
+
+test("keeps exact local action coverage when the upstream wrapper is in a duplicate-write group", async () => {
+  const sourceFile =
+    "apps/web-admin/src/pages/ExamplePage.vue";
+  const apiFile = "apps/web-admin/src/api/example.api.ts";
+  const root = await fixture({
+    webManifestOverrides: {
+      status: "blocked",
+      blockers: {
+        duplicateWriteWrappers: [
+          {
+            normalizedKey:
+              "POST /examples/:param/submission",
+            wrappers: [
+              {
+                apiFile,
+                wrapper: "submitExample"
+              },
+              {
+                apiFile,
+                wrapper: "submitExampleAgain"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  });
+  const manifest =
+    await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  assert.ok(
+    blockerCodes(manifest).has(
+      "UPSTREAM_WEB_MANIFEST_BLOCKED"
+    )
+  );
+  assert.deepEqual(
+    manifest.actions[0].bindings[0]
+      .acceptedProductionConsumers,
+    [sourceFile]
+  );
+  assert.equal(
+    manifest.summary
+      .coveredProductionMutationConsumerCount,
+    1
   );
 });
 

@@ -1169,15 +1169,19 @@ model PaymentRequest {
 }
 
 model PaymentExecution {
-  id               String   @id @default(uuid())
-  paymentRequestId String
-  settlementId     String?
-  paymentSubjectType String @default("our_company")
-  amountCents      BigInt
-  paidAt           DateTime
-  executedByUserId String
-  voucherFileId    String
-  createdAt        DateTime @default(now())
+  id                              String   @id @default(uuid())
+  idempotencyKey                  String   @unique
+  paymentRequestId                String
+  settlementId                    String?
+  paymentSubjectType              String   @default("our_company")
+  companyEntityIdSnapshot         String
+  companyEntityNameSnapshot       String
+  companyEntityCreditCodeSnapshot String
+  amountCents                     BigInt
+  paidAt                          DateTime
+  executedByUserId                String
+  voucherFileId                   String   @unique
+  createdAt                       DateTime @default(now())
 }
 
 model PaymentExecutionAllocation {

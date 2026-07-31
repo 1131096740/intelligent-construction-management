@@ -122,6 +122,8 @@ import {
   uploadPrivateFile,
   uploadSettlementArchiveFile,
   recordPaymentExecution,
+  createPaymentExecutionRecordAttemptState,
+  recordPaymentExecutionWithUpload,
   recordPaymentFinance,
   recordPaymentPdfArchive,
   executePaymentApprovalReviewAction,
@@ -1785,7 +1787,11 @@ describe("core flow read API client", () => {
       amountCents: "5000000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      expectedPaymentUpdatedAt:
+        "2026-06-22T00:00:00.000Z",
+      idempotencyKey:
+        "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
     });
     await recordPaymentFinance("FK-2026-006", {
       amountCents: "5000000",
@@ -2415,6 +2421,477 @@ describe("core flow read API client", () => {
     });
   });
 
+  it("preflights, uploads and records one frozen payment execution with the same idempotency key", async () => {
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment/1",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = {
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      confirmationPassword: " current-password ",
+      expectedPaymentUpdatedAt:
+        "2026-07-31T08:00:00.000Z",
+      idempotencyKey: idempotencyKey.toUpperCase(),
+      file: Object.assign(new Blob(["voucher"]), {
+        name: "付款凭证.pdf"
+      }),
+      fileName: "付款凭证.pdf",
+      context: "payment/1",
+      isCurrent: () => true
+    };
+
+    const request = recordPaymentExecutionWithUpload(
+      "payment/1",
+      input,
+      state
+    );
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "changed-password";
+    await request;
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment%2F1",
+      "/api/files",
+      "/api/payments/payment%2F1/executions"
+    ]);
+    const uploadBody = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(uploadBody).toBeInstanceOf(FormData);
+    expect((uploadBody as FormData).get("idempotencyKey")).toBe(
+      idempotencyKey
+    );
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(
+      JSON.stringify({
+        amountCents: "5000000",
+        paidAt: "2026-07-31T08:30:00.000Z",
+        voucherFileId: idempotencyKey,
+        confirmationPassword: " current-password ",
+        expectedPaymentUpdatedAt:
+          "2026-07-31T08:00:00.000Z",
+        idempotencyKey
+      })
+    );
+  });
+
+  it("coalesces rapid payment execution confirms before preflight into one GET, upload and POST", async () => {
+    const preflight = deferred<Response>();
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(preflight.promise)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = paymentExecutionInput(idempotencyKey);
+
+    const first = recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+    const second = recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    preflight.resolve(
+      new Response(
+        JSON.stringify(
+          paymentExecutionDetail(
+            "payment-a",
+            "2026-07-31T08:00:00.000Z"
+          )
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    await Promise.all([first, second]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/files",
+      "/api/payments/payment-a/executions"
+    ]);
+  });
+
+  it("stops a payment execution before upload when the fresh server capability is stale", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify(
+          paymentExecutionDetail(
+            "payment-a",
+            "2026-07-31T08:01:00.000Z"
+          )
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        paymentExecutionInput(
+          "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
+        ),
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("付款执行资格或版本已变化");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a"
+    ]);
+  });
+
+  it("checks page ownership again after preflight and before uploading", async () => {
+    let current = true;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        current = false;
+        return paymentExecutionDetail(
+          "payment-a",
+          "2026-07-31T08:00:00.000Z"
+        );
+      }
+    } as Response);
+    const input = paymentExecutionInput(
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
+    );
+    input.isCurrent = () => current;
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        input,
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("实际付款上下文已失效");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a"
+    ]);
+  });
+
+  it("checks page ownership again after voucher upload and before recording payment", async () => {
+    let current = true;
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => {
+          current = false;
+          return { id: idempotencyKey };
+        }
+      } as Response);
+    const input = paymentExecutionInput(idempotencyKey);
+    input.isCurrent = () => current;
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        input,
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("实际付款上下文已失效");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/files"
+    ]);
+  });
+
+  it("rejects a payment voucher upload response that does not echo the idempotency key", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: "unexpected-file-id" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        paymentExecutionInput(
+          "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
+        ),
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("付款凭证上传幂等响应不一致");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/files"
+    ]);
+  });
+
+  it("rejects missing or duplicate enabled execution capabilities before upload", async () => {
+    const missing = paymentExecutionDetail(
+      "payment-a",
+      "2026-07-31T08:00:00.000Z"
+    );
+    missing.availableActions = [];
+    const duplicate = paymentExecutionDetail(
+      "payment-a",
+      "2026-07-31T08:00:00.000Z"
+    );
+    duplicate.availableActions.push({
+      ...duplicate.availableActions[0]!
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(missing), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(duplicate), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+
+    for (const idempotencyKey of [
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1",
+      "1acdf14c-742f-4f8b-894d-0e098bf12040"
+    ]) {
+      await expect(
+        recordPaymentExecutionWithUpload(
+          "payment-a",
+          paymentExecutionInput(idempotencyKey),
+          createPaymentExecutionRecordAttemptState()
+        )
+      ).rejects.toThrow("付款执行资格或版本已变化");
+    }
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a"
+    ]);
+  });
+
+  it("reuses the uploaded voucher, idempotency key and frozen body after an ambiguous execution response", async () => {
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "提交响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = paymentExecutionInput(idempotencyKey);
+
+    await expect(
+      recordPaymentExecutionWithUpload("payment-a", input, state)
+    ).rejects.toThrow("提交响应超时");
+    input.amountCents = "1";
+    input.confirmationPassword = "changed-password";
+    await recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/files",
+      "/api/payments/payment-a/executions",
+      "/api/payments/payment-a/executions"
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(
+      fetchMock.mock.calls[2]?.[1]?.body
+    );
+  });
+
+  it("allows correcting only the confirmation password after a deterministic password rejection", async () => {
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "当前密码不正确，请重新输入"
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = paymentExecutionInput(idempotencyKey);
+    input.confirmationPassword = "wrong-password";
+
+    await expect(
+      recordPaymentExecutionWithUpload("payment-a", input, state)
+    ).rejects.toThrow("当前密码不正确");
+    input.amountCents = "1";
+    input.confirmationPassword = "correct-password";
+    await recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/files",
+      "/api/payments/payment-a/executions",
+      "/api/payments/payment-a/executions"
+    ]);
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      confirmationPassword: "wrong-password",
+      idempotencyKey,
+      voucherFileId: idempotencyKey
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      confirmationPassword: "correct-password",
+      idempotencyKey,
+      voucherFileId: idempotencyKey
+    });
+  });
+
   it("rejects reuse of an affiliate-company contract record attempt for another project", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -2758,6 +3235,54 @@ function paymentReviewActionInput(
     isCurrent: () => true,
     ...overrides
   };
+}
+
+function paymentExecutionDetail(
+  paymentId: string,
+  expectedPaymentUpdatedAt: string
+) {
+  return {
+    id: paymentId,
+    lifecycleUpdatedAt: expectedPaymentUpdatedAt,
+    executionContext: { expectedPaymentUpdatedAt },
+    availableActions: [
+      {
+        key: "record_execution",
+        label: "登记实际付款",
+        kind: "primary",
+        enabled: true,
+        disabledReason: null,
+        requiredRoles: ["finance_staff"]
+      }
+    ]
+  };
+}
+
+function paymentExecutionInput(idempotencyKey: string) {
+  return {
+    amountCents: "5000000",
+    paidAt: "2026-07-31T08:30:00.000Z",
+    confirmationPassword: " current-password ",
+    expectedPaymentUpdatedAt:
+      "2026-07-31T08:00:00.000Z",
+    idempotencyKey,
+    file: Object.assign(new Blob(["voucher"]), {
+      name: "付款凭证.pdf"
+    }),
+    fileName: "付款凭证.pdf",
+    context: "payment-a",
+    isCurrent: () => true
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((accept, decline) => {
+    resolve = accept;
+    reject = decline;
+  });
+  return { promise, reject, resolve };
 }
 
 function jsonResponse(body: unknown): Response {

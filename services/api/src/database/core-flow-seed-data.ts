@@ -54,6 +54,25 @@ export const coreFlowSeedData = {
     code: "JGXM-001",
     name: TRIAL_PROJECT_NAME
   },
+  companyEntity: {
+    id: "seed-company-entity-jgzg",
+    name: "建工智管建设有限公司",
+    unifiedSocialCreditCode: "91350211M000100Y46",
+    registeredAddress: "云南省昆明市西山区",
+    dataStatus: "complete",
+    currentVersionNo: 1,
+    isActive: true
+  },
+  companyEntityVersion: {
+    id: "seed-company-entity-version-jgzg-v1",
+    companyEntityId: "seed-company-entity-jgzg",
+    versionNo: 1,
+    name: "建工智管建设有限公司",
+    unifiedSocialCreditCode: "91350211M000100Y46",
+    registeredAddress: "云南省昆明市西山区",
+    isActive: true,
+    action: "create"
+  },
   contract: {
     id: "seed-contract-ht-2026-001",
     code: "HT-2026-001",
@@ -66,7 +85,13 @@ export const coreFlowSeedData = {
     changeType: "original",
     status: "effective",
     amountCents: 128000000,
-    effectiveAt: new Date("2026-05-01T00:00:00.000Z")
+    effectiveAt: new Date("2026-05-01T00:00:00.000Z"),
+    signingSubjectType: "our_company",
+    companyEntityIdSnapshot: "seed-company-entity-jgzg",
+    companyEntityVersionId: "seed-company-entity-version-jgzg-v1",
+    companyEntityNameSnapshot: "建工智管建设有限公司",
+    companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+    companyEntityRegisteredAddressSnapshot: "云南省昆明市西山区"
   },
   ownerContractFile: {
     id: "seed-file-owner-contract-yz-2026-001",
@@ -103,6 +128,7 @@ export const coreFlowSeedData = {
     pricingMethod: "fixed_total",
     paymentTermsSummary: "按月进度和业主审定节点支付。",
     retentionSummary: "按合同金额3%预留质保金。",
+    documentVersion: 1,
     status: "effective",
     confirmedAt: new Date("2026-04-21T00:00:00.000Z")
   },
@@ -114,6 +140,8 @@ export const coreFlowSeedData = {
     approvingPartyName: "建设单位",
     periodLabel: "2026-05",
     isFinal: false,
+    documentVersion: 1,
+    status: "legacy_recorded",
     description: "项目一期对上进度审定，覆盖种子结算与核心闭环验证。"
   },
   projectReceipt: {
@@ -121,7 +149,7 @@ export const coreFlowSeedData = {
     receivedAt: new Date("2026-06-01T00:00:00.000Z"),
     amountCents: 80000000,
     payerName: "建设单位",
-    sourceType: "owner_direct_payment",
+    sourceType: "general_contractor_payment",
     description: "项目一期启动收款，覆盖种子付款与核心闭环验证。"
   },
   paymentTermsVersion: {
@@ -165,7 +193,7 @@ export const coreFlowSeedData = {
     id: "seed-settlement-js-2026-018",
     code: "JS-2026-018",
     periodLabel: "2026-05",
-    status: "effective",
+    status: "partially_paid",
     amountCents: 32000000,
     payableAmountCents: 25600000,
     paidAmountCents: 12800000,
@@ -174,7 +202,7 @@ export const coreFlowSeedData = {
   paymentRequest: {
     id: "seed-payment-request-fk-2026-006",
     code: "FK-2026-006",
-    status: "approved_pending_payment",
+    status: "partially_paid",
     requestedAmountCents: 25600000,
     approvedAmountCents: 25600000,
     paidAmountCents: 12800000,
@@ -190,8 +218,13 @@ export const coreFlowSeedData = {
   },
   paymentExecution: {
     id: "seed-payment-execution-fk-2026-006-001",
+    idempotencyKey: "b1111111-1111-4111-8111-111111111111",
     amountCents: 12800000,
-    paidAt: new Date("2026-06-05T00:00:00.000Z")
+    paidAt: new Date("2026-06-05T00:00:00.000Z"),
+    paymentSubjectType: "our_company",
+    companyEntityIdSnapshot: "seed-company-entity-jgzg",
+    companyEntityNameSnapshot: "建工智管建设有限公司",
+    companyEntityCreditCodeSnapshot: "91350211M000100Y46"
   },
   materialPurchaseWorkbench: {
     publishedAt: new Date("2026-06-01T00:00:00.000Z"),

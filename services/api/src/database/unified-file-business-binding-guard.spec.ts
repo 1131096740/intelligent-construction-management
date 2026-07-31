@@ -71,6 +71,13 @@ const affiliateCompanyContractBindingMigration = readFileSync(
   ),
   "utf8"
 );
+const paymentExecutionBindingMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma/migrations/20260728139000_payment_execution_idempotency/migration.sql"
+  ),
+  "utf8"
+);
 const schema = readFileSync(
   join(process.cwd(), "prisma/schema.prisma"),
   "utf8"
@@ -100,7 +107,9 @@ function migrationBindings(): Array<{
     ),
     (match) => ({
       binding: `${match[1]}.${match[2]}`,
-      exclusive: match[3] === "TRUE"
+      exclusive:
+        match[3] === "TRUE" ||
+        `${match[1]}.${match[2]}` === "PaymentExecution.voucherFileId"
     })
   );
 }
@@ -145,6 +154,7 @@ describe("unified file business binding migration", () => {
       "InvoiceExceptionConfirmation.proofFileId",
       "InvoiceRecord.fileId",
       "NoInvoiceConfirmation.proofFileId",
+      "PaymentExecution.voucherFileId",
       "ProjectAffiliateBusinessEvidence.fileId",
       "ProjectAffiliateCompanyContract.fileId",
       "ProjectAffiliateContractFact.evidenceFileId",
@@ -164,6 +174,12 @@ describe("unified file business binding migration", () => {
     );
     expect(currentBindingMigration).toContain(
       'OR "schemaVersion" = 2'
+    );
+    expect(paymentExecutionBindingMigration).toContain(
+      `WHEN "tableName" = 'PaymentExecution' AND "columnName" = 'voucherFileId' THEN TRUE`
+    );
+    expect(paymentExecutionBindingMigration).toContain(
+      `jg_enforce_exclusive_file_business_binding('voucherFileId', 'true')`
     );
     expect(currentBindingMigration).toContain(
       "previous_is_exclusive BOOLEAN := TG_ARGV[1]::BOOLEAN"

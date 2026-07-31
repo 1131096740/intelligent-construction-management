@@ -69,6 +69,10 @@ const validPaymentReviewCoordinates = {
   expectedNodeIndex: 0,
   expectedApprovalUpdatedAt: "2026-07-31T01:01:00.000Z"
 };
+const validPaymentExecutionCoordinates = {
+  expectedPaymentUpdatedAt: "2026-07-31T02:00:00.000Z",
+  idempotencyKey: "11111111-1111-4111-8111-111111111111"
+};
 
 describe("PaymentController authorization wiring", () => {
   it("保留付款领导自审原因和当前密码", async () => {
@@ -212,6 +216,7 @@ describe("PaymentController authorization wiring", () => {
     [
       "recordExecution",
       {
+        ...validPaymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-07-11",
         voucherFileId: "file-1",
@@ -284,6 +289,7 @@ describe("PaymentController authorization wiring", () => {
 
   it.each(["not-a-date", "2026-13-40"])("rejects an invalid execution date: %s", async (paidAt) => {
     const response = await getPaymentValidationResponse("recordExecution", 2, {
+      ...validPaymentExecutionCoordinates,
       amountCents: "10000",
       paidAt,
       voucherFileId: "file-1",
@@ -296,7 +302,13 @@ describe("PaymentController authorization wiring", () => {
   it.each([
     [
       "recordExecution",
-      { amountCents: "100", paidAt: "2026-02-30", voucherFileId: "file-1", confirmationPassword: "pwd" },
+      {
+        ...validPaymentExecutionCoordinates,
+        amountCents: "100",
+        paidAt: "2026-02-30",
+        voucherFileId: "file-1",
+        confirmationPassword: "pwd"
+      },
       "付款日期格式不正确"
     ],
     [
@@ -315,6 +327,7 @@ describe("PaymentController authorization wiring", () => {
     async (paidAt) => {
       await expect(
         validatePaymentBody("recordExecution", 2, {
+          ...validPaymentExecutionCoordinates,
           amountCents: "10000",
           paidAt,
           voucherFileId: "file-1",
@@ -326,7 +339,16 @@ describe("PaymentController authorization wiring", () => {
 
   it.each([
     ["transferApproval", { toUserId: "" }],
-    ["recordExecution", { amountCents: "100", paidAt: "2026-07-11", voucherFileId: "", confirmationPassword: "pwd" }],
+    [
+      "recordExecution",
+      {
+        ...validPaymentExecutionCoordinates,
+        amountCents: "100",
+        paidAt: "2026-07-11",
+        voucherFileId: "",
+        confirmationPassword: "pwd"
+      }
+    ],
     ["recordFinance", { amountCents: "100", occurredAt: "2026-07-11", confirmationPassword: "" }],
     ["recordPdfArchive", { fileId: "" }]
   ] as const)("rejects empty required fields for %s", async (method, value) => {
@@ -380,6 +402,7 @@ describe("PaymentController authorization wiring", () => {
       toUserId: "   "
     });
     const executionResponse = await getPaymentValidationResponse("recordExecution", 2, {
+      ...validPaymentExecutionCoordinates,
       amountCents: "100",
       paidAt: "2026-07-11",
       voucherFileId: "   ",

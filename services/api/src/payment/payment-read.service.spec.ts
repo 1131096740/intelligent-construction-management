@@ -694,7 +694,7 @@ describe("PaymentReadService", () => {
         status: "uploaded",
         statusLabel: "已上传",
         uploadedByName: "出纳",
-        uploadedAt: "2026-07-01T09:00:00.000Z",
+        uploadedAt: "2026-07-01T08:55:00.000Z",
         confirmedByName: null,
         confirmedAt: null,
         canDownload: true,
@@ -801,6 +801,66 @@ describe("PaymentReadService", () => {
     ]);
   });
 
+  it("uses the voucher file uploader and upload time for payment evidence metadata", async () => {
+    const prisma = {
+      pdfDocument: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      fileObject: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "file-voucher-1",
+            originalName: "银行回单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024,
+            uploadedByUserId: "voucher-uploader-id",
+            createdAt: new Date("2026-07-01T09:00:00.000Z")
+          }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "voucher-uploader-id",
+            name: "付款凭证上传人"
+          },
+          {
+            id: "payment-executor-id",
+            name: "付款登记人"
+          }
+        ])
+      }
+    };
+    const service = new PaymentReadService(prisma as never);
+    const evidenceFiles = await (
+      service as unknown as {
+        paymentEvidenceFiles(
+          paymentId: string,
+          executions: Array<{
+            id: string;
+            voucherFileId?: string | null;
+            executedByUserId?: string | null;
+            createdAt?: Date;
+          }>
+        ): Promise<Array<{ uploadedByName: string; uploadedAt: string }>>;
+      }
+    ).paymentEvidenceFiles("payment-1", [
+      {
+        id: "execution-1",
+        voucherFileId: "file-voucher-1",
+        executedByUserId: "payment-executor-id",
+        createdAt: new Date("2026-07-01T09:30:00.000Z")
+      }
+    ]);
+
+    expect(evidenceFiles).toEqual([
+      expect.objectContaining({
+        uploadedByName: "付款凭证上传人",
+        uploadedAt: "2026-07-01T09:00:00.000Z"
+      })
+    ]);
+  });
+
   it("exposes enabled payment execution action for cashier after approval", async () => {
     const prisma = {
       paymentRequest: {
@@ -815,7 +875,8 @@ describe("PaymentReadService", () => {
           status: "approved_pending_payment",
           requestedAmountCents: 49300000n,
           approvedAmountCents: 49300000n,
-          paidAmountCents: 0n
+          paidAmountCents: 0n,
+          updatedAt: new Date("2026-07-31T01:02:03.000Z")
         })
       },
       settlement: {
@@ -843,6 +904,25 @@ describe("PaymentReadService", () => {
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "user-cashier",
+          isActive: true
+        })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionId: "position-finance-staff" }
+        ])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-finance-staff", key: "finance_staff" }
+        ])
       }
     };
     const projectVisibility = {
@@ -864,7 +944,78 @@ describe("PaymentReadService", () => {
       requiresPassword: true,
       requiresFile: true
     });
+    expect(detail).toMatchObject({
+      executionContext: {
+        expectedPaymentUpdatedAt: "2026-07-31T01:02:03.000Z"
+      }
+    });
     expect(detail.disabledReasons).toEqual([]);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "user-cashier" },
+      select: { id: true, isActive: true }
+    });
+    expect(prisma.userPosition.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-cashier", projectId: "project-1" },
+      select: { positionId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-cashier", projectId: "project-1" },
+      select: { positionKey: true }
+    });
+
+    projectVisibility.effectiveRoleKeys.mockResolvedValueOnce([]);
+    const nonFinanceDetail = await service.getDetail(
+      "FK-2026-011",
+      undefined,
+      "user-observer"
+    );
+    expect(nonFinanceDetail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "record_execution",
+        enabled: false
+      })
+    );
+    expect(nonFinanceDetail.executionContext).toBeNull();
+
+    projectVisibility.effectiveRoleKeys.mockResolvedValueOnce(["finance_staff"]);
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: "user-global-finance",
+      isActive: true
+    });
+    prisma.userPosition.findMany.mockResolvedValueOnce([]);
+    prisma.projectMember.findMany.mockResolvedValueOnce([]);
+    const globalOnlyFinanceDetail = await service.getDetail(
+      "FK-2026-011",
+      undefined,
+      "user-global-finance"
+    );
+    expect(globalOnlyFinanceDetail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "record_execution",
+        enabled: false,
+        disabledReason: "只有当前项目在职财务人员可以登记实际付款"
+      })
+    );
+    expect(globalOnlyFinanceDetail.executionContext).toBeNull();
+
+    projectVisibility.effectiveRoleKeys.mockResolvedValueOnce(["finance_staff"]);
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: "user-inactive-finance",
+      isActive: false
+    });
+    const inactiveFinanceDetail = await service.getDetail(
+      "FK-2026-011",
+      undefined,
+      "user-inactive-finance"
+    );
+    expect(inactiveFinanceDetail.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "record_execution",
+        enabled: false,
+        disabledReason: "只有当前项目在职财务人员可以登记实际付款"
+      })
+    );
+    expect(inactiveFinanceDetail.executionContext).toBeNull();
   });
 
   it("does not expose a missing payment while preserving the exact id/code lookup", async () => {
@@ -1422,6 +1573,25 @@ describe("PaymentReadService", () => {
       },
       paymentExecutionAllocation: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "user-finance",
+          isActive: true
+        })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionId: "position-finance-staff" }
+        ])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { key: "finance_staff" }
+        ])
       }
     };
     const projectVisibility = {
@@ -1924,6 +2094,7 @@ describe("PaymentReadService", () => {
       paymentActions(
         status: string,
         roleKeys: never[],
+        canRecordExecution: boolean,
         access: unknown,
         executionComplete: boolean,
         financeRecordedAmountCents: bigint,
@@ -1948,6 +2119,7 @@ describe("PaymentReadService", () => {
       service.paymentActions(
         "approval_pending",
         ["general_manager"] as never[],
+        false,
         review.access,
         false,
         0n,

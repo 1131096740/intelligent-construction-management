@@ -10027,10 +10027,13 @@ function staticNullishness(node) {
 
 function directCallTargets(
   node,
-  definitions = indexedCompletionDefinitions(node)
+  definitions = indexedCompletionDefinitions(node),
+  symbols = null,
+  allowFailClosedEarlyReturns = false
 ) {
   const calls = [];
   let reliable = true;
+  const causalTruthiness = staticTruthiness;
   const visit = (candidate, isRoot = false) => {
     if (!candidate || typeof candidate !== "object") return false;
     if (
@@ -10114,9 +10117,9 @@ function directCallTargets(
       return true;
     }
     if (candidate.type === "IfStatement") {
-      visit(candidate.test, false);
-      const truthiness = staticTruthiness(candidate.test);
+      const truthiness = causalTruthiness(candidate.test);
       if (truthiness.known) {
+        visit(candidate.test, false);
         return visit(
           truthiness.value
             ? candidate.consequent
@@ -10124,6 +10127,34 @@ function directCallTargets(
           false
         );
       }
+      if (
+        !candidate.alternate &&
+        allowFailClosedEarlyReturns &&
+        symbols &&
+        preflightExpressionIsPure(
+          candidate.test,
+          symbols,
+          new Set(),
+          false
+        ) &&
+        preflightExpressionHasRuntimeDependency(
+          candidate.test,
+          symbols,
+          new Set(),
+          new Map()
+        ) &&
+        ["abrupt", "return"].includes(
+          statementCompletion(
+            candidate.consequent,
+            definitions,
+            new Set()
+          )
+        )
+      ) {
+        visit(candidate.consequent, false);
+        return false;
+      }
+      visit(candidate.test, false);
       reliable = false;
       return false;
     }
@@ -10138,7 +10169,7 @@ function directCallTargets(
         if (left.value) visit(candidate.right, false);
         return false;
       }
-      const left = staticTruthiness(candidate.left);
+      const left = causalTruthiness(candidate.left);
       if (!left.known) {
         reliable = false;
         return false;
@@ -10153,7 +10184,7 @@ function directCallTargets(
     }
     if (candidate.type === "ConditionalExpression") {
       visit(candidate.test, false);
-      const test = staticTruthiness(candidate.test);
+      const test = causalTruthiness(candidate.test);
       if (test.known) {
         visit(
           test.value
@@ -10168,7 +10199,7 @@ function directCallTargets(
     }
     if (candidate.type === "WhileStatement") {
       visit(candidate.test, false);
-      const test = staticTruthiness(candidate.test);
+      const test = causalTruthiness(candidate.test);
       if (!test.known) {
         reliable = false;
         return false;
@@ -10181,7 +10212,7 @@ function directCallTargets(
       visit(candidate.init, false);
       visit(candidate.test, false);
       const test = candidate.test
-        ? staticTruthiness(candidate.test)
+        ? causalTruthiness(candidate.test)
         : { known: true, value: true };
       if (test.known && !test.value) return false;
       reliable = false;
@@ -10300,11 +10331,7 @@ const PREFLIGHT_READ_METHODS = new Set([
   "some"
 ]);
 
-const PREFLIGHT_PURE_GLOBALS = new Set([
-  "Boolean",
-  "Number",
-  "String"
-]);
+const PREFLIGHT_PURE_GLOBALS = new Set(["Boolean"]);
 
 function preflightFunctionBody(definition) {
   if (
@@ -10338,24 +10365,93 @@ function unwrapPreflightExpression(node) {
   return current;
 }
 
-function preflightExpressionIsPure(
+function preflightBindingIsImmutable(
+  binding,
+  symbols,
+  expectedDefinitionTypes
+) {
+  if (
+    !binding ||
+    (symbols.writesByBinding?.get(binding) ?? []).length > 0
+  ) {
+    return false;
+  }
+  const definitions = binding.defs ?? [];
+  if (definitions.length !== 1) return false;
+  const definition = definitions[0];
+  if (!expectedDefinitionTypes.has(definition.type)) {
+    return false;
+  }
+  return (
+    definition.type !== "Variable" ||
+    definition.parent?.kind === "const"
+  );
+}
+
+function preflightExpressionHasRuntimeDependency(
   node,
   symbols,
-  seen = new Set()
+  seen = new Set(),
+  parameterDependencies = new Map()
 ) {
   const value = unwrapPreflightExpression(node);
   if (!value) return false;
-  if (
-    ["Identifier", "Literal"].includes(value.type)
-  ) {
+  if (value.type === "Identifier") {
+    const binding = symbols.scopeBindings?.get(value);
+    if (!binding) return false;
+    if (parameterDependencies.has(binding)) {
+      return parameterDependencies.get(binding) === true;
+    }
+    if (
+      symbols.importsByBinding?.has(binding) ||
+      seen.has(binding)
+    ) {
+      return false;
+    }
+    const declaration = uniqueIndexedNode(
+      symbols.declarationsByBinding,
+      binding
+    );
+    if (
+      declaration &&
+      preflightBindingIsImmutable(
+        binding,
+        symbols,
+        new Set(["Variable"])
+      )
+    ) {
+      const nextSeen = new Set(seen);
+      nextSeen.add(binding);
+      return preflightExpressionHasRuntimeDependency(
+        declaration,
+        symbols,
+        nextSeen,
+        parameterDependencies
+      );
+    }
+    const definitionTypes = new Set(
+      (binding.defs ?? []).map(
+        (definition) => definition.type
+      )
+    );
+    if (definitionTypes.has("FunctionName")) {
+      return false;
+    }
     return true;
   }
+  if (
+    ["Literal", "ThisExpression"].includes(value.type)
+  ) {
+    return false;
+  }
+  if (value.type === "AwaitExpression") return true;
   if (value.type === "TemplateLiteral") {
-    return (value.expressions ?? []).every((expression) =>
-      preflightExpressionIsPure(
+    return (value.expressions ?? []).some((expression) =>
+      preflightExpressionHasRuntimeDependency(
         expression,
         symbols,
-        seen
+        seen,
+        parameterDependencies
       )
     );
   }
@@ -10366,37 +10462,285 @@ function preflightExpressionIsPure(
     ].includes(value.type)
   ) {
     return (
-      preflightExpressionIsPure(
+      preflightExpressionHasRuntimeDependency(
         value.left,
         symbols,
-        seen
-      ) &&
-      preflightExpressionIsPure(
+        seen,
+        parameterDependencies
+      ) ||
+      preflightExpressionHasRuntimeDependency(
         value.right,
         symbols,
-        seen
+        seen,
+        parameterDependencies
       )
     );
   }
   if (value.type === "UnaryExpression") {
-    return preflightExpressionIsPure(
+    return preflightExpressionHasRuntimeDependency(
       value.argument,
       symbols,
-      seen
+      seen,
+      parameterDependencies
+    );
+  }
+  if (value.type === "ConditionalExpression") {
+    return [
+      value.test,
+      value.consequent,
+      value.alternate
+    ].some((candidate) =>
+      preflightExpressionHasRuntimeDependency(
+        candidate,
+        symbols,
+        seen,
+        parameterDependencies
+      )
     );
   }
   if (value.type === "MemberExpression") {
     return (
+      preflightExpressionHasRuntimeDependency(
+        value.object,
+        symbols,
+        seen,
+        parameterDependencies
+      ) ||
+      (value.computed &&
+        preflightExpressionHasRuntimeDependency(
+          value.property,
+          symbols,
+          seen,
+          parameterDependencies
+        ))
+    );
+  }
+  if (value.type === "ArrayExpression") {
+    return (value.elements ?? []).some(
+      (element) =>
+        element?.type === "SpreadElement" ||
+        preflightExpressionHasRuntimeDependency(
+          element,
+          symbols,
+          seen,
+          parameterDependencies
+        )
+    );
+  }
+  if (value.type === "ObjectExpression") {
+    return (value.properties ?? []).some(
+      (property) =>
+        property?.type === "Property" &&
+        property.kind === "init" &&
+        property.method !== true &&
+        ((property.computed &&
+          preflightExpressionHasRuntimeDependency(
+            property.key,
+            symbols,
+            seen,
+            parameterDependencies
+          )) ||
+          preflightExpressionHasRuntimeDependency(
+            property.value,
+            symbols,
+            seen,
+            parameterDependencies
+          ))
+    );
+  }
+  if (
+    [
+      "ArrowFunctionExpression",
+      "FunctionExpression"
+    ].includes(value.type)
+  ) {
+    return false;
+  }
+  if (value.type === "BlockStatement") {
+    return (value.body ?? []).some((statement) =>
+      preflightExpressionHasRuntimeDependency(
+        statement,
+        symbols,
+        seen,
+        parameterDependencies
+      )
+    );
+  }
+  if (value.type === "ReturnStatement") {
+    return preflightExpressionHasRuntimeDependency(
+      value.argument,
+      symbols,
+      seen,
+      parameterDependencies
+    );
+  }
+  if (value.type === "VariableDeclaration") {
+    return (value.declarations ?? []).some((declaration) =>
+      preflightExpressionHasRuntimeDependency(
+        declaration.init,
+        symbols,
+        seen,
+        parameterDependencies
+      )
+    );
+  }
+  if (value.type !== "CallExpression") return false;
+  const argumentDependencies = (value.arguments ?? []).map(
+    (argument) =>
+      argument?.type === "SpreadElement" ||
+      preflightExpressionHasRuntimeDependency(
+        argument,
+        symbols,
+        seen,
+        parameterDependencies
+      )
+  );
+  if (value.callee?.type !== "Identifier") {
+    return true;
+  }
+  const binding = symbols.scopeBindings?.get(
+    value.callee
+  );
+  if (
+    PREFLIGHT_PURE_GLOBALS.has(value.callee.name) &&
+    (!binding ||
+      (binding.identifiers ?? []).length === 0)
+  ) {
+    return argumentDependencies.some(Boolean);
+  }
+  if (!binding || seen.has(binding)) return true;
+  const definition = uniqueIndexedNode(
+    symbols.definitionsByBinding,
+    binding
+  );
+  if (!definition) return true;
+  const nextParameters = new Map(parameterDependencies);
+  for (const [index, parameter] of (
+    definition.params ?? []
+  ).entries()) {
+    const target =
+      parameter?.type === "AssignmentPattern"
+        ? parameter.left
+        : parameter;
+    if (target?.type !== "Identifier") continue;
+    const parameterBinding =
+      symbols.scopeBindings?.get(target);
+    if (parameterBinding) {
+      nextParameters.set(
+        parameterBinding,
+        argumentDependencies[index] === true
+      );
+    }
+  }
+  const nextSeen = new Set(seen);
+  nextSeen.add(binding);
+  return preflightExpressionHasRuntimeDependency(
+    preflightFunctionBody(definition),
+    symbols,
+    nextSeen,
+    nextParameters
+  );
+}
+
+function preflightExpressionIsPure(
+  node,
+  symbols,
+  seen = new Set(),
+  allowMemberReadMethods = true
+) {
+  const value = unwrapPreflightExpression(node);
+  if (!value) return false;
+  if (
+    ["Identifier", "Literal"].includes(value.type)
+  ) {
+    return true;
+  }
+  if (value.type === "TemplateLiteral") {
+    if (
+      !allowMemberReadMethods &&
+      (value.expressions ?? []).length > 0
+    ) {
+      return false;
+    }
+    return (value.expressions ?? []).every((expression) =>
+      preflightExpressionIsPure(
+        expression,
+        symbols,
+        seen,
+        allowMemberReadMethods
+      )
+    );
+  }
+  if (value.type === "BinaryExpression") {
+    if (
+      !allowMemberReadMethods &&
+      !["===", "!=="].includes(value.operator)
+    ) {
+      return false;
+    }
+    return (
+      preflightExpressionIsPure(
+        value.left,
+        symbols,
+        seen,
+        allowMemberReadMethods
+      ) &&
+      preflightExpressionIsPure(
+        value.right,
+        symbols,
+        seen,
+        allowMemberReadMethods
+      )
+    );
+  }
+  if (value.type === "LogicalExpression") {
+    return (
+      preflightExpressionIsPure(
+        value.left,
+        symbols,
+        seen,
+        allowMemberReadMethods
+      ) &&
+      preflightExpressionIsPure(
+        value.right,
+        symbols,
+        seen,
+        allowMemberReadMethods
+      )
+    );
+  }
+  if (value.type === "UnaryExpression") {
+    if (
+      value.operator === "delete" ||
+      (!allowMemberReadMethods &&
+        !["!", "typeof", "void"].includes(
+          value.operator
+        ))
+    ) {
+      return false;
+    }
+    return preflightExpressionIsPure(
+      value.argument,
+      symbols,
+      seen,
+      allowMemberReadMethods
+    );
+  }
+  if (value.type === "MemberExpression") {
+    if (!allowMemberReadMethods) return false;
+    return (
       preflightExpressionIsPure(
         value.object,
         symbols,
-        seen
+        seen,
+        allowMemberReadMethods
       ) &&
       (!value.computed ||
         preflightExpressionIsPure(
           value.property,
           symbols,
-          seen
+          seen,
+          allowMemberReadMethods
         ))
     );
   }
@@ -10407,7 +10751,8 @@ function preflightExpressionIsPure(
         preflightExpressionIsPure(
           element,
           symbols,
-          seen
+          seen,
+          allowMemberReadMethods
         )
     );
   }
@@ -10418,15 +10763,18 @@ function preflightExpressionIsPure(
         property.kind === "init" &&
         property.method !== true &&
         (!property.computed ||
-          preflightExpressionIsPure(
-            property.key,
-            symbols,
-            seen
-          )) &&
+          (allowMemberReadMethods &&
+            preflightExpressionIsPure(
+              property.key,
+              symbols,
+              seen,
+              allowMemberReadMethods
+            ))) &&
         preflightExpressionIsPure(
           property.value,
           symbols,
-          seen
+          seen,
+          allowMemberReadMethods
         )
     );
   }
@@ -10446,14 +10794,16 @@ function preflightExpressionIsPure(
         preflightExpressionIsPure(
           value.body.body[0].argument,
           symbols,
-          seen
+          seen,
+          allowMemberReadMethods
         )
       );
     }
     return preflightExpressionIsPure(
       value.body,
       symbols,
-      seen
+      seen,
+      allowMemberReadMethods
     );
   }
   if (value.type !== "CallExpression") return false;
@@ -10464,7 +10814,8 @@ function preflightExpressionIsPure(
       preflightExpressionIsPure(
         argument,
         symbols,
-        seen
+        seen,
+        allowMemberReadMethods
       )
   );
   if (!argumentsArePure) return false;
@@ -10490,7 +10841,8 @@ function preflightExpressionIsPure(
     return preflightPureHelperIsSafe(
       definition,
       symbols,
-      nextSeen
+      nextSeen,
+      allowMemberReadMethods
     );
   }
   if (
@@ -10504,12 +10856,14 @@ function preflightExpressionIsPure(
       ? value.callee.property.name
       : null;
   return (
+    allowMemberReadMethods &&
     method !== null &&
     PREFLIGHT_READ_METHODS.has(method) &&
     preflightExpressionIsPure(
       value.callee.object,
       symbols,
-      seen
+      seen,
+      allowMemberReadMethods
     )
   );
 }
@@ -10517,15 +10871,25 @@ function preflightExpressionIsPure(
 function preflightPureHelperIsSafe(
   definition,
   symbols,
-  seen
+  seen,
+  allowMemberReadMethods = true
 ) {
   const body = preflightFunctionBody(definition);
   if (!body) return false;
+  if (
+    !allowMemberReadMethods &&
+    (definition.params ?? []).some(
+      (parameter) => parameter?.type !== "Identifier"
+    )
+  ) {
+    return false;
+  }
   if (body.type !== "BlockStatement") {
     return preflightExpressionIsPure(
       body,
       symbols,
-      seen
+      seen,
+      allowMemberReadMethods
     );
   }
   const statements = body.body ?? [];
@@ -10549,14 +10913,16 @@ function preflightPureHelperIsSafe(
               preflightExpressionIsPure(
                 declaration.init,
                 symbols,
-                seen
+                seen,
+                allowMemberReadMethods
               )
           )
       ) &&
     preflightExpressionIsPure(
       statements.at(-1).argument,
       symbols,
-      seen
+      seen,
+      allowMemberReadMethods
     )
   );
 }
@@ -10628,7 +10994,14 @@ function failClosedPreflightHelperIsSafe(
   symbols
 ) {
   const body = preflightFunctionBody(definition);
-  if (body?.type !== "BlockStatement") return false;
+  if (
+    body?.type !== "BlockStatement" ||
+    (definition.params ?? []).some(
+      (parameter) => parameter?.type !== "Identifier"
+    )
+  ) {
+    return false;
+  }
   const statements = body.body ?? [];
   const ifIndexes = statements
     .map((statement, index) =>
@@ -10672,6 +11045,12 @@ function failClosedPreflightHelperIsSafe(
       guard.test,
       symbols,
       seen
+    ) &&
+    preflightExpressionHasRuntimeDependency(
+      guard.test,
+      symbols,
+      seen,
+      new Map()
     ) &&
     preflightThrowBranchIsSafe(
       guard.consequent,
@@ -11735,7 +12114,9 @@ function wrapperCausalProof(
     inspectedStates += 1;
     const analysis = directCallTargets(
       definition,
-      symbols.declarations
+      symbols.declarations,
+      symbols,
+      current.chain.length === 1
     );
     if (!analysis.reliable) {
       return {
@@ -12444,11 +12825,13 @@ function trustedWebWrapperForAssociation({
         .includes(consumer)
     ) ||
     !wrapperRequestsAreSelfConsistent(wrapper) ||
-    Object.values(manifest.blockers).some((group) =>
-      upstreamBlockerReferencesAssociation(
-        group,
-        association
-      )
+    Object.entries(manifest.blockers).some(
+      ([groupName, group]) =>
+        groupName !== "duplicateWriteWrappers" &&
+        upstreamBlockerReferencesAssociation(
+          group,
+          association
+        )
     )
   ) {
     return null;

@@ -51,6 +51,7 @@ type PaymentDetailLifecycleProjection = {
   lifecycleUpdatedAt: string | null;
   blockedReasons: string[];
   reviewApprovalContext: PaymentApprovalReviewContext | null;
+  executionContext: PaymentExecutionContext | null;
 };
 
 type PaymentLedgerView = "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended";
@@ -60,6 +61,10 @@ type PaymentApprovalReviewContext = {
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
+};
+
+type PaymentExecutionContext = {
+  expectedPaymentUpdatedAt: string;
 };
 
 type CurrentPaymentApprovalReview = {
@@ -221,12 +226,7 @@ export class PaymentReadService {
     const files = await client.fileObject.findMany({ where: { id: { in: fileIds } } });
     const fileById = new Map(files.map((file) => [file.id, file]));
     const userIds = Array.from(
-      new Set([
-        ...files.map((file) => file.uploadedByUserId),
-        ...voucherRows
-          .map((execution) => execution.executedByUserId)
-          .filter((id): id is string => Boolean(id))
-      ])
+      new Set(files.map((file) => file.uploadedByUserId))
     );
     const users = client.user && userIds.length
       ? await client.user.findMany({ where: { id: { in: userIds } } })
@@ -251,12 +251,8 @@ export class PaymentReadService {
             status: "uploaded",
             statusLabel: "已上传",
             uploadedByName:
-              (execution.executedByUserId
-                ? userById.get(execution.executedByUserId)?.name
-                : undefined) ??
-              userById.get(file.uploadedByUserId)?.name ??
-              "上传人未读取",
-            uploadedAt: execution.createdAt?.toISOString() ?? file.createdAt.toISOString(),
+              userById.get(file.uploadedByUserId)?.name ?? "上传人未读取",
+            uploadedAt: file.createdAt.toISOString(),
             confirmedByName: null,
             confirmedAt: null,
             canDownload: true,
@@ -1009,15 +1005,32 @@ export class PaymentReadService {
     const approvalReviewAccess = reviewApprovalContext
       ? currentApprovalReview.access
       : { ...currentApprovalReview.access, canReview: false };
+    const canRecordExecution =
+      (payment.status === "approved_pending_payment" ||
+        payment.status === "partially_paid") &&
+      !execution.complete
+        ? await this.isActiveCurrentProjectFinanceStaff(
+            actorUserId,
+            payment.projectId
+          )
+        : false;
     const availableActions = this.paymentActions(
       payment.status,
       roleKeys,
+      canRecordExecution,
       approvalReviewAccess,
       execution.complete,
       financeRecordedAmountCents,
       paidAmountCents,
       evidenceFiles
     );
+    const enabledExecutionActions = availableActions.filter(
+      (action) => action.key === "record_execution" && action.enabled
+    );
+    const executionContext =
+      enabledExecutionActions.length === 1 && payment.updatedAt instanceof Date
+        ? { expectedPaymentUpdatedAt: payment.updatedAt.toISOString() }
+        : null;
     if (
       returnedForRevision &&
       actorUserId &&
@@ -1186,6 +1199,7 @@ export class PaymentReadService {
       approvalTimeline,
       availableActions,
       reviewApprovalContext,
+      executionContext,
       lifecycleKind,
       ledgerView,
       nextStep,
@@ -1853,6 +1867,7 @@ export class PaymentReadService {
       approvalTimeline: [],
       availableActions: [],
       reviewApprovalContext: null,
+      executionContext: null,
       lifecycleKind: "formal_record",
       ledgerView: "formal_ledger",
       nextStep: "出纳付款登记",
@@ -1884,6 +1899,43 @@ export class PaymentReadService {
     }
 
     return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
+  }
+
+  private async isActiveCurrentProjectFinanceStaff(
+    actorUserId: string | undefined,
+    projectId: string
+  ): Promise<boolean> {
+    if (!actorUserId) return false;
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) return false;
+
+    const [projectPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionId: true }
+      }),
+      this.prisma.projectMember.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionKey: true }
+      })
+    ]);
+    if (projectMembers.some((member) => member.positionKey === "finance_staff")) {
+      return true;
+    }
+
+    const positionIds = [
+      ...new Set(projectPositions.map((position) => position.positionId))
+    ];
+    if (positionIds.length === 0) return false;
+    const positions = await this.prisma.position.findMany({
+      where: { id: { in: positionIds } },
+      select: { key: true }
+    });
+    return positions.some((position) => position.key === "finance_staff");
   }
 
   private async canReviewCurrentApproval(
@@ -2015,6 +2067,7 @@ export class PaymentReadService {
   private paymentActions(
     status: string,
     roleKeys: RoleKey[],
+    canRecordExecution: boolean,
     approvalReviewAccess: ApprovalReviewAccess,
     executionComplete: boolean,
     financeRecordedAmountCents: bigint,
@@ -2095,8 +2148,10 @@ export class PaymentReadService {
           kind: "primary",
           roleKeys,
           requiredAction: "payment.execution",
-          enabled: !executionComplete,
-          disabledReason: "付款已完成",
+          enabled: !executionComplete && canRecordExecution,
+          disabledReason: canRecordExecution
+            ? "付款已完成"
+            : "只有当前项目在职财务人员可以登记实际付款",
           requiresPassword: true,
           requiresFile: true
         })

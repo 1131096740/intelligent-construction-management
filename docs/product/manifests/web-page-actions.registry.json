@@ -438,24 +438,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestExecution"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentExecution"
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "paymentApprovalCapability.availableActions",
         "key": "record_execution"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "recordPaymentExecution"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "uploadPrivateFile"
+          "name": "recordPaymentExecutionWithUpload"
         }
       ]
     },

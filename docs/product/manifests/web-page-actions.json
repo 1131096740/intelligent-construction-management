@@ -17,13 +17,13 @@
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 904,
+    "templateEventDirectiveCount": 906,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 13,
-    "candidateProductionMutationConsumerCount": 39,
-    "acceptedProductionMutationConsumerCount": 13,
+    "coveredProductionMutationConsumerCount": 14,
+    "candidateProductionMutationConsumerCount": 38,
+    "acceptedProductionMutationConsumerCount": 14,
     "productionMutationConsumerPairCount": 274,
-    "blockerCount": 322
+    "blockerCount": 318
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -1432,58 +1432,61 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestExecution",
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentExecution",
         "kind": "event",
-        "sourceLine": 314,
-        "sourceColumn": 18
+        "sourceLine": 689,
+        "sourceColumn": 6
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "detail.availableActions",
+        "source": "paymentApprovalCapability.availableActions",
         "key": "record_execution",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordPaymentExecution",
-          "method": "POST",
-          "path": "/payments/:param/executions",
-          "normalizedKey": "POST /payments/:param/executions",
-          "bodyKind": "json",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "method": "GET",
+          "path": "/payments/:param",
+          "normalizedKey": "GET /payments/:param",
+          "bodyKind": "none",
           "nestRoute": {
-            "method": "POST",
-            "path": "/payments/:paymentId/executions",
-            "normalizedKey": "POST /payments/:param/executions",
+            "method": "GET",
+            "path": "/payments/:paymentId",
+            "normalizedKey": "GET /payments/:param",
             "controller": "PaymentController",
-            "handler": "recordExecution",
+            "handler": "detail",
             "sourceFile": "services/api/src/payment/payment.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "authenticated_only",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "payment.execution"
+            "requiredProjectAction": null
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "requestExecution"
+              "confirmPaymentExecution",
+              "recordPaymentExecutionWithUpload"
             ]
           },
           "ticketFollowups": []
         },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "uploadPrivateFile",
+          "wrapper": "recordPaymentExecutionWithUpload",
           "method": "POST",
           "path": "/files",
           "normalizedKey": "POST /files",
@@ -1505,11 +1508,50 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "requestExecution"
+              "confirmPaymentExecution",
+              "recordPaymentExecutionWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "method": "POST",
+          "path": "/payments/:param/executions",
+          "normalizedKey": "POST /payments/:param/executions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/executions",
+            "normalizedKey": "POST /payments/:param/executions",
+            "controller": "PaymentController",
+            "handler": "recordExecution",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.execution"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmPaymentExecution",
+              "recordPaymentExecutionWithUpload"
             ]
           },
           "ticketFollowups": []
@@ -3120,20 +3162,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "payment-execution.record",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecution"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "payment-execution.record",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "payment-request.create-local-form",
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -3267,12 +3295,6 @@
         "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
         "actionId": "contract-draft.preview-queue",
         "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "reason": "capability_not_dominating"
-      },
-      {
-        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
-        "actionId": "payment-execution.record",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "reason": "capability_not_dominating"
       },
       {
@@ -4762,15 +4784,6 @@
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /payments/:param/pdf-generation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecution",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/executions"
         ]
       },
       {

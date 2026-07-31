@@ -22,27 +22,27 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "548c28d8f61331eaf717227d710484532aecdc42dc66a069eec2ac2d20d4dd35",
+      "sha256": "87cea9929c2147382a747525c6742c7bd5dc1ae2aa7676420ab4296ad65f403d",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 385,
-        "transportWrapperCount": 381,
-        "pureExportCount": 4,
-        "mainRequestBindingCount": 385,
+        "exportedFunctionCount": 387,
+        "transportWrapperCount": 382,
+        "pureExportCount": 5,
+        "mainRequestBindingCount": 388,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 385,
+        "requestEdgeCount": 388,
         "productionConsumerCount": 336,
-        "orphanWrapperCount": 45,
-        "testOnlyWrapperCount": 43,
+        "orphanWrapperCount": 46,
+        "testOnlyWrapperCount": 44,
         "unreferencedWrapperCount": 2,
-        "duplicateNormalizedRouteGroupCount": 6,
+        "duplicateNormalizedRouteGroupCount": 8,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "dbab3d2cdc72afc0df7a4185b236c8b8efb9b42ccdae6fae36312eea26478f28",
+      "sha256": "baf7cf41e4fcb38100f8805c5c5f3f5008aab2f519915b11e946225ebd59e203",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 42,
@@ -53,18 +53,18 @@
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 904,
+        "templateEventDirectiveCount": 906,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 13,
-        "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 13,
+        "coveredProductionMutationConsumerCount": 14,
+        "candidateProductionMutationConsumerCount": 38,
+        "acceptedProductionMutationConsumerCount": 14,
         "productionMutationConsumerPairCount": 274,
-        "blockerCount": 322
+        "blockerCount": 318
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9f503a5d0d5ad7c051585b73586161fddacc2947416cfc334533a3a0e7c28f36",
+      "sha256": "5f586a7770a0f6b86648339b65893ef1c296f2bddc7067903e0f9aea003e4e7d",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,18 +99,18 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 385,
+    "mainRequestBindingCount": 388,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 45,
-    "duplicateMutationRouteCount": 4,
+    "orphanWrapperCount": 46,
+    "duplicateMutationRouteCount": 5,
     "registeredActionCount": 42,
-    "actionBindingCount": 50,
-    "acceptedActionBindingCount": 18,
-    "unresolvedActionBindingCount": 32,
+    "actionBindingCount": 51,
+    "acceptedActionBindingCount": 20,
+    "unresolvedActionBindingCount": 31,
     "productionMutationConsumerPairCount": 274,
-    "coveredProductionMutationConsumerPairCount": 13,
-    "uncoveredProductionMutationConsumerPairCount": 261,
+    "coveredProductionMutationConsumerPairCount": 14,
+    "uncoveredProductionMutationConsumerPairCount": 260,
     "blockerCount": 372
   },
   "blockers": {
@@ -296,6 +296,11 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "recordPaymentExecution",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordProjectAffiliateCompanyContract",
         "classification": "test_only"
       },
@@ -389,6 +394,23 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "submitContractApproval"
+          }
+        ]
+      },
+      {
+        "normalizedKey": "POST /files",
+        "wrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordPaymentExecutionWithUpload"
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadPrivateFile"
           }
         ]
       },
@@ -1598,14 +1620,6 @@
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/contract-takeovers/imports/preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecution",
-        "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/executions"
         ]
       },
       {
@@ -2940,29 +2954,12 @@
       {
         "actionId": "payment-execution.record",
         "bindingIndex": 0,
-        "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecution\u0000POST\u0000POST /payments/:param/executions\u00000",
+        "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000GET\u0000GET /payments/:param\u00000",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecution",
-        "normalizedKey": "POST /payments/:param/executions",
+        "wrapper": "recordPaymentExecutionWithUpload",
+        "normalizedKey": "GET /payments/:param",
         "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "payment-execution.record",
-        "bindingIndex": 1,
-        "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00001",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "normalizedKey": "POST /files",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
+          "binding_not_mutation"
         ]
       },
       {
@@ -5770,12 +5767,57 @@
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "method": "GET",
+          "path": "/payments/:param",
+          "normalizedKey": "GET /payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "payment-execution.record",
+          "bindingIndex": 0,
+          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000GET\u0000GET /payments/:param\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "paymentApprovalCapability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": [
+            "binding_not_mutation"
+          ]
+        }
+      ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": []
+      "blockerCodes": [
+        "ACTION_BINDING_UNRESOLVED"
+      ]
     },
     {
       "route": {
@@ -13697,6 +13739,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
           "method": "POST",
           "path": "/files",
@@ -13778,31 +13834,28 @@
         {
           "actionId": "payment-execution.record",
           "bindingIndex": 1,
-          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00001",
+          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000POST\u0000POST /files\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "detail.availableActions",
+            "source": "paymentApprovalCapability.availableActions",
             "key": "record_execution",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "uploadPrivateFile",
+          "wrapper": "recordPaymentExecutionWithUpload",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         },
         {
           "actionId": "settlement-import.preview-local-gate",
@@ -13837,6 +13890,7 @@
       "mutationCoverage": "uncovered",
       "blockerCodes": [
         "ACTION_BINDING_UNRESOLVED",
+        "DUPLICATE_MUTATION_ROUTE",
         "MUTATION_CONSUMER_UNCOVERED"
       ]
     },
@@ -14723,6 +14777,18 @@
           "path": "/payments/:param/executions",
           "normalizedKey": "POST /payments/:param/executions",
           "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "method": "POST",
+          "path": "/payments/:param/executions",
+          "normalizedKey": "POST /payments/:param/executions",
+          "bodyKind": "json",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
@@ -14735,38 +14801,34 @@
       "actions": [
         {
           "actionId": "payment-execution.record",
-          "bindingIndex": 0,
-          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecution\u0000POST\u0000POST /payments/:param/executions\u00000",
+          "bindingIndex": 2,
+          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000POST\u0000POST /payments/:param/executions\u00002",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
           "capability": {
             "kind": "detail_action",
-            "source": "detail.availableActions",
+            "source": "paymentApprovalCapability.availableActions",
             "key": "record_execution",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordPaymentExecution",
+          "wrapper": "recordPaymentExecutionWithUpload",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "covered",
       "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {

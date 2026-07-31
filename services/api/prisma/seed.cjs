@@ -1,6 +1,13 @@
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcryptjs");
-const { copyFile, mkdir, stat, writeFile } = require("fs/promises");
+const { createHash } = require("crypto");
+const {
+  copyFile,
+  mkdir,
+  readFile,
+  stat,
+  writeFile
+} = require("fs/promises");
 const { dirname, join } = require("path");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
 const {
@@ -12,6 +19,10 @@ const prisma = new PrismaClient();
 const seed = coreFlowSeedData;
 const testPassword = "Jgzg@2026";
 const seedAuthRuntime = resolveSeedAuthRuntime(process.env, testPassword);
+const seedPaymentFundingAllocationId =
+  "seed-project-funding-allocation-fk-2026-006-001";
+const seedPaymentExecutionAuditId =
+  "seed-audit-payment-execution-fk-2026-006-001";
 const positions = [
   ["chairman", "董事长"],
   ["general_manager", "总经理"],
@@ -198,14 +209,21 @@ async function copyPrivateSeedFile(file, sourcePath) {
   const targetPath = privateStoragePath(file.objectKey);
   await mkdir(dirname(targetPath), { recursive: true });
   await copyFile(sourcePath, targetPath);
-  return (await stat(targetPath)).size;
+  const buffer = await readFile(targetPath);
+  return {
+    sizeBytes: (await stat(targetPath)).size,
+    contentSha256: createHash("sha256").update(buffer).digest("hex")
+  };
 }
 
 async function writePrivateSeedFile(file, buffer) {
   const targetPath = privateStoragePath(file.objectKey);
   await mkdir(dirname(targetPath), { recursive: true });
   await writeFile(targetPath, buffer);
-  return buffer.length;
+  return {
+    sizeBytes: buffer.length,
+    contentSha256: createHash("sha256").update(buffer).digest("hex")
+  };
 }
 
 function minimalPreviewPdf() {
@@ -228,7 +246,7 @@ function minimalPreviewPdf() {
   return Buffer.from(body);
 }
 
-async function upsertSeedFile(file, uploadedByUserId, sizeBytes) {
+async function upsertSeedFile(file, uploadedByUserId, artifact) {
   await prisma.fileObject.upsert({
     where: { id: file.id },
     update: {
@@ -236,8 +254,10 @@ async function upsertSeedFile(file, uploadedByUserId, sizeBytes) {
       objectKey: file.objectKey,
       originalName: file.originalName,
       mimeType: file.mimeType,
-      sizeBytes,
-      uploadedByUserId
+      sizeBytes: artifact.sizeBytes,
+      uploadedByUserId,
+      contentSha256: artifact.contentSha256,
+      storageStatus: "active"
     },
     create: {
       id: file.id,
@@ -245,9 +265,272 @@ async function upsertSeedFile(file, uploadedByUserId, sizeBytes) {
       objectKey: file.objectKey,
       originalName: file.originalName,
       mimeType: file.mimeType,
-      sizeBytes,
-      uploadedByUserId
+      sizeBytes: artifact.sizeBytes,
+      uploadedByUserId,
+      contentSha256: artifact.contentSha256,
+      storageStatus: "active"
     }
+  });
+}
+
+function canonicalSeedFact(value) {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(canonicalSeedFact);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalSeedFact(value[key])])
+    );
+  }
+  return value;
+}
+
+function assertExactSeedFacts(label, actual, expected) {
+  if (
+    JSON.stringify(canonicalSeedFact(actual)) !==
+    JSON.stringify(canonicalSeedFact(expected))
+  ) {
+    throw new Error(`${label} exists with different seed facts`);
+  }
+}
+
+function assertExactPaymentExecutionFacts(actual, expected) {
+  assertExactSeedFacts("PaymentExecution", actual, expected);
+}
+
+function assertExactProjectFundingAllocationFacts(actual, expected) {
+  assertExactSeedFacts("ProjectFundingAllocation", actual, expected);
+}
+
+function assertExactPaymentExecutionAuditFacts(actual, expected) {
+  assertExactSeedFacts("payment.execution.record AuditLog", actual, expected);
+}
+
+async function assertSeedProjectCashAvailable(tx, amountCents) {
+  const [receipts, allocations] = await Promise.all([
+    tx.projectReceipt.aggregate({
+      where: {
+        projectId: seed.project.id,
+        voidedAt: null,
+        sourceType: { in: ["general_contractor_payment", "other"] }
+      },
+      _sum: { amountCents: true }
+    }),
+    tx.projectFundingAllocation.findMany({
+      where: {
+        projectId: seed.project.id,
+        sourceKey: "project_cash"
+      },
+      select: { direction: true, amountCents: true }
+    })
+  ]);
+  const receivedCents = receipts._sum.amountCents ?? 0n;
+  const usedCents = allocations.reduce(
+    (total, allocation) =>
+      total +
+      (allocation.direction === "credit"
+        ? -allocation.amountCents
+        : allocation.amountCents),
+    0n
+  );
+  if (receivedCents - usedCents < amountCents) {
+    throw new Error("Seed project cash is insufficient for PaymentExecution");
+  }
+}
+
+async function seedPaymentExecutionClosedLoop() {
+  const amountCents = BigInt(seed.paymentExecution.amountCents);
+  const expectedExecution = {
+    id: seed.paymentExecution.id,
+    idempotencyKey: seed.paymentExecution.idempotencyKey,
+    paymentRequestId: seed.paymentRequest.id,
+    settlementId: seed.settlement.id,
+    paymentSubjectType: seed.paymentExecution.paymentSubjectType,
+    companyEntityIdSnapshot: seed.paymentExecution.companyEntityIdSnapshot,
+    companyEntityNameSnapshot: seed.paymentExecution.companyEntityNameSnapshot,
+    companyEntityCreditCodeSnapshot:
+      seed.paymentExecution.companyEntityCreditCodeSnapshot,
+    amountCents,
+    paidAt: seed.paymentExecution.paidAt,
+    executedByUserId: seed.users.cashier.id,
+    voucherFileId: seed.voucherFile.id
+  };
+  const expectedFundingAllocation = {
+    id: seedPaymentFundingAllocationId,
+    projectId: seed.project.id,
+    executionType: "payment_execution",
+    executionId: seed.paymentExecution.id,
+    businessType: "payment_request",
+    businessId: seed.paymentRequest.id,
+    sourceType: "project_cash",
+    sourceKey: "project_cash",
+    sourceId: null,
+    direction: "debit",
+    amountCents,
+    occurredAt: seed.paymentExecution.paidAt,
+    createdByUserId: seed.users.cashier.id,
+    reversalOfAllocationId: null,
+    reversalKey: "original",
+    reason: null
+  };
+  const expectedAuditLog = {
+    id: seedPaymentExecutionAuditId,
+    actorUserId: seed.users.cashier.id,
+    action: "payment.execution.record",
+    businessType: "payment_request",
+    businessId: seed.paymentRequest.id,
+    ipAddress: null,
+    userAgent: null,
+    metadata: {
+      code: seed.paymentRequest.code,
+      projectId: seed.project.id,
+      executionId: seed.paymentExecution.id,
+      amountCents: amountCents.toString(),
+      paidAt: seed.paymentExecution.paidAt.toISOString(),
+      voucherFileId: seed.voucherFile.id,
+      idempotencyKey: seed.paymentExecution.idempotencyKey,
+      payer: {
+        paymentSubjectType: seed.paymentExecution.paymentSubjectType,
+        companyEntityIdSnapshot: seed.paymentExecution.companyEntityIdSnapshot,
+        companyEntityNameSnapshot:
+          seed.paymentExecution.companyEntityNameSnapshot,
+        companyEntityCreditCodeSnapshot:
+          seed.paymentExecution.companyEntityCreditCodeSnapshot
+      },
+      funding: {
+        kind: "allocated",
+        projectCashAmountCents: amountCents.toString(),
+        financingQuotaAmountCents: "0",
+        allocations: [
+          {
+            sourceType: "project_cash",
+            sourceId: null,
+            amountCents: amountCents.toString()
+          }
+        ]
+      },
+      fromStatus: "approved_pending_payment",
+      toStatus: seed.paymentRequest.status
+    }
+  };
+
+  await prisma.$transaction(async (tx) => {
+    const voucher = await tx.fileObject.findUnique({
+      where: { id: seed.voucherFile.id },
+      select: {
+        id: true,
+        uploadedByUserId: true,
+        storageStatus: true
+      }
+    });
+    assertExactSeedFacts("PaymentExecution voucher", voucher, {
+      id: seed.voucherFile.id,
+      uploadedByUserId: seed.users.cashier.id,
+      storageStatus: "active"
+    });
+
+    const paymentExecutionSelect = {
+      id: true,
+      idempotencyKey: true,
+      paymentRequestId: true,
+      settlementId: true,
+      paymentSubjectType: true,
+      companyEntityIdSnapshot: true,
+      companyEntityNameSnapshot: true,
+      companyEntityCreditCodeSnapshot: true,
+      amountCents: true,
+      paidAt: true,
+      executedByUserId: true,
+      voucherFileId: true
+    };
+    const executions = await tx.paymentExecution.findMany({
+      where: {
+        OR: [
+          { id: seed.paymentExecution.id },
+          { idempotencyKey: seed.paymentExecution.idempotencyKey },
+          { voucherFileId: seed.voucherFile.id }
+        ]
+      },
+      select: paymentExecutionSelect
+    });
+    if (executions.length > 1) {
+      throw new Error("PaymentExecution seed identities resolve to multiple rows");
+    }
+    const execution =
+      executions[0] ??
+      (await tx.paymentExecution.create({
+        data: expectedExecution,
+        select: paymentExecutionSelect
+      }));
+    assertExactPaymentExecutionFacts(execution, expectedExecution);
+
+    const fundingAllocationSelect = {
+      id: true,
+      projectId: true,
+      executionType: true,
+      executionId: true,
+      businessType: true,
+      businessId: true,
+      sourceType: true,
+      sourceKey: true,
+      sourceId: true,
+      direction: true,
+      amountCents: true,
+      occurredAt: true,
+      createdByUserId: true,
+      reversalOfAllocationId: true,
+      reversalKey: true,
+      reason: true
+    };
+    const fundingAllocations = await tx.projectFundingAllocation.findMany({
+      where: {
+        executionType: "payment_execution",
+        executionId: seed.paymentExecution.id
+      },
+      select: fundingAllocationSelect
+    });
+    if (fundingAllocations.length > 1) {
+      throw new Error(
+        "PaymentExecution seed resolves to multiple funding allocations"
+      );
+    }
+    if (!fundingAllocations.length) {
+      await assertSeedProjectCashAvailable(tx, amountCents);
+    }
+    const fundingAllocation =
+      fundingAllocations[0] ??
+      (await tx.projectFundingAllocation.create({
+        data: expectedFundingAllocation,
+        select: fundingAllocationSelect
+      }));
+    assertExactProjectFundingAllocationFacts(
+      fundingAllocation,
+      expectedFundingAllocation
+    );
+
+    const auditLogSelect = {
+      id: true,
+      actorUserId: true,
+      action: true,
+      businessType: true,
+      businessId: true,
+      ipAddress: true,
+      userAgent: true,
+      metadata: true
+    };
+    const existingAuditLog = await tx.auditLog.findUnique({
+      where: { id: seedPaymentExecutionAuditId },
+      select: auditLogSelect
+    });
+    const auditLog =
+      existingAuditLog ??
+      (await tx.auditLog.create({
+        data: expectedAuditLog,
+        select: auditLogSelect
+      }));
+    assertExactPaymentExecutionAuditFacts(auditLog, expectedAuditLog);
   });
 }
 
@@ -502,6 +785,9 @@ async function main() {
       paymentTermsSummary: seed.ownerContract.paymentTermsSummary,
       retentionSummary: seed.ownerContract.retentionSummary,
       fileId: seed.ownerContractFile.id,
+      documentVersion: seed.ownerContract.documentVersion,
+      fileContentSha256Snapshot:
+        ownerContractFileSize.contentSha256,
       recordedByUserId: seed.users.contractStaff.id,
       confirmedByUserId: "seed-user-contract-director",
       confirmedAt: seed.ownerContract.confirmedAt,
@@ -523,6 +809,9 @@ async function main() {
       paymentTermsSummary: seed.ownerContract.paymentTermsSummary,
       retentionSummary: seed.ownerContract.retentionSummary,
       fileId: seed.ownerContractFile.id,
+      documentVersion: seed.ownerContract.documentVersion,
+      fileContentSha256Snapshot:
+        ownerContractFileSize.contentSha256,
       recordedByUserId: seed.users.contractStaff.id,
       confirmedByUserId: "seed-user-contract-director",
       confirmedAt: seed.ownerContract.confirmedAt,
@@ -551,7 +840,16 @@ async function main() {
       isFinal: seed.upstreamSettlement.isFinal,
       description: seed.upstreamSettlement.description,
       voucherFileId: seed.upstreamSettlementFile.id,
+      documentVersion: seed.upstreamSettlement.documentVersion,
+      fileContentSha256Snapshot:
+        upstreamSettlementFileSize.contentSha256,
       recordedByUserId: "seed-user-budget-staff",
+      status: seed.upstreamSettlement.status,
+      confirmedByUserId: null,
+      confirmedAt: null,
+      confirmationSignatureVersionId: null,
+      confirmationSignatureFileId: null,
+      confirmationSignatureSha256: null,
       voidedAt: null,
       voidedByUserId: null,
       voidReason: null
@@ -567,7 +865,11 @@ async function main() {
       isFinal: seed.upstreamSettlement.isFinal,
       description: seed.upstreamSettlement.description,
       voucherFileId: seed.upstreamSettlementFile.id,
-      recordedByUserId: "seed-user-budget-staff"
+      documentVersion: seed.upstreamSettlement.documentVersion,
+      fileContentSha256Snapshot:
+        upstreamSettlementFileSize.contentSha256,
+      recordedByUserId: "seed-user-budget-staff",
+      status: seed.upstreamSettlement.status
     }
   });
 
@@ -604,19 +906,69 @@ async function main() {
     }
   });
 
+  await prisma.companyEntity.upsert({
+    where: { id: seed.companyEntity.id },
+    update: {
+      name: seed.companyEntity.name,
+      unifiedSocialCreditCode: seed.companyEntity.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntity.registeredAddress,
+      dataStatus: seed.companyEntity.dataStatus,
+      currentVersionNo: seed.companyEntity.currentVersionNo,
+      isActive: seed.companyEntity.isActive
+    },
+    create: {
+      id: seed.companyEntity.id,
+      name: seed.companyEntity.name,
+      unifiedSocialCreditCode: seed.companyEntity.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntity.registeredAddress,
+      dataStatus: seed.companyEntity.dataStatus,
+      currentVersionNo: seed.companyEntity.currentVersionNo,
+      isActive: seed.companyEntity.isActive
+    }
+  });
+
+  await prisma.companyEntityVersion.upsert({
+    where: { id: seed.companyEntityVersion.id },
+    update: {
+      companyEntityId: seed.companyEntityVersion.companyEntityId,
+      versionNo: seed.companyEntityVersion.versionNo,
+      name: seed.companyEntityVersion.name,
+      unifiedSocialCreditCode:
+        seed.companyEntityVersion.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntityVersion.registeredAddress,
+      isActive: seed.companyEntityVersion.isActive,
+      action: seed.companyEntityVersion.action
+    },
+    create: {
+      id: seed.companyEntityVersion.id,
+      companyEntityId: seed.companyEntityVersion.companyEntityId,
+      versionNo: seed.companyEntityVersion.versionNo,
+      name: seed.companyEntityVersion.name,
+      unifiedSocialCreditCode:
+        seed.companyEntityVersion.unifiedSocialCreditCode,
+      registeredAddress: seed.companyEntityVersion.registeredAddress,
+      isActive: seed.companyEntityVersion.isActive,
+      action: seed.companyEntityVersion.action
+    }
+  });
+
   await prisma.contract.upsert({
     where: { code: seed.contract.code },
     update: {
       projectId: seed.project.id,
       name: seed.contract.name,
-      counterparty: seed.contract.counterparty
+      counterparty: seed.contract.counterparty,
+      companyEntityId: seed.companyEntity.id,
+      companyEntityName: seed.companyEntity.name
     },
     create: {
       id: seed.contract.id,
       projectId: seed.project.id,
       code: seed.contract.code,
       name: seed.contract.name,
-      counterparty: seed.contract.counterparty
+      counterparty: seed.contract.counterparty,
+      companyEntityId: seed.companyEntity.id,
+      companyEntityName: seed.companyEntity.name
     }
   });
 
@@ -626,6 +978,16 @@ async function main() {
       status: seed.contractVersion.status,
       amountCents: BigInt(seed.contractVersion.amountCents),
       effectiveAt: seed.contractVersion.effectiveAt,
+      signingSubjectType: seed.contractVersion.signingSubjectType,
+      companyEntityIdSnapshot:
+        seed.contractVersion.companyEntityIdSnapshot,
+      companyEntityVersionId: seed.contractVersion.companyEntityVersionId,
+      companyEntityNameSnapshot:
+        seed.contractVersion.companyEntityNameSnapshot,
+      companyEntityCreditCodeSnapshot:
+        seed.contractVersion.companyEntityCreditCodeSnapshot,
+      companyEntityRegisteredAddressSnapshot:
+        seed.contractVersion.companyEntityRegisteredAddressSnapshot,
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: []
@@ -638,6 +1000,16 @@ async function main() {
       status: seed.contractVersion.status,
       amountCents: BigInt(seed.contractVersion.amountCents),
       effectiveAt: seed.contractVersion.effectiveAt,
+      signingSubjectType: seed.contractVersion.signingSubjectType,
+      companyEntityIdSnapshot:
+        seed.contractVersion.companyEntityIdSnapshot,
+      companyEntityVersionId: seed.contractVersion.companyEntityVersionId,
+      companyEntityNameSnapshot:
+        seed.contractVersion.companyEntityNameSnapshot,
+      companyEntityCreditCodeSnapshot:
+        seed.contractVersion.companyEntityCreditCodeSnapshot,
+      companyEntityRegisteredAddressSnapshot:
+        seed.contractVersion.companyEntityRegisteredAddressSnapshot,
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: []
@@ -728,6 +1100,7 @@ async function main() {
       requestedAmountCents: seed.paymentRequest.requestedAmountCents,
       approvedAmountCents: seed.paymentRequest.approvedAmountCents,
       paidAmountCents: seed.paymentRequest.paidAmountCents,
+      paymentSubjectType: seed.paymentExecution.paymentSubjectType,
       dueDate: seed.paymentRequest.dueDate
     },
     create: {
@@ -742,6 +1115,7 @@ async function main() {
       requestedAmountCents: seed.paymentRequest.requestedAmountCents,
       approvedAmountCents: seed.paymentRequest.approvedAmountCents,
       paidAmountCents: seed.paymentRequest.paidAmountCents,
+      paymentSubjectType: seed.paymentExecution.paymentSubjectType,
       dueDate: seed.paymentRequest.dueDate
     }
   });
@@ -753,7 +1127,9 @@ async function main() {
       objectKey: seed.voucherFile.objectKey,
       originalName: seed.voucherFile.originalName,
       mimeType: seed.voucherFile.mimeType,
-      sizeBytes: seed.voucherFile.sizeBytes
+      sizeBytes: seed.voucherFile.sizeBytes,
+      uploadedByUserId: seed.users.cashier.id,
+      storageStatus: "active"
     },
     create: {
       id: seed.voucherFile.id,
@@ -762,27 +1138,12 @@ async function main() {
       originalName: seed.voucherFile.originalName,
       mimeType: seed.voucherFile.mimeType,
       sizeBytes: seed.voucherFile.sizeBytes,
-      uploadedByUserId: seed.users.cashier.id
+      uploadedByUserId: seed.users.cashier.id,
+      storageStatus: "active"
     }
   });
 
-  await prisma.paymentExecution.upsert({
-    where: { id: seed.paymentExecution.id },
-    update: {
-      amountCents: seed.paymentExecution.amountCents,
-      paidAt: seed.paymentExecution.paidAt,
-      voucherFileId: seed.voucherFile.id
-    },
-    create: {
-      id: seed.paymentExecution.id,
-      paymentRequestId: seed.paymentRequest.id,
-      settlementId: seed.settlement.id,
-      amountCents: seed.paymentExecution.amountCents,
-      paidAt: seed.paymentExecution.paidAt,
-      executedByUserId: seed.users.cashier.id,
-      voucherFileId: seed.voucherFile.id
-    }
-  });
+  await seedPaymentExecutionClosedLoop();
 
   const accountSummary = authSeedUsers
     .map((user) => `${user.positionKey}:${user.phone}`)
