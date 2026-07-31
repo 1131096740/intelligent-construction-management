@@ -1533,3 +1533,248 @@ test("P0 项目支出实付在 Chromium 桌面与 WebKit 390 只提交一个原�
   expect(browserErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+test("P0 项目支出财务入账在 Chromium 桌面与 WebKit 390 只提交一个单调事实", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const financeBodies: Record<string, unknown>[] = [];
+  let financed = false;
+  let releaseFinancePost!: () => void;
+  const financePostGate = new Promise<void>((resolve) => {
+    releaseFinancePost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const detail = () => {
+    const expectedExpenseUpdatedAt = financed
+      ? "2026-07-31T12:00:02.000Z"
+      : "2026-07-31T12:00:00.000Z";
+    return {
+      id: "expense-finance",
+      projectId: "project-1",
+      code: "ZC-FINANCE-001",
+      title: "ZC-FINANCE-001 · 项目支出财务入账",
+      status: "paid",
+      statusLabel: "已付清",
+      expenseTypeLabel: "零星付款",
+      expenseSubtypeLabel: "其他",
+      paymentSubject: "项目现场支出",
+      reason: "现场临时费用",
+      requestedAmountCents: "50000",
+      approvedAmountCents: "50000",
+      paidAmountCents: "50000",
+      remainingAmountCents: "0",
+      financeRecordedAmountCents: financed ? "50000" : "20000",
+      financeRemainingAmountCents: financed ? "0" : "30000",
+      currentNodeName: null,
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+      hasPersistentDraft: false,
+      withdrawalContext: null,
+      reviewApprovalContext: null,
+      executionContext: null,
+      financeContext: financed
+        ? null
+        : { expectedExpenseUpdatedAt },
+      availableActions: financed
+        ? []
+        : [{
+            key: "record_finance",
+            label: "财务入账",
+            kind: "primary",
+            enabled: true,
+            disabledReason: null,
+            requiredAction: "project_expense.finance_record",
+            requiresPassword: true
+          }],
+      blockedReasons: financed ? ["项目支出已全部入账"] : [],
+      canSetApprovedAmount: false,
+      reviewAction: {
+        key: "review",
+        label: "审批",
+        kind: "primary",
+        enabled: false,
+        disabledReason: "当前项目支出状态不可审批",
+        requiresSelfReviewConfirmation: false
+      },
+      approvalTimeline: []
+    };
+  };
+
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-finance/approval-detail",
+    (route) => {
+      requestOrder.push("GET /approval-detail");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-finance/finance-records",
+    async (route) => {
+      requestOrder.push("POST /finance-records");
+      const body =
+        route.request().postDataJSON() as Record<string, unknown>;
+      financeBodies.push(body);
+      await financePostGate;
+      financed = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "project-expense-finance-p0",
+          idempotencyKey: body.idempotencyKey,
+          projectId: "project-1",
+          projectExpenseRequestId: "expense-finance",
+          paymentRequestId: null,
+          settlementId: null,
+          direction: "outflow",
+          amountCents: body.amountCents,
+          occurredAt: body.occurredAt,
+          createdByUserId: "draft-governance-user"
+        })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-finance");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const financeCard = page
+    .locator(".section-card")
+    .filter({
+      has: page.getByRole("button", {
+        name: "确认财务入账",
+        exact: true
+      })
+    });
+  await expect(financeCard).toBeVisible();
+  await financeCard.locator(".money-input input").fill("300.00");
+  const occurredAt = financeCard.locator(".t-date-picker input");
+  const occurredAtInput = await occurredAt.inputValue();
+  expect(occurredAtInput).not.toBe("");
+  await financeCard
+    .getByRole("button", { name: "确认财务入账", exact: true })
+    .click();
+
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "确认项目支出财务入账？" });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByPlaceholder("用于确认当前操作者身份")
+    .fill("Draft@2026");
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-finance-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: "确认财务入账",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => financeBodies).toHaveLength(1);
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true })
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseFinancePost();
+
+  await expect(
+    page.getByText(
+      "项目支出财务入账已登记，权威详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".summary-grid > div")
+      .filter({ hasText: "已入账金额" })
+  ).toContainText("¥500.00");
+  await expect(
+    page
+      .locator(".summary-grid > div")
+      .filter({ hasText: "待入账金额" })
+  ).toContainText("¥0.00");
+  await expect(financeCard).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET /approval-detail",
+    "GET /approval-detail",
+    "POST /finance-records",
+    "GET /approval-detail",
+    "GET /approval-detail"
+  ]);
+  expect(financeBodies).toHaveLength(1);
+  expect(financeBodies[0]?.idempotencyKey).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+  );
+  const submittedOccurredAt = financeBodies[0]?.occurredAt;
+  expect(submittedOccurredAt).toEqual(expect.any(String));
+  expect(
+    await page.evaluate((value) => {
+      const date = new Date(value);
+      const pad = (part: number) => String(part).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }, submittedOccurredAt as string)
+  ).toBe(occurredAtInput);
+  expect(financeBodies).toEqual([{
+    amountCents: "30000",
+    occurredAt: submittedOccurredAt,
+    confirmationPassword: "Draft@2026",
+    expectedExpenseUpdatedAt:
+      "2026-07-31T12:00:00.000Z",
+    idempotencyKey: financeBodies[0]?.idempotencyKey
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});

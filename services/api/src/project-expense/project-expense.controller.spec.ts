@@ -391,7 +391,15 @@ describe("ProjectExpenseController authorization wiring", () => {
     ],
     [
       "recordFinance",
-      { amountCents: "10000", occurredAt: "2026-07-11", confirmationPassword: "current-password" }
+      {
+        expectedExpenseUpdatedAt:
+          "2026-07-11T09:59:59.000Z",
+        idempotencyKey:
+          "6e8fab4b-9e90-4fba-a59d-320cd24cc427",
+        amountCents: "10000",
+        occurredAt: "2026-07-11",
+        confirmationPassword: "current-password"
+      }
     ],
     ["confirmPurchaseReceipt", { confirmationPassword: "current-password", note: "数量无误" }]
   ] as const)("accepts a valid %s body through its runtime DTO", async (method, value) => {

@@ -1113,7 +1113,9 @@ describe("core flow read API client", () => {
     await recordProjectExpenseFinance("project-1", "expense-1", {
       amountCents: "80000",
       occurredAt: "2026-07-02T11:00:00.000Z",
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      expectedExpenseUpdatedAt: "2026-07-02T10:59:00.000Z",
+      idempotencyKey: "7b21c94f-4f2b-4d15-8b77-c4f145526dcb"
     });
     await confirmProjectExpenseReceipt("project-1", "expense-1", {
       confirmationPassword: "current-password",
@@ -1178,7 +1180,9 @@ describe("core flow read API client", () => {
       JSON.stringify({
         amountCents: "80000",
         occurredAt: "2026-07-02T11:00:00.000Z",
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        expectedExpenseUpdatedAt: "2026-07-02T10:59:00.000Z",
+        idempotencyKey: "7b21c94f-4f2b-4d15-8b77-c4f145526dcb"
       })
     );
     expect(fetchMock.mock.calls[5][1]?.body).toBe(

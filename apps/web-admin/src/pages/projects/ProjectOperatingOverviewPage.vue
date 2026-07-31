@@ -697,29 +697,6 @@
                   >
                 </label>
                 <label>
-                  <span>入账日期</span>
-                  <input
-                    v-model="expenseActionForm.financeOccurredAt"
-                    type="date"
-                  >
-                </label>
-                <label>
-                  <span>入账金额(元)</span>
-                  <input
-                    v-model.trim="expenseActionForm.financeAmountYuan"
-                    inputmode="decimal"
-                    placeholder="0.00"
-                  >
-                </label>
-                <label>
-                  <span>入账确认密码</span>
-                  <input
-                    v-model="expenseActionForm.financePassword"
-                    type="password"
-                    autocomplete="current-password"
-                  >
-                </label>
-                <label>
                   <span>收货确认备注</span>
                   <input v-model.trim="expenseActionForm.receiptConfirmationNote">
                 </label>
@@ -734,7 +711,7 @@
               </div>
               <div class="expense-action-buttons">
                 <button
-                  v-if="['approval_pending', 'approved_pending_payment', 'partially_paid'].includes(selectedExpenseRow.status)"
+                  v-if="['approval_pending', 'approved_pending_payment', 'partially_paid', 'paid', 'payment_blocked'].includes(selectedExpenseRow.status)"
                   type="button"
                   class="secondary-button"
                   @click="openExpenseApprovalDetail(selectedExpenseRow)"
@@ -748,14 +725,6 @@
                   @click="submitExpensePurchaseExecution"
                 >
                   登记采购执行
-                </button>
-                <button
-                  v-if="canRecordExpenseFinance(selectedExpenseRow)"
-                  type="button"
-                  :disabled="expenseActionBusy !== ''"
-                  @click="submitExpenseFinance"
-                >
-                  财务入账
                 </button>
                 <button
                   v-if="canConfirmExpenseReceipt(selectedExpenseRow)"
@@ -843,7 +812,6 @@ import {
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
   fetchProjects,
-  recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
   recordProjectUpstreamFundFact,
   uploadPrivateFile,
@@ -927,9 +895,6 @@ interface ProjectExpenseActionFormState {
   purchaseExecutedAt: string;
   purchaseExecutionNote: string;
   purchaseExecutionPassword: string;
-  financeAmountYuan: string;
-  financeOccurredAt: string;
-  financePassword: string;
   receiptConfirmationNote: string;
   receiptConfirmationPassword: string;
   downloadPassword: string;
@@ -1682,9 +1647,6 @@ function createProjectExpenseActionForm(): ProjectExpenseActionFormState {
     purchaseExecutedAt: todayText(),
     purchaseExecutionNote: "",
     purchaseExecutionPassword: "",
-    financeAmountYuan: "",
-    financeOccurredAt: todayText(),
-    financePassword: "",
     receiptConfirmationNote: "",
     receiptConfirmationPassword: "",
     downloadPassword: ""
@@ -1736,10 +1698,6 @@ function expenseStatusLabel(status: string) {
 
 function canRecordPurchaseExecution(row: ProjectExpenseRow) {
   return row.expenseType === "spot_purchase" && row.status === "approved_pending_payment" && !row.isPurchaseExecuted;
-}
-
-function canRecordExpenseFinance(row: ProjectExpenseRow) {
-  return ["partially_paid", "paid", "payment_blocked"].includes(row.status);
 }
 
 function canConfirmExpenseReceipt(row: ProjectExpenseRow) {
@@ -1825,17 +1783,6 @@ async function submitExpensePurchaseExecution() {
       executedAt: requiredText(form.purchaseExecutedAt, "采购执行日期"),
       note: form.purchaseExecutionNote.trim() || undefined,
       confirmationPassword: requiredText(form.purchaseExecutionPassword, "采购执行确认密码")
-    });
-  });
-}
-
-async function submitExpenseFinance() {
-  await runExpenseAction("finance", async (row) => {
-    const form = expenseActionForm.value;
-    await recordProjectExpenseFinance(selectedProjectId.value, row.id, {
-      amountCents: parseYuanToCents(form.financeAmountYuan, "入账金额"),
-      occurredAt: requiredText(form.financeOccurredAt, "入账日期"),
-      confirmationPassword: requiredText(form.financePassword, "入账确认密码")
     });
   });
 }

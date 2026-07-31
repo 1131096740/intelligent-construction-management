@@ -6,7 +6,8 @@ import {
   HttpException,
   Injectable,
   NotFoundException,
-  Optional
+  Optional,
+  ServiceUnavailableException
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
@@ -128,6 +129,19 @@ interface ProjectExpenseExecutionFactRow {
   paidAt: Date;
   executedByUserId: string;
   voucherFileId: string;
+}
+
+interface ProjectExpenseFinanceFactRow {
+  id: string;
+  idempotencyKey: string | null;
+  projectId: string;
+  projectExpenseRequestId: string | null;
+  paymentRequestId: string | null;
+  settlementId: string | null;
+  direction: string;
+  amountCents: bigint;
+  occurredAt: Date;
+  createdByUserId: string;
 }
 
 interface ApprovalInstanceLockRow {
@@ -439,7 +453,7 @@ export class ProjectExpenseService {
       throw new NotFoundException("项目支出申请不存在");
     }
 
-    const [actorRoleKeys, instances, executionRoleAccess] = await Promise.all([
+    const [actorRoleKeys, instances, financeRoleAccess] = await Promise.all([
       this.loadActorRoleKeys(this.prisma, actorUserId, projectId),
       expense.status === "approval_pending"
         ? this.prisma.approvalInstance.findMany({
@@ -461,7 +475,7 @@ export class ProjectExpenseService {
           }
         })
         : Promise.resolve([]),
-      this.currentProjectExpenseFinanceStaffAccess(
+      this.currentProjectExpenseFinanceRoleAccess(
         this.prisma,
         actorUserId,
         projectId
@@ -479,8 +493,8 @@ export class ProjectExpenseService {
       actorRoleKeys
     );
     const canExecuteExpense =
-      executionRoleAccess.actorActive &&
-      executionRoleAccess.hasProjectFinanceRole;
+      financeRoleAccess.actorActive &&
+      financeRoleAccess.canRecordExecution;
     if (
       !isExpenseApplicant &&
       !canPerform("project_expense.approve", actorRoleKeys) &&
@@ -489,6 +503,28 @@ export class ProjectExpenseService {
     ) {
       throw new ForbiddenException("无权查看该项目支出审批详情");
     }
+    const paidAmountCents = expense.paidAmountCents ?? 0n;
+    const financeRecords =
+      paidAmountCents > 0n
+        ? await this.prisma.financeRecord.findMany({
+            where: {
+              projectExpenseRequestId: expense.id,
+              direction: "outflow"
+            },
+            select: { amountCents: true }
+          })
+        : [];
+    const financeRecordedAmountCents = sumDbMoneyToBigInt(
+      financeRecords.map((record) => record.amountCents),
+      "项目支出财务入账金额"
+    );
+    if (financeRecordedAmountCents > paidAmountCents) {
+      throw new ConflictException(
+        "项目支出财务入账事实超过实付金额，请联系管理员核对"
+      );
+    }
+    const financeRemainingAmountCents =
+      paidAmountCents - financeRecordedAmountCents;
     const usedFinancingUsage =
       expense.status === "approval_pending" && isExpenseApplicant
         ? await this.prisma.projectExpenseFinancingQuotaUsage.findFirst({
@@ -531,7 +567,6 @@ export class ProjectExpenseService {
             expectedApprovalUpdatedAt: instance.updatedAt.toISOString()
           }
         : null;
-    const paidAmountCents = expense.paidAmountCents ?? 0n;
     const approvedAmountCents = expense.approvedAmountCents;
     const remainingAmountCents =
       approvedAmountCents !== null && approvedAmountCents > paidAmountCents
@@ -546,6 +581,18 @@ export class ProjectExpenseService {
         expense.purchaseExecutedAt instanceof Date) &&
       expense.updatedAt instanceof Date;
     const executionContext = executionEnabled
+      ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
+      : null;
+    const financeEnabled =
+      financeRoleAccess.actorActive &&
+      financeRoleAccess.canRecordFinance &&
+      ["partially_paid", "paid", "payment_blocked"].includes(
+        expense.status
+      ) &&
+      paidAmountCents > 0n &&
+      financeRemainingAmountCents > 0n &&
+      expense.updatedAt instanceof Date;
+    const financeContext = financeEnabled
       ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
       : null;
     const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
@@ -576,6 +623,20 @@ export class ProjectExpenseService {
           roleKeys: actorRoleKeys,
           requiredAction: "project_expense.execution",
           enabled: true
+        })
+      );
+    }
+    if (financeEnabled) {
+      availableActions.push(
+        detailAction({
+          key: "record_finance",
+          label: "财务入账",
+          kind: "primary",
+          roleKeys: actorRoleKeys,
+          requiredAction: "project_expense.finance_record",
+          enabled: true,
+          requiresPassword: true,
+          skipRoleCheck: true
         })
       );
     }
@@ -657,6 +718,12 @@ export class ProjectExpenseService {
         expense.approvedAmountCents === null ? null : moneyCentsToApi(expense.approvedAmountCents),
       paidAmountCents: moneyCentsToApi(paidAmountCents),
       remainingAmountCents: moneyCentsToApi(remainingAmountCents),
+      financeRecordedAmountCents: moneyCentsToApi(
+        financeRecordedAmountCents
+      ),
+      financeRemainingAmountCents: moneyCentsToApi(
+        financeRemainingAmountCents
+      ),
       currentNodeName: currentNode?.name ?? null,
       canSetApprovedAmount: Boolean(
         reviewApprovalContext &&
@@ -687,7 +754,8 @@ export class ProjectExpenseService {
       blockedReasons,
       withdrawalContext,
       reviewApprovalContext,
-      executionContext
+      executionContext,
+      financeContext
     };
   }
 
@@ -1661,68 +1729,365 @@ export class ProjectExpenseService {
     actorUserId: string,
     input: RecordProjectExpenseFinanceRecordDto
   ) {
-    const amountCents = positiveMoneyCents(input.amountCents, "财务记录金额必须大于零");
+    const amountCents = positiveMoneyCents(
+      input.amountCents,
+      "财务记录金额必须大于零"
+    );
+    const idempotencyKey = input.idempotencyKey?.trim().toLowerCase();
+    if (
+      !idempotencyKey ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+        idempotencyKey
+      )
+    ) {
+      throw new BadRequestException(
+        "项目支出财务入账幂等键必须是 UUID"
+      );
+    }
+    const expectedExpenseUpdatedAt = new Date(
+      input.expectedExpenseUpdatedAt
+    );
+    if (Number.isNaN(expectedExpenseUpdatedAt.getTime())) {
+      throw new BadRequestException(
+        "预期项目支出版本格式不正确"
+      );
+    }
     const occurredAt = parseDate(input.occurredAt, "财务记录日期无效");
-    const confirmationPassword = requiredTrimmed(input.confirmationPassword, "财务入账需要当前登录密码确认");
+    if (occurredAt.getTime() > Date.now()) {
+      throw new BadRequestException(
+        "项目支出财务入账日期不能晚于当前时间"
+      );
+    }
+    const confirmationPassword = requiredTrimmed(
+      input.confirmationPassword,
+      "财务入账需要当前登录密码确认"
+    );
     if (!this.auth) {
-      throw new Error("Auth service is required to confirm project expense finance record");
+      throw new Error(
+        "项目支出财务入账确认服务暂不可用，请稍后重试或联系管理员"
+      );
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const request = await this.lockExpenseRequest(tx, projectId, expenseRequestId);
-      if (!request) {
-        throw new NotFoundException("项目支出申请不存在");
-      }
-      if (!["partially_paid", "paid", "payment_blocked"].includes(request.status)) {
-        throw new BadRequestException("项目支出实付后才能登记财务记录");
-      }
-      const existingRecords = await tx.financeRecord.findMany({
-        where: { projectExpenseRequestId: request.id, direction: "outflow" },
-        select: { amountCents: true }
-      });
-      const recordedCents = sumDbMoneyToBigInt(
-        existingRecords.map((record) => record.amountCents),
-        "财务入账金额"
-      );
-      const paidAmountCents = dbMoneyToBigInt(request.paidAmountCents, "项目支出实付金额");
-      const financeAmountCents = dbMoneyToBigInt(amountCents, "财务记录金额");
-      const remaining = paidAmountCents - recordedCents;
-      if (financeAmountCents > remaining) {
-        throw new BadRequestException(`财务记录金额超过未入账实付金额: ${remaining.toString()}`);
-      }
-      const record = await tx.financeRecord.create({
-        data: {
-          projectId,
-          projectExpenseRequestId: request.id,
-          direction: "outflow",
-          amountCents,
-          occurredAt,
-          createdByUserId: actorUserId
-        }
-      });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project_expense.finance.record",
-        businessType: "project_expense_request",
-        businessId: request.id,
-        metadata: {
-          projectId,
-          financeRecordId: record.id,
-          amountCents: moneyCentsToApi(amountCents)
-        }
-      });
-      return {
-        record,
-        expenseRequestId: request.id,
-        financeRecordedAmountCents: recordedCents + financeAmountCents,
-        paidAmountCents
-      };
+    const scope = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId, projectId },
+      select: { id: true, projectId: true }
     });
-    if (result.financeRecordedAmountCents >= result.paidAmountCents && this.files) {
-      await this.ensureFinancePdfArchive(result.expenseRequestId, actorUserId).catch(() => undefined);
+    if (!scope) {
+      throw new NotFoundException("项目支出申请不存在");
+    }
+
+    let result: {
+      record: ProjectExpenseFinanceFactRow;
+      expenseRequestId: string;
+      financeRecordedAmountCents: bigint;
+      paidAmountCents: bigint;
+      requestStatus: string;
+    };
+    try {
+      result = await this.prisma.$transaction(
+        async (tx) => {
+          const request = await this.lockExpenseRequestById(
+            tx,
+            projectId,
+            expenseRequestId
+          );
+          if (!request) {
+            throw new NotFoundException("项目支出申请不存在");
+          }
+          if (
+            request.id !== scope.id ||
+            request.projectId !== scope.projectId
+          ) {
+            throw new ConflictException(
+              "项目支出财务入账范围已变化，请刷新后重试"
+            );
+          }
+          await this.assertCurrentProjectExpenseFinanceRecorder(
+            tx,
+            actorUserId,
+            request.projectId
+          );
+
+          const financeClient = tx.financeRecord as unknown as {
+            findUnique(input: {
+              where: { idempotencyKey: string };
+            }): Promise<ProjectExpenseFinanceFactRow | null>;
+            findMany(input: {
+              where: {
+                projectExpenseRequestId: string;
+                direction: string;
+              };
+              select: { amountCents: true };
+            }): Promise<Array<{ amountCents: bigint }>>;
+            create(input: {
+              data: Record<string, unknown>;
+            }): Promise<ProjectExpenseFinanceFactRow>;
+          };
+          const existing = await financeClient.findUnique({
+            where: { idempotencyKey }
+          });
+          if (existing) {
+            this.assertSameProjectExpenseFinanceFacts(existing, {
+              idempotencyKey,
+              projectExpenseRequestId: request.id,
+              projectId: request.projectId,
+              amountCents,
+              occurredAt,
+              actorUserId
+            });
+            const existingRecords = await financeClient.findMany({
+              where: {
+                projectExpenseRequestId: request.id,
+                direction: "outflow"
+              },
+              select: { amountCents: true }
+            });
+            return {
+              record: existing,
+              expenseRequestId: request.id,
+              financeRecordedAmountCents: sumDbMoneyToBigInt(
+                existingRecords.map((record) => record.amountCents),
+                "财务入账金额"
+              ),
+              paidAmountCents: request.paidAmountCents,
+              requestStatus: request.status
+            };
+          }
+
+          if (
+            request.updatedAt.getTime() !==
+            expectedExpenseUpdatedAt.getTime()
+          ) {
+            throw new ConflictException(
+              "项目支出申请已变化，请刷新后重试"
+            );
+          }
+          if (
+            !["partially_paid", "paid", "payment_blocked"].includes(
+              request.status
+            ) ||
+            request.paidAmountCents <= 0n
+          ) {
+            throw new BadRequestException(
+              "项目支出实付后才能登记财务记录"
+            );
+          }
+          const existingRecords = await financeClient.findMany({
+            where: {
+              projectExpenseRequestId: request.id,
+              direction: "outflow"
+            },
+            select: { amountCents: true }
+          });
+          const recordedCents = sumDbMoneyToBigInt(
+            existingRecords.map((record) => record.amountCents),
+            "财务入账金额"
+          );
+          const remaining = request.paidAmountCents - recordedCents;
+          if (amountCents > remaining || remaining <= 0n) {
+            throw new BadRequestException(
+              `财务记录金额超过未入账实付金额: ${
+                remaining > 0n ? remaining : 0n
+              }`
+            );
+          }
+          const record = await financeClient.create({
+            data: {
+              idempotencyKey,
+              projectId: request.projectId,
+              projectExpenseRequestId: request.id,
+              direction: "outflow",
+              amountCents,
+              occurredAt,
+              createdByUserId: actorUserId
+            }
+          });
+          await tx.projectExpenseRequest.update({
+            where: { id: request.id },
+            data: { updatedAt: new Date() }
+          });
+          const financeRecordedAmountCents =
+            recordedCents + amountCents;
+          await this.audit.record(tx, {
+            actorUserId,
+            action: "project_expense.finance.record",
+            businessType: "project_expense_request",
+            businessId: request.id,
+            metadata: {
+              code: request.code,
+              projectId: request.projectId,
+              financeRecordId: record.id,
+              idempotencyKey,
+              amountCents: moneyCentsToApi(amountCents),
+              occurredAt: occurredAt.toISOString(),
+              financeRecordedAmountCentsBefore:
+                moneyCentsToApi(recordedCents),
+              financeRecordedAmountCentsAfter:
+                moneyCentsToApi(financeRecordedAmountCents),
+              paidAmountCents: moneyCentsToApi(
+                request.paidAmountCents
+              )
+            }
+          });
+          return {
+            record,
+            expenseRequestId: request.id,
+            financeRecordedAmountCents,
+            paidAmountCents: request.paidAmountCents,
+            requestStatus: request.status
+          };
+        },
+        {
+          isolationLevel:
+            Prisma.TransactionIsolationLevel.Serializable
+        }
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = projectExpensePrismaErrorCode(error);
+      const serializationConflict =
+        code === "P2034" ||
+        projectExpenseRawSerializationConflict(error);
+      if (code === "P2002" || serializationConflict) {
+        const concurrentRecord =
+          await this.resolveConcurrentProjectExpenseFinanceRecord({
+            idempotencyKey,
+            projectExpenseRequestId: scope.id,
+            projectId: scope.projectId,
+            amountCents,
+            occurredAt,
+            actorUserId
+          });
+        if (concurrentRecord) {
+          const coverage =
+            await this.projectExpenseFinanceCoverage(scope.id);
+          result = {
+            record: concurrentRecord,
+            expenseRequestId: scope.id,
+            ...coverage
+          };
+        } else {
+          throw new ConflictException(
+            serializationConflict
+              ? "项目支出财务入账并发冲突，请刷新后重试"
+              : "项目支出财务入账唯一事实已变化，请刷新后重试"
+          );
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    if (
+      result.requestStatus === "paid" &&
+      result.financeRecordedAmountCents >=
+      result.paidAmountCents
+    ) {
+      try {
+        await this.ensureFinancePdfArchive(
+          result.expenseRequestId,
+          actorUserId
+        );
+      } catch {
+        throw new ServiceUnavailableException(
+          "财务入账已保存，但财务归档生成未完成；请使用同一操作直接重试"
+        );
+      }
     }
     return projectExpensePostResponseToApi(result.record);
+  }
+
+  private projectExpenseFinanceFactsMatch(
+    existing: ProjectExpenseFinanceFactRow,
+    expected: {
+      idempotencyKey: string;
+      projectExpenseRequestId: string;
+      projectId: string;
+      amountCents: bigint;
+      occurredAt: Date;
+      actorUserId: string;
+    }
+  ): boolean {
+    return (
+      existing.idempotencyKey === expected.idempotencyKey &&
+      existing.projectExpenseRequestId ===
+        expected.projectExpenseRequestId &&
+      existing.projectId === expected.projectId &&
+      existing.paymentRequestId === null &&
+      existing.settlementId === null &&
+      existing.direction === "outflow" &&
+      existing.amountCents === expected.amountCents &&
+      existing.occurredAt.getTime() ===
+        expected.occurredAt.getTime() &&
+      existing.createdByUserId === expected.actorUserId
+    );
+  }
+
+  private assertSameProjectExpenseFinanceFacts(
+    existing: ProjectExpenseFinanceFactRow,
+    expected: Parameters<
+      ProjectExpenseService["projectExpenseFinanceFactsMatch"]
+    >[1]
+  ): void {
+    if (!this.projectExpenseFinanceFactsMatch(existing, expected)) {
+      throw new ConflictException(
+        "该项目支出财务入账幂等键已绑定不同的持久事实"
+      );
+    }
+  }
+
+  private async resolveConcurrentProjectExpenseFinanceRecord(
+    input: Parameters<
+      ProjectExpenseService["projectExpenseFinanceFactsMatch"]
+    >[1]
+  ): Promise<ProjectExpenseFinanceFactRow | null> {
+    const financeClient = this.prisma.financeRecord as unknown as {
+      findUnique(args: {
+        where: { idempotencyKey: string };
+      }): Promise<ProjectExpenseFinanceFactRow | null>;
+    };
+    const existing = await financeClient.findUnique({
+      where: { idempotencyKey: input.idempotencyKey }
+    });
+    if (
+      !existing ||
+      !this.projectExpenseFinanceFactsMatch(existing, input)
+    ) {
+      return null;
+    }
+    return existing;
+  }
+
+  private async projectExpenseFinanceCoverage(
+    expenseRequestId: string
+  ): Promise<{
+    financeRecordedAmountCents: bigint;
+    paidAmountCents: bigint;
+    requestStatus: string;
+  }> {
+    const request = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId },
+      select: { paidAmountCents: true, status: true }
+    });
+    if (!request) {
+      throw new NotFoundException("项目支出申请不存在");
+    }
+    const records = await this.prisma.financeRecord.findMany({
+      where: {
+        projectExpenseRequestId: expenseRequestId,
+        direction: "outflow"
+      },
+      select: { amountCents: true }
+    });
+    return {
+      financeRecordedAmountCents: sumDbMoneyToBigInt(
+        records.map((record) => record.amountCents),
+        "财务入账金额"
+      ),
+      paidAmountCents: request.paidAmountCents,
+      requestStatus: request.status
+    };
   }
 
   async confirmPurchaseReceipt(
@@ -2207,7 +2572,7 @@ export class ProjectExpenseService {
     actorUserId: string,
     projectId: string
   ): Promise<void> {
-    const access = await this.currentProjectExpenseFinanceStaffAccess(
+    const access = await this.currentProjectExpenseFinanceRoleAccess(
       tx,
       actorUserId,
       projectId
@@ -2217,14 +2582,36 @@ export class ProjectExpenseService {
         "当前项目支出付款登记账号不存在或已停用"
       );
     }
-    if (!access.hasProjectFinanceRole) {
+    if (!access.canRecordExecution) {
       throw new ForbiddenException(
         "只有当前项目财务人员可以登记项目支出实付"
       );
     }
   }
 
-  private async currentProjectExpenseFinanceStaffAccess(
+  private async assertCurrentProjectExpenseFinanceRecorder(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<void> {
+    const access = await this.currentProjectExpenseFinanceRoleAccess(
+      tx,
+      actorUserId,
+      projectId
+    );
+    if (!access.actorActive) {
+      throw new ForbiddenException(
+        "当前项目支出财务入账账号不存在或已停用"
+      );
+    }
+    if (!access.canRecordFinance) {
+      throw new ForbiddenException(
+        "只有当前项目财务人员或财务主管可以登记项目支出财务入账"
+      );
+    }
+  }
+
+  private async currentProjectExpenseFinanceRoleAccess(
     tx: {
       user: {
         findUnique(input: unknown): Promise<{
@@ -2244,13 +2631,21 @@ export class ProjectExpenseService {
     },
     actorUserId: string,
     projectId: string
-  ): Promise<{ actorActive: boolean; hasProjectFinanceRole: boolean }> {
+  ): Promise<{
+    actorActive: boolean;
+    canRecordExecution: boolean;
+    canRecordFinance: boolean;
+  }> {
     const actor = await tx.user.findUnique({
       where: { id: actorUserId },
       select: { id: true, isActive: true }
     });
     if (!actor?.isActive) {
-      return { actorActive: false, hasProjectFinanceRole: false };
+      return {
+        actorActive: false,
+        canRecordExecution: false,
+        canRecordFinance: false
+      };
     }
 
     const [projectPositions, projectMembers] = await Promise.all([
@@ -2272,12 +2667,16 @@ export class ProjectExpenseService {
           select: { key: true }
         })
       : [];
+    const projectRoleKeys = new Set([
+      ...projectMembers.map((row) => row.positionKey),
+      ...positions.map((row) => row.key)
+    ]);
     return {
       actorActive: true,
-      hasProjectFinanceRole:
-        projectMembers.some(
-          (row) => row.positionKey === "finance_staff"
-        ) || positions.some((row) => row.key === "finance_staff")
+      canRecordExecution: projectRoleKeys.has("finance_staff"),
+      canRecordFinance:
+        projectRoleKeys.has("finance_staff") ||
+        projectRoleKeys.has("finance_director")
     };
   }
 

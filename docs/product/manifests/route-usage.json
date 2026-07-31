@@ -3150,6 +3150,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectExpenseFinanceWithPreflight",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
+            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -12217,12 +12227,12 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectExpenseFinance",
+            "wrapper": "recordProjectExpenseFinanceWithPreflight",
             "method": "POST",
             "normalizedPath": "/projects/:param/expense-requests/:param/finance-records",
             "normalizedKey": "POST /projects/:param/expense-requests/:param/finance-records",
             "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
             ]
           }
         ],

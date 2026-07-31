@@ -96,7 +96,7 @@ describe("project operating overview structure", () => {
     expect(source).toContain("projectExpenses.value?.statistics");
     expect(source).toContain("正式支出单");
     expect(source).toContain(
-      "['approval_pending', 'approved_pending_payment', 'partially_paid'].includes"
+      "['approval_pending', 'approved_pending_payment', 'partially_paid', 'paid', 'payment_blocked'].includes"
     );
     expect(source).not.toContain('value="my_drafts"');
     expect(source).not.toContain('value="returned_for_revision"');

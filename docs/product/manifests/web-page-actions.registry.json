@@ -532,23 +532,24 @@
       "id": "project-expense.finance-local-status",
       "usage": "page_action",
       "routePaths": [
-        "/项目经营"
+        "/项目支出/:projectId/:expenseRequestId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
       "trigger": {
-        "element": "button",
-        "event": "click",
-        "handler": "submitExpenseFinance"
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseFinance"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canRecordExpenseFinance(selectedExpenseRow)"
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "record_finance"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "recordProjectExpenseFinance"
+          "name": "recordProjectExpenseFinanceWithPreflight"
         }
       ]
     },

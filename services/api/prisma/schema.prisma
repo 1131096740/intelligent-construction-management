@@ -1954,6 +1954,7 @@ model InvoiceExceptionConfirmation {
 
 model FinanceRecord {
   id                      String   @id @default(uuid())
+  idempotencyKey          String?  @unique
   projectId               String
   paymentRequestId        String?
   projectExpenseRequestId String?

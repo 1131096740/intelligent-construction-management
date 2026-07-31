@@ -20,14 +20,32 @@ import type { SettlementSignedDocumentRecordReadModel } from "./settlement-draft
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
+export class CoreFlowApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null
+  ) {
+    super(message);
+    this.name = "CoreFlowApiError";
+  }
+}
+
 async function ensureOk(response: Response, fallback: string): Promise<void> {
   if (response.ok) {
     return;
   }
 
   let message = `${fallback}：${response.status}`;
+  let code: string | null = null;
   try {
-    const data = (await response.clone().json()) as { message?: unknown };
+    const data = (await response.clone().json()) as {
+      code?: unknown;
+      message?: unknown;
+    };
+    if (typeof data.code === "string") {
+      code = data.code;
+    }
     if (typeof data.message === "string") {
       message = formatApiErrorMessage(data.message, response.status, fallback);
     } else if (Array.isArray(data.message)) {
@@ -38,7 +56,11 @@ async function ensureOk(response: Response, fallback: string): Promise<void> {
     message = formatApiErrorMessage(message, response.status, fallback);
   }
 
-  throw new Error(message);
+  throw new CoreFlowApiError(
+    message,
+    response.status,
+    code
+  );
 }
 
 async function readJson<T>(path: string): Promise<T> {
@@ -1814,6 +1836,68 @@ export interface RecordProjectExpenseFinancePayload {
   amountCents: string;
   occurredAt: string;
   confirmationPassword: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+}
+
+export interface ProjectExpenseFinanceContext {
+  expectedExpenseUpdatedAt: string;
+}
+
+export interface ProjectExpenseFinanceRecordReadModel {
+  id: string;
+  idempotencyKey: string;
+  projectId: string;
+  projectExpenseRequestId: string;
+  paymentRequestId: null;
+  settlementId: null;
+  direction: "outflow";
+  amountCents: string;
+  occurredAt: string;
+  createdByUserId: string;
+}
+
+export interface RecordProjectExpenseFinanceWithPreflightInput<TContext> {
+  amountCents: string;
+  occurredAt: string;
+  confirmationPassword: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface ProjectExpenseFinanceRecordSubmission {
+  projectId: string;
+  expenseRequestId: string;
+  amountCents: string;
+  occurredAt: string;
+  confirmationPassword: string;
+  expectedExpenseUpdatedAt: string;
+  idempotencyKey: string;
+  isCurrent: () => boolean;
+}
+
+export interface ProjectExpenseFinanceRecordAttemptState {
+  submission: ProjectExpenseFinanceRecordSubmission | null;
+  confirmationPasswordRejected: boolean;
+  preflightVerified: boolean;
+  preflightPromise:
+    | Promise<ProjectExpenseApprovalLifecycleDetailReadModel>
+    | null;
+  requestPromise:
+    | Promise<ProjectExpenseFinanceRecordReadModel>
+    | null;
+}
+
+export interface ProjectExpenseFinanceCompletionBaseline {
+  projectId: string;
+  expenseRequestId: string;
+  expectedExpenseUpdatedAt: string;
+  expectedPaidAmountCents: string;
+  expectedFinanceRecordedAmountCents: string;
+  expectedFinanceRemainingAmountCents: string;
+  amountCents: string;
 }
 
 export interface ConfirmProjectExpenseReceiptPayload {
@@ -2252,6 +2336,7 @@ export type ProjectExpenseApprovalLifecycleDetailReadModel =
     reviewApprovalContext: ProjectExpenseReviewApprovalCoordinates | null;
     withdrawalContext: ProjectExpenseWithdrawalCoordinates | null;
     executionContext: ProjectExpenseExecutionContext | null;
+    financeContext: ProjectExpenseFinanceContext | null;
   };
 
 export interface ProjectExpenseReviewApprovalCoordinates {
@@ -2783,8 +2868,8 @@ export function recordProjectExpenseFinance(
   expenseRequestId: string,
   body: RecordProjectExpenseFinancePayload
 ) {
-  return postJson<unknown>(
-    `/projects/${projectId}/expense-requests/${expenseRequestId}/finance-records`,
+  return postJson<ProjectExpenseFinanceRecordReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/finance-records`,
     body
   );
 }
@@ -3531,6 +3616,384 @@ function assertProjectExpenseExecutionCurrent(
 }
 
 function requiredProjectExpenseExecutionText(
+  value: string,
+  label: string,
+  trim = true
+) {
+  const normalized = trim ? value.trim() : value;
+  if (!normalized.trim()) throw new Error(`请填写${label}`);
+  return normalized;
+}
+
+export type ProjectExpenseFinanceFailureDisposition =
+  | "same_fact"
+  | "password_only"
+  | "restart";
+
+export function projectExpenseFinanceFailureDisposition(
+  error: unknown
+): ProjectExpenseFinanceFailureDisposition {
+  if (
+    error instanceof Error &&
+    error.message.includes("当前密码不正确")
+  ) {
+    return "password_only";
+  }
+  if (
+    error instanceof CoreFlowApiError &&
+    error.status >= 500
+  ) {
+    return "same_fact";
+  }
+  if (
+    error instanceof Error &&
+    /网络连接失败|网络请求失败|Failed to fetch|fetch failed|NetworkError|Load failed|ECONNREFUSED/iu.test(
+      error.message
+    )
+  ) {
+    return "same_fact";
+  }
+  return "restart";
+}
+
+export function createProjectExpenseFinanceRecordAttemptState(): ProjectExpenseFinanceRecordAttemptState {
+  return {
+    submission: null,
+    confirmationPasswordRejected: false,
+    preflightVerified: false,
+    preflightPromise: null,
+    requestPromise: null
+  };
+}
+
+export function recordProjectExpenseFinanceWithPreflight<TContext>(
+  projectId: string,
+  expenseRequestId: string,
+  input: RecordProjectExpenseFinanceWithPreflightInput<TContext>,
+  state: ProjectExpenseFinanceRecordAttemptState
+) {
+  if (state.requestPromise) return state.requestPromise;
+  let submission: ProjectExpenseFinanceRecordSubmission;
+  try {
+    const existingSubmission = state.submission;
+    submission =
+      existingSubmission && state.confirmationPasswordRejected
+        ? Object.freeze({
+            ...existingSubmission,
+            confirmationPassword:
+              requiredProjectExpenseFinanceText(
+                input.confirmationPassword,
+                "当前密码",
+                false
+              )
+          })
+        : existingSubmission ??
+          normalizeProjectExpenseFinanceRecord(
+            projectId,
+            expenseRequestId,
+            input
+          );
+    if (
+      submission.projectId !== projectId.trim() ||
+      submission.expenseRequestId !==
+        expenseRequestId.trim()
+    ) {
+      throw new Error(
+        "项目支出财务入账重试单据已变化，请重新打开确认窗口"
+      );
+    }
+    state.submission = submission;
+    state.confirmationPasswordRejected = false;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const request = executeProjectExpenseFinanceRecord(
+    submission,
+    state
+  );
+  state.requestPromise = request;
+  void request.catch((error) => {
+    const disposition =
+      projectExpenseFinanceFailureDisposition(error);
+    if (disposition === "password_only") {
+      state.confirmationPasswordRejected = true;
+    } else if (disposition === "restart") {
+      state.submission = null;
+      state.confirmationPasswordRejected = false;
+      state.preflightVerified = false;
+      state.preflightPromise = null;
+    }
+    if (state.requestPromise === request) {
+      state.requestPromise = null;
+    }
+  });
+  return request;
+}
+
+function normalizeProjectExpenseFinanceRecord<TContext>(
+  projectId: string,
+  expenseRequestId: string,
+  input: RecordProjectExpenseFinanceWithPreflightInput<TContext>
+): ProjectExpenseFinanceRecordSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error(
+      "项目支出财务入账上下文已失效，请重新读取当前单据"
+    );
+  }
+  const idempotencyKey =
+    requiredProjectExpenseFinanceText(
+      input.idempotencyKey,
+      "项目支出财务入账幂等键"
+    ).toLowerCase();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      idempotencyKey
+    )
+  ) {
+    throw new Error(
+      "项目支出财务入账幂等键必须为 UUIDv4"
+    );
+  }
+  const amountCents = requiredProjectExpenseFinanceText(
+    input.amountCents,
+    "财务入账金额"
+  );
+  if (!/^[1-9]\d*$/u.test(amountCents)) {
+    throw new Error("财务入账金额必须为正整数分");
+  }
+  const occurredAt = requiredProjectExpenseFinanceText(
+    input.occurredAt,
+    "财务入账时间"
+  );
+  if (Number.isNaN(new Date(occurredAt).getTime())) {
+    throw new Error("财务入账时间格式不正确");
+  }
+  const expectedExpenseUpdatedAt =
+    requiredProjectExpenseFinanceText(
+      input.expectedExpenseUpdatedAt,
+      "项目支出版本"
+    );
+  if (
+    Number.isNaN(
+      new Date(expectedExpenseUpdatedAt).getTime()
+    )
+  ) {
+    throw new Error("项目支出版本格式不正确");
+  }
+  return Object.freeze({
+    projectId: requiredProjectExpenseFinanceText(
+      projectId,
+      "项目编号"
+    ),
+    expenseRequestId:
+      requiredProjectExpenseFinanceText(
+        expenseRequestId,
+        "项目支出编号"
+      ),
+    amountCents,
+    occurredAt,
+    confirmationPassword:
+      requiredProjectExpenseFinanceText(
+        input.confirmationPassword,
+        "当前密码",
+        false
+      ),
+    expectedExpenseUpdatedAt,
+    idempotencyKey,
+    isCurrent: () => input.isCurrent(input.context)
+  });
+}
+
+async function executeProjectExpenseFinanceRecord(
+  submission: ProjectExpenseFinanceRecordSubmission,
+  state: ProjectExpenseFinanceRecordAttemptState
+): Promise<ProjectExpenseFinanceRecordReadModel> {
+  assertProjectExpenseFinanceCurrent(submission);
+  await verifyProjectExpenseFinancePreflight(
+    submission,
+    state
+  );
+  assertProjectExpenseFinanceCurrent(submission);
+  const response = await recordProjectExpenseFinance(
+    submission.projectId,
+    submission.expenseRequestId,
+    {
+      amountCents: submission.amountCents,
+      occurredAt: submission.occurredAt,
+      confirmationPassword:
+        submission.confirmationPassword,
+      expectedExpenseUpdatedAt:
+        submission.expectedExpenseUpdatedAt,
+      idempotencyKey: submission.idempotencyKey
+    }
+  );
+  assertProjectExpenseFinanceCurrent(submission);
+  assertProjectExpenseFinanceRecordResponse(
+    response,
+    submission
+  );
+  return response;
+}
+
+function assertProjectExpenseFinanceRecordResponse(
+  response: ProjectExpenseFinanceRecordReadModel,
+  submission: ProjectExpenseFinanceRecordSubmission
+) {
+  if (
+    !response ||
+    typeof response.id !== "string" ||
+    !response.id.trim() ||
+    response.idempotencyKey !== submission.idempotencyKey ||
+    response.projectId !== submission.projectId ||
+    response.projectExpenseRequestId !==
+      submission.expenseRequestId ||
+    response.paymentRequestId !== null ||
+    response.settlementId !== null ||
+    response.direction !== "outflow" ||
+    response.amountCents !== submission.amountCents ||
+    typeof response.occurredAt !== "string" ||
+    Number.isNaN(new Date(response.occurredAt).getTime()) ||
+    new Date(response.occurredAt).getTime() !==
+      new Date(submission.occurredAt).getTime() ||
+    typeof response.createdByUserId !== "string" ||
+    !response.createdByUserId.trim()
+  ) {
+    throw new Error(
+      "项目支出财务入账响应与本次持久事实不一致，请刷新后核对"
+    );
+  }
+}
+
+export function projectExpenseFinanceCompletionIsAuthoritative(
+  detail: ProjectExpenseApprovalLifecycleDetailReadModel,
+  baseline: ProjectExpenseFinanceCompletionBaseline
+) {
+  const baselinePaid = projectExpenseFinanceCents(
+    baseline.expectedPaidAmountCents
+  );
+  const baselineRecorded = projectExpenseFinanceCents(
+    baseline.expectedFinanceRecordedAmountCents
+  );
+  const baselineRemaining = projectExpenseFinanceCents(
+    baseline.expectedFinanceRemainingAmountCents
+  );
+  const submittedAmount = projectExpenseFinanceCents(
+    baseline.amountCents
+  );
+  const latestPaid = projectExpenseFinanceCents(
+    detail.paidAmountCents
+  );
+  const latestRecorded = projectExpenseFinanceCents(
+    detail.financeRecordedAmountCents
+  );
+  const latestRemaining = projectExpenseFinanceCents(
+    detail.financeRemainingAmountCents
+  );
+  if (
+    baselinePaid === null ||
+    baselineRecorded === null ||
+    baselineRemaining === null ||
+    submittedAmount === null ||
+    latestPaid === null ||
+    latestRecorded === null ||
+    latestRemaining === null ||
+    submittedAmount <= 0n
+  ) {
+    return false;
+  }
+  const enabledActions = detail.availableActions.filter(
+    (action) =>
+      action.key === "record_finance" && action.enabled
+  );
+  const contextMatches =
+    enabledActions.length === 1
+      ? detail.financeContext?.expectedExpenseUpdatedAt ===
+        detail.lifecycleUpdatedAt
+      : enabledActions.length === 0 &&
+        detail.financeContext === null;
+  return (
+    detail.projectId === baseline.projectId &&
+    detail.id === baseline.expenseRequestId &&
+    typeof detail.lifecycleUpdatedAt === "string" &&
+    Boolean(detail.lifecycleUpdatedAt) &&
+    detail.lifecycleUpdatedAt !==
+      baseline.expectedExpenseUpdatedAt &&
+    baselineRemaining ===
+      baselinePaid - baselineRecorded &&
+    latestPaid >= baselinePaid &&
+    latestRecorded >=
+      baselineRecorded + submittedAmount &&
+    latestRecorded <= latestPaid &&
+    latestRemaining === latestPaid - latestRecorded &&
+    enabledActions.length <= 1 &&
+    contextMatches
+  );
+}
+
+function projectExpenseFinanceCents(
+  value: string
+): bigint | null {
+  if (!/^(0|[1-9]\d*)$/u.test(value)) {
+    return null;
+  }
+  return BigInt(value);
+}
+
+async function verifyProjectExpenseFinancePreflight(
+  submission: ProjectExpenseFinanceRecordSubmission,
+  state: ProjectExpenseFinanceRecordAttemptState
+) {
+  if (state.preflightVerified) return;
+  const preflight =
+    state.preflightPromise ??
+    fetchProjectExpenseApprovalDetail(
+      submission.projectId,
+      submission.expenseRequestId
+    );
+  state.preflightPromise = preflight;
+  let detail: ProjectExpenseApprovalLifecycleDetailReadModel;
+  try {
+    detail = await preflight;
+  } catch (error) {
+    if (state.preflightPromise === preflight) {
+      state.preflightPromise = null;
+    }
+    throw error;
+  }
+  assertProjectExpenseFinanceCurrent(submission);
+  const enabledActions = detail.availableActions.filter(
+    (action) =>
+      action.key === "record_finance" && action.enabled
+  );
+  if (
+    detail.projectId !== submission.projectId ||
+    detail.id !== submission.expenseRequestId ||
+    enabledActions.length !== 1 ||
+    detail.lifecycleUpdatedAt !==
+      submission.expectedExpenseUpdatedAt ||
+    detail.financeContext?.expectedExpenseUpdatedAt !==
+      submission.expectedExpenseUpdatedAt
+  ) {
+    state.preflightPromise = null;
+    throw new Error(
+      "项目支出财务入账资格或版本已变化，请刷新详情后重试"
+    );
+  }
+  state.preflightVerified = true;
+}
+
+function assertProjectExpenseFinanceCurrent(
+  submission: ProjectExpenseFinanceRecordSubmission
+) {
+  if (!submission.isCurrent()) {
+    throw new Error(
+      "项目支出财务入账上下文已失效，请重新读取当前单据"
+    );
+  }
+}
+
+function requiredProjectExpenseFinanceText(
   value: string,
   label: string,
   trim = true

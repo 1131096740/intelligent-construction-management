@@ -17,7 +17,8 @@ describe("ProjectExpenseService", () => {
     allocateExecution: jest.fn()
   };
   const files = {
-    assertFileHasNoBusinessBinding: jest.fn()
+    assertFileHasNoBusinessBinding: jest.fn(),
+    uploadPrivateFile: jest.fn()
   };
 
   beforeEach(() => {
@@ -45,6 +46,7 @@ describe("ProjectExpenseService", () => {
       uploadedByUserId: "cashier-1",
       storageStatus: "active"
     });
+    files.uploadPrivateFile.mockReset();
   });
 
   it("keeps project expenses as submit-on-create records without a draft abandonment API", () => {
@@ -104,20 +106,24 @@ describe("ProjectExpenseService", () => {
     applicantUserId = "applicant-1",
     instanceApplicantUserId = applicantUserId,
     actorUserId = "reviewer-1",
+    actorActive = true,
     status = "approval_pending",
     paidAmountCents = 0n,
     approvedAmountCents = status === "approval_pending" ? null : 50_000n,
+    financeRecordedAmounts = [],
     expenseType = "reimbursement",
     purchaseExecutedAt = null,
     currentNode = { name: "财务部", mode: "any", roleKeys: ["finance_director"] }
   }: {
-    actorRoleKeys?: string[];
+    actorRoleKeys?: readonly string[];
     applicantUserId?: string;
     instanceApplicantUserId?: string;
     actorUserId?: string;
+    actorActive?: boolean;
     status?: string;
     paidAmountCents?: bigint;
     approvedAmountCents?: bigint | null;
+    financeRecordedAmounts?: readonly bigint[];
     expenseType?: string;
     purchaseExecutedAt?: Date | null;
     currentNode?: { name: string; mode: "any"; roleKeys: string[] };
@@ -169,8 +175,13 @@ describe("ProjectExpenseService", () => {
       projectExpenseFinancingQuotaUsage: {
         findFirst: jest.fn().mockResolvedValue(null)
       },
+      financeRecord: {
+        findMany: jest.fn().mockResolvedValue(
+          financeRecordedAmounts.map((amountCents) => ({ amountCents }))
+        )
+      },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: actorUserId, isActive: true }),
+        findUnique: jest.fn().mockResolvedValue({ id: actorUserId, isActive: actorActive }),
         findMany: jest.fn().mockResolvedValue([{ id: "previous-reviewer", name: "王经理" }])
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -511,6 +522,135 @@ describe("ProjectExpenseService", () => {
     expect(
       detail.availableActions.some(
         (action) => action.key === "record_execution" && action.enabled
+      )
+    ).toBe(false);
+  });
+
+  it.each(["finance_staff", "finance_director"] as const)(
+    "当前项目在职 %s 只在存在未入账实付时发布唯一 record_finance 和父记录 CAS",
+    async (roleKey) => {
+      const { service } = approvalDetailFixture({
+        actorRoleKeys: [roleKey],
+        actorUserId: "finance-1",
+        status: "paid",
+        approvedAmountCents: 50_000n,
+        paidAmountCents: 50_000n,
+        financeRecordedAmounts: [20_000n]
+      });
+
+      const detail = await service.getApprovalDetail(
+        "project-1",
+        "expense-1",
+        "finance-1"
+      );
+
+      expect(detail.financeRecordedAmountCents).toBe("20000");
+      expect(detail.financeRemainingAmountCents).toBe("30000");
+      expect(detail.financeContext).toEqual({
+        expectedExpenseUpdatedAt: "2026-07-20T08:00:00.000Z"
+      });
+      expect(
+        detail.availableActions.filter(
+          (action) => action.key === "record_finance"
+        )
+      ).toEqual([
+        expect.objectContaining({
+          key: "record_finance",
+          enabled: true,
+          requiredAction: "project_expense.finance_record",
+          requiresPassword: true
+        })
+      ]);
+    }
+  );
+
+  it.each([
+    [
+      "fully recorded",
+      {
+        actorRoleKeys: ["finance_staff"],
+        actorUserId: "finance-1",
+        status: "paid",
+        paidAmountCents: 50_000n,
+        financeRecordedAmounts: [50_000n]
+      }
+    ],
+    [
+      "no paid fact",
+      {
+        actorRoleKeys: ["finance_director"],
+        actorUserId: "finance-1",
+        status: "approved_pending_payment",
+        paidAmountCents: 0n,
+        financeRecordedAmounts: []
+      }
+    ],
+    [
+      "inactive actor",
+      {
+        actorRoleKeys: ["finance_staff"],
+        applicantUserId: "finance-1",
+        actorUserId: "finance-1",
+        actorActive: false,
+        status: "paid",
+        paidAmountCents: 50_000n,
+        financeRecordedAmounts: []
+      }
+    ]
+  ] as const)(
+    "fails closed for project expense finance capability: %s",
+    async (_label, overrides) => {
+      const { service } = approvalDetailFixture({
+        approvedAmountCents: 50_000n,
+        ...overrides
+      });
+
+      const detail = await service.getApprovalDetail(
+        "project-1",
+        "expense-1",
+        overrides.actorUserId
+      );
+
+      expect(detail.financeContext).toBeNull();
+      expect(
+        detail.availableActions.some(
+          (action) => action.key === "record_finance" && action.enabled
+        )
+      ).toBe(false);
+    }
+  );
+
+  it("全局财务岗位但无当前项目财务岗位时不发布财务入账 capability", async () => {
+    const { service, prisma } = approvalDetailFixture({
+      actorRoleKeys: [],
+      applicantUserId: "finance-1",
+      actorUserId: "finance-1",
+      status: "paid",
+      approvedAmountCents: 50_000n,
+      paidAmountCents: 50_000n
+    });
+    prisma.userPosition.findMany.mockImplementation(
+      ({ where }: { where: { projectId: string | null } }) =>
+        Promise.resolve(
+          where.projectId === null
+            ? [{ positionId: "global-finance-position" }]
+            : []
+        )
+    );
+    prisma.position.findMany.mockResolvedValue([
+      { key: "finance_director" }
+    ]);
+
+    const detail = await service.getApprovalDetail(
+      "project-1",
+      "expense-1",
+      "finance-1"
+    );
+
+    expect(detail.financeContext).toBeNull();
+    expect(
+      detail.availableActions.some(
+        (action) => action.key === "record_finance" && action.enabled
       )
     ).toBe(false);
   });
@@ -2884,77 +3024,613 @@ describe("ProjectExpenseService", () => {
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
-  it("records finance outflow only up to paid project expense amount", async () => {
+  const expenseFinanceCoordinates = {
+    expectedExpenseUpdatedAt: "2026-07-31T03:00:00.000Z",
+    idempotencyKey: "6e8fab4b-9e90-4fba-a59d-320cd24cc427"
+  };
+
+  function projectExpenseFinanceRow(
+    overrides: Partial<{
+      status: string;
+      paidAmountCents: bigint;
+      updatedAt: Date;
+    }> = {}
+  ) {
+    return {
+      id: "expense-1",
+      projectId: "project-1",
+      code: "LX-2026-FIN-001",
+      expenseType: "sporadic_payment",
+      status: "paid",
+      requestedAmountCents: 50_000n,
+      approvedAmountCents: 50_000n,
+      paidAmountCents: 50_000n,
+      applicantUserId: "handler-1",
+      purchaseExecutedAt: null,
+      receiptConfirmedAt: null,
+      updatedAt: new Date(
+        expenseFinanceCoordinates.expectedExpenseUpdatedAt
+      ),
+      ...overrides
+    };
+  }
+
+  function hardenedProjectExpenseFinanceFixture({
+    requestOverrides = {},
+    recordedAmounts = [20_000n],
+    existingRecord = null
+  }: {
+    requestOverrides?: Parameters<typeof projectExpenseFinanceRow>[0];
+    recordedAmounts?: bigint[];
+    existingRecord?: Record<string, unknown> | null;
+  } = {}) {
+    const request = projectExpenseFinanceRow(requestOverrides);
+    const createdRecord = {
+      id: "finance-record-1",
+      idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+      projectId: request.projectId,
+      projectExpenseRequestId: request.id,
+      paymentRequestId: null,
+      settlementId: null,
+      direction: "outflow",
+      amountCents: 10_000n,
+      occurredAt: new Date("2026-07-31T03:00:01.000Z"),
+      createdByUserId: "finance-1"
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "expense-1",
-          projectId: "project-1",
-          status: "paid",
-          code: "LX-2026-008",
-          requestedAmountCents: 50_000n,
-          approvedAmountCents: 50_000n,
-          paidAmountCents: 50_000n
-        }
-      ]),
-      financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000n }]),
-        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000n })
+      $queryRaw: jest.fn().mockResolvedValue([request]),
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "finance-1",
+          isActive: true
+        })
       },
-      auditLog: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    const record = await service.recordFinance("project-1", "expense-1", "finance-1", {
-      amountCents: "30000",
-      occurredAt: "2026-07-02T00:00:00.000Z",
-      confirmationPassword: "current-password"
-    });
-
-    expect(record.id).toBe("finance-record-1");
-    expect(record.amountCents).toBe("30000");
-    expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
-    expect(tx.financeRecord.create).toHaveBeenCalledWith({
-      data: {
-        projectId: "project-1",
-        projectExpenseRequestId: "expense-1",
-        direction: "outflow",
-        amountCents: 30_000n,
-        occurredAt: new Date("2026-07-02T00:00:00.000Z"),
-        createdByUserId: "finance-1"
-      }
-    });
-  });
-
-  it("compares large finance record totals as bigint before the legacy Int write", async () => {
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "expense-1",
-          projectId: "project-1",
-          status: "paid",
-          code: "LX-2026-LARGE",
-          requestedAmountCents: 9_007_199_254_740_993n,
-          approvedAmountCents: 9_007_199_254_740_993n,
-          paidAmountCents: 9_007_199_254_740_993n
-        }
-      ]),
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionKey: "finance_staff" }
+        ])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
       financeRecord: {
-        findMany: jest.fn().mockResolvedValue([{ amountCents: 9_007_199_254_740_993n }]),
-        create: jest.fn()
+        findUnique: jest.fn().mockResolvedValue(existingRecord),
+        findMany: jest.fn().mockResolvedValue(
+          recordedAmounts.map((amountCents) => ({ amountCents }))
+        ),
+        create: jest.fn().mockResolvedValue(createdRecord)
+      },
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({
+          ...request,
+          updatedAt: new Date("2026-07-31T03:00:02.000Z")
+        })
       }
     };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: request.id,
+          projectId: request.projectId
+        })
+      },
+      financeRecord: {
+        findUnique: jest.fn().mockResolvedValue(existingRecord),
+        findMany: jest.fn()
+      },
+      pdfDocument: {
+        findFirst: jest.fn()
+      },
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => Promise<unknown>) =>
+          callback(tx)
+      )
+    };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never,
+      projectFunding as never
+    );
+    return { service, prisma, request, tx, createdRecord };
+  }
+
+  function hardenedProjectExpenseFinanceInput() {
+    return {
+      ...expenseFinanceCoordinates,
+      amountCents: "10000",
+      occurredAt: "2026-07-31T03:00:01.000Z",
+      confirmationPassword: "current-password"
+    };
+  }
+
+  it.each(["finance_staff", "finance_director"] as const)(
+    "records one project expense finance fact for current project %s with CAS, idempotency and audit",
+    async (roleKey) => {
+      const { service, prisma, request, tx } =
+        hardenedProjectExpenseFinanceFixture();
+      tx.projectMember.findMany.mockResolvedValue([
+        { positionKey: roleKey }
+      ]);
+
+      await expect(
+        service.recordFinance(
+          "project-1",
+          "expense-1",
+          "finance-1",
+          {
+            ...hardenedProjectExpenseFinanceInput(),
+            idempotencyKey:
+              expenseFinanceCoordinates.idempotencyKey.toUpperCase()
+          }
+        )
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: "finance-record-1",
+          idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+          amountCents: "10000"
+        })
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+        { isolationLevel: "Serializable" }
+      );
+      expect(tx.financeRecord.findUnique).toHaveBeenCalledWith({
+        where: {
+          idempotencyKey: expenseFinanceCoordinates.idempotencyKey
+        }
+      });
+      expect(tx.financeRecord.create).toHaveBeenCalledWith({
+        data: {
+          idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+          projectId: request.projectId,
+          projectExpenseRequestId: request.id,
+          direction: "outflow",
+          amountCents: 10_000n,
+          occurredAt: new Date("2026-07-31T03:00:01.000Z"),
+          createdByUserId: "finance-1"
+        }
+      });
+      expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
+        where: { id: request.id },
+        data: { updatedAt: expect.any(Date) }
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          actorUserId: "finance-1",
+          action: "project_expense.finance.record",
+          businessType: "project_expense_request",
+          businessId: request.id,
+          metadata: expect.objectContaining({
+            projectId: request.projectId,
+            financeRecordId: "finance-record-1",
+            idempotencyKey:
+              expenseFinanceCoordinates.idempotencyKey,
+            amountCents: "10000",
+            occurredAt: "2026-07-31T03:00:01.000Z",
+            financeRecordedAmountCentsBefore: "20000",
+            financeRecordedAmountCentsAfter: "30000"
+          })
+        })
+      );
+    }
+  );
+
+  it("replays the exact project expense finance fact before stale CAS without duplicate writes", async () => {
+    const existingRecord = {
+      id: "finance-record-1",
+      idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+      projectId: "project-1",
+      projectExpenseRequestId: "expense-1",
+      paymentRequestId: null,
+      settlementId: null,
+      direction: "outflow",
+      amountCents: 10_000n,
+      occurredAt: new Date("2026-07-31T03:00:01.000Z"),
+      createdByUserId: "finance-1"
+    };
+    const { service, tx } = hardenedProjectExpenseFinanceFixture({
+      requestOverrides: {
+        updatedAt: new Date("2026-07-31T03:00:09.000Z")
+      },
+      existingRecord
+    });
 
     await expect(
-      service.recordFinance("project-1", "expense-1", "finance-1", {
-        amountCents: "1",
-        occurredAt: "2026-07-02T00:00:00.000Z",
-        confirmationPassword: "current-password"
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        hardenedProjectExpenseFinanceInput()
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: "finance-record-1",
+        idempotencyKey: expenseFinanceCoordinates.idempotencyKey
       })
-    ).rejects.toThrow("财务记录金额超过未入账实付金额: 0");
+    );
+
+    expect(tx.financeRecord.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale project expense finance CAS before totals or writes", async () => {
+    const { service, tx } = hardenedProjectExpenseFinanceFixture({
+      requestOverrides: {
+        updatedAt: new Date("2026-07-31T03:00:09.000Z")
+      }
+    });
+
+    await expect(
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        hardenedProjectExpenseFinanceInput()
+      )
+    ).rejects.toThrow(
+      "项目支出申请已变化，请刷新后重试"
+    );
+
+    expect(tx.financeRecord.findMany).not.toHaveBeenCalled();
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "inactive actor",
+      false,
+      ["finance_staff"],
+      "当前项目支出财务入账账号不存在或已停用"
+    ],
+    [
+      "non-project finance actor",
+      true,
+      [],
+      "只有当前项目财务人员或财务主管可以登记项目支出财务入账"
+    ]
+  ] as const)(
+    "fails closed for project expense finance %s",
+    async (_label, isActive, roles, message) => {
+      const { service, tx } =
+        hardenedProjectExpenseFinanceFixture();
+      tx.user.findUnique.mockResolvedValue({
+        id: "finance-1",
+        isActive
+      });
+      tx.projectMember.findMany.mockResolvedValue(
+        roles.map((positionKey) => ({ positionKey }))
+      );
+
+      await expect(
+        service.recordFinance(
+          "project-1",
+          "expense-1",
+          "finance-1",
+          hardenedProjectExpenseFinanceInput()
+        )
+      ).rejects.toThrow(message);
+
+      expect(tx.financeRecord.findMany).not.toHaveBeenCalled();
+      expect(tx.financeRecord.create).not.toHaveBeenCalled();
+      expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects a reused project expense finance idempotency key bound to different facts", async () => {
+    const existingRecord = {
+      id: "finance-record-1",
+      idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+      projectId: "project-1",
+      projectExpenseRequestId: "expense-1",
+      paymentRequestId: null,
+      settlementId: null,
+      direction: "outflow",
+      amountCents: 999n,
+      occurredAt: new Date("2026-07-31T03:00:01.000Z"),
+      createdByUserId: "finance-1"
+    };
+    const { service, tx } = hardenedProjectExpenseFinanceFixture({
+      existingRecord
+    });
+
+    await expect(
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        hardenedProjectExpenseFinanceInput()
+      )
+    ).rejects.toThrow(
+      "该项目支出财务入账幂等键已绑定不同的持久事实"
+    );
+
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["P2002", { code: "P2002" }],
+    ["P2034", { code: "P2034" }],
+    [
+      "P2010/sqlstate 40001",
+      { code: "P2010", meta: { code: "40001" } }
+    ]
+  ])(
+    "returns only the exact project expense finance winner after %s",
+    async (_label, transactionError) => {
+      const winner = {
+        id: "finance-record-winner-1",
+        idempotencyKey:
+          expenseFinanceCoordinates.idempotencyKey,
+        projectId: "project-1",
+        projectExpenseRequestId: "expense-1",
+        paymentRequestId: null,
+        settlementId: null,
+        direction: "outflow",
+        amountCents: 10_000n,
+        occurredAt: new Date(
+          "2026-07-31T03:00:01.000Z"
+        ),
+        createdByUserId: "finance-1"
+      };
+      const prisma = {
+        projectExpenseRequest: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: "expense-1",
+              projectId: "project-1"
+            })
+            .mockResolvedValueOnce({
+              paidAmountCents: 50_000n
+            })
+        },
+        financeRecord: {
+          findUnique: jest.fn().mockResolvedValue(winner),
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ amountCents: 10_000n }])
+        },
+        $transaction: jest
+          .fn()
+          .mockRejectedValue(transactionError)
+      };
+      const service = new ProjectExpenseService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never,
+        projectFunding as never
+      );
+
+      await expect(
+        service.recordFinance(
+          "project-1",
+          "expense-1",
+          "finance-1",
+          hardenedProjectExpenseFinanceInput()
+        )
+      ).resolves.toEqual({
+        ...winner,
+        amountCents: "10000"
+      });
+    }
+  );
+
+  it.each([
+    [
+      "a non-exact uniqueness winner",
+      { code: "P2002" },
+      {
+        id: "finance-record-winner-1",
+        idempotencyKey:
+          expenseFinanceCoordinates.idempotencyKey,
+        projectId: "project-1",
+        projectExpenseRequestId: "expense-1",
+        paymentRequestId: null,
+        settlementId: null,
+        direction: "outflow",
+        amountCents: 10_001n,
+        occurredAt: new Date(
+          "2026-07-31T03:00:01.000Z"
+        ),
+        createdByUserId: "finance-1"
+      },
+      "项目支出财务入账唯一事实已变化，请刷新后重试"
+    ],
+    [
+      "a serialization conflict without an exact winner",
+      {
+        code: "P2010",
+        meta: {
+          code: "40001",
+          message:
+            "could not serialize access due to concurrent update"
+        }
+      },
+      null,
+      "项目支出财务入账并发冲突，请刷新后重试"
+    ]
+  ])(
+    "rejects %s",
+    async (
+      _label,
+      transactionError,
+      winner,
+      expectedMessage
+    ) => {
+      const prisma = {
+        projectExpenseRequest: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "expense-1",
+            projectId: "project-1"
+          })
+        },
+        financeRecord: {
+          findUnique: jest.fn().mockResolvedValue(winner)
+        },
+        $transaction: jest
+          .fn()
+          .mockRejectedValue(transactionError)
+      };
+      const service = new ProjectExpenseService(
+        prisma as never,
+        audit as never,
+        auth as never,
+        files as never,
+        projectFunding as never
+      );
+
+      await expect(
+        service.recordFinance(
+          "project-1",
+          "expense-1",
+          "finance-1",
+          hardenedProjectExpenseFinanceInput()
+        )
+      ).rejects.toThrow(expectedMessage);
+    }
+  );
+
+  it("keeps a completed finance fact retryable when PDF archive generation fails", async () => {
+    const { service, prisma, tx } =
+      hardenedProjectExpenseFinanceFixture({
+        recordedAmounts: [20_000n]
+      });
+    tx.financeRecord.create.mockResolvedValue({
+      id: "finance-record-1",
+      idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+      projectId: "project-1",
+      projectExpenseRequestId: "expense-1",
+      paymentRequestId: null,
+      settlementId: null,
+      direction: "outflow",
+      amountCents: 30_000n,
+      occurredAt: new Date("2026-07-31T03:00:01.000Z"),
+      createdByUserId: "finance-1"
+    });
+    prisma.projectExpenseRequest.findFirst
+      .mockResolvedValueOnce({
+        id: "expense-1",
+        projectId: "project-1"
+      })
+      .mockResolvedValueOnce({
+        ...projectExpenseFinanceRow(),
+        expenseSubtype: "reimbursement",
+        paymentSubject: "建工智管"
+      });
+    prisma.financeRecord.findMany.mockResolvedValue([
+        { amountCents: 20_000n },
+        { amountCents: 30_000n }
+      ]);
+    prisma.pdfDocument.findFirst.mockResolvedValue(null);
+    files.uploadPrivateFile.mockRejectedValueOnce(
+      new Error("storage unavailable")
+    );
+
+    await expect(
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        {
+          ...hardenedProjectExpenseFinanceInput(),
+          amountCents: "30000"
+        }
+      )
+    ).rejects.toThrow(
+      "财务入账已保存，但财务归档生成未完成；请使用同一操作直接重试"
+    );
+
+    expect(tx.financeRecord.create).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not freeze a final finance archive while a project expense is only partially paid", async () => {
+    const { service } =
+      hardenedProjectExpenseFinanceFixture({
+        requestOverrides: {
+          status: "partially_paid",
+          paidAmountCents: 30_000n
+        },
+        recordedAmounts: [20_000n]
+      });
+
+    await expect(
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        hardenedProjectExpenseFinanceInput()
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: "finance-record-1",
+        amountCents: "10000"
+      })
+    );
+
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects finance outflow above the unrecorded paid amount", async () => {
+    const { service, tx } =
+      hardenedProjectExpenseFinanceFixture({
+        recordedAmounts: [40_000n]
+      });
+
+    await expect(
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        {
+          ...hardenedProjectExpenseFinanceInput(),
+          amountCents: "20000"
+        }
+      )
+    ).rejects.toThrow(
+      "财务记录金额超过未入账实付金额: 10000"
+    );
+
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("compares large finance record totals as bigint", async () => {
+    const largeAmount = 9_007_199_254_740_993n;
+    const { service, tx } =
+      hardenedProjectExpenseFinanceFixture({
+        requestOverrides: {
+          paidAmountCents: largeAmount
+        },
+        recordedAmounts: [largeAmount]
+      });
+
+    await expect(
+      service.recordFinance(
+        "project-1",
+        "expense-1",
+        "finance-1",
+        {
+          ...hardenedProjectExpenseFinanceInput(),
+          amountCents: "1"
+        }
+      )
+    ).rejects.toThrow(
+      "财务记录金额超过未入账实付金额: 0"
+    );
+
     expect(tx.financeRecord.create).not.toHaveBeenCalled();
   });
 
@@ -3050,14 +3726,52 @@ describe("ProjectExpenseService", () => {
           projectId: "project-1",
           status: "paid",
           code: "BX-2026-009",
+          expenseType: "reimbursement",
           requestedAmountCents: 50_000n,
           approvedAmountCents: 50_000n,
-          paidAmountCents: 50_000n
+          paidAmountCents: 50_000n,
+          applicantUserId: "handler-1",
+          purchaseExecutedAt: null,
+          receiptConfirmedAt: null,
+          updatedAt: new Date(
+            expenseFinanceCoordinates.expectedExpenseUpdatedAt
+          )
         }
       ]),
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "finance-1",
+          isActive: true
+        })
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionKey: "finance_staff" }
+        ])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
       financeRecord: {
+        findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([{ amountCents: 20_000n }]),
-        create: jest.fn().mockResolvedValue({ id: "finance-record-1", amountCents: 30_000n })
+        create: jest.fn().mockResolvedValue({
+          id: "finance-record-1",
+          idempotencyKey: expenseFinanceCoordinates.idempotencyKey,
+          projectId: "project-1",
+          projectExpenseRequestId: "expense-1",
+          paymentRequestId: null,
+          settlementId: null,
+          direction: "outflow",
+          amountCents: 30_000n,
+          occurredAt: new Date("2026-07-02T00:00:00.000Z"),
+          createdByUserId: "finance-1"
+        })
+      },
+      projectExpenseRequest: {
+        update: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          updatedAt: new Date()
+        })
       },
       auditLog: { create: jest.fn() }
     };
@@ -3107,6 +3821,7 @@ describe("ProjectExpenseService", () => {
     );
 
     await service.recordFinance("project-1", "expense-1", "finance-1", {
+      ...expenseFinanceCoordinates,
       amountCents: "30000",
       occurredAt: "2026-07-02T00:00:00.000Z",
       confirmationPassword: "current-password"
