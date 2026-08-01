@@ -4298,6 +4298,16 @@
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "prepareSpotProcurementPaymentReviewAction",
+            "method": "GET",
+            "normalizedPath": "/spot-procurement-payments/:param",
+            "normalizedKey": "GET /spot-procurement-payments/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -14268,17 +14278,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "reviewSpotProcurementA5Payment",
-            "method": "POST",
-            "normalizedPath": "/spot-procurement-payments/:param/approval",
-            "normalizedKey": "POST /spot-procurement-payments/:param/approval",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "reviewSpotProcurementPayment",
+            "wrapper": "executeSpotProcurementPaymentReviewAction",
             "method": "POST",
             "normalizedPath": "/spot-procurement-payments/:param/approval",
             "normalizedKey": "POST /spot-procurement-payments/:param/approval",

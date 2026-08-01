@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "bcce22ff93b433272b1b2ed4d8d06249958cbfee96f31a0f94aaf69531ade971",
+      "sha256": "b1900c2e346ccf8f6afc5cf2222237d165cfd5b1d0c453186a1c70721444a810",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
@@ -36,35 +36,35 @@
         "orphanWrapperCount": 48,
         "testOnlyWrapperCount": 46,
         "unreferencedWrapperCount": 2,
-        "duplicateNormalizedRouteGroupCount": 10,
+        "duplicateNormalizedRouteGroupCount": 9,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "167eb805197ef58c654dfa133904387ff10622f09850b646116b902e60ce1358",
+      "sha256": "b5ed8de102bdcfbb75fa414c00e4f8da949ff57ae265b5f44d436233e84aa925",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 44,
-        "pageActionCount": 38,
+        "registeredActionCount": 48,
+        "pageActionCount": 42,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 918,
+        "templateEventDirectiveCount": 923,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 20,
-        "candidateProductionMutationConsumerCount": 39,
-        "acceptedProductionMutationConsumerCount": 20,
-        "productionMutationConsumerPairCount": 273,
-        "blockerCount": 299
+        "coveredProductionMutationConsumerCount": 21,
+        "candidateProductionMutationConsumerCount": 40,
+        "acceptedProductionMutationConsumerCount": 21,
+        "productionMutationConsumerPairCount": 272,
+        "blockerCount": 297
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "f7d401bc648d3dceb343867be280f712353f17882e440595486fd6c456aba429",
+      "sha256": "5544f80cff2f2bd93ee50e1ded7c8b90ee000b6621f8367a77e306056583841a",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -103,15 +103,15 @@
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 48,
-    "duplicateMutationRouteCount": 5,
-    "registeredActionCount": 44,
-    "actionBindingCount": 57,
-    "acceptedActionBindingCount": 29,
-    "unresolvedActionBindingCount": 28,
-    "productionMutationConsumerPairCount": 273,
-    "coveredProductionMutationConsumerPairCount": 20,
-    "uncoveredProductionMutationConsumerPairCount": 253,
-    "blockerCount": 364
+    "duplicateMutationRouteCount": 4,
+    "registeredActionCount": 48,
+    "actionBindingCount": 61,
+    "acceptedActionBindingCount": 33,
+    "unresolvedActionBindingCount": 20,
+    "productionMutationConsumerPairCount": 272,
+    "coveredProductionMutationConsumerPairCount": 21,
+    "uncoveredProductionMutationConsumerPairCount": 251,
+    "blockerCount": 353
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -438,19 +438,6 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "submitContractTakeoverCorrection"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /spot-procurement-payments/:param/approval",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "reviewSpotProcurementA5Payment"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "reviewSpotProcurementPayment"
           }
         ]
       }
@@ -2615,22 +2602,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurementA5Payment",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/approval"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurementPayment",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/approval"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
         "wrapper": "reviewSpotProcurementReceipt",
         "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
         "normalizedKeys": [
@@ -2720,17 +2691,6 @@
     ],
     "unresolvedActions": [
       {
-        "actionId": "contract-draft.abandon-application",
-        "bindingIndex": 0,
-        "identity": "contract-draft.abandon-application\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeContractDraftLifecycleAction\u0000GET\u0000GET /contract-drafts/:param/workbench\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeContractDraftLifecycleAction",
-        "normalizedKey": "GET /contract-drafts/:param/workbench",
-        "reasonCodes": [
-          "binding_not_mutation"
-        ]
-      },
-      {
         "actionId": "contract-draft.aggregate-autosave",
         "bindingIndex": 0,
         "identity": "contract-draft.aggregate-autosave\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000saveContractDraftAggregate\u0000PUT\u0000PUT /contract-drafts/:param\u00000",
@@ -2742,17 +2702,6 @@
           "no_accepted_consumer",
           "capability_not_server_derived",
           "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-draft.delete-pristine",
-        "bindingIndex": 0,
-        "identity": "contract-draft.delete-pristine\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeContractDraftLifecycleAction\u0000GET\u0000GET /contract-drafts/:param/workbench\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeContractDraftLifecycleAction",
-        "normalizedKey": "GET /contract-drafts/:param/workbench",
-        "reasonCodes": [
-          "binding_not_mutation"
         ]
       },
       {
@@ -2910,17 +2859,6 @@
         ]
       },
       {
-        "actionId": "payment-execution.record",
-        "bindingIndex": 0,
-        "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000GET\u0000GET /payments/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecutionWithUpload",
-        "normalizedKey": "GET /payments/:param",
-        "reasonCodes": [
-          "binding_not_mutation"
-        ]
-      },
-      {
         "actionId": "payment-request.create-local-form",
         "bindingIndex": 0,
         "identity": "payment-request.create-local-form\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPaymentRequest\u0000POST\u0000POST /payments\u00000",
@@ -2946,61 +2884,6 @@
           "no_accepted_consumer",
           "capability_not_server_derived",
           "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "project-expense.execution-local-status",
-        "bindingIndex": 0,
-        "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecutionWithUpload",
-        "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-        "reasonCodes": [
-          "binding_not_mutation"
-        ]
-      },
-      {
-        "actionId": "project-expense.finance-local-status",
-        "bindingIndex": 0,
-        "identity": "project-expense.finance-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseFinanceWithPreflight\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseFinanceWithPreflight",
-        "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-        "reasonCodes": [
-          "binding_not_mutation"
-        ]
-      },
-      {
-        "actionId": "project-expense.receipt-confirm-local-status",
-        "bindingIndex": 0,
-        "identity": "project-expense.receipt-confirm-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmProjectExpenseReceiptWithPreflight\u0000GET\u0000GET /projects/:param/expense-requests/:param/approval-detail\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectExpenseReceiptWithPreflight",
-        "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-        "reasonCodes": [
-          "binding_not_mutation"
-        ]
-      },
-      {
-        "actionId": "settlement-draft.abandon-application",
-        "bindingIndex": 0,
-        "identity": "settlement-draft.abandon-application\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000GET\u0000GET /projects/:param/settlement-drafts/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "executeSettlementDraftLifecycleAction",
-        "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
-        "reasonCodes": [
-          "binding_not_mutation"
-        ]
-      },
-      {
-        "actionId": "settlement-draft.delete-pristine",
-        "bindingIndex": 0,
-        "identity": "settlement-draft.delete-pristine\u0000apps/web-admin/src/api/settlement-drafts.api.ts\u0000executeSettlementDraftLifecycleAction\u0000GET\u0000GET /projects/:param/settlement-drafts/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "executeSettlementDraftLifecycleAction",
-        "normalizedKey": "GET /projects/:param/settlement-drafts/:param",
-        "reasonCodes": [
-          "binding_not_mutation"
         ]
       },
       {
@@ -4119,9 +4002,7 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         },
         {
           "actionId": "contract-draft.delete-pristine",
@@ -4147,15 +4028,11 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -5716,15 +5593,11 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -6433,9 +6306,7 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         },
         {
           "actionId": "project-expense.finance-local-status",
@@ -6461,9 +6332,7 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         },
         {
           "actionId": "project-expense.receipt-confirm-local-status",
@@ -6489,15 +6358,11 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -6757,9 +6622,7 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         },
         {
           "actionId": "settlement-draft.delete-pristine",
@@ -6785,15 +6648,11 @@
           ],
           "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "binding_not_mutation"
-          ]
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7775,6 +7634,20 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "prepareSpotProcurementPaymentReviewAction",
+          "method": "GET",
+          "path": "/spot-procurement-payments/:param",
+          "normalizedKey": "GET /spot-procurement-payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
@@ -19907,21 +19780,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "reviewSpotProcurementA5Payment",
-          "method": "POST",
-          "path": "/spot-procurement-payments/:param/approval",
-          "normalizedKey": "POST /spot-procurement-payments/:param/approval",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/spot-procurement.api.test.ts"
-          ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "reviewSpotProcurementPayment",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedKey": "POST /spot-procurement-payments/:param/approval",
@@ -19935,12 +19794,114 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "DUPLICATE_MUTATION_ROUTE",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.legacy-review-approve",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.legacy-review-approve\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementPaymentReviewAction\u0000POST\u0000POST /spot-procurement-payments/:param/approval\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementPaymentCapability.availableActions",
+            "key": "review_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement-payment.legacy-review-return-to-applicant",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.legacy-review-return-to-applicant\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementPaymentReviewAction\u0000POST\u0000POST /spot-procurement-payments/:param/approval\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementPaymentCapability.availableActions",
+            "key": "review_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement-payment.review-approve",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.review-approve\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementPaymentReviewAction\u0000POST\u0000POST /spot-procurement-payments/:param/approval\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementPaymentCapability.availableActions",
+            "key": "review_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement-payment.review-return-to-applicant",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.review-return-to-applicant\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementPaymentReviewAction\u0000POST\u0000POST /spot-procurement-payments/:param/approval\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementPaymentCapability.availableActions",
+            "key": "review_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

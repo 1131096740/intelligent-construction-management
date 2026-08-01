@@ -11,7 +11,9 @@ import {
   fetchSpotProcurementApplicationTextSuggestions,
   createSpotProcurementPaymentDraft,
   createSpotProcurementVersion,
+  executeSpotProcurementPaymentReviewAction,
   executeSpotProcurementReviewAction,
+  prepareSpotProcurementPaymentReviewAction,
   prepareSpotProcurementReviewAction,
   fetchSpotProcurementCapabilities,
   fetchSpotProcurementDetail,
@@ -27,8 +29,6 @@ import {
   requestSpotProcurementAbnormalTermination,
   resetSpotProcurementReceiptDraft,
   submitSpotProcurementReceipt,
-  reviewSpotProcurementA5Payment,
-  reviewSpotProcurementPayment,
   submitSpotProcurement,
   submitSpotProcurementPayment,
   updateSpotProcurementDraft,
@@ -39,9 +39,10 @@ import {
   voidSpotProcurementPayment,
   withdrawSpotProcurementPayment,
   type CreateSpotProcurementDraftPayload,
+  type PrepareSpotProcurementPaymentReviewActionInput,
   type PrepareSpotProcurementReviewActionInput,
   type RecordSpotProcurementPaymentExecutionPayload,
-  type ReviewSpotProcurementA5PaymentPayload
+  type ReviewSpotProcurementPaymentPayload
 } from "./spot-procurement.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
@@ -527,6 +528,295 @@ describe("spot procurement API client", () => {
     expect(finish).toHaveBeenCalledWith(input);
   });
 
+  it.each([
+    ["real_payment", "approve", undefined],
+    ["legacy", "return_to_applicant", "请补充付款依据"]
+  ] as const)(
+    "preflights and submits the %s payment %s action through one canonical executor",
+    async (paymentForm, decision, comment) => {
+      mockApiFetch
+        .mockResolvedValueOnce(
+          jsonResponse(paymentReviewDetail({ paymentForm }))
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            id: "payment-a",
+            status: "approval_pending",
+            ...(decision === "return_to_applicant"
+              ? { newDraftPaymentId: "payment-draft-b" }
+              : {})
+          })
+        );
+      const input = paymentReviewActionInput({
+        paymentForm,
+        decision,
+        ...(comment ? { comment } : {})
+      });
+      const complete = vi.fn();
+      const fail = vi.fn();
+      const finish = vi.fn();
+
+      await expect(
+        executeSpotProcurementPaymentReviewAction({
+          decision,
+          capture: () => input,
+          preflight: (context) =>
+            prepareSpotProcurementPaymentReviewAction({
+              ...context,
+              decision,
+              isCurrent: () => true
+            }),
+          current: (_context, prepared) => prepared.status === "ready",
+          complete,
+          fail,
+          finish
+        })
+      ).resolves.toEqual(
+        expect.objectContaining({ status: "completed" })
+      );
+
+      expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+        "/spot-procurement-payments/payment-a",
+        "/spot-procurement-payments/payment-a/approval"
+      ]);
+      expect(mockApiFetch.mock.calls[1]?.[1]).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            decision,
+            ...(comment ? { comment } : {})
+          })
+        })
+      );
+      expect(complete).toHaveBeenCalledOnce();
+      expect(fail).not.toHaveBeenCalled();
+      expect(finish).toHaveBeenCalledOnce();
+    }
+  );
+
+  it("preserves the finance-director legacy balance adjustment through preflight and POST", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse(
+          paymentReviewDetail({
+            paymentForm: "legacy",
+            currentRoleKeys: ["finance_director"],
+            supplierBalanceAmountCents: "3000"
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "payment-a",
+          status: "returned",
+          newDraftPaymentId: "payment-draft-b"
+        })
+      );
+    const input = {
+      ...paymentReviewActionInput({
+        paymentForm: "legacy",
+        decision: "return_to_applicant",
+        comment: "余额改为 20 元"
+      }),
+      requiresLegacySupplierBalanceAdjustment: true,
+      adjustedSupplierBalanceAmountCents: "2000"
+    } as PrepareSpotProcurementPaymentReviewActionInput;
+
+    const result = await executeSpotProcurementPaymentReviewAction({
+      decision: "return_to_applicant",
+      capture: () => input,
+      preflight: (context) =>
+        prepareSpotProcurementPaymentReviewAction({
+          ...context,
+          decision: "return_to_applicant",
+          isCurrent: () => true
+        }),
+      current: (_context, prepared) => prepared.status === "ready",
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    expect(result.status).toBe("completed");
+    expect(mockApiFetch.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        body: JSON.stringify({
+          decision: "return_to_applicant",
+          comment: "余额改为 20 元",
+          adjustedSupplierBalanceAmountCents: "2000"
+        })
+      })
+    );
+  });
+
+  it("rejects a legacy balance-adjustment field on the real A5 form before any request", async () => {
+    const input = {
+      ...paymentReviewActionInput({
+        paymentForm: "real_payment",
+        decision: "return_to_applicant",
+        comment: "退回补充"
+      }),
+      requiresLegacySupplierBalanceAdjustment: false,
+      adjustedSupplierBalanceAmountCents: "0"
+    } as PrepareSpotProcurementPaymentReviewActionInput;
+
+    await expect(
+      prepareSpotProcurementPaymentReviewAction(input)
+    ).rejects.toThrow();
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("refuses a stale legacy finance adjustment when the latest server node is not finance director", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      jsonResponse(
+        paymentReviewDetail({
+          paymentForm: "legacy",
+          currentRoleKeys: ["project_manager"]
+        })
+      )
+    );
+    const input = {
+      ...paymentReviewActionInput({
+        paymentForm: "legacy",
+        decision: "return_to_applicant",
+        comment: "调整余额后退回"
+      }),
+      requiresLegacySupplierBalanceAdjustment: true,
+      adjustedSupplierBalanceAmountCents: "2000"
+    } as PrepareSpotProcurementPaymentReviewActionInput;
+
+    await expect(
+      prepareSpotProcurementPaymentReviewAction(input)
+    ).rejects.toThrow();
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires a distinct self-review reason for legacy approve before any request", async () => {
+    const input = paymentReviewActionInput({
+      paymentForm: "legacy",
+      decision: "approve",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "",
+      confirmationPassword: "correct-password"
+    });
+
+    await expect(
+      prepareSpotProcurementPaymentReviewAction(input)
+    ).rejects.toThrow();
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a return response does not identify the new draft", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse(
+          paymentReviewDetail({
+            paymentForm: "legacy",
+            currentRoleKeys: ["project_manager"]
+          })
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "payment-a", status: "returned" })
+      );
+    const input = paymentReviewActionInput({
+      paymentForm: "legacy",
+      decision: "return_to_applicant",
+      comment: "请补充依据"
+    });
+    const complete = vi.fn();
+    const fail = vi.fn();
+
+    const result = await executeSpotProcurementPaymentReviewAction({
+      decision: "return_to_applicant",
+      capture: () => input,
+      preflight: (context) =>
+        prepareSpotProcurementPaymentReviewAction({
+          ...context,
+          decision: "return_to_applicant",
+          isCurrent: () => true
+        }),
+      current: (_context, prepared) => prepared.status === "ready",
+      complete,
+      fail,
+      finish: vi.fn()
+    });
+
+    expect(result.status).toBe("failed");
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).toHaveBeenCalledOnce();
+  });
+
+  it("does not POST a payment review after its current owner is invalidated during preflight", async () => {
+    const preflight = deferred<Response>();
+    let current = true;
+    mockApiFetch.mockReturnValueOnce(preflight.promise);
+    const input = paymentReviewActionInput({
+      decision: "approve",
+      isCurrent: () => current
+    });
+
+    const request = executeSpotProcurementPaymentReviewAction({
+      decision: "approve",
+      capture: () => input,
+      preflight: (context) =>
+        prepareSpotProcurementPaymentReviewAction({
+          ...context,
+          decision: "approve",
+          isCurrent: () => current
+        }),
+      current: (_context, prepared) => prepared.status === "ready",
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    current = false;
+    preflight.resolve(jsonResponse(paymentReviewDetail()));
+
+    await expect(request).resolves.toEqual(
+      expect.objectContaining({ status: "stale" })
+    );
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/spot-procurement-payments/payment-a"
+    );
+  });
+
+  it.each([
+    ["missing action", paymentReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      paymentReviewDetail({
+        availableActions: [paymentReviewAction({ enabled: false })]
+      })
+    ],
+    [
+      "payment drift",
+      paymentReviewDetail({ paymentId: "payment-b" })
+    ],
+    [
+      "form drift",
+      paymentReviewDetail({ paymentForm: "legacy" })
+    ]
+  ])(
+    "refuses a %s payment review preflight before POST",
+    async (_label, preflight) => {
+      mockApiFetch.mockResolvedValueOnce(jsonResponse(preflight));
+
+      await expect(
+        prepareSpotProcurementPaymentReviewAction(
+          paymentReviewActionInput({ paymentForm: "real_payment" })
+        )
+      ).rejects.toThrow();
+
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/spot-procurement-payments/payment-a"
+      );
+    }
+  );
+
   it("connects A5 payment facts, payer controls and review safeguards", async () => {
     const draft = {
       paymentType: "company_direct" as const,
@@ -537,14 +827,6 @@ describe("spot procurement API client", () => {
       paymentMethods: ["bank_transfer" as const],
       attachments: [{ fileId: "quote-1", category: "merchant_quote" as const }]
     };
-    const review = {
-      decision: "return_to_applicant" as const,
-      comment: "按可用余额调整",
-      adjustedSupplierBalanceAmountCents: "3000",
-      selfReviewReason: "本人为当前必经岗位",
-      confirmationPassword: "correct-password"
-    };
-
     await updateSpotProcurementPaymentDraft("payment/1", draft);
     await updateSpotProcurementPaymentPayer("payment/1", {
       companyEntityId: "company-1",
@@ -552,7 +834,6 @@ describe("spot procurement API client", () => {
       changeReason: "付款主体调整"
     });
     await submitSpotProcurementPayment("payment/1");
-    await reviewSpotProcurementPayment("payment/1", review);
     await withdrawSpotProcurementPayment("payment/1");
     await voidSpotProcurementPayment("payment/1", { reason: "重新发起" });
 
@@ -560,40 +841,28 @@ describe("spot procurement API client", () => {
       "/spot-procurement-payments/payment%2F1/draft",
       "/spot-procurement-payments/payment%2F1/payer",
       "/spot-procurement-payments/payment%2F1/submission",
-      "/spot-procurement-payments/payment%2F1/approval",
       "/spot-procurement-payments/payment%2F1/approval-withdrawal",
       "/spot-procurement-payments/payment%2F1/voiding"
     ]);
     expect(mockApiFetch.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ method: "PATCH", body: JSON.stringify(draft) })
     );
-    expect(mockApiFetch.mock.calls[3]?.[1]).toEqual(
-      expect.objectContaining({ method: "POST", body: JSON.stringify(review) })
-    );
-    expect(mockApiFetch.mock.calls[5]?.[1]).toEqual(
+    expect(mockApiFetch.mock.calls[4]?.[1]).toEqual(
       expect.objectContaining({
         body: JSON.stringify({ reason: "重新发起" })
       })
     );
   });
 
-  it("exposes an A5-specific review contract that excludes reject", async () => {
+  it("exposes one neutral payment review action contract that excludes reject", async () => {
+    const module = await import("./spot-procurement.api");
+    expect(module).not.toHaveProperty("reviewSpotProcurementPayment");
+    expect(module).not.toHaveProperty("reviewSpotProcurementA5Payment");
     expectTypeOf<
-      ReviewSpotProcurementA5PaymentPayload["decision"]
+      ReviewSpotProcurementPaymentPayload["decision"]
     >().toEqualTypeOf<"approve" | "return_to_applicant">();
-    const review: ReviewSpotProcurementA5PaymentPayload = {
-      decision: "return_to_applicant",
-      comment: "请补充付款依据"
-    };
-
-    await reviewSpotProcurementA5Payment("payment/1", review);
-
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      "/spot-procurement-payments/payment%2F1/approval",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify(review)
-      })
+    expect(module).toHaveProperty(
+      "executeSpotProcurementPaymentReviewAction"
     );
   });
 
@@ -703,6 +972,65 @@ function reviewActionInput(
     expectedNodeIndex: 1,
     decision: "approve",
     comment: "",
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function paymentReviewAction(
+  overrides: Partial<Record<string, unknown>> = {}
+) {
+  return {
+    key: "review_approval",
+    label: "审批",
+    kind: "primary",
+    enabled: true,
+    disabledReason: null,
+    requiredRoles: [],
+    requiresSelfReviewConfirmation: false,
+    ...overrides
+  };
+}
+
+function paymentReviewDetail(
+  overrides: {
+    paymentId?: string;
+    paymentForm?: "real_payment" | "legacy";
+    availableActions?: Array<Record<string, unknown>>;
+    currentRoleKeys?: string[];
+    supplierBalanceAmountCents?: string;
+  } = {}
+) {
+  return {
+    payment: {
+      id: overrides.paymentId ?? "payment-a",
+      form: overrides.paymentForm ?? "real_payment",
+      supplierBalanceAmountCents:
+        overrides.supplierBalanceAmountCents ?? "3000"
+    },
+    approval: {
+      currentRoleKeys: overrides.currentRoleKeys ?? ["project_manager"]
+    },
+    availableActions:
+      overrides.availableActions ?? [paymentReviewAction()]
+  };
+}
+
+function paymentReviewActionInput(
+  overrides: Partial<PrepareSpotProcurementPaymentReviewActionInput> = {}
+): PrepareSpotProcurementPaymentReviewActionInput {
+  return {
+    ownerScope: "payment-page-a",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    paymentId: "payment-a",
+    paymentForm: "real_payment",
+    decision: "approve",
+    comment: "",
+    requiresSelfReviewConfirmation: false,
+    requiresLegacySupplierBalanceAdjustment: false,
     isCurrent: () => true,
     ...overrides
   };

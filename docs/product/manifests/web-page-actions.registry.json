@@ -882,6 +882,110 @@
       ]
     },
     {
+      "id": "spot-procurement-payment.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "payment-approval-drawer",
+        "event": "approve",
+        "handler": "confirmA5PaymentApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "payment-approval-drawer",
+        "event": "return-to-applicant",
+        "handler": "confirmA5PaymentReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "return_to_applicant"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.legacy-review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmLegacyPaymentApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.legacy-review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmLegacyPaymentReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "return_to_applicant"
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.abnormal-termination-confirm",
       "usage": "page_action",
       "routePaths": [

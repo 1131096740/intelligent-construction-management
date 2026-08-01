@@ -87,6 +87,12 @@ const pageActionRegistry = JSON.parse(
   actions: Array<{
     id: string;
     capability: { source: string; key: string };
+    trigger: { element: string; event: string; handler: string };
+    wrappers: Array<{
+      apiFile: string;
+      name: string;
+      variant?: string;
+    }>;
   }>;
 };
 
@@ -419,7 +425,10 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("merchantPayeeMismatchNote");
     expect(detail).toContain("payerManagement");
     expect(detail).toContain("paymentChannelId");
-    expect(`${component}\n${detail}`).not.toContain("supplierBalanceAmountCents");
+    expect(component).not.toContain("supplierBalanceAmountCents");
+    expect(detail).toContain(
+      "requiresLegacySupplierBalanceAdjustment"
+    );
     expect(`${component}\n${detail}`).not.toMatch(/转商户余额/u);
   });
 
@@ -515,12 +524,50 @@ describe("spot procurement web pages", () => {
   it("uses one controlled A5 approval drawer with explicit confirmation facts", () => {
     const detail = pageSource("SpotProcurementPaymentDetailPage.vue");
     const drawer = pageSource("components/PaymentApprovalDrawer.vue");
+    const registrations = pageActionRegistry.actions.filter((action) =>
+      action.id.startsWith("spot-procurement-payment.") &&
+      action.id.includes("review")
+    );
 
     expect(detail).toContain("<PaymentApprovalDrawer");
+    expect(detail).toContain(
+      "v-if=\"isRealPayment && paymentReviewActionEnabled('review_approval')\""
+    );
     expect(detail).toContain("办理审批");
-    expect(detail).toContain("reviewSpotProcurementA5Payment");
+    expect(detail).toContain(
+      "const spotProcurementPaymentCapability = ref<SpotProcurementPaymentDetailReadModel | null>(null)"
+    );
+    expect(detail).toContain(
+      "spotProcurementPaymentCapability.value = serverDetail"
+    );
+    expect(detail).toContain("const viewDetail = structuredClone(serverDetail)");
+    expect(detail).toContain("executeSpotProcurementPaymentReviewAction");
+    expect(detail).toContain("prepareSpotProcurementPaymentReviewAction");
+    expect(detail).toContain("function confirmA5PaymentApprove");
+    expect(detail).toContain("function confirmA5PaymentReturn");
+    expect(detail).toContain("function confirmLegacyPaymentApprove");
+    expect(detail).toContain("function confirmLegacyPaymentReturn");
+    expect(detail).toContain('@approve="confirmA5PaymentApprove"');
+    expect(detail).toContain(
+      '@return-to-applicant="confirmA5PaymentReturn"'
+    );
+    expect(detail).toContain('@confirm="confirmLegacyPaymentApprove"');
+    expect(detail).toContain('@confirm="confirmLegacyPaymentReturn"');
+    expect(detail).toContain("legacySelfReviewReason");
+    expect(detail).toContain("自审原因（不作为审批意见）");
+    expect(detail).toContain("!selfReviewReason || !confirmationPassword");
+    expect(detail).toContain("legacyAdjustedSupplierBalanceAmountYuan");
+    expect(detail).toContain("调整后供应商余额抵扣金额");
+    expect(detail).toContain('currentRoleKeys[0] === "finance_director"');
+    expect(detail).not.toContain("selfReviewReason: values.reason");
+    expect(detail).not.toContain("reviewSpotProcurementA5Payment");
+    expect(detail).not.toContain("reviewSpotProcurementPayment");
+    expect(detail).not.toContain("review_reject");
     expect(detail).toContain("approvalTriggerElement");
     expect(drawer).toContain('type A5ApprovalResult = "approve" | "return_to_applicant"');
+    expect(drawer).toContain('emit("approve", payload)');
+    expect(drawer).toContain('emit("return-to-applicant", payload)');
+    expect(drawer).not.toContain('emit("submit"');
     expect(drawer).toContain("通过");
     expect(drawer).toContain("退回申请人修改");
     expect(drawer).not.toContain("拒绝");
@@ -539,6 +586,51 @@ describe("spot procurement web pages", () => {
     expect(drawer).toContain("nextTick");
     expect(drawer).toContain('tabindex="-1"');
     expect(drawer).toContain("MutationObserver");
+
+    expect(registrations).toHaveLength(4);
+    expect(
+      registrations.map((action) => ({
+        id: action.id,
+        source: action.capability.source,
+        event: action.trigger.event,
+        handler: action.trigger.handler,
+        wrapper: action.wrappers[0]?.name,
+        variant: action.wrappers[0]?.variant
+      }))
+    ).toEqual([
+      {
+        id: "spot-procurement-payment.review-approve",
+        source: "spotProcurementPaymentCapability.availableActions",
+        event: "approve",
+        handler: "confirmA5PaymentApprove",
+        wrapper: "executeSpotProcurementPaymentReviewAction",
+        variant: "approve"
+      },
+      {
+        id: "spot-procurement-payment.review-return-to-applicant",
+        source: "spotProcurementPaymentCapability.availableActions",
+        event: "return-to-applicant",
+        handler: "confirmA5PaymentReturn",
+        wrapper: "executeSpotProcurementPaymentReviewAction",
+        variant: "return_to_applicant"
+      },
+      {
+        id: "spot-procurement-payment.legacy-review-approve",
+        source: "spotProcurementPaymentCapability.availableActions",
+        event: "confirm",
+        handler: "confirmLegacyPaymentApprove",
+        wrapper: "executeSpotProcurementPaymentReviewAction",
+        variant: "approve"
+      },
+      {
+        id: "spot-procurement-payment.legacy-review-return-to-applicant",
+        source: "spotProcurementPaymentCapability.availableActions",
+        event: "confirm",
+        handler: "confirmLegacyPaymentReturn",
+        wrapper: "executeSpotProcurementPaymentReviewAction",
+        variant: "return_to_applicant"
+      }
+    ]);
   });
 
   it("refreshes payer facts after a shared-role conflict instead of retrying the stale write", () => {
@@ -549,7 +641,8 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("任务已由其他岗位完成，已刷新最新付款事实。");
     expect(detail).toContain("const operationPaymentId = payerOpenedPaymentId");
     expect(detail).toContain("paymentId.value !== payerOpenedPaymentId");
-    expect(detail).toContain("paymentId.value !== approvalOpenedPaymentId");
+    expect(detail).toContain("context.paymentId === paymentId.value");
+    expect(detail).toContain("paymentReviewBusyOwnerId === context.operationId");
     expect(detail).toContain("resetPayerEditorState();");
     expect(detail).toContain("resetApprovalEditorState();");
     expect(detail).toContain("paymentId.value !== operationPaymentId");

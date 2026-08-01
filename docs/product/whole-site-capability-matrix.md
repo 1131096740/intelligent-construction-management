@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
-| webApiWrappers | blocked | `bcce22ff93b433272b1b2ed4d8d06249958cbfee96f31a0f94aaf69531ade971` |
-| webPageActions | blocked | `167eb805197ef58c654dfa133904387ff10622f09850b646116b902e60ce1358` |
-| routeUsage | blocked | `f7d401bc648d3dceb343867be280f712353f17882e440595486fd6c456aba429` |
+| webApiWrappers | blocked | `b1900c2e346ccf8f6afc5cf2222237d165cfd5b1d0c453186a1c70721444a810` |
+| webPageActions | blocked | `b5ed8de102bdcfbb75fa414c00e4f8da949ff57ae265b5f44d436233e84aa925` |
+| routeUsage | blocked | `5544f80cff2f2bd93ee50e1ded7c8b90ee000b6621f8367a77e306056583841a` |
 
 ## 汇总
 
@@ -25,15 +25,15 @@
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 48 |
-| duplicateMutationRouteCount | 5 |
-| registeredActionCount | 44 |
-| actionBindingCount | 57 |
-| acceptedActionBindingCount | 29 |
-| unresolvedActionBindingCount | 28 |
-| productionMutationConsumerPairCount | 273 |
-| coveredProductionMutationConsumerPairCount | 20 |
-| uncoveredProductionMutationConsumerPairCount | 253 |
-| blockerCount | 364 |
+| duplicateMutationRouteCount | 4 |
+| registeredActionCount | 48 |
+| actionBindingCount | 61 |
+| acceptedActionBindingCount | 33 |
+| unresolvedActionBindingCount | 20 |
+| productionMutationConsumerPairCount | 272 |
+| coveredProductionMutationConsumerPairCount | 21 |
+| uncoveredProductionMutationConsumerPairCount | 251 |
+| blockerCount | 353 |
 
 ## 路由矩阵
 
@@ -61,7 +61,7 @@
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
 | GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | ACTION_BINDING_UNRESOLVED |
+| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
 | GET | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
 | GET | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedLayoutTemplates | — | not_applicable | — |
@@ -97,7 +97,7 @@
 | GET | /me/workbench-summary | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkbenchSummary | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /organization/directory | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchOrganizationDirectory | — | not_applicable | — |
 | GET | /organization/permission-integrity | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPermissionIntegrity | — | not_applicable | — |
-| GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | ACTION_BINDING_UNRESOLVED |
+| GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
 | GET | /payments/contract-application | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractPaymentApplication | — | not_applicable | — |
 | GET | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLedger<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentLifecycleLedger | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-business-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateBusinessFacts | — | not_applicable | — |
@@ -110,12 +110,12 @@
 | GET | /projects/:projectId/contract-takeovers/import-template | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverImportTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/ledger-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverLedgerExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
-| GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | ACTION_BINDING_UNRESOLVED |
+| GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | — |
 | GET | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseRequests | — | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
-| GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | not_applicable | ACTION_BINDING_UNRESOLVED |
+| GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftRecords | — | not_applicable | — |
 | GET | /projects/affiliate-mapping-report | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateMappingReport | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /projects/contract-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractCreateProjects | — | not_applicable | — |
@@ -137,7 +137,7 @@
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
 | GET | /settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementWorkbenchLedger | — | not_applicable | — |
-| GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail | — | not_applicable | — |
+| GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction | — | not_applicable | — |
 | GET | /spot-procurement-payments | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPayments | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementWithdrawalAction | — | not_applicable | — |
@@ -392,7 +392,7 @@
 | POST | /settlements | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createSettlementDraft | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /spot-procurement-payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementPaymentDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /spot-procurement-payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementA5Payment<br>apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementPayment | — | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /spot-procurement-payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementPaymentReviewAction | spot-procurement-payment.legacy-review-approve<br>spot-procurement-payment.legacy-review-return-to-applicant<br>spot-procurement-payment.review-approve<br>spot-procurement-payment.review-return-to-applicant | covered | — |
 | POST | /spot-procurement-payments/:paymentId/balance-execution | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /spot-procurement-payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementPaymentExecution | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#invalidateSpotProcurementPaymentInvoice | spot-procurement.invoice-invalidate | covered | — |
@@ -738,8 +738,6 @@
 - apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefund → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#recreateSpotProcurementPaymentDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#resetSpotProcurementReceiptDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
-- apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementA5Payment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
-- apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementPayment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementReceipt → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#revokeSpotProcurementReceiptReview → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementPayment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
@@ -754,9 +752,7 @@
 
 ### 未解决动作绑定
 
-- contract-draft.abandon-application#0 — binding_not_mutation
 - contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.delete-pristine#0 — binding_not_mutation
 - contract-draft.lease-acquire#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.lease-heartbeat#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.lease-release#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
@@ -768,14 +764,8 @@
 - contract-takeover.update-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-workbench.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- payment-execution.record#0 — binding_not_mutation
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- project-expense.execution-local-status#0 — binding_not_mutation
-- project-expense.finance-local-status#0 — binding_not_mutation
-- project-expense.receipt-confirm-local-status#0 — binding_not_mutation
-- settlement-draft.abandon-application#0 — binding_not_mutation
-- settlement-draft.delete-pristine#0 — binding_not_mutation
 - settlement-draft.save-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-draft.save-local-gate#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - settlement-import.preview-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

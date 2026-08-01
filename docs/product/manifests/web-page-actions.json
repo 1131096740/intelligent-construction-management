@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 44,
-    "pageActionCount": 38,
+    "registeredActionCount": 48,
+    "pageActionCount": 42,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 918,
+    "templateEventDirectiveCount": 923,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 20,
-    "candidateProductionMutationConsumerCount": 39,
-    "acceptedProductionMutationConsumerCount": 20,
-    "productionMutationConsumerPairCount": 273,
-    "blockerCount": 299
+    "coveredProductionMutationConsumerCount": 21,
+    "candidateProductionMutationConsumerCount": 40,
+    "acceptedProductionMutationConsumerCount": 21,
+    "productionMutationConsumerPairCount": 272,
+    "blockerCount": 297
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -2726,6 +2726,270 @@
             "localCallChain": [
               "requestCanonicalPreview"
             ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.legacy-review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmLegacyPaymentApprove",
+        "kind": "event",
+        "sourceLine": 1986,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/approval",
+          "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/approval",
+            "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "review",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmLegacyPaymentApprove",
+              "executeSpotProcurementPaymentReviewAction"
+            ],
+            "variant": "approve"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.legacy-review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmLegacyPaymentReturn",
+        "kind": "event",
+        "sourceLine": 2015,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/approval",
+          "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/approval",
+            "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "review",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmLegacyPaymentReturn",
+              "executeSpotProcurementPaymentReviewAction"
+            ],
+            "variant": "return_to_applicant"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "payment-approval-drawer",
+        "event": "approve",
+        "handler": "confirmA5PaymentApprove",
+        "kind": "event",
+        "sourceLine": 1956,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/approval",
+          "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/approval",
+            "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "review",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmA5PaymentApprove",
+              "executeSpotProcurementPaymentReviewAction"
+            ],
+            "variant": "approve"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "payment-approval-drawer",
+        "event": "return-to-applicant",
+        "handler": "confirmA5PaymentReturn",
+        "kind": "event",
+        "sourceLine": 1957,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementPaymentReviewAction",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/approval",
+          "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/approval",
+            "normalizedKey": "POST /spot-procurement-payments/:param/approval",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "review",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmA5PaymentReturn",
+              "executeSpotProcurementPaymentReviewAction"
+            ],
+            "variant": "return_to_applicant"
           },
           "ticketFollowups": []
         }
@@ -5711,24 +5975,6 @@
         "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /spot-procurement-payments/:param/executions"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurementA5Payment",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/approval"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurementPayment",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/approval"
         ]
       },
       {

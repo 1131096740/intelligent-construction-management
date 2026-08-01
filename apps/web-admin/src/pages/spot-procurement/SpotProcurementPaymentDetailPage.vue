@@ -4,11 +4,11 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   abandonSpotProcurementPaymentDraft,
+  executeSpotProcurementPaymentReviewAction,
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementPayments,
+  prepareSpotProcurementPaymentReviewAction,
   recordSpotProcurementPaymentExecution,
-  reviewSpotProcurementA5Payment,
-  reviewSpotProcurementPayment,
   submitSpotProcurementPayment,
   updateSpotProcurementPaymentDraft,
   updateSpotProcurementPaymentPayer,
@@ -17,6 +17,8 @@ import {
   SpotProcurementApiError,
   type SpotProcurementPaymentDetailReadModel,
   type SpotProcurementPaymentMethod,
+  type PrepareSpotProcurementPaymentReviewActionResult,
+  type SpotProcurementPaymentReviewActionContext,
 } from "../../api/spot-procurement.api";
 import {
   fetchActiveCompanyEntities,
@@ -29,7 +31,7 @@ import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessStatusText from "../../components/BusinessStatusText.vue";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
-import { centsTextToYuanText } from "../../lib/money";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import PaymentCompositionCard from "./components/PaymentCompositionCard.vue";
 import PaymentApplicationStepper, {
   type PaymentApplicationDraft
@@ -63,7 +65,7 @@ import {
   writeSpotPaymentLocalDraft
 } from "./spot-payment-local-draft";
 
-type ConfirmationKind = "review_approve" | "review_reject" | "review_return" | "withdraw" | "void" | "download" | "abandon_payment_draft";
+type ConfirmationKind = "review_approve" | "review_return" | "withdraw" | "void" | "download" | "abandon_payment_draft";
 interface ExecutionAttempt {
   amountYuan: string;
   paidAtInput: string;
@@ -80,6 +82,7 @@ class StaleApplicationOperationError extends Error {}
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const spotProcurementPaymentCapability = ref<SpotProcurementPaymentDetailReadModel | null>(null);
 const detail = ref<SpotProcurementPaymentDetailReadModel | null>(null);
 const loading = ref(false);
 const actionBusy = ref(false);
@@ -131,6 +134,15 @@ const confirmation = reactive({
   reasonLabel: "操作说明"
 });
 const confirmationError = ref("");
+const legacySelfReviewReason = ref("");
+const legacyAdjustedSupplierBalanceAmountYuan = ref("");
+const paymentReviewConfirmation = reactive({
+  dialogGeneration: -1,
+  paymentId: "",
+  paymentForm: "legacy" as "real_payment" | "legacy",
+  requiresSelfReviewConfirmation: false,
+  requiresLegacySupplierBalanceAdjustment: false
+});
 let latestDetailRequestId = 0;
 let historicalMerchantRequestId = 0;
 let applicationTriggerElement: HTMLElement | null = null;
@@ -138,6 +150,13 @@ let payerTriggerElement: HTMLElement | null = null;
 let approvalTriggerElement: HTMLElement | null = null;
 let payerOpenedPaymentId: string | null = null;
 let approvalOpenedPaymentId: string | null = null;
+let paymentReviewRouteGeneration = 0;
+let paymentReviewDetailEpoch = 0;
+let paymentReviewDialogGeneration = 0;
+let paymentReviewOperationSequence = 0;
+let paymentReviewBusyOwnerId = 0;
+let paymentReviewComponentActive = true;
+const paymentReviewOwnerScope = globalThis.crypto.randomUUID();
 let applicationOpenedPaymentId: string | null = null;
 let applicationOperationToken = 0;
 let executionOpenedPaymentId: string | null = null;
@@ -148,7 +167,14 @@ let executionFocusTimeout: number | null = null;
 const paymentId = computed(() => typeof route.params.paymentId === "string" ? route.params.paymentId : "");
 const payment = computed(() => detail.value?.payment ?? null);
 const isRealPayment = computed(() => payment.value?.form === "real_payment");
-const reviewAction = computed(() => detail.value?.availableActions.find((action) => action.key === "review_approval"));
+const reviewRequiresSelfReviewConfirmation = computed(() =>
+  spotProcurementPaymentCapability.value?.availableActions.some(
+    (action) =>
+      action.key === "review_approval" &&
+      action.enabled &&
+      action.requiresSelfReviewConfirmation === true
+  ) === true
+);
 const operationalActions = computed(() =>
   detail.value?.availableActions.filter((action) => action.key !== "abandon_payment_draft") ?? []
 );
@@ -252,6 +278,14 @@ function actionEnabled(key: string) {
   return Boolean(detail.value?.availableActions.find((action) => action.key === key)?.enabled);
 }
 
+function paymentReviewActionEnabled(key: "review_approval") {
+  return Boolean(
+    spotProcurementPaymentCapability.value?.availableActions.some(
+      (action) => action.key === key && action.enabled
+    )
+  );
+}
+
 function actionLabel(key: string) {
   return detail.value?.availableActions.find((action) => action.key === key)?.label ?? "办理";
 }
@@ -265,6 +299,9 @@ function stopStaleApplicationOperation() {
 async function loadDetail() {
   const requestId = ++latestDetailRequestId;
   const requestedPaymentId = paymentId.value;
+  paymentReviewDetailEpoch += 1;
+  invalidatePaymentReviewSelection(true);
+  spotProcurementPaymentCapability.value = null;
   if (!requestedPaymentId) {
     detail.value = null;
     loading.value = false;
@@ -273,11 +310,15 @@ async function loadDetail() {
   }
   loading.value = true; loadError.value = "";
   try {
-    const result = await fetchSpotProcurementPaymentDetail(requestedPaymentId);
+    const detailRequest = fetchSpotProcurementPaymentDetail(requestedPaymentId);
+    const serverDetail = await detailRequest;
     if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
-    detail.value = result;
+    const viewDetail = structuredClone(serverDetail);
+    spotProcurementPaymentCapability.value = serverDetail;
+    detail.value = viewDetail;
   } catch (error) {
     if (requestId !== latestDetailRequestId || requestedPaymentId !== paymentId.value) return;
+    spotProcurementPaymentCapability.value = null;
     detail.value = null;
     loadError.value = error instanceof Error ? error.message : "付款申请读取失败";
   } finally {
@@ -566,8 +607,12 @@ function resetPayerEditorState() {
 }
 
 function openApproval(trigger: HTMLElement | null = null) {
-  if (!isRealPayment.value || !actionEnabled("review_approval")) return;
-  approvalOpenedPaymentId = paymentId.value;
+  if (
+    !isRealPayment.value ||
+    !beginPaymentReviewSelection("real_payment", "approve")
+  ) {
+    return;
+  }
   approvalTriggerElement = trigger;
   approvalError.value = "";
   approvalVisible.value = true;
@@ -582,8 +627,13 @@ function openPayerFromEvent(event: MouseEvent) {
 }
 
 async function closeApproval() {
+  if (paymentReviewBusyOwnerId !== 0) {
+    approvalError.value = "当前审批正在提交，请等待本次操作完成";
+    return;
+  }
   approvalVisible.value = false;
   approvalError.value = "";
+  invalidatePaymentReviewSelection(false);
   await restoreApprovalTriggerFocus();
   approvalOpenedPaymentId = null;
 }
@@ -596,66 +646,448 @@ async function restoreApprovalTriggerFocus() {
   approvalOpenedPaymentId = null;
 }
 
-async function submitA5Approval(payload: A5ApprovalSubmitPayload) {
-  const current = detail.value;
-  if (
-    !current ||
-    !approvalOpenedPaymentId ||
-    paymentId.value !== approvalOpenedPaymentId ||
-    current.payment.id !== approvalOpenedPaymentId
-  ) {
-    resetApprovalEditorState();
-    stopStaleApplicationOperation();
-    return;
-  }
-  const operationPaymentId = approvalOpenedPaymentId;
-  actionBusy.value = true;
-  approvalError.value = "";
-  try {
-    const result = await reviewSpotProcurementA5Payment(operationPaymentId, {
-      decision: payload.result,
-      comment: payload.comment,
-      ...(reviewAction.value?.requiresSelfReviewConfirmation
-        ? {
-            selfReviewReason: payload.selfReviewReason,
-            confirmationPassword: payload.confirmationPassword
-          }
-        : {})
-    });
-    if (paymentId.value !== operationPaymentId) return;
-    approvalVisible.value = false;
-    if (payload.result === "return_to_applicant" && result.newDraftPaymentId) {
-      showSuccess("付款申请已退回，并生成新的付款草稿。");
-      approvalOpenedPaymentId = null;
-      approvalTriggerElement = null;
-      await router.replace(
-        `/零星材料付款/${encodeURIComponent(result.newDraftPaymentId)}?tab=current`
-      );
-      return;
-    }
-    showSuccess("付款审批已通过。");
-    await loadDetail();
-    await restoreApprovalTriggerFocus();
-  } catch (error) {
-    if (paymentId.value !== operationPaymentId) return;
-    approvalError.value = error instanceof Error ? error.message : "付款审批提交失败";
-  } finally {
-    actionBusy.value = false;
-  }
-}
-
 function resetApprovalEditorState() {
   approvalVisible.value = false;
   approvalError.value = "";
+  invalidatePaymentReviewSelection(false);
   approvalOpenedPaymentId = null;
   approvalTriggerElement = null;
 }
 
+function beginPaymentReviewSelection(
+  paymentForm: "real_payment" | "legacy",
+  decision: "approve" | "return_to_applicant"
+) {
+  const capabilityPaymentId =
+    spotProcurementPaymentCapability.value?.payment.id ?? "";
+  const capabilityForm =
+    spotProcurementPaymentCapability.value?.payment.form === "real_payment"
+      ? "real_payment"
+      : "legacy";
+  const enabledReviewActions =
+    spotProcurementPaymentCapability.value?.availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    ) ?? [];
+  const requiresLegacySupplierBalanceAdjustment =
+    paymentForm === "legacy" &&
+    decision === "return_to_applicant" &&
+    spotProcurementPaymentCapability.value?.approval.currentRoleKeys.length === 1 &&
+    spotProcurementPaymentCapability.value?.approval.currentRoleKeys[0] === "finance_director";
+  const supplierBalanceAmountCents =
+    spotProcurementPaymentCapability.value?.payment.supplierBalanceAmountCents;
+  if (
+    capabilityPaymentId !== paymentId.value ||
+    detail.value?.payment.id !== capabilityPaymentId ||
+    capabilityForm !== paymentForm ||
+    enabledReviewActions.length !== 1
+  ) {
+    return false;
+  }
+  legacySelfReviewReason.value = "";
+  legacyAdjustedSupplierBalanceAmountYuan.value = "";
+  if (requiresLegacySupplierBalanceAdjustment) {
+    try {
+      legacyAdjustedSupplierBalanceAmountYuan.value =
+        centsTextToYuanText(supplierBalanceAmountCents ?? "").replaceAll(",", "");
+    } catch {
+      confirmationError.value = "当前供应商余额抵扣金额不可读取，请刷新页面后重试";
+      return false;
+    }
+  }
+  paymentReviewDialogGeneration += 1;
+  Object.assign(paymentReviewConfirmation, {
+    dialogGeneration: paymentReviewDialogGeneration,
+    paymentId: capabilityPaymentId,
+    paymentForm,
+    requiresSelfReviewConfirmation:
+      enabledReviewActions[0]?.requiresSelfReviewConfirmation === true,
+    requiresLegacySupplierBalanceAdjustment
+  });
+  approvalOpenedPaymentId = capabilityPaymentId;
+  return true;
+}
+
+function invalidatePaymentReviewSelection(close: boolean) {
+  paymentReviewDialogGeneration += 1;
+  Object.assign(paymentReviewConfirmation, {
+    dialogGeneration: -1,
+    paymentId: "",
+    paymentForm: "legacy",
+    requiresSelfReviewConfirmation: false,
+    requiresLegacySupplierBalanceAdjustment: false
+  });
+  legacySelfReviewReason.value = "";
+  legacyAdjustedSupplierBalanceAmountYuan.value = "";
+  approvalOpenedPaymentId = null;
+  if (close) {
+    approvalVisible.value = false;
+    if (
+      confirmation.kind === "review_approve" ||
+      confirmation.kind === "review_return"
+    ) {
+      confirmation.visible = false;
+      confirmationError.value = "";
+    }
+  }
+}
+
+function paymentReviewCapabilityMatches(
+  context: SpotProcurementPaymentReviewActionContext
+) {
+  const capabilityPaymentId =
+    spotProcurementPaymentCapability.value?.payment.id ?? "";
+  const capabilityForm =
+    spotProcurementPaymentCapability.value?.payment.form === "real_payment"
+      ? "real_payment"
+      : "legacy";
+  const enabledReviewActions =
+    spotProcurementPaymentCapability.value?.availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    ) ?? [];
+  const requiresLegacySupplierBalanceAdjustment =
+    context.paymentForm === "legacy" &&
+    context.decision === "return_to_applicant" &&
+    spotProcurementPaymentCapability.value?.approval.currentRoleKeys.length === 1 &&
+    spotProcurementPaymentCapability.value?.approval.currentRoleKeys[0] === "finance_director";
+  return (
+    detail.value?.payment.id === context.paymentId &&
+    capabilityPaymentId === context.paymentId &&
+    capabilityForm === context.paymentForm &&
+    enabledReviewActions.length === 1 &&
+    requiresLegacySupplierBalanceAdjustment ===
+      context.requiresLegacySupplierBalanceAdjustment &&
+    (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) ===
+      context.requiresSelfReviewConfirmation
+  );
+}
+
+function paymentReviewSelectionMatches(
+  context: SpotProcurementPaymentReviewActionContext
+) {
+  const expectedKind =
+    context.decision === "approve"
+      ? "review_approve"
+      : "review_return";
+  const surfaceMatches =
+    context.paymentForm === "real_payment"
+      ? approvalVisible.value
+      : confirmation.visible && confirmation.kind === expectedKind;
+  return (
+    surfaceMatches &&
+    paymentReviewConfirmation.dialogGeneration ===
+      context.dialogGeneration &&
+    paymentReviewConfirmation.paymentId === context.paymentId &&
+    paymentReviewConfirmation.paymentForm === context.paymentForm &&
+    paymentReviewConfirmation.requiresSelfReviewConfirmation ===
+      context.requiresSelfReviewConfirmation &&
+    paymentReviewConfirmation.requiresLegacySupplierBalanceAdjustment ===
+      context.requiresLegacySupplierBalanceAdjustment
+  );
+}
+
+function paymentReviewContextIsCurrent(
+  context: SpotProcurementPaymentReviewActionContext
+) {
+  return (
+    paymentReviewComponentActive &&
+    context.ownerScope === paymentReviewOwnerScope &&
+    context.routeGeneration === paymentReviewRouteGeneration &&
+    context.detailEpoch === paymentReviewDetailEpoch &&
+    context.dialogGeneration === paymentReviewDialogGeneration &&
+    context.paymentId === paymentId.value &&
+    paymentReviewBusyOwnerId === context.operationId &&
+    paymentReviewSelectionMatches(context) &&
+    paymentReviewCapabilityMatches(context)
+  );
+}
+
+function capturePaymentReviewContext(
+  decision: "approve" | "return_to_applicant",
+  values: A5ApprovalSubmitPayload,
+  paymentForm: "real_payment" | "legacy"
+): SpotProcurementPaymentReviewActionContext | null {
+  const comment = values.comment.trim() || undefined;
+  if (
+    paymentReviewConfirmation.dialogGeneration !==
+      paymentReviewDialogGeneration ||
+    paymentReviewConfirmation.paymentId !== paymentId.value ||
+    paymentReviewConfirmation.paymentForm !== paymentForm ||
+    (decision === "return_to_applicant" && !comment)
+  ) {
+    const message =
+      decision === "return_to_applicant" && !comment
+        ? "请填写退回原因"
+        : "审批上下文已失效，请重新打开付款审批";
+    if (paymentForm === "real_payment") approvalError.value = message;
+    else confirmationError.value = message;
+    return null;
+  }
+  if (actionBusy.value || paymentReviewBusyOwnerId !== 0) {
+    const message = "当前审批正在提交，请等待本次操作完成";
+    if (paymentForm === "real_payment") approvalError.value = message;
+    else confirmationError.value = message;
+    return null;
+  }
+  const requiresSelfReviewConfirmation =
+    paymentReviewConfirmation.requiresSelfReviewConfirmation;
+  const selfReviewReason = requiresSelfReviewConfirmation
+    ? values.selfReviewReason.trim()
+    : undefined;
+  const confirmationPassword = requiresSelfReviewConfirmation
+    ? values.confirmationPassword
+    : undefined;
+  let adjustedSupplierBalanceAmountCents: string | undefined;
+  if (paymentReviewConfirmation.requiresLegacySupplierBalanceAdjustment) {
+    try {
+      adjustedSupplierBalanceAmountCents = yuanTextToCentsText(
+        legacyAdjustedSupplierBalanceAmountYuan.value.trim()
+      );
+    } catch (error) {
+      confirmationError.value =
+        error instanceof Error
+          ? error.message
+          : "请填写有效的调整后供应商余额抵扣金额";
+      return null;
+    }
+  }
+  if (
+    requiresSelfReviewConfirmation &&
+    (!selfReviewReason || !confirmationPassword)
+  ) {
+    const message = "请填写自审原因并输入当前密码";
+    if (paymentForm === "real_payment") approvalError.value = message;
+    else confirmationError.value = message;
+    return null;
+  }
+  const context = Object.freeze({
+    ownerScope: paymentReviewOwnerScope,
+    routeGeneration: paymentReviewRouteGeneration,
+    detailEpoch: paymentReviewDetailEpoch,
+    dialogGeneration: paymentReviewConfirmation.dialogGeneration,
+    operationId: ++paymentReviewOperationSequence,
+    paymentId: paymentReviewConfirmation.paymentId,
+    paymentForm,
+    decision,
+    requiresSelfReviewConfirmation,
+    requiresLegacySupplierBalanceAdjustment:
+      paymentReviewConfirmation.requiresLegacySupplierBalanceAdjustment,
+    ...(adjustedSupplierBalanceAmountCents !== undefined
+      ? { adjustedSupplierBalanceAmountCents }
+      : {}),
+    ...(comment ? { comment } : {}),
+    ...(selfReviewReason ? { selfReviewReason } : {}),
+    ...(confirmationPassword ? { confirmationPassword } : {})
+  });
+  paymentReviewBusyOwnerId = context.operationId;
+  actionBusy.value = true;
+  approvalError.value = "";
+  confirmationError.value = "";
+  return context;
+}
+
+function samePaymentReviewContext(
+  left: SpotProcurementPaymentReviewActionContext,
+  right: SpotProcurementPaymentReviewActionContext
+) {
+  return (
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.paymentId === right.paymentId &&
+    left.paymentForm === right.paymentForm &&
+    left.decision === right.decision &&
+    left.comment === right.comment &&
+    left.requiresSelfReviewConfirmation ===
+      right.requiresSelfReviewConfirmation &&
+    left.requiresLegacySupplierBalanceAdjustment ===
+      right.requiresLegacySupplierBalanceAdjustment &&
+    left.adjustedSupplierBalanceAmountCents ===
+      right.adjustedSupplierBalanceAmountCents &&
+    left.selfReviewReason === right.selfReviewReason &&
+    left.confirmationPassword === right.confirmationPassword
+  );
+}
+
+function preparedPaymentReviewIsCurrent(
+  context: SpotProcurementPaymentReviewActionContext,
+  result: PrepareSpotProcurementPaymentReviewActionResult
+) {
+  return (
+    result.status === "ready" &&
+    samePaymentReviewContext(context, result.context) &&
+    paymentReviewContextIsCurrent(context)
+  );
+}
+
+async function completePaymentReview(
+  context: SpotProcurementPaymentReviewActionContext,
+  response: { newDraftPaymentId?: string }
+) {
+  if (!paymentReviewContextIsCurrent(context)) return;
+  approvalVisible.value = false;
+  confirmation.visible = false;
+  if (context.decision === "return_to_applicant") {
+    const newDraftPaymentId = response.newDraftPaymentId?.trim();
+    if (!newDraftPaymentId) {
+      throw new Error(
+        "付款申请已退回，但服务端未返回新草稿编号，请刷新页面核对"
+      );
+    }
+    showSuccess("付款申请已退回，并生成新的付款草稿。");
+    await router.replace(
+      `/零星材料付款/${encodeURIComponent(newDraftPaymentId)}?tab=current`
+    );
+    return;
+  }
+  showSuccess("付款审批已通过。");
+  await loadDetail();
+  if (context.paymentForm === "real_payment") {
+    await restoreApprovalTriggerFocus();
+  }
+}
+
+function failPaymentReview(
+  context: SpotProcurementPaymentReviewActionContext,
+  error: unknown
+) {
+  if (!paymentReviewContextIsCurrent(context)) return;
+  const message =
+    error instanceof Error ? error.message : "付款审批提交失败";
+  if (context.paymentForm === "real_payment") {
+    approvalError.value = message;
+  } else {
+    confirmationError.value = message;
+  }
+}
+
+function finishPaymentReview(
+  context: SpotProcurementPaymentReviewActionContext
+) {
+  if (paymentReviewBusyOwnerId !== context.operationId) return;
+  paymentReviewBusyOwnerId = 0;
+  actionBusy.value = false;
+}
+
+function confirmA5PaymentApprove(payload: A5ApprovalSubmitPayload) {
+  return executeSpotProcurementPaymentReviewAction({
+    decision: "approve",
+    capture: () =>
+      capturePaymentReviewContext("approve", payload, "real_payment"),
+    preflight: (context) =>
+      prepareSpotProcurementPaymentReviewAction({
+        ...context,
+        decision: "approve",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
+function confirmA5PaymentReturn(payload: A5ApprovalSubmitPayload) {
+  return executeSpotProcurementPaymentReviewAction({
+    decision: "return_to_applicant",
+    capture: () =>
+      capturePaymentReviewContext(
+        "return_to_applicant",
+        payload,
+        "real_payment"
+      ),
+    preflight: (context) =>
+      prepareSpotProcurementPaymentReviewAction({
+        ...context,
+        decision: "return_to_applicant",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
+function legacyPaymentReviewValues(values: {
+  reason: string;
+  password: string;
+}): A5ApprovalSubmitPayload {
+  return {
+    comment: values.reason,
+    selfReviewReason: legacySelfReviewReason.value,
+    confirmationPassword: values.password
+  };
+}
+
+function confirmLegacyPaymentApprove(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementPaymentReviewAction({
+    decision: "approve",
+    capture: () =>
+      capturePaymentReviewContext(
+        "approve",
+        legacyPaymentReviewValues(values),
+        "legacy"
+      ),
+    preflight: (context) =>
+      prepareSpotProcurementPaymentReviewAction({
+        ...context,
+        decision: "approve",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
+function confirmLegacyPaymentReturn(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementPaymentReviewAction({
+    decision: "return_to_applicant",
+    capture: () =>
+      capturePaymentReviewContext(
+        "return_to_applicant",
+        legacyPaymentReviewValues(values),
+        "legacy"
+      ),
+    preflight: (context) =>
+      prepareSpotProcurementPaymentReviewAction({
+        ...context,
+        decision: "return_to_applicant",
+        isCurrent: paymentReviewContextIsCurrent
+      }),
+    current: preparedPaymentReviewIsCurrent,
+    complete: completePaymentReview,
+    fail: failPaymentReview,
+    finish: finishPaymentReview
+  });
+}
+
 function openConfirmation(kind: ConfirmationKind) {
+  if (
+    (kind === "review_approve" || kind === "review_return") &&
+    (isRealPayment.value ||
+      !beginPaymentReviewSelection(
+        "legacy",
+        kind === "review_approve" ? "approve" : "return_to_applicant"
+      ))
+  ) {
+    return;
+  }
+  if (kind !== "review_approve" && kind !== "review_return") {
+    invalidatePaymentReviewSelection(false);
+  }
   const configs: Record<ConfirmationKind, Omit<typeof confirmation, "visible" | "kind">> = {
-    review_approve: { title: "确认通过付款审批", description: "审批通过只进入待付款；不会自动生成实际付款记录。", confirmText: "确认通过", confirmTheme: "primary", requireReason: false, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "审批意见" },
-    review_reject: { title: "驳回付款申请", description: "驳回将中止当前付款审批，请填写可执行的原因。", confirmText: "确认驳回", confirmTheme: "danger", requireReason: true, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "驳回原因" },
-    review_return: { title: "退回付款申请人", description: "退回会保留当前审批历史并生成新的付款草稿。", confirmText: "确认退回", confirmTheme: "danger", requireReason: true, requirePassword: Boolean(reviewAction.value?.requiresSelfReviewConfirmation), reasonLabel: "退回原因" },
+    review_approve: { title: "确认通过付款审批", description: "审批通过只进入待付款；不会自动生成实际付款记录。", confirmText: "确认通过", confirmTheme: "primary", requireReason: false, requirePassword: reviewRequiresSelfReviewConfirmation.value, reasonLabel: "审批意见" },
+    review_return: { title: "退回付款申请人", description: "退回会保留当前审批历史并生成新的付款草稿。", confirmText: "确认退回", confirmTheme: "danger", requireReason: true, requirePassword: reviewRequiresSelfReviewConfirmation.value, reasonLabel: "退回原因" },
     withdraw: { title: "撤回付款审批", description: "仅经办人可撤回审批中的付款申请。", confirmText: "确认撤回", confirmTheme: "danger", requireReason: false, requirePassword: false, reasonLabel: "撤回说明" },
     abandon_payment_draft: { title: "放弃付款草稿", description: "当前付款草稿将结束并保留历史。返回采购详情后，可重新创建新的付款草稿。", confirmText: "确认放弃付款草稿", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "放弃原因" },
     void: { title: "作废付款申请", description: "付款执行前可作废；作废会保留完整审计历史。", confirmText: "确认作废", confirmTheme: "danger", requireReason: true, requirePassword: false, reasonLabel: "作废原因" },
@@ -669,13 +1101,7 @@ async function confirmAction(values: { reason: string; password: string }) {
   actionBusy.value = true; confirmationError.value = "";
   let nextPaymentId: string | null = null;
   try {
-    if (confirmation.kind === "review_approve") {
-      await reviewSpotProcurementPayment(current.payment.id, { decision: "approve", ...(reviewAction.value?.requiresSelfReviewConfirmation ? { selfReviewReason: values.reason, confirmationPassword: values.password } : {}) }); showSuccess("付款审批已通过。");
-    } else if (confirmation.kind === "review_reject") {
-      await reviewSpotProcurementPayment(current.payment.id, { decision: "reject", comment: values.reason, ...(reviewAction.value?.requiresSelfReviewConfirmation ? { selfReviewReason: values.reason, confirmationPassword: values.password } : {}) }); showSuccess("付款申请已驳回。");
-    } else if (confirmation.kind === "review_return") {
-      const result = await reviewSpotProcurementPayment(current.payment.id, { decision: "return_to_applicant", comment: values.reason, ...(reviewAction.value?.requiresSelfReviewConfirmation ? { selfReviewReason: values.reason, confirmationPassword: values.password } : {}) }); nextPaymentId = result.newDraftPaymentId ?? null; showSuccess("付款申请已退回，并生成新的付款草稿。");
-    } else if (confirmation.kind === "withdraw") {
+    if (confirmation.kind === "withdraw") {
       const result = await withdrawSpotProcurementPayment(current.payment.id); nextPaymentId = result.newDraftPaymentId ?? null; showSuccess("付款审批已撤回。");
     } else if (confirmation.kind === "abandon_payment_draft") {
       await abandonSpotProcurementPaymentDraft(current.payment.id, {
@@ -851,6 +1277,11 @@ function resetExecutionEditorState() {
 }
 
 onBeforeUnmount(clearExecutionFocusRestore);
+onBeforeUnmount(() => {
+  paymentReviewComponentActive = false;
+  paymentReviewBusyOwnerId = 0;
+  invalidatePaymentReviewSelection(true);
+});
 
 function handleCurrentTaskAction(
   key: SpotPaymentCurrentTaskAction["key"],
@@ -872,7 +1303,24 @@ function handleCurrentTaskAction(
     if (procurementId) void router.push(`/零星采购收货/${procurementId}`);
   }
 }
-function cancelConfirmation() { confirmationError.value = ""; }
+function cancelConfirmation() {
+  if (
+    paymentReviewBusyOwnerId !== 0 &&
+    (confirmation.kind === "review_approve" ||
+      confirmation.kind === "review_return")
+  ) {
+    confirmation.visible = true;
+    confirmationError.value = "当前审批正在提交，请等待本次操作完成";
+    return;
+  }
+  if (
+    confirmation.kind === "review_approve" ||
+    confirmation.kind === "review_return"
+  ) {
+    invalidatePaymentReviewSelection(false);
+  }
+  confirmationError.value = "";
+}
 function resetExecutionAttempt() { executionAttempt.value = null; executionError.value = ""; }
 function selectedUploadFiles(files: UploadFile[]) { return files.map((file) => file.raw).filter((file): file is File => file instanceof File); }
 function paymentDraftPreparationInput(
@@ -1012,6 +1460,9 @@ function resetApplicationEditorState() {
 watch(
   paymentId,
   () => {
+    paymentReviewRouteGeneration += 1;
+    paymentReviewBusyOwnerId = 0;
+    spotProcurementPaymentCapability.value = null;
     const interruptedPaymentAction = Boolean(
       applicationOpenedPaymentId || payerOpenedPaymentId || approvalOpenedPaymentId || executionOpenedPaymentId
     );
@@ -1198,10 +1649,10 @@ watch(
           :semantic="spotPaymentApprovalStatusSemantic(detail.approval.status)"
         />
         <div
-          v-if="actionEnabled('review_approval') || actionEnabled('withdraw_approval') || actionEnabled('abandon_payment_draft') || actionEnabled('void_payment')"
+          v-if="paymentReviewActionEnabled('review_approval') || actionEnabled('withdraw_approval') || actionEnabled('abandon_payment_draft') || actionEnabled('void_payment')"
           class="action-buttons"
         >
-          <template v-if="actionEnabled('review_approval')">
+          <template v-if="paymentReviewActionEnabled('review_approval')">
             <t-button
               v-if="isRealPayment"
               theme="primary"
@@ -1491,6 +1942,7 @@ watch(
       </t-dialog>
 
       <PaymentApprovalDrawer
+        v-if="isRealPayment && paymentReviewActionEnabled('review_approval')"
         :visible="approvalVisible"
         :busy="actionBusy"
         :error="approvalError"
@@ -1499,9 +1951,10 @@ watch(
         :payee-name="payment.payee?.name ?? payment.payeeName ?? '尚未填写收款对象'"
         :approve-destination="approvalApproveDestination"
         :return-destination="approvalReturnDestination"
-        :requires-self-review-confirmation="reviewAction?.requiresSelfReviewConfirmation === true"
+        :requires-self-review-confirmation="reviewRequiresSelfReviewConfirmation"
         @close="closeApproval"
-        @submit="submitA5Approval"
+        @approve="confirmA5PaymentApprove"
+        @return-to-applicant="confirmA5PaymentReturn"
       />
 
       <PaymentExecutionDrawer
@@ -1519,6 +1972,78 @@ watch(
       />
 
       <SensitiveActionDialog
+        v-if="!isRealPayment && paymentReviewActionEnabled('review_approval') && confirmation.kind === 'review_approve'"
+        v-model="confirmation.visible"
+        :title="confirmation.title"
+        :description="confirmation.description"
+        :confirm-text="confirmation.confirmText"
+        :confirm-theme="confirmation.confirmTheme"
+        :require-reason="confirmation.requireReason"
+        :require-password="confirmation.requirePassword"
+        :reason-label="confirmation.reasonLabel"
+        :loading="actionBusy"
+        :error="confirmationError"
+        @confirm="confirmLegacyPaymentApprove"
+        @cancel="cancelConfirmation"
+      >
+        <label
+          v-if="paymentReviewConfirmation.requiresSelfReviewConfirmation"
+          class="payment-review-confirmation__field"
+        >
+          <span>自审原因（不作为审批意见）</span>
+          <t-textarea
+            v-model="legacySelfReviewReason"
+            :disabled="actionBusy"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+            placeholder="说明本人申请后仍需在当前节点审批的原因"
+          />
+        </label>
+      </SensitiveActionDialog>
+
+      <SensitiveActionDialog
+        v-if="!isRealPayment && paymentReviewActionEnabled('review_approval') && confirmation.kind === 'review_return'"
+        v-model="confirmation.visible"
+        :title="confirmation.title"
+        :description="confirmation.description"
+        :confirm-text="confirmation.confirmText"
+        :confirm-theme="confirmation.confirmTheme"
+        :require-reason="confirmation.requireReason"
+        :require-password="confirmation.requirePassword"
+        :reason-label="confirmation.reasonLabel"
+        :loading="actionBusy"
+        :error="confirmationError"
+        @confirm="confirmLegacyPaymentReturn"
+        @cancel="cancelConfirmation"
+      >
+        <label
+          v-if="paymentReviewConfirmation.requiresSelfReviewConfirmation"
+          class="payment-review-confirmation__field"
+        >
+          <span>自审原因（不作为审批意见）</span>
+          <t-textarea
+            v-model="legacySelfReviewReason"
+            :disabled="actionBusy"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+            placeholder="说明本人申请后仍需在当前节点审批的原因"
+          />
+        </label>
+        <label
+          v-if="paymentReviewConfirmation.requiresLegacySupplierBalanceAdjustment"
+          class="payment-review-confirmation__field"
+        >
+          <span>调整后供应商余额抵扣金额（元）</span>
+          <t-input
+            v-model="legacyAdjustedSupplierBalanceAmountYuan"
+            :disabled="actionBusy"
+            inputmode="decimal"
+            placeholder="请输入非负金额，最多两位小数"
+          />
+          <small>当前节点由服务端确认为财务主管节点；该金额将随退回动作冻结。</small>
+        </label>
+      </SensitiveActionDialog>
+
+      <SensitiveActionDialog
+        v-if="confirmation.kind !== 'review_approve' && confirmation.kind !== 'review_return'"
         v-model="confirmation.visible"
         :title="confirmation.title"
         :description="confirmation.description"
@@ -1539,5 +2064,6 @@ watch(
 <style scoped>
 .payment-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--jg-space-xl);padding-bottom:var(--jg-space-lg);border-bottom:var(--jg-border-width-base) solid var(--jg-color-border)}.payment-detail-header__main{display:grid;min-width:0;flex:1;gap:var(--jg-space-xs)}.payment-detail-header__code{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta);font-weight:var(--jg-font-weight-semibold)}.payment-detail-header__title-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--jg-space-md)}.payment-detail-header__title-row h1{margin:0;color:var(--jg-color-text-primary);font-size:var(--jg-font-size-page-title);line-height:var(--jg-line-height-title)}.payment-detail-header__facts{display:flex;flex-wrap:wrap;gap:var(--jg-space-xl);margin:var(--jg-space-md) 0 0}.payment-detail-header__facts>div{display:grid;min-width:132px;gap:var(--jg-space-xs)}.payment-detail-header__facts dt{color:var(--jg-color-text-muted);font-size:var(--jg-font-size-meta)}.payment-detail-header__facts dd{margin:0;color:var(--jg-color-text-secondary);font-weight:var(--jg-font-weight-medium)}.payment-detail-header__actions{display:flex;flex:0 0 auto;flex-wrap:wrap;gap:var(--jg-space-sm)}
 .spot-payment-detail,.detail-panel,.edit-form,.edit-section{display:grid;gap:var(--jg-space-lg);min-width:0;color:var(--jg-color-text-primary)}.detail-tabs{margin-top:var(--jg-space-lg)}.detail-panel{padding-top:var(--jg-space-md)}.detail-panel>header h2,.detail-panel>header p,.detail-panel h3,.edit-section h3,.edit-section p{margin:0}.detail-panel>header p,.edit-section p{margin-top:var(--jg-space-xs);color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid,.edit-form__grid,.payment-line__fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--jg-space-md)}.detail-grid{margin:0}.detail-grid>div,.payment-line,.payment-channel{display:grid;gap:var(--jg-space-xs);padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel);background:var(--jg-color-bg-surface)}.detail-grid dt,.edit-form label>span,.merchant-suggestions>span{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}.detail-grid dd{margin:0}.detail-panel>section{display:grid;gap:var(--jg-space-md)}.action-buttons,.merchant-suggestions{display:flex;flex-wrap:wrap;gap:var(--jg-space-sm);align-items:center}.edit-section{padding:var(--jg-space-md);border:var(--jg-border-width-base) solid var(--jg-color-border);border-radius:var(--jg-radius-panel)}.payment-channel__head{display:flex;align-items:center;justify-content:space-between;gap:var(--jg-space-sm)}.edit-form label{display:grid;gap:var(--jg-space-xs)}small{color:var(--jg-color-text-tertiary);font-size:var(--jg-font-size-meta)}
+.payment-review-confirmation__field{display:grid;gap:var(--jg-space-sm)}.payment-review-confirmation__field>span{color:var(--jg-color-text-secondary);font-size:var(--jg-font-size-body);font-weight:var(--jg-font-weight-medium)}
 @media(max-width:720px){.payment-detail-header{flex-direction:column}.payment-detail-header__actions{width:100%}}
 </style>

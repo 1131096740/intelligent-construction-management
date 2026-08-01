@@ -987,19 +987,89 @@ export type ExecuteSpotProcurementWithdrawalActionResult =
       error: unknown;
     };
 
-export interface ReviewSpotProcurementPaymentPayload
-  extends SpotProcurementReviewDecisionPayload {
+export interface ReviewSpotProcurementPaymentPayload {
+  decision: SpotProcurementA5ReviewDecision;
+  comment?: string;
   adjustedSupplierBalanceAmountCents?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
 }
 
-export interface ReviewSpotProcurementA5PaymentPayload {
+export interface SpotProcurementPaymentReviewActionContext {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  paymentId: string;
+  paymentForm: "real_payment" | "legacy";
   decision: SpotProcurementA5ReviewDecision;
   comment?: string;
+  requiresSelfReviewConfirmation: boolean;
+  requiresLegacySupplierBalanceAdjustment: boolean;
+  adjustedSupplierBalanceAmountCents?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
 }
+
+export interface PrepareSpotProcurementPaymentReviewActionInput
+  extends SpotProcurementPaymentReviewActionContext {
+  isCurrent: (
+    context: SpotProcurementPaymentReviewActionContext
+  ) => boolean;
+}
+
+export type PrepareSpotProcurementPaymentReviewActionResult =
+  | {
+      status: "ready";
+      context: SpotProcurementPaymentReviewActionContext;
+      preflight: SpotProcurementPaymentDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementPaymentReviewActionContext;
+    };
+
+export interface ExecuteSpotProcurementPaymentReviewActionInput {
+  decision: SpotProcurementA5ReviewDecision;
+  capture: (
+    decision: SpotProcurementA5ReviewDecision
+  ) => SpotProcurementPaymentReviewActionContext | null;
+  preflight: (
+    context: SpotProcurementPaymentReviewActionContext
+  ) => Promise<PrepareSpotProcurementPaymentReviewActionResult>;
+  current: (
+    context: SpotProcurementPaymentReviewActionContext,
+    prepared: PrepareSpotProcurementPaymentReviewActionResult
+  ) => boolean;
+  complete: (
+    context: SpotProcurementPaymentReviewActionContext,
+    response: SpotProcurementPaymentWriteReadModel
+  ) => void | Promise<void>;
+  fail: (
+    context: SpotProcurementPaymentReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (
+    context: SpotProcurementPaymentReviewActionContext
+  ) => void;
+}
+
+export type ExecuteSpotProcurementPaymentReviewActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: SpotProcurementPaymentReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: SpotProcurementPaymentReviewActionContext;
+      response: SpotProcurementPaymentWriteReadModel;
+    }
+  | {
+      status: "failed";
+      context: SpotProcurementPaymentReviewActionContext;
+    };
 
 export interface VoidSpotProcurementPayload {
   reason: string;
@@ -1727,7 +1797,7 @@ export function submitSpotProcurementPayment(paymentId: string) {
   );
 }
 
-export function reviewSpotProcurementPayment(
+function postSpotProcurementPaymentReview(
   paymentId: string,
   body: ReviewSpotProcurementPaymentPayload
 ) {
@@ -1737,14 +1807,204 @@ export function reviewSpotProcurementPayment(
   );
 }
 
-export function reviewSpotProcurementA5Payment(
-  paymentId: string,
-  body: ReviewSpotProcurementA5PaymentPayload
-) {
-  return postJson<SpotProcurementPaymentWriteReadModel>(
-    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/approval`,
-    body
+export async function prepareSpotProcurementPaymentReviewAction(
+  input: PrepareSpotProcurementPaymentReviewActionInput
+): Promise<PrepareSpotProcurementPaymentReviewActionResult> {
+  const context = normalizeSpotProcurementPaymentReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchSpotProcurementPaymentDetail(
+    context.paymentId
   );
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertSpotProcurementPaymentReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeSpotProcurementPaymentReviewAction(
+  input: ExecuteSpotProcurementPaymentReviewActionInput
+): Promise<ExecuteSpotProcurementPaymentReviewActionResult> {
+  const context = input.capture(input.decision);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await postSpotProcurementPaymentReview(
+      context.paymentId,
+      spotProcurementPaymentReviewPayload(context, input.decision)
+    );
+    assertSpotProcurementPaymentReviewResponse(context, response);
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function spotProcurementPaymentReviewPayload(
+  context: SpotProcurementPaymentReviewActionContext,
+  decision: SpotProcurementA5ReviewDecision
+): ReviewSpotProcurementPaymentPayload {
+  if (
+    context.decision !== decision ||
+    (decision === "return_to_applicant" && !context.comment) ||
+    (context.requiresSelfReviewConfirmation &&
+      (!context.selfReviewReason ||
+        !context.confirmationPassword?.trim()))
+  ) {
+    throw new Error(
+      "零星采购付款审批上下文无效，请重新读取当前付款后再操作"
+    );
+  }
+  return {
+    decision,
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresLegacySupplierBalanceAdjustment
+      ? {
+          adjustedSupplierBalanceAmountCents:
+            context.adjustedSupplierBalanceAmountCents
+        }
+      : {}),
+    ...(context.requiresSelfReviewConfirmation
+      ? {
+          selfReviewReason: context.selfReviewReason,
+          confirmationPassword: context.confirmationPassword
+        }
+      : {})
+  };
+}
+
+function normalizeSpotProcurementPaymentReviewAction(
+  input: PrepareSpotProcurementPaymentReviewActionInput
+): SpotProcurementPaymentReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const paymentId = input.paymentId.trim();
+  const comment = input.comment?.trim() || undefined;
+  const selfReviewReason = input.requiresSelfReviewConfirmation
+    ? input.selfReviewReason?.trim() || undefined
+    : undefined;
+  const confirmationPassword = input.requiresSelfReviewConfirmation
+    ? input.confirmationPassword
+    : undefined;
+  const adjustedSupplierBalanceAmountCents =
+    input.adjustedSupplierBalanceAmountCents?.trim();
+  const validAdjustedSupplierBalanceAmount =
+    adjustedSupplierBalanceAmountCents !== undefined &&
+    /^(0|[1-9]\d*)$/u.test(adjustedSupplierBalanceAmountCents);
+  if (
+    !ownerScope ||
+    !paymentId ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    (input.paymentForm !== "real_payment" &&
+      input.paymentForm !== "legacy") ||
+    (input.decision !== "approve" &&
+      input.decision !== "return_to_applicant") ||
+    (input.decision === "return_to_applicant" && !comment) ||
+    (input.paymentForm === "real_payment" &&
+      (input.requiresLegacySupplierBalanceAdjustment ||
+        input.adjustedSupplierBalanceAmountCents !== undefined)) ||
+    (input.requiresLegacySupplierBalanceAdjustment &&
+      (input.paymentForm !== "legacy" ||
+        input.decision !== "return_to_applicant" ||
+        !validAdjustedSupplierBalanceAmount)) ||
+    (!input.requiresLegacySupplierBalanceAdjustment &&
+      input.adjustedSupplierBalanceAmountCents !== undefined) ||
+    (input.requiresSelfReviewConfirmation &&
+      (!selfReviewReason || !confirmationPassword?.trim()))
+  ) {
+    throw new Error(
+      "零星采购付款审批上下文无效，请重新读取当前付款后再操作"
+    );
+  }
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    paymentId,
+    paymentForm: input.paymentForm,
+    decision: input.decision,
+    requiresSelfReviewConfirmation:
+      input.requiresSelfReviewConfirmation,
+    requiresLegacySupplierBalanceAdjustment:
+      input.requiresLegacySupplierBalanceAdjustment,
+    ...(validAdjustedSupplierBalanceAmount
+      ? {
+          adjustedSupplierBalanceAmountCents:
+            BigInt(adjustedSupplierBalanceAmountCents).toString()
+        }
+      : {}),
+    ...(comment ? { comment } : {}),
+    ...(selfReviewReason ? { selfReviewReason } : {}),
+    ...(confirmationPassword ? { confirmationPassword } : {})
+  });
+}
+
+function assertSpotProcurementPaymentReviewPreflight(
+  context: SpotProcurementPaymentReviewActionContext,
+  preflight: SpotProcurementPaymentDetailReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const paymentForm =
+    preflight.payment.form === "real_payment"
+      ? "real_payment"
+      : "legacy";
+  const requiresLegacySupplierBalanceAdjustment =
+    paymentForm === "legacy" &&
+    context.decision === "return_to_applicant" &&
+    preflight.approval.currentRoleKeys.length === 1 &&
+    preflight.approval.currentRoleKeys[0] === "finance_director";
+  if (
+    preflight.payment.id !== context.paymentId ||
+    paymentForm !== context.paymentForm ||
+    enabledReviewActions.length !== 1 ||
+    requiresLegacySupplierBalanceAdjustment !==
+      context.requiresLegacySupplierBalanceAdjustment ||
+    (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !==
+      context.requiresSelfReviewConfirmation
+  ) {
+    throw new Error(
+      "零星采购付款审批资格已变化，请重新读取当前付款"
+    );
+  }
+}
+
+function assertSpotProcurementPaymentReviewResponse(
+  context: SpotProcurementPaymentReviewActionContext,
+  response: SpotProcurementPaymentWriteReadModel
+) {
+  if (
+    context.decision === "return_to_applicant" &&
+    !response.newDraftPaymentId?.trim()
+  ) {
+    throw new Error(
+      "付款申请已退回，但服务端未返回新草稿编号，请刷新页面核对"
+    );
+  }
 }
 
 export function withdrawSpotProcurementPayment(paymentId: string) {
