@@ -760,6 +760,12 @@ describe("ProjectController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.operatingFundsOverview)).toEqual(
       PROJECT_OVERVIEW_READ_POSITION_KEYS
     );
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.projectFinancingQuotaWorkbench
+      )
+    ).toEqual(PROJECT_OVERVIEW_READ_POSITION_KEYS);
   });
 
   it("adds contract staff only to the affiliate-company contract read route", () => {
@@ -1025,6 +1031,21 @@ describe("ProjectController authorization wiring", () => {
     await controller.operatingFundsOverview("project-1");
 
     expect(projects.getOperatingFundsOverview).toHaveBeenCalledWith("project-1");
+  });
+
+  it("forwards financing quota workbench project and authenticated user coordinates", async () => {
+    const projects = { getProjectFinancingQuotaWorkbench: jest.fn() };
+    const controller = new ProjectController(projects as never);
+
+    await controller.projectFinancingQuotaWorkbench(
+      "project-1",
+      { id: "finance-1" } as never
+    );
+
+    expect(projects.getProjectFinancingQuotaWorkbench).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1"
+    );
   });
 
   it("forwards project receipt payload with authenticated user id", async () => {

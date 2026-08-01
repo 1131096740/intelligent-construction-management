@@ -12,11 +12,11 @@
     "registeredActionCount": 51,
     "pageActionCount": 45,
     "backgroundActionCount": 6,
-    "reachableVueFileCount": 131,
+    "reachableVueFileCount": 132,
     "routeRootCount": 47,
-    "totalVueFileCount": 134,
-    "parsedVueFileCount": 134,
-    "reachableProductionModuleCount": 230,
+    "totalVueFileCount": 135,
+    "parsedVueFileCount": 135,
+    "reachableProductionModuleCount": 232,
     "templateEventDirectiveCount": 926,
     "propCallbackDirectiveCount": 11,
     "coveredProductionMutationConsumerCount": 24,
@@ -26,10 +26,10 @@
     "blockerCount": 296
   },
   "evidence": {
-    "totalProductionModuleCount": 237,
-    "reachableProductionModuleCount": 230,
-    "totalVueFileCount": 134,
-    "parsedVueFileCount": 134
+    "totalProductionModuleCount": 239,
+    "reachableProductionModuleCount": 232,
+    "totalVueFileCount": 135,
+    "parsedVueFileCount": 135
   },
   "actions": [
     {
@@ -1838,7 +1838,7 @@
         "event": "submit",
         "handler": "submitProjectExpense",
         "kind": "event",
-        "sourceLine": 474,
+        "sourceLine": 487,
         "sourceColumn": 14
       },
       "semantic": "business_write",

@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "46aff527dfd034ba7e373f7b46549598b4ccb849a42df570030b2fcc9bcf461f",
+      "sha256": "2a6acaf251e3c35cde511305ab285c955e42632c3018014ae530224f8822eab7",
       "status": "ready",
       "summary": {
-        "routeCount": 395
+        "routeCount": 396
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "c3329ff0b89e3142cd7d59570c469c274444e67403d19a5cb485b664e569e598",
+      "sha256": "bcf33f9c975ab3afa8268c1af4c7b99262be0e900967bb51e766743af9cd935a",
       "status": "blocked",
       "summary": {
-        "apiModuleCount": 14,
-        "exportedFunctionCount": 392,
-        "transportWrapperCount": 381,
-        "pureExportCount": 11,
-        "mainRequestBindingCount": 395,
+        "apiModuleCount": 15,
+        "exportedFunctionCount": 394,
+        "transportWrapperCount": 382,
+        "pureExportCount": 12,
+        "mainRequestBindingCount": 396,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 394,
-        "productionConsumerCount": 341,
+        "requestEdgeCount": 395,
+        "productionConsumerCount": 342,
         "orphanWrapperCount": 40,
         "testOnlyWrapperCount": 39,
         "unreferencedWrapperCount": 1,
@@ -42,17 +42,17 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "738e11e8467a2ce8bcac3ffbb7f538859156f72bb11e48536e64399c82fdc30c",
+      "sha256": "659cbcd4cb8d35cbf5529e34536eab87df3a418a7f6ccaf9681684e6b69ef48f",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 51,
         "pageActionCount": 45,
         "backgroundActionCount": 6,
-        "reachableVueFileCount": 131,
+        "reachableVueFileCount": 132,
         "routeRootCount": 47,
-        "totalVueFileCount": 134,
-        "parsedVueFileCount": 134,
-        "reachableProductionModuleCount": 230,
+        "totalVueFileCount": 135,
+        "parsedVueFileCount": 135,
+        "reachableProductionModuleCount": 232,
         "templateEventDirectiveCount": 926,
         "propCallbackDirectiveCount": 11,
         "coveredProductionMutationConsumerCount": 24,
@@ -64,24 +64,24 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "c6d766ad270a152078d92430b371d5dbfc0dc511198d3d6fad1cc24830af7d66",
+      "sha256": "db0c979cd1be0ec86ef8a5a61f9f2ae1237e85e3e794358a23472a09226f47cd",
       "status": "blocked",
       "summary": {
-        "routeCount": 395,
-        "exactRouteCount": 395,
-        "normalizedRouteCount": 395,
+        "routeCount": 396,
+        "exactRouteCount": 396,
+        "normalizedRouteCount": 396,
         "classificationOverrideCount": 107,
         "consumerSurfaceOverrideCount": 3,
         "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
         "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-        "derivedProductionPageCount": 285,
-        "pageRouteCount": 288,
+        "derivedProductionPageCount": 286,
+        "pageRouteCount": 289,
         "externalTakeoverCount": 59,
         "exitCandidateCount": 43,
         "internalTaskCount": 2,
         "unclassifiedCount": 3,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 335,
+          "web_api_wrapper": 336,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 1,
@@ -93,13 +93,13 @@
     }
   },
   "summary": {
-    "routeCount": 395,
-    "pageRouteCount": 288,
+    "routeCount": 396,
+    "pageRouteCount": 289,
     "externalTakeoverRouteCount": 59,
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 3,
-    "mainRequestBindingCount": 395,
+    "mainRequestBindingCount": 396,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 40,
@@ -6227,6 +6227,59 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/financing-quotas",
+        "normalizedKey": "GET /projects/:param/financing-quotas",
+        "controller": "ProjectController",
+        "handler": "projectFinancingQuotaWorkbench",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "fetchProjectFinancingQuotaWorkbench",
+          "method": "GET",
+          "path": "/projects/:param/financing-quotas",
+          "normalizedKey": "GET /projects/:param/financing-quotas",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-financing-quota.api.test.ts"
           ]
         }
       ],

@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 14,
-    "exportedFunctionCount": 392,
-    "transportWrapperCount": 381,
-    "pureExportCount": 11,
-    "mainRequestBindingCount": 395,
+    "apiModuleCount": 15,
+    "exportedFunctionCount": 394,
+    "transportWrapperCount": 382,
+    "pureExportCount": 12,
+    "mainRequestBindingCount": 396,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 394,
-    "productionConsumerCount": 341,
+    "requestEdgeCount": 395,
+    "productionConsumerCount": 342,
     "orphanWrapperCount": 40,
     "testOnlyWrapperCount": 39,
     "unreferencedWrapperCount": 1,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 237,
-    "reachableProductionModuleCount": 230
+    "productionModuleCount": 239,
+    "reachableProductionModuleCount": 232
   },
   "wrappers": [
     {
@@ -9304,6 +9304,49 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createProjectOverviewRequestOwner",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectFinancingQuotaWorkbench",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 257,
+          "method": "GET",
+          "path": "/projects/:param/financing-quotas",
+          "normalizedPath": "/projects/:param/financing-quotas",
+          "normalizedKey": "GET /projects/:param/financing-quotas",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectFinancingQuotaWorkbench"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
       ],
       "unreachableConsumers": []
     },

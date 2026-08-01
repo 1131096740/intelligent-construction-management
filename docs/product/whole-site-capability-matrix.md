@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `46aff527dfd034ba7e373f7b46549598b4ccb849a42df570030b2fcc9bcf461f` |
-| webApiWrappers | blocked | `c3329ff0b89e3142cd7d59570c469c274444e67403d19a5cb485b664e569e598` |
-| webPageActions | blocked | `738e11e8467a2ce8bcac3ffbb7f538859156f72bb11e48536e64399c82fdc30c` |
-| routeUsage | blocked | `c6d766ad270a152078d92430b371d5dbfc0dc511198d3d6fad1cc24830af7d66` |
+| nestRoutes | ready | `2a6acaf251e3c35cde511305ab285c955e42632c3018014ae530224f8822eab7` |
+| webApiWrappers | blocked | `bcf33f9c975ab3afa8268c1af4c7b99262be0e900967bb51e766743af9cd935a` |
+| webPageActions | blocked | `659cbcd4cb8d35cbf5529e34536eab87df3a418a7f6ccaf9681684e6b69ef48f` |
+| routeUsage | blocked | `db0c979cd1be0ec86ef8a5a61f9f2ae1237e85e3e794358a23472a09226f47cd` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 395 |
-| pageRouteCount | 288 |
+| routeCount | 396 |
+| pageRouteCount | 289 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 3 |
-| mainRequestBindingCount | 395 |
+| mainRequestBindingCount | 396 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 40 |
@@ -112,6 +112,7 @@
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | — |
 | GET | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseRequests | — | not_applicable | — |
+| GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench | — | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |

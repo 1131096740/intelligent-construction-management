@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 395,
-    "exactRouteCount": 395,
-    "normalizedRouteCount": 395,
+    "routeCount": 396,
+    "exactRouteCount": 396,
+    "normalizedRouteCount": 396,
     "classificationOverrideCount": 107,
     "consumerSurfaceOverrideCount": 3,
     "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-    "derivedProductionPageCount": 285,
-    "pageRouteCount": 288,
+    "derivedProductionPageCount": 286,
+    "pageRouteCount": 289,
     "externalTakeoverCount": 59,
     "exitCandidateCount": 43,
     "internalTaskCount": 2,
     "unclassifiedCount": 3,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 335,
+      "web_api_wrapper": 336,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 335,
+    "productionWrapperRouteCount": 336,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -3200,6 +3200,58 @@
             "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/financing-quotas",
+      "normalizedKey": "GET /projects/:param/financing-quotas",
+      "controller": "ProjectController",
+      "handler": "projectFinancingQuotaWorkbench",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "budget_director",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "engineering_department_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "material_director",
+        "project_manager",
+        "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+            "wrapper": "fetchProjectFinancingQuotaWorkbench",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/financing-quotas",
+            "normalizedKey": "GET /projects/:param/financing-quotas",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]
           }
         ],
@@ -15980,18 +16032,18 @@
       },
       {
         "field": "consumerSurfaceCounts.web_api_wrapper",
-        "expected": 333,
-        "actual": 335
+        "expected": 334,
+        "actual": 336
       },
       {
         "field": "derivedProductionPageCount",
-        "expected": 283,
-        "actual": 285
+        "expected": 284,
+        "actual": 286
       },
       {
         "field": "usageCounts.page",
-        "expected": 286,
-        "actual": 288
+        "expected": 287,
+        "actual": 289
       },
       {
         "field": "usageCounts.unclassified",

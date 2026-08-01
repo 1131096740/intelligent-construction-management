@@ -69,6 +69,13 @@ import type { ReviewSettlementExceptionQuotaDto } from "./dto/review-settlement-
 import type { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-financing-quota.dto";
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { resolveCurrentProjectAffiliate } from "./project-affiliate-subject";
+import {
+  assertProjectFinancingQuotaApprovalLifecycle,
+  assertProjectFinancingQuotaApprovalSnapshot,
+  indexProjectFinancingQuotaApprovalInstances,
+  PROJECT_FINANCING_QUOTA_APPROVAL_NODES,
+  type FinancingQuotaApprovalInstanceSnapshot
+} from "./project-financing-quota-approval";
 
 const UPSTREAM_SETTLEMENT_GAP =
   "缺少已确认上游结算，当前经营收入仅按已确认业主付款事实展示，不把挂靠拨款误作收入。";
@@ -138,11 +145,6 @@ const SETTLEMENT_EXCEPTION_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprova
   { name: "合同/预算负责人", mode: "any", roleKeys: ["contract_director", "budget_director"] },
   { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
 ];
-const PROJECT_FINANCING_QUOTA_APPROVAL_NODES: SettlementExceptionQuotaApprovalNode[] = [
-  { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
-  { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
-];
-
 @Injectable()
 export class ProjectService {
   constructor(
@@ -618,7 +620,8 @@ export class ProjectService {
       projectUpstreamSettlements,
       projectFinancingQuotas,
       projectExpenseRequests,
-      spotProcurementPayments
+      spotProcurementPayments,
+      projectFundingAllocations
     ] = await Promise.all([
       this.prisma.contract.findMany({
         where: { projectId, voidedAt: null },
@@ -643,7 +646,11 @@ export class ProjectService {
         select: { amountCents: true }
       }),
       this.prisma.projectReceipt.findMany({
-        where: { projectId, voidedAt: null },
+        where: {
+          projectId,
+          voidedAt: null,
+          sourceType: { in: ["general_contractor_payment", "other"] }
+        },
         select: { amountCents: true }
       }),
       this.prisma.projectUpstreamFundFact.findMany({
@@ -667,12 +674,13 @@ export class ProjectService {
         select: { approvedAmountCents: true }
       }),
       this.prisma.projectFinancingQuota.findMany({
-        where: {
-          projectId,
-          status: "approved",
-          OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }]
-        },
-        select: { id: true, amountCents: true }
+        where: { projectId },
+        select: {
+          id: true,
+          amountCents: true,
+          status: true,
+          validUntil: true
+        }
       }),
       this.prisma.projectExpenseRequest.findMany({
         where: { projectId, voidedAt: null },
@@ -693,6 +701,10 @@ export class ProjectService {
           canceledCompanyPaymentAmountCents: true,
           paidAmountCents: true
         }
+      }),
+      this.prisma.projectFundingAllocation.findMany({
+        where: { projectId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
       })
     ]);
     const contractIds = contracts.map((contract) => contract.id);
@@ -729,30 +741,21 @@ export class ProjectService {
             select: { amountCents: true }
           })
         : [];
-    const financingQuotaIds = projectFinancingQuotas.map((quota) => quota.id);
-    const [paymentFinancingUsages, expenseFinancingUsages] = financingQuotaIds.length
-      ? await Promise.all([
-          this.prisma.projectFinancingQuotaUsage.findMany({
-            where: { quotaId: { in: financingQuotaIds }, status: { in: ["occupied", "used"] } },
-            select: { quotaId: true, amountCents: true }
-          }),
-          this.prisma.projectExpenseFinancingQuotaUsage.findMany({
-            where: { quotaId: { in: financingQuotaIds }, status: { in: ["occupied", "used"] } },
-            select: { quotaId: true, amountCents: true }
-          })
-        ])
-      : [[], []];
-    const financingUsageByQuotaId = [...paymentFinancingUsages, ...expenseFinancingUsages].reduce(
-      (totals, usage) => {
-        totals.set(
-          usage.quotaId,
-          (totals.get(usage.quotaId) ?? 0n) +
-            dbMoneyToBigInt(usage.amountCents, "垫资额度占用金额")
-        );
-        return totals;
-      },
-      new Map<string, bigint>()
-    );
+    const { allocationSummary: fundingAllocationSummary } =
+      this.funding.assertFundingLedgerCoverage({
+        receipts: projectReceipts,
+        affiliateRemittances: upstreamFundFacts
+          .filter((fact) =>
+            fact.factType === "affiliate_remittance_to_company" &&
+            fact.status === "confirmed"
+          )
+          .map((fact) => ({
+            amountCents: fact.amountCents,
+            effectDirection: fact.effectDirection
+          })),
+        quotas: projectFinancingQuotas,
+        allocations: projectFundingAllocations
+      });
     const legacyReceiptsCents = sumDbMoneyToBigInt(
       projectReceipts.map((receipt) => receipt.amountCents),
       "历史项目实收金额"
@@ -791,12 +794,17 @@ export class ProjectService {
       projectUpstreamSettlements.map((settlement) => settlement.approvedAmountCents),
       "对上结算金额"
     );
+    const financingReadAt = new Date();
+    const availableFinancingQuotas = projectFinancingQuotas.filter(
+      (quota) =>
+        quota.status === "approved" &&
+        (quota.validUntil === null || quota.validUntil.getTime() >= financingReadAt.getTime())
+    );
     const availableFinancingCents = sumDbMoneyToBigInt(
-      projectFinancingQuotas.map((quota) => {
-        const available =
-          dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
-          (financingUsageByQuotaId.get(quota.id) ?? 0n);
-        return available > 0n ? available : 0n;
+      availableFinancingQuotas.map((quota) => {
+        const sourceKey = `financing_quota:${quota.id}`;
+        const netUsed = fundingAllocationSummary.netUsedBySource.get(sourceKey) ?? 0n;
+        return dbMoneyToBigInt(quota.amountCents, "项目垫资额度") - netUsed;
       }),
       "项目可用垫资额度"
     );
@@ -840,14 +848,13 @@ export class ProjectService {
       );
     const availableFundsCents =
       actualReceiptsCents +
-      supplierRefundsCents -
-      actualPaidCents -
+      availableFinancingCents -
+      (fundingAllocationSummary.netUsedBySource.get("project_cash") ?? 0n) -
       approvalPendingOccupancyCents -
-      approvedPendingPaymentCents +
-      availableFinancingCents;
+      approvedPendingPaymentCents;
     const dataGaps = [
       ...(projectUpstreamSettlements.length ? [] : [UPSTREAM_SETTLEMENT_GAP]),
-      ...(projectFinancingQuotas.length ? [] : [FINANCING_LIMIT_GAP])
+      ...(availableFinancingQuotas.length ? [] : [FINANCING_LIMIT_GAP])
     ];
 
     return {
@@ -1234,8 +1241,15 @@ export class ProjectService {
         throw new ForbiddenException(
           fact.basisType === "oral"
             ? "口头通知必须由财务主管执行独立确认"
-            : "只有项目财务人员或财务主管可以确认书面依据资金事实"
+          : "只有项目财务人员或财务主管可以确认书面依据资金事实"
         );
+      }
+
+      const decreasesProjectCash =
+        fact.factType === "affiliate_remittance_to_company" &&
+        fact.effectDirection === "decrease";
+      if (decreasesProjectCash) {
+        await this.funding.lockFundingContext(tx, projectId);
       }
 
       const signature = await snapshotApprovalSignature(tx, actorUserId, {
@@ -1260,6 +1274,12 @@ export class ProjectService {
       });
       if (updated.count !== 1) {
         throw new ConflictException("上游资金事实已被其他操作确认，请刷新后核对");
+      }
+      if (decreasesProjectCash) {
+        await this.funding.assertPersistedProjectFundingLedgerCoverage(
+          tx,
+          projectId
+        );
       }
       const confirmed = await tx.projectUpstreamFundFact.findUnique({
         where: { id: factId }
@@ -2460,6 +2480,233 @@ export class ProjectService {
     });
   }
 
+  async getProjectFinancingQuotaWorkbench(projectId: string, actorUserId: string) {
+    const readAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const project = await tx.project.findFirst({
+        where: { id: projectId, isActive: true },
+        select: { id: true, code: true, name: true }
+      });
+      if (!project) {
+        throw new NotFoundException("项目不存在或已停用");
+      }
+
+      const [
+        quotas,
+        allocations,
+        actorRoleKeys,
+        projectCashReceipts,
+        affiliateRemittances
+      ] = await Promise.all([
+        tx.projectFinancingQuota.findMany({
+          where: { projectId: project.id },
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }]
+        }),
+        tx.projectFundingAllocation.findMany({
+          where: { projectId: project.id },
+          orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }, { id: "asc" }]
+        }),
+        this.loadActorRoleKeys(tx, actorUserId, project.id),
+        tx.projectReceipt.findMany({
+          where: {
+            projectId: project.id,
+            voidedAt: null,
+            sourceType: { in: ["general_contractor_payment", "other"] }
+          },
+          select: { amountCents: true }
+        }),
+        tx.projectUpstreamFundFact.findMany({
+          where: {
+            projectId: project.id,
+            factType: "affiliate_remittance_to_company",
+            status: "confirmed"
+          },
+          select: { amountCents: true, effectDirection: true }
+        })
+      ]);
+      const quotaIds = quotas.map((quota) => quota.id);
+      const approvalInstances = quotaIds.length
+        ? await tx.approvalInstance.findMany({
+            where: {
+              businessType: "project_financing_quota",
+              flowType: "project_financing_quota.approve",
+              businessId: { in: quotaIds }
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "asc" }]
+          })
+        : [];
+      const userIds = Array.from(new Set(quotas.flatMap((quota) => [
+        quota.requestedByUserId,
+        quota.approvedByUserId,
+        quota.terminatedByUserId
+      ]).filter((userId): userId is string => Boolean(userId))));
+      const users = userIds.length
+        ? await tx.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, name: true }
+          })
+        : [];
+      const userNameById = new Map(users.map((user) => [user.id, user.name]));
+      const approvalByQuotaId = indexProjectFinancingQuotaApprovalInstances(
+        approvalInstances
+      );
+      const { allocationSummary } = this.funding.assertFundingLedgerCoverage({
+        receipts: projectCashReceipts,
+        affiliateRemittances,
+        quotas,
+        allocations
+      });
+      const usageGroupsByQuotaId = indexProjectFinancingQuotaUsageGroups(
+        allocations
+      );
+
+      const rows = quotas.map((quota) => {
+        const amountCents = dbMoneyToBigInt(quota.amountCents, "项目垫资额度");
+        const sourceKey = `financing_quota:${quota.id}`;
+        const netUsedAmountCents = allocationSummary.netUsedBySource.get(sourceKey) ?? 0n;
+        if (netUsedAmountCents > amountCents) {
+          throw new ConflictException("项目垫资额度累计占用超过批准金额");
+        }
+        const isExpired = quota.validUntil !== null && quota.validUntil < readAt;
+        const availableAmountCents =
+          quota.status === "approved" && !isExpired
+            ? amountCents - netUsedAmountCents
+            : 0n;
+        const {
+          instance: currentApproval,
+          nodes
+        } = assertProjectFinancingQuotaApprovalLifecycle(
+          quota,
+          approvalByQuotaId.get(quota.id)
+        );
+        const currentNode = currentApproval?.status === "in_progress"
+          ? nodes[currentApproval.currentNodeIndex] ?? null
+          : null;
+        const actorApprovalRole = currentNode?.roleKeys.find((roleKey) =>
+          actorRoleKeys.includes(roleKey)
+        ) ?? null;
+        const selfReview = currentApproval?.applicantUserId === actorUserId;
+        const selfReviewAllowed =
+          selfReview &&
+          currentApproval?.currentNodeIndex === 0 &&
+          actorApprovalRole === "finance_director";
+        const reviewEnabled =
+          quota.status === "approval_pending" &&
+          currentApproval?.status === "in_progress" &&
+          Boolean(currentNode) &&
+          canPerform("project.financing_quota.approve", actorRoleKeys) &&
+          Boolean(actorApprovalRole) &&
+          (!selfReview || selfReviewAllowed);
+        const terminateEnabled =
+          quota.status === "approved" &&
+          currentApproval?.status === "approved" &&
+          canPerform("project.financing_quota.terminate", actorRoleKeys);
+
+        return {
+          id: quota.id,
+          amountCents: moneyCentsToApi(amountCents),
+          reason: quota.reason,
+          validUntil: quota.validUntil?.toISOString() ?? null,
+          requestedByName: userNameById.get(quota.requestedByUserId) ?? null,
+          approvedByName: quota.approvedByUserId
+            ? userNameById.get(quota.approvedByUserId) ?? null
+            : null,
+          approvedAt: quota.approvedAt?.toISOString() ?? null,
+          status: quota.status,
+          statusLabel: projectFinancingQuotaStatusLabel(quota.status, isExpired),
+          isExpired,
+          terminatedAt: quota.terminatedAt?.toISOString() ?? null,
+          terminatedByName: quota.terminatedByUserId
+            ? userNameById.get(quota.terminatedByUserId) ?? null
+            : null,
+          terminationReason: quota.terminationReason ?? null,
+          createdAt: quota.createdAt.toISOString(),
+          updatedAt: quota.updatedAt.toISOString(),
+          netUsedAmountCents: moneyCentsToApi(netUsedAmountCents),
+          availableAmountCents: moneyCentsToApi(availableAmountCents),
+          currentApproval: {
+            status: currentApproval.status,
+            currentNodeIndex: currentApproval.currentNodeIndex,
+            currentNodeName: currentNode?.name ?? null,
+            updatedAt: currentApproval.updatedAt.toISOString()
+          },
+          lifecycleToken: financingQuotaLifecycleToken(quota, currentApproval),
+          reviewAction: financingQuotaReadAction({
+            key: "review_financing_quota",
+            label: "审批垫资额度",
+            kind: "primary",
+            requiredAction: "project.financing_quota.approve",
+            enabled: Boolean(reviewEnabled),
+            disabledReason: financingQuotaReviewDisabledReason({
+              quotaStatus: quota.status,
+              currentApproval,
+              currentNode,
+              actorApprovalRole,
+              actorRoleKeys,
+              selfReview,
+              selfReviewAllowed
+            }),
+            requiresPassword: true,
+            requiresSelfReviewConfirmation: Boolean(selfReviewAllowed)
+          }),
+          terminateAction: financingQuotaReadAction({
+            key: "terminate_financing_quota",
+            label: "终止垫资额度",
+            kind: "danger",
+            requiredAction: "project.financing_quota.terminate",
+            enabled: terminateEnabled,
+            disabledReason: terminateEnabled
+              ? null
+              : quota.status !== "approved"
+                ? "只有已批准的项目垫资额度可以终止"
+                : currentApproval?.status !== "approved"
+                  ? "项目垫资额度审批生命周期不完整"
+                  : "当前账号无项目垫资额度终止权限",
+            requiresPassword: true
+          }),
+          usageGroups: usageGroupsByQuotaId.get(quota.id) ?? []
+        };
+      });
+
+      return {
+        project,
+        readAt: readAt.toISOString(),
+        policy: {
+          allocationOrder: ["project_cash", "financing_quota"] as const,
+          userSelectable: false
+        },
+        summary: {
+          quotaAmountCents: moneyCentsToApi(rows.reduce(
+            (total, row) => total + BigInt(row.amountCents),
+            0n
+          )),
+          netUsedAmountCents: moneyCentsToApi(rows.reduce(
+            (total, row) => total + BigInt(row.netUsedAmountCents),
+            0n
+          )),
+          currentlyAvailableAmountCents: moneyCentsToApi(rows.reduce(
+            (total, row) => total + BigInt(row.availableAmountCents),
+            0n
+          )),
+          projectCashNetUsedAmountCents: moneyCentsToApi(
+            allocationSummary.netUsedBySource.get("project_cash") ?? 0n
+          )
+        },
+        requestAction: financingQuotaReadAction({
+          key: "request_financing_quota",
+          label: "申请垫资额度",
+          kind: "primary",
+          requiredAction: "project.financing_quota.request",
+          enabled: canPerform("project.financing_quota.request", actorRoleKeys),
+          disabledReason: canPerform("project.financing_quota.request", actorRoleKeys)
+            ? null
+            : "当前账号无项目垫资额度申请权限"
+        }),
+        rows
+      };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
   async requestProjectFinancingQuota(
     projectId: string,
     actorUserId: string,
@@ -2586,7 +2833,11 @@ export class ProjectService {
         throw new BadRequestException("项目垫资额度审批实例不存在");
       }
 
-      const nodes = instance.frozenNodes as unknown as SettlementExceptionQuotaApprovalNode[];
+      const nodes = assertProjectFinancingQuotaApprovalSnapshot(
+        instance,
+        quota.requestedByUserId,
+        quota.status
+      );
       const currentNode = nodes[instance.currentNodeIndex];
       if (!currentNode) {
         throw new BadRequestException("项目垫资额度当前审批节点不存在");
@@ -2825,6 +3076,206 @@ function latestByContract<T extends { contractId: string; versionNo?: number | n
 
 export function projectMoneyToApi(value: bigint): string {
   return moneyCentsToApi(dbMoneyToBigInt(value, "项目金额"));
+}
+
+interface FinancingQuotaLedgerRow {
+  id: string;
+  projectId: string;
+  executionType: string;
+  executionId: string;
+  businessType: string;
+  businessId: string;
+  sourceType: string;
+  sourceKey: string;
+  sourceId: string | null;
+  direction: string;
+  amountCents: bigint;
+  occurredAt: Date;
+  createdByUserId: string;
+  reversalOfAllocationId: string | null;
+  reversalKey: string;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface FinancingQuotaUsageGroupProjection {
+  executionType: string;
+  executionId: string;
+  businessType: string;
+  businessId: string;
+  occurredAt: string;
+  projectCashNetAmountCents: string;
+  financingQuotaNetAmountCents: string;
+  currentQuotaDebitAmountCents: string;
+  currentQuotaCreditAmountCents: string;
+  currentQuotaNetAmountCents: string;
+}
+
+function financingQuotaReadAction(input: {
+  key: string;
+  label: string;
+  kind: "primary" | "danger";
+  requiredAction: string;
+  enabled: boolean;
+  disabledReason: string | null;
+  requiresPassword?: boolean;
+  requiresSelfReviewConfirmation?: boolean;
+}) {
+  return {
+    key: input.key,
+    label: input.label,
+    kind: input.kind,
+    enabled: input.enabled,
+    disabledReason: input.enabled ? null : input.disabledReason,
+    requiredAction: input.requiredAction,
+    ...(input.requiresPassword ? { requiresPassword: true } : {}),
+    ...(input.requiresSelfReviewConfirmation
+      ? { requiresSelfReviewConfirmation: true }
+      : {})
+  };
+}
+
+function financingQuotaReviewDisabledReason(input: {
+  quotaStatus: string;
+  currentApproval: FinancingQuotaApprovalInstanceSnapshot | null;
+  currentNode: SettlementExceptionQuotaApprovalNode | null;
+  actorApprovalRole: RoleKey | null;
+  actorRoleKeys: RoleKey[];
+  selfReview: boolean;
+  selfReviewAllowed: boolean;
+}) {
+  if (input.quotaStatus !== "approval_pending") {
+    return "当前项目垫资额度状态不可审批";
+  }
+  if (!input.currentApproval || input.currentApproval.status !== "in_progress") {
+    return "项目垫资额度审批实例不存在或已结束";
+  }
+  if (!input.currentNode) {
+    return "项目垫资额度当前审批节点无效";
+  }
+  if (!canPerform("project.financing_quota.approve", input.actorRoleKeys)) {
+    return "当前账号无项目垫资额度审批权限";
+  }
+  if (!input.actorApprovalRole) {
+    return "当前账号不是项目垫资额度当前审批节点处理人";
+  }
+  if (input.selfReview && !input.selfReviewAllowed) {
+    return "项目垫资额度申请人只能独立审批财务主管节点";
+  }
+  return null;
+}
+
+function projectFinancingQuotaStatusLabel(status: string, isExpired: boolean) {
+  if (status === "approved" && isExpired) return "已过期";
+  return ({
+    approval_pending: "审批中",
+    approved: "已批准",
+    rejected: "已驳回",
+    terminated: "已终止"
+  } as Record<string, string>)[status] ?? "状态异常";
+}
+
+function financingQuotaLifecycleToken(
+  quota: {
+    id: string;
+    projectId: string;
+    status: string;
+    amountCents: bigint;
+    validUntil: Date | null;
+    updatedAt: Date;
+  },
+  approval: FinancingQuotaApprovalInstanceSnapshot | null
+) {
+  return createHash("sha256").update(JSON.stringify({
+    quota: {
+      id: quota.id,
+      projectId: quota.projectId,
+      status: quota.status,
+      amountCents: quota.amountCents.toString(),
+      validUntil: quota.validUntil?.toISOString() ?? null,
+      updatedAt: quota.updatedAt.toISOString()
+    },
+    approval: approval
+      ? {
+          id: approval.id,
+          status: approval.status,
+          currentNodeIndex: approval.currentNodeIndex,
+          frozenNodes: approval.frozenNodes,
+          updatedAt: approval.updatedAt.toISOString()
+        }
+      : null
+  })).digest("hex");
+}
+
+function indexProjectFinancingQuotaUsageGroups(
+  allocations: FinancingQuotaLedgerRow[]
+) {
+  const rowsByExecution = new Map<string, FinancingQuotaLedgerRow[]>();
+  for (const allocation of allocations) {
+    const key = `${allocation.executionType}\u0000${allocation.executionId}`;
+    const rows = rowsByExecution.get(key) ?? [];
+    rows.push(allocation);
+    rowsByExecution.set(key, rows);
+  }
+  const result = new Map<string, FinancingQuotaUsageGroupProjection[]>();
+  for (const rows of rowsByExecution.values()) {
+    const first = rows[0];
+    if (!first) continue;
+    if (rows.some((row) =>
+      row.projectId !== first.projectId ||
+      row.businessType !== first.businessType ||
+      row.businessId !== first.businessId
+    )) {
+      throw new ConflictException("同一实付编号绑定了不一致的项目资金业务对象");
+    }
+    let projectCashNet = 0n;
+    let financingQuotaNet = 0n;
+    let occurredAt = first.occurredAt;
+    const quotaAmounts = new Map<string, { debit: bigint; credit: bigint }>();
+    for (const allocation of rows) {
+      const amountCents = dbMoneyToBigInt(
+        allocation.amountCents,
+        "项目资金分配金额"
+      );
+      const signedAmount = allocation.direction === "credit"
+        ? -amountCents
+        : amountCents;
+      if (allocation.sourceType === "project_cash") {
+        projectCashNet += signedAmount;
+      } else if (allocation.sourceType === "financing_quota") {
+        financingQuotaNet += signedAmount;
+        if (allocation.sourceId) {
+          const current = quotaAmounts.get(allocation.sourceId) ?? {
+            debit: 0n,
+            credit: 0n
+          };
+          current[allocation.direction === "credit" ? "credit" : "debit"] +=
+            amountCents;
+          quotaAmounts.set(allocation.sourceId, current);
+        }
+      }
+      if (allocation.occurredAt > occurredAt) occurredAt = allocation.occurredAt;
+    }
+    for (const [quotaId, currentQuota] of quotaAmounts) {
+      const groups = result.get(quotaId) ?? [];
+      groups.push({
+        executionType: first.executionType,
+        executionId: first.executionId,
+        businessType: first.businessType,
+        businessId: first.businessId,
+        occurredAt: occurredAt.toISOString(),
+        projectCashNetAmountCents: moneyCentsToApi(projectCashNet),
+        financingQuotaNetAmountCents: moneyCentsToApi(financingQuotaNet),
+        currentQuotaDebitAmountCents: moneyCentsToApi(currentQuota.debit),
+        currentQuotaCreditAmountCents: moneyCentsToApi(currentQuota.credit),
+        currentQuotaNetAmountCents: moneyCentsToApi(
+          currentQuota.debit - currentQuota.credit
+        )
+      });
+      result.set(quotaId, groups);
+    }
+  }
+  return result;
 }
 
 function normalizePositiveMoneyCents(value: unknown, message: string): bigint {

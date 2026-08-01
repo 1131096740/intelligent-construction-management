@@ -97,7 +97,7 @@
     </div>
 
     <t-tabs
-      v-if="overview || canViewExecutiveOverview || ((canReadProjectExpenseLedger || canCreateProjectExpense) && selectedProjectId)"
+      v-if="overview || canViewExecutiveOverview || financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && selectedProjectId)"
       v-model="activeTab"
       class="project-operating-tabs"
       @change="handleOperatingTabChange"
@@ -268,11 +268,24 @@
       </t-tab-panel>
 
       <t-tab-panel
-        v-if="(canReadProjectExpenseLedger || canCreateProjectExpense) && (overview || selectedProjectId)"
+        v-if="financingQuotaWorkbench || financingQuotaError || ((canReadProjectExpenseLedger || canCreateProjectExpense) && (overview || selectedProjectId))"
         value="operations"
         label="资金办理"
       >
         <template v-if="overview || selectedProjectId">
+          <ProjectFinancingQuotaPanel
+            v-if="financingQuotaWorkbench"
+            :workbench="financingQuotaWorkbench"
+          />
+          <t-alert
+            v-else-if="financingQuotaError"
+            theme="error"
+            title="项目垫资额度读取失败"
+            class="financing-quota-error"
+          >
+            {{ financingQuotaError }}
+          </t-alert>
+
           <section
             v-if="canRecordUpstreamFunds"
             class="panel receipt-panel"
@@ -780,7 +793,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import {
   confirmProjectUpstreamFundFact,
@@ -807,12 +820,19 @@ import {
 } from "../../api/core-flow-read.api";
 import type { DraftLedgerView, RoleKey } from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
+import {
+  createProjectOverviewRequestOwner,
+  fetchProjectFinancingQuotaWorkbench,
+  ProjectFinancingQuotaApiError,
+  type ProjectFinancingQuotaWorkbenchReadModel
+} from "../../api/project-financing-quota.api";
 import { useAuthStore } from "../../auth/auth.store";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
+import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,
@@ -888,6 +908,9 @@ const projects = ref<ProjectOptionReadModel[]>([]);
 const overview = ref<ProjectOperatingOverviewReadModel | null>(null);
 const executiveOverview = ref<ExecutiveProjectOverview | null>(null);
 const projectExpenses = ref<ProjectExpenseRequestListReadModel | null>(null);
+const financingQuotaWorkbench = ref<ProjectFinancingQuotaWorkbenchReadModel | null>(null);
+const financingQuotaError = ref("");
+const overviewRequestOwner = createProjectOverviewRequestOwner();
 const selectedProjectId = ref("");
 const loadedProjectId = ref("");
 const projectSwitching = ref(false);
@@ -1118,6 +1141,7 @@ const executiveSummaryItems = computed(() => {
 });
 
 onMounted(loadProjects);
+onBeforeUnmount(() => overviewRequestOwner.invalidate());
 
 async function loadProjects() {
   loadingProjects.value = true;
@@ -1293,10 +1317,13 @@ async function loadExecutiveOverview() {
 }
 
 async function loadOverview() {
+  const requestOwner = overviewRequestOwner.begin();
   const projectId = selectedProjectId.value;
   const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
   projectExpenses.value = null;
+  financingQuotaWorkbench.value = null;
+  financingQuotaError.value = "";
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
   expenseMessage.value = "";
@@ -1304,13 +1331,14 @@ async function loadOverview() {
   if (!projectId) {
     overview.value = null;
     selectedExpenseRow.value = null;
+    loadingOverview.value = false;
     return;
   }
 
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [nextOverview, nextExpenses, spotCapability] = await Promise.all([
+    const [nextOverview, nextExpenses, spotCapability, nextFinancingQuota] = await Promise.all([
       canReadProjectOverview.value
         ? fetchProjectOperatingOverview(projectId)
         : Promise.resolve(null),
@@ -1323,12 +1351,31 @@ async function loadOverview() {
         : Promise.resolve(null),
       canCreateProjectExpense.value
         ? fetchSpotProcurementCapabilities(projectId).catch(() => ({ enabled: false }))
-        : Promise.resolve({ enabled: false })
+        : Promise.resolve({ enabled: false }),
+      fetchProjectFinancingQuotaWorkbench(projectId)
+        .then((workbench) => ({ workbench, error: "" }))
+        .catch((error: unknown) => ({
+          workbench: null,
+          error:
+            error instanceof ProjectFinancingQuotaApiError && error.status === 403
+              ? ""
+              : error instanceof Error
+                ? error.message
+                : "读取项目垫资额度失败"
+        }))
     ]);
-    if (selectedProjectId.value === projectId) {
+    if (
+      overviewRequestOwner.isCurrent(requestOwner) &&
+      selectedProjectId.value === projectId
+    ) {
       overview.value = nextOverview;
       projectExpenses.value = nextExpenses;
+      financingQuotaWorkbench.value = nextFinancingQuota.workbench;
+      financingQuotaError.value = nextFinancingQuota.error;
       spotProcurementEnabled.value = spotCapability.enabled;
+      if (!nextOverview && nextFinancingQuota.workbench) {
+        activeTab.value = "operations";
+      }
       if (
         spotCapability.enabled &&
         expenseForm.value.expenseType === "spot_purchase" &&
@@ -1342,13 +1389,21 @@ async function loadOverview() {
         : null;
     }
   } catch (error) {
-    if (selectedProjectId.value === projectId) {
+    if (
+      overviewRequestOwner.isCurrent(requestOwner) &&
+      selectedProjectId.value === projectId
+    ) {
       overview.value = null;
+      financingQuotaWorkbench.value = null;
+      financingQuotaError.value = "";
       selectedExpenseRow.value = null;
       message.value = error instanceof Error ? error.message : "加载项目经营数据失败";
     }
   } finally {
-    if (selectedProjectId.value === projectId) {
+    if (
+      overviewRequestOwner.isCurrent(requestOwner) &&
+      selectedProjectId.value === projectId
+    ) {
       loadingOverview.value = false;
     }
   }

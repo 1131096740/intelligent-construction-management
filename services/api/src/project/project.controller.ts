@@ -106,6 +106,15 @@ export class ProjectController {
     return this.projects.getOperatingFundsOverview(projectId);
   }
 
+  @Get(":projectId/financing-quotas")
+  @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
+  projectFinancingQuotaWorkbench(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.projects.getProjectFinancingQuotaWorkbench(projectId, user.id);
+  }
+
   @Get(":projectId/affiliate-business-facts")
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
   affiliateBusinessFacts(
