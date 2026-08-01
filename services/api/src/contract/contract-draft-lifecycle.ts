@@ -14,6 +14,7 @@ export interface ContractDraftLifecycleFacts {
   approvalActionCount: number;
   formalFileCount: number;
   signedFormalFileCount: number;
+  activeSignedFormalFileCount: number;
   authorizationCount: number;
   authorizationLinkCount: number;
   sealTaskCount: number;
@@ -117,7 +118,7 @@ export async function loadContractDraftLifecycle(
   const formalFiles = await client.contractFormalFile.findMany({
     where: { contractVersionId: version.id },
     orderBy: { createdAt: "asc" },
-    select: { purpose: true }
+    select: { purpose: true, status: true }
   });
   const authorizationCount = await client.contractAuthorization.count({
     where: { originContractVersionId: version.id }
@@ -153,6 +154,10 @@ export async function loadContractDraftLifecycle(
     formalFileCount: formalFiles.length,
     signedFormalFileCount: formalFiles.filter(
       (file) => file.purpose === "mutually_signed_final"
+    ).length,
+    activeSignedFormalFileCount: formalFiles.filter(
+      (file) =>
+        file.purpose === "mutually_signed_final" && file.status === "active"
     ).length,
     authorizationCount,
     authorizationLinkCount,
@@ -242,6 +247,7 @@ export async function lockContractDraftMutationBoundary<
         FROM "ContractFormalFile" f
         WHERE f."contractVersionId" = ${contractVersionId}
           AND f."purpose" = 'mutually_signed_final'
+          AND f."status" = 'active'
       ) AS "hasSignedFormalFile",
       EXISTS (
         SELECT 1
@@ -298,9 +304,13 @@ export function classifyContractDraftLifecycle(
     ...(facts.approvalInstanceCount > 0 || facts.approvalActionCount > 0
       ? ["存在审批记录"]
       : []),
-    ...(facts.formalFileCount > 0 || facts.signedFormalFileCount > 0
+    ...(
+      facts.formalFileCount > 0 ||
+      facts.signedFormalFileCount > 0 ||
+      facts.activeSignedFormalFileCount > 0
       ? ["存在正式合同文件"]
-      : []),
+      : []
+    ),
     ...(facts.authorizationCount > 0 || facts.authorizationLinkCount > 0
       ? ["存在授权委托书"]
       : []),
@@ -312,7 +322,7 @@ export function classifyContractDraftLifecycle(
     ...(facts.paymentRequestCount > 0 ? ["存在关联付款"] : [])
   ];
   const hasFormalBusinessFacts =
-    facts.signedFormalFileCount > 0 ||
+    facts.activeSignedFormalFileCount > 0 ||
     facts.activeSealTaskCount > 0 ||
     facts.archiveFileCount > 0 ||
     facts.settlementCount > 0 ||

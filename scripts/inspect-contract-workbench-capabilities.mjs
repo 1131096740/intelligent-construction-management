@@ -403,6 +403,14 @@ function expressionRoute(expression) {
   if (!expression) return "";
   if (ts.isStringLiteralLike(expression)) return expression.text;
   if (ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+  if (
+    ts.isCallExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "governedContractPath"
+  ) {
+    const tail = expressionRoute(expression.arguments[1]).replace(/^\/+/, "");
+    return `/contracts/:param/${tail}`;
+  }
   if (ts.isTemplateExpression(expression)) {
     return (
       expression.head.text +

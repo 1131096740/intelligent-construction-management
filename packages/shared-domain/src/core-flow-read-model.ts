@@ -121,6 +121,18 @@ export interface ContractSealTaskReadModel {
   completedAt: string | null;
 }
 
+export type ContractSigningMaterialChangeStatus =
+  | "approved_pending_seal"
+  | "in_seal"
+  | "seal_approved_pending_archive"
+  | "pending_archive_confirm";
+
+export interface ContractSigningMaterialChangeContextReadModel {
+  expectedRevision: number;
+  expectedSealTaskId: string;
+  expectedStatus: ContractSigningMaterialChangeStatus;
+}
+
 export interface EvidenceFileReadModel {
   recordId: string;
   fileId: string;
@@ -240,6 +252,7 @@ export interface ContractDetailReadModel {
     requiresExplicitConfirmation: boolean;
   };
   sealTask?: ContractSealTaskReadModel | null;
+  signingMaterialChangeContext?: ContractSigningMaterialChangeContextReadModel | null;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";

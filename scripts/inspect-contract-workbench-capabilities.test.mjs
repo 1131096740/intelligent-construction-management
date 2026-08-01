@@ -117,6 +117,46 @@ test("matches dynamic routes and reports a wrapper without backend", async () =>
   );
 });
 
+test("matches governed contract path helpers to their controller route", async () => {
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contracts")
+        export class ExampleController {
+          @Post(":contractVersionId/signing/material-change")
+          materialChange() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": "",
+      "apps/web-admin/src/api/core-flow-read.api.ts": `
+        function governedContractPath(contractVersionId, tail) {
+          return \`/contracts/\${contractVersionId}/\${tail}\`;
+        }
+        export function reportSigningMaterialChange(contractVersionId) {
+          return postJson(
+            governedContractPath(contractVersionId, "signing/material-change"),
+            {}
+          );
+        }
+      `,
+      "apps/web-admin/src/pages/contracts/Page.vue": `
+        <script setup>
+        import { reportSigningMaterialChange } from "../../api/core-flow-read.api";
+        const submit = () => reportSigningMaterialChange("version-1");
+        </script>
+      `
+    },
+    async (root) => {
+      const report = await inspectCapabilityProject({ root, legacyRoutes: [] });
+      const capability = report.capabilities.find(
+        (item) => item.wrapper === "reportSigningMaterialChange"
+      );
+      assert.equal(capability?.route, "/contracts/:param/signing/material-change");
+      assert.equal(capability?.classification, "matched");
+    }
+  );
+});
+
 test("finds a page import that points to no API wrapper", async () => {
   await withFixture(
     {

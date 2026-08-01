@@ -466,7 +466,11 @@ describe("FileService", () => {
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
       contractSealTask: { findFirst: jest.fn().mockResolvedValue({ handlerUserId: "handler-1" }) },
-      contractVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", contractId: "contract-1" }) },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: "version-1",
+        contractId: "contract-1",
+        status: "approved_pending_seal"
+      }) },
       contract: { findUnique: jest.fn().mockResolvedValue({
         projectId: "project-1",
         ownerUserId: "owner-1",
@@ -485,7 +489,7 @@ describe("FileService", () => {
       .rejects.toThrow("当前账号无权下载该合同签署资料");
   });
 
-  it("allows an actual frozen contract approver to download the linked approval form", async () => {
+  it("拒绝真实冻结审批人通过通用文件票据下载无水印合同审批单", async () => {
     const service = new FileService(
       {} as PrismaService,
       audit as unknown as AuditService,
@@ -495,19 +499,26 @@ describe("FileService", () => {
       contractFormalFile: { findFirst: jest.fn().mockResolvedValue(null) },
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue({
+        businessType: "contract_version",
+        templateKey: "approval_form",
         businessId: "version-1",
         approvalInstanceId: "instance-1"
       }) },
       contractSealTask: { findFirst: jest.fn().mockResolvedValue(null) },
-      contractVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", contractId: "contract-1" }) },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: "version-1",
+        contractId: "contract-1",
+        status: "approved_pending_seal"
+      }) },
       contract: { findUnique: jest.fn().mockResolvedValue({
         projectId: "project-1",
         ownerUserId: "owner-1",
         voidedAt: null
       }) },
-      approvalInstance: { findUnique: jest.fn().mockResolvedValue({
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue({
         id: "instance-1",
-        applicantUserId: "applicant-1"
+        applicantUserId: "applicant-1",
+        status: "approved"
       }) },
       approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "action-1" }) },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -518,14 +529,8 @@ describe("FileService", () => {
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
     }).assertCanDownloadFileObject(tx, { id: "approval-form-1" }, "approver-1"))
-      .resolves.toBeUndefined();
-    expect(tx.approvalActionLog.findFirst).toHaveBeenCalledWith({
-      where: {
-        approvalInstanceId: "instance-1",
-        actorUserId: "approver-1",
-        action: "approve"
-      }
-    });
+      .rejects.toThrow("审批单必须通过专用下载入口下载");
+    expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
   });
 
   it("仅有催办或转审日志的人不能绕过合同审批单票据 ACL", async () => {
@@ -541,22 +546,26 @@ describe("FileService", () => {
       contractFormalFile: { findFirst: jest.fn().mockResolvedValue(null) },
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue({
+        businessType: "contract_version",
+        templateKey: "approval_form",
         businessId: "version-1",
         approvalInstanceId: "instance-1"
       }) },
       contractSealTask: { findFirst: jest.fn().mockResolvedValue(null) },
       contractVersion: { findUnique: jest.fn().mockResolvedValue({
         id: "version-1",
-        contractId: "contract-1"
+        contractId: "contract-1",
+        status: "approved_pending_seal"
       }) },
       contract: { findUnique: jest.fn().mockResolvedValue({
         projectId: "project-1",
         ownerUserId: "owner-1",
         voidedAt: null
       }) },
-      approvalInstance: { findUnique: jest.fn().mockResolvedValue({
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue({
         id: "instance-1",
-        applicantUserId: "applicant-1"
+        applicantUserId: "applicant-1",
+        status: "approved"
       }) },
       approvalActionLog: { findFirst: approvalActionLookup },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
@@ -567,14 +576,254 @@ describe("FileService", () => {
     await expect((service as unknown as {
       assertCanDownloadFileObject(tx: unknown, file: { id: string }, actor: string): Promise<void>;
     }).assertCanDownloadFileObject(tx, { id: "approval-form-1" }, "reminder-1"))
-      .rejects.toThrow("当前账号无权下载该合同签署资料");
-    expect(approvalActionLookup).toHaveBeenCalledWith({
-      where: {
-        approvalInstanceId: "instance-1",
-        actorUserId: "reminder-1",
-        action: "approve"
+      .rejects.toThrow("审批单必须通过专用下载入口下载");
+    expect(approvalActionLookup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      caseName: "合同退回草稿后",
+      versionStatus: "draft",
+      latestApprovalId: "instance-old-approved",
+      latestApprovalStatus: "approved"
+    },
+    {
+      caseName: "合同重新发起审批后",
+      versionStatus: "in_approval",
+      latestApprovalId: "instance-new-in-progress",
+      latestApprovalStatus: "in_progress"
+    },
+    {
+      caseName: "新一轮审批通过但旧审批单仍被引用时",
+      versionStatus: "approved_pending_seal",
+      latestApprovalId: "instance-new-approved",
+      latestApprovalStatus: "approved"
+    },
+    {
+      caseName: "当前审批已通过且审批单实例绑定正确时",
+      versionStatus: "approved_pending_seal",
+      latestApprovalId: "instance-old-approved",
+      latestApprovalStatus: "approved"
+    }
+  ])(
+    "$caseName不能通过通用文件票据下载旧合同审批单",
+    async ({ versionStatus, latestApprovalId, latestApprovalStatus }) => {
+      const tx = {
+        fileObject: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "approval-form-file-1",
+            bucket: "private-local",
+            objectKey: "generated/approval-form-file-1.pdf",
+            originalName: "合同审批单.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 12,
+            uploadedByUserId: "system-1"
+          })
+        },
+        contractFormalFile: { findFirst: jest.fn().mockResolvedValue(null) },
+        contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
+        pdfDocument: {
+          findFirst: jest.fn().mockResolvedValue({
+            businessType: "contract_version",
+            businessId: "version-1",
+            templateKey: "approval_form",
+            approvalInstanceId: "instance-old-approved"
+          })
+        },
+        contractSealTask: { findFirst: jest.fn().mockResolvedValue(null) },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "version-1",
+            contractId: "contract-1",
+            status: versionStatus
+          })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            projectId: "project-1",
+            ownerUserId: "owner-1",
+            voidedAt: null
+          })
+        },
+        approvalInstance: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: latestApprovalId,
+            applicantUserId: "owner-1",
+            status: latestApprovalStatus
+          })
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+
+      await expect(
+        service.createDownloadTicket("approval-form-file-1", {
+          actorUserId: "owner-1",
+          downloadReason: "合同审批单复核"
+        })
+      ).rejects.toThrow("审批单必须通过专用下载入口下载");
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["uploaded", "failed"])(
+    "拒绝上传者通过通用文件票据下载 %s 的合同审批单生成中间文件",
+    async (claimStatus) => {
+      const tx = {
+        fileObject: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "approval-form-claim-file-1",
+            bucket: "private-local",
+            objectKey: "generated/approval-form-claim-file-1.pdf",
+            originalName: "合同审批单中间文件.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 12,
+            uploadedByUserId: "contract-director-1"
+          })
+        },
+        contractFormalFile: { findFirst: jest.fn().mockResolvedValue(null) },
+        contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
+        pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+        contractSealTask: { findFirst: jest.fn().mockResolvedValue(null) },
+        approvalFormGenerationClaim: {
+          findFirst: jest.fn().mockResolvedValue({
+            approvalInstanceId: "instance-old-approved",
+            status: claimStatus,
+            pdfDocumentId: null
+          })
+        }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      } as unknown as PrismaService;
+      const service = new FileService(
+        prisma,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage
+      );
+
+      await expect(
+        service.createDownloadTicket("approval-form-claim-file-1", {
+          actorUserId: "contract-director-1",
+          downloadReason: "合同审批单复核"
+        })
+      ).rejects.toThrow("审批单必须通过专用下载入口下载");
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["spot_procurement_version", "spot_procurement_payment"])(
+    "拒绝通过通用文件票据下载 %s 的零采无水印原始审批单",
+    async (businessType) => {
+      const spotAccess = {
+        resolveFileDownloadAccess: jest.fn()
+      };
+      const service = new FileService(
+        {} as PrismaService,
+        audit as unknown as AuditService,
+        storage as unknown as PrivateFileStorage,
+        spotAccess as unknown as SpotProcurementAccessService
+      );
+      const tx = {
+        pdfDocument: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "spot-pdf-1",
+            businessType,
+            businessId: "spot-business-1",
+            templateKey: "spot_procurement_approval_original_v1"
+          })
+        },
+        approvalFormGenerationClaim: {
+          findFirst: jest.fn().mockResolvedValue(null)
+        }
+      };
+
+      await expect((service as unknown as {
+        assertCanDownloadFileObject(
+          client: unknown,
+          file: { id: string },
+          actorUserId: string
+        ): Promise<void>;
+      }).assertCanDownloadFileObject(
+        tx,
+        { id: "spot-raw-approval-file-1" },
+        "spot-applicant-1"
+      )).rejects.toThrow("审批单必须通过专用下载入口下载");
+
+      expect(spotAccess.resolveFileDownloadAccess).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ["缺失 claim", null],
+    ["claim 尚未完成", {
+      status: "uploaded",
+      uploadedFileId: "file-1",
+      pdfDocumentId: "pdf-1"
+    }],
+    ["claim 文件坐标漂移", {
+      status: "completed",
+      uploadedFileId: "file-other",
+      pdfDocumentId: "pdf-1"
+    }],
+    ["claim 文档坐标漂移", {
+      status: "completed",
+      uploadedFileId: "file-1",
+      pdfDocumentId: "pdf-other"
+    }]
+  ])("拒绝%s的新式审批单归档锚点", async (_caseName, generationClaim) => {
+    const archivedBuffer = Buffer.from("%PDF-approval-form");
+    const prisma = {
+      pdfDocument: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "pdf-1",
+          fileId: "file-1",
+          templateKey: "approval_form",
+          businessType: "contract_version",
+          businessId: "version-1",
+          approvalInstanceId: "approval-1"
+        })
+      },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          objectKey: "generated/file-1.pdf",
+          storageStatus: "active",
+          contentSha256: createHash("sha256").update(archivedBuffer).digest("hex")
+        })
+      },
+      approvalFormGenerationClaim: {
+        findUnique: jest.fn().mockResolvedValue(generationClaim)
       }
-    });
+    };
+    const privateStorage = {
+      read: jest.fn().mockResolvedValue(archivedBuffer)
+    };
+    const service = new FileService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+      privateStorage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.assertApprovalFormArchiveAnchor({
+      pdfDocumentId: "pdf-1",
+      fileId: "file-1",
+      businessType: "contract_version",
+      businessId: "version-1",
+      approvalInstanceId: "approval-1"
+    })).rejects.toThrow("审批单归档锚点已变化，请刷新后重新下载");
+
+    expect(privateStorage.read).not.toHaveBeenCalled();
   });
 
   it("拒绝全局岗位下载无关私有文件", async () => {
@@ -727,6 +976,104 @@ describe("FileService", () => {
       "user-1"
     )).rejects.toThrow("当前业务类型不支持下载审批单");
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["退回草稿", "draft", "approved"],
+    ["新一轮审批中", "in_approval", "in_progress"]
+  ])("合同%s时拒绝当前审批单下载授权", async (
+    _label,
+    versionStatus,
+    latestApprovalStatus
+  ) => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: versionStatus
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "latest-approval",
+          applicantUserId: "owner-1",
+          status: latestApprovalStatus
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn() },
+      userPosition: { findMany: jest.fn() },
+      projectMember: { findMany: jest.fn() },
+      position: { findMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.assertCanDownloadContractApprovalForm(
+      "version-1",
+      "owner-1"
+    )).rejects.toThrow("当前合同尚未完成审批，暂不能下载审批单");
+    expect(tx.approvalActionLog.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("合同新一轮审批通过后按最新实例开放当前审批单", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "approved_pending_seal"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "new-approved",
+          applicantUserId: "owner-1",
+          status: "approved"
+        })
+      },
+      approvalActionLog: { findFirst: jest.fn() },
+      userPosition: { findMany: jest.fn() },
+      projectMember: { findMany: jest.fn() },
+      position: { findMany: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(service.assertCanDownloadContractApprovalForm(
+      "version-1",
+      "owner-1"
+    )).resolves.toBeUndefined();
+    expect(tx.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: { businessType: "contract_version", businessId: "version-1" },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
   });
 
   it("checks spot ownership before global-role and uploader shortcuts", async () => {

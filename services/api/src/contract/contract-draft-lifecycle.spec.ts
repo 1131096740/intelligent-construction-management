@@ -14,6 +14,7 @@ const pristineFacts: ContractDraftLifecycleFacts = {
   approvalActionCount: 0,
   formalFileCount: 0,
   signedFormalFileCount: 0,
+  activeSignedFormalFileCount: 0,
   authorizationCount: 0,
   authorizationLinkCount: 0,
   sealTaskCount: 0,
@@ -54,7 +55,7 @@ describe("contract draft lifecycle classification", () => {
   );
 
   it.each([
-    ["signedFormalFileCount", "存在正式合同文件"],
+    ["activeSignedFormalFileCount", "存在正式合同文件"],
     ["activeSealTaskCount", "存在用印记录"],
     ["archiveFileCount", "存在归档记录"],
     ["settlementCount", "存在关联结算"],
@@ -135,7 +136,7 @@ describe("contract draft lifecycle fact loading", () => {
       },
       contractFormalFile: {
         findMany: jest.fn().mockResolvedValue([
-          { purpose: "mutually_signed_final" }
+          { purpose: "mutually_signed_final", status: "active" }
         ])
       },
       contractAuthorization: {
@@ -186,7 +187,7 @@ describe("contract draft lifecycle fact loading", () => {
     expect(client.contractFormalFile.findMany).toHaveBeenCalledWith({
       where: { contractVersionId: "version-1" },
       orderBy: { createdAt: "asc" },
-      select: { purpose: true }
+      select: { purpose: true, status: true }
     });
     expect(client.contractAuthorization.count).toHaveBeenCalledWith({
       where: { originContractVersionId: "version-1" }
@@ -231,6 +232,7 @@ describe("contract draft lifecycle fact loading", () => {
         approvalActionCount: 1,
         formalFileCount: 1,
         signedFormalFileCount: 1,
+        activeSignedFormalFileCount: 1,
         authorizationCount: 1,
         authorizationLinkCount: 1,
         sealTaskCount: 1,
@@ -258,13 +260,11 @@ describe("contract draft lifecycle fact loading", () => {
     expect(result.facts.approvalActionCount).toBe(0);
   });
 
-  it("treats cancelled seal history as soft evidence but every signed final as hard evidence", async () => {
+  it("keeps invalidated signed files as abandonment evidence without blocking reapproval", async () => {
     const client = lifecycleClient();
     client.approvalInstance.findMany.mockResolvedValue([]);
     client.contractFormalFile.findMany.mockResolvedValue([
-      // Status is intentionally absent from the lifecycle projection: an
-      // invalidated/superseded signed final remains irreversible evidence.
-      { purpose: "mutually_signed_final" }
+      { purpose: "mutually_signed_final", status: "invalidated" }
     ]);
     client.contractAuthorization.count.mockResolvedValue(0);
     client.contractVersionAuthorizationLink.count.mockResolvedValue(0);
@@ -285,12 +285,14 @@ describe("contract draft lifecycle fact loading", () => {
 
     expect(result.facts).toMatchObject({
       signedFormalFileCount: 1,
+      activeSignedFormalFileCount: 0,
       sealTaskCount: 1,
       activeSealTaskCount: 0
     });
     expect(result).toMatchObject({
-      lifecycleKind: "formal_record",
-      expectedAction: null
+      lifecycleKind: "approval_draft",
+      blockers: expect.arrayContaining(["存在正式合同文件", "存在用印记录"]),
+      expectedAction: "abandon_application"
     });
   });
 });
@@ -389,7 +391,7 @@ describe("contract draft mutation boundary", () => {
     );
     expect(queries[1]).not.toContain('"ContractFormalFile"');
     expect(queries[2]).toContain(`f."purpose" = 'mutually_signed_final'`);
-    expect(queries[2]).not.toMatch(/ContractFormalFile[^]*f\."status"/u);
+    expect(queries[2]).toContain(`f."status" = 'active'`);
     expect(queries[2]).toContain(`s."status" <> 'cancelled'`);
   });
 

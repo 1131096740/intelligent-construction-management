@@ -399,6 +399,15 @@
                   {{ displayContractActionLabel('complete_seal') }}
                 </t-button>
                 <t-button
+                  v-if="signingMaterialChangeActionEnabled()"
+                  theme="danger"
+                  variant="outline"
+                  :loading="archiveActionBusy === 'signingMaterialChange'"
+                  @click="requestSigningMaterialChange"
+                >
+                  申报签署内容实质变化（退回重审）
+                </t-button>
+                <t-button
                   v-if="isContractActionEnabled('generate_pdf_archive')"
                   :theme="buttonTheme('generate_pdf_archive')"
                   :variant="buttonVariant('generate_pdf_archive')"
@@ -964,6 +973,20 @@
       @confirm="executeSensitiveAction"
     />
 
+    <SensitiveActionDialog
+      v-if="signingMaterialChangeActionEnabled()"
+      v-model="signingMaterialChangeDialogVisible"
+      title="确认申报签署内容实质变化？"
+      description="确认后将失效当前签署文件、取消本轮用章任务并退回草稿，合同必须重新保存和重新审批；历史记录不会删除。"
+      confirm-text="确认退回重审"
+      confirm-theme="danger"
+      require-reason
+      reason-label="实质变化原因"
+      :loading="archiveActionBusy === 'signingMaterialChange'"
+      :error="signingMaterialChangeDialogError"
+      @confirm="confirmSigningMaterialChange"
+    />
+
     <t-dialog
       v-model:visible="changeDialogVisible"
       header="发起合同变更"
@@ -1028,7 +1051,7 @@
 <script setup lang="ts">
 import type { CoreFlowTone, ContractDetailReadModel } from "@jiangkong/shared-domain";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   approveContractSeal,
@@ -1040,6 +1063,7 @@ import {
   createPrivateFileDownloadTicket,
   delegateContractApproval,
   downloadApprovalForm as requestApprovalFormDownload,
+  executeContractSigningMaterialChange,
   fetchApprovalDelegationUserOptions,
   fetchContractChangeEligibility,
   fetchContractDetail,
@@ -1053,6 +1077,10 @@ import {
   uploadPrivateFile,
   withdrawContractApproval
 } from "../../api/core-flow-read.api";
+import type {
+  ContractSigningMaterialChangeActionContext
+} from "../../api/core-flow-read.api";
+import { ContractSigningMaterialChangeResultUnknownError } from "../../lib/contract-signing-material-change-result";
 import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
@@ -1136,10 +1164,17 @@ interface SensitiveActionState {
   error: string;
 }
 
+interface SigningMaterialChangeSubmissionContext
+  extends ContractSigningMaterialChangeActionContext {
+  submissionToken: number;
+  reason: string;
+}
+
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
+const contractSigningCapability = ref<ContractDetailReadModel | null>(null);
 const selectedFormalFileId = ref("");
 const formalPreviewFileId = ref("");
 const formalPreviewUrl = ref("");
@@ -1154,6 +1189,7 @@ const changeSubmitting = ref(false);
 const changeError = ref("");
 let detailRequestId = 0;
 let changeSubmissionToken = 0;
+let signingMaterialChangeSubmissionToken = 0;
 let changeDialogBaseVersionId = "";
 const changeForm = reactive({
   changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
@@ -1178,6 +1214,11 @@ const sealCompletionKeys = sealCompletionOptions.map((item) => item.value);
 const finalConfirmationKeys = finalConfirmationOptions.map((item) => item.value);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
+const signingMaterialChangeDialogVisible = ref(false);
+const signingMaterialChangeDialogError = ref("");
+const signingMaterialChangeDialogContext = ref<
+  ContractSigningMaterialChangeActionContext | null
+>(null);
 const archiveActionMessage = ref("");
 const archiveActionMessageTone = ref<"success" | "danger">("success");
 const contractNotice = ref("");
@@ -1356,6 +1397,7 @@ const showContractAssistanceActions = computed(
 const showContractSealActions = computed(
   () => isContractActionEnabled("approve_seal") ||
     isContractActionEnabled("complete_seal") ||
+    signingMaterialChangeActionEnabled() ||
     isContractActionEnabled("generate_pdf_archive")
 );
 const showContractEvidenceActions = computed(
@@ -1482,6 +1524,15 @@ function isContractActionEnabled(key: string) {
   return contractActionByKey.value.get(key)?.enabled ?? false;
 }
 
+function signingMaterialChangeActionEnabled() {
+  return Boolean(
+    contractSigningCapability.value?.availableActions.some(
+      (action) =>
+        action.key === "report_signing_material_change" && action.enabled
+    )
+  );
+}
+
 function displayContractActionLabel(key: string) {
   return contractActionLabel(
     key,
@@ -1554,14 +1605,17 @@ async function reloadContractDetail() {
   }
 
   contractDetailError.value = "";
+  contractSigningCapability.value = null;
   detailLoading.value = true;
   try {
-    const detail = await fetchContractDetail(contractId);
+    const serverDetail = await fetchContractDetail(contractId);
     if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
+    const detail = structuredClone(serverDetail);
     const versions = normalizeContractChangeVersions(
       (detail as unknown as { changeVersions?: unknown }).changeVersions
     );
     if (!versions) throw new Error("合同版本历史数据异常，已停止展示");
+    contractSigningCapability.value = serverDetail;
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
     changeEligibility.value = null;
@@ -1589,6 +1643,7 @@ async function reloadContractDetail() {
     return true;
   } catch (error) {
     if (requestId !== detailRequestId) return false;
+    contractSigningCapability.value = null;
     contractDetail.value = null;
     normalizedChangeVersions.value = [];
     changeEligibility.value = null;
@@ -1638,6 +1693,10 @@ function clearChangeTransientState() {
 }
 
 function clearContractActionTransientState() {
+  signingMaterialChangeSubmissionToken += 1;
+  signingMaterialChangeDialogContext.value = null;
+  signingMaterialChangeDialogVisible.value = false;
+  signingMaterialChangeDialogError.value = "";
   sensitiveAction.visible = false;
   sensitiveAction.kind = null;
   sensitiveAction.error = "";
@@ -1974,6 +2033,45 @@ function requestContractSealCompletion() {
   }
 }
 
+function captureSigningMaterialChangeContext() {
+  const detail = contractSigningCapability.value;
+  const coordinates = detail?.signingMaterialChangeContext;
+  const sealTask = detail?.sealTask;
+  const routeId = routeContractId();
+  if (
+    !detail ||
+    !coordinates ||
+    !sealTask ||
+    !routeId ||
+    !signingMaterialChangeActionEnabled() ||
+    detail.draftRevision !== coordinates.expectedRevision ||
+    sealTask.id !== coordinates.expectedSealTaskId
+  ) {
+    return null;
+  }
+  return {
+    routeContractId: routeId,
+    contractId: detail.id,
+    contractVersionId: detail.contractVersionId,
+    ...coordinates
+  } satisfies ContractSigningMaterialChangeActionContext;
+}
+
+function requestSigningMaterialChange() {
+  const context = captureSigningMaterialChangeContext();
+  if (!context) {
+    setActionError(
+      new Error("合同签署状态已变化"),
+      "无法申报签署内容实质变化，请刷新后重试。"
+    );
+    return;
+  }
+  signingMaterialChangeSubmissionToken += 1;
+  signingMaterialChangeDialogContext.value = context;
+  signingMaterialChangeDialogError.value = "";
+  signingMaterialChangeDialogVisible.value = true;
+}
+
 function requestFinalContractUpload() {
   let contractVersionId = "";
   try {
@@ -2283,6 +2381,141 @@ async function executeSensitiveAction(values: { reason: string; password: string
   sensitiveAction.error = archiveActionMessage.value || "操作未完成，请核对信息后重试。";
 }
 
+function captureSigningMaterialChangeSubmission(values: {
+  reason: string;
+  password: string;
+}): SigningMaterialChangeSubmissionContext | null {
+  const owner = signingMaterialChangeDialogContext.value;
+  const capability = contractSigningCapability.value;
+  const coordinates = capability?.signingMaterialChangeContext;
+  const actionCount = capability?.availableActions.filter(
+    (action) =>
+      action.key === "report_signing_material_change" && action.enabled
+  ).length ?? 0;
+  if (
+    !owner ||
+    !capability ||
+    !coordinates ||
+    actionCount !== 1 ||
+    capability.id !== owner.contractId ||
+    capability.contractVersionId !== owner.contractVersionId ||
+    coordinates.expectedRevision !== owner.expectedRevision ||
+    coordinates.expectedSealTaskId !==
+      owner.expectedSealTaskId ||
+    coordinates.expectedStatus !== owner.expectedStatus
+  ) {
+    signingMaterialChangeDialogError.value =
+      "合同签署状态已变化，请关闭并刷新详情后重试。";
+    return null;
+  }
+  if (archiveActionBusy.value) {
+    signingMaterialChangeDialogError.value = "当前操作正在提交，请等待本次操作完成。";
+    return null;
+  }
+  const reason = values.reason.trim();
+  if (!reason) {
+    signingMaterialChangeDialogError.value = "实质变化原因不能为空。";
+    return null;
+  }
+  archiveActionBusy.value = "signingMaterialChange";
+  archiveActionMessage.value = "";
+  return {
+    ...owner,
+    submissionToken: signingMaterialChangeSubmissionToken,
+    reason
+  };
+}
+
+function ownsSigningMaterialChangeSubmission(
+  context: SigningMaterialChangeSubmissionContext
+) {
+  return context.submissionToken === signingMaterialChangeSubmissionToken &&
+    routeContractId() === context.routeContractId;
+}
+
+function signingMaterialChangeSubmissionIsCurrent(
+  context: SigningMaterialChangeSubmissionContext
+) {
+  return ownsSigningMaterialChangeSubmission(context) &&
+    signingMaterialChangeDialogContext.value?.contractVersionId ===
+      context.contractVersionId;
+}
+
+function closeSigningMaterialChangeDialog(
+  context: SigningMaterialChangeSubmissionContext
+) {
+  if (!ownsSigningMaterialChangeSubmission(context)) return;
+  signingMaterialChangeDialogVisible.value = false;
+  signingMaterialChangeDialogContext.value = null;
+  signingMaterialChangeDialogError.value = "";
+}
+
+async function completeSigningMaterialChange(
+  context: SigningMaterialChangeSubmissionContext
+) {
+  if (!signingMaterialChangeSubmissionIsCurrent(context)) return;
+  const refreshed = await reloadContractDetail();
+  if (!ownsSigningMaterialChangeSubmission(context)) return;
+  archiveActionMessageTone.value = "success";
+  archiveActionMessage.value = refreshed
+    ? "签署实质变化已申报，合同已退回草稿并等待重新办理。"
+    : "签署实质变化已申报，但详情刷新失败；请手动刷新，不要重复提交。";
+  closeSigningMaterialChangeDialog(context);
+}
+
+async function failSigningMaterialChange(
+  context: SigningMaterialChangeSubmissionContext,
+  error: unknown
+) {
+  if (!ownsSigningMaterialChangeSubmission(context)) return;
+  if (error instanceof ContractSigningMaterialChangeResultUnknownError) {
+    const refreshed = await reloadContractDetail();
+    if (!ownsSigningMaterialChangeSubmission(context)) return;
+    const authoritative = contractSigningCapability.value;
+    const confirmed =
+      refreshed &&
+      authoritative?.draftRevision === context.expectedRevision + 1 &&
+      !authoritative.signingMaterialChangeContext;
+    archiveActionMessageTone.value = confirmed ? "success" : "danger";
+    archiveActionMessage.value = confirmed
+      ? "申报响应曾中断，但已重新读取并确认合同已退回草稿。"
+      : "申报结果暂时无法确认；系统已尝试重新读取详情。请人工核对当前状态，不要直接重复提交。";
+    closeSigningMaterialChangeDialog(context);
+    return;
+  }
+  if (!signingMaterialChangeSubmissionIsCurrent(context)) return;
+  archiveActionMessageTone.value = "danger";
+  const message = error instanceof Error ? error.message : "未知错误";
+  archiveActionMessage.value = `申报未完成：${message}`;
+  signingMaterialChangeDialogError.value = archiveActionMessage.value;
+}
+
+function finishSigningMaterialChange(
+  context: SigningMaterialChangeSubmissionContext
+) {
+  if (
+    ownsSigningMaterialChangeSubmission(context) &&
+    archiveActionBusy.value === "signingMaterialChange"
+  ) {
+    archiveActionBusy.value = "";
+  }
+}
+
+function confirmSigningMaterialChange(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeContractSigningMaterialChange({
+    capture: () => captureSigningMaterialChangeSubmission(values),
+    current: signingMaterialChangeSubmissionIsCurrent,
+    stale: () => undefined,
+    reason: (context) => context.reason,
+    complete: completeSigningMaterialChange,
+    fail: failSigningMaterialChange,
+    finish: finishSigningMaterialChange
+  });
+}
+
 async function performContractReview(decision: ContractReviewDecision, password: string) {
   const selfReviewPayload = buildApprovalSelfReviewPayload(
     requiresContractSelfReviewConfirmation.value,
@@ -2348,6 +2581,12 @@ onMounted(async () => {
     fetchApprovalDelegationUserOptions().catch(() => [])
   ]);
   assignmentUsers.value = users;
+});
+
+onBeforeUnmount(() => {
+  detailRequestId += 1;
+  clearChangeTransientState();
+  clearContractActionTransientState();
 });
 </script>
 

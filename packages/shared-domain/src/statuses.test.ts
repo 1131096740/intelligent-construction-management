@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CONTRACT_VERSION_STATUSES,
+  canUseCurrentContractApprovalForm,
   canCreatePaymentFromSettlementStatus,
   canCreateSettlementFromContractStatus,
   PAYMENT_REQUEST_STATUSES,
@@ -27,6 +28,16 @@ describe("domain statuses", () => {
     expect(canCreateSettlementFromContractStatus("effective")).toBe(true);
     expect(canCreateSettlementFromContractStatus("approved_pending_seal")).toBe(false);
     expect(canCreateSettlementFromContractStatus("pending_archive_confirm")).toBe(false);
+  });
+
+  it("exposes the current contract approval form only after the latest approval completes", () => {
+    expect(canUseCurrentContractApprovalForm("draft")).toBe(false);
+    expect(canUseCurrentContractApprovalForm("approval_rejected")).toBe(false);
+    expect(canUseCurrentContractApprovalForm("in_approval")).toBe(false);
+    expect(canUseCurrentContractApprovalForm("approved_pending_seal")).toBe(true);
+    expect(canUseCurrentContractApprovalForm("sealed_pending_archive")).toBe(true);
+    expect(canUseCurrentContractApprovalForm("effective")).toBe(true);
+    expect(canUseCurrentContractApprovalForm("superseded")).toBe(true);
   });
 
   it("allows payment requests only after the settlement is effective", () => {

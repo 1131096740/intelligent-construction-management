@@ -7,7 +7,7 @@
 | 证据 | 状态 |
 | --- | --- |
 | Controller 源码路由 | 已扫描 184 条 |
-| Web API 请求 | 已扫描 132 条 |
+| Web API 请求 | 已扫描 138 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 395 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 24 条合同专项候选；物理删除授权固定为否 |
@@ -16,9 +16,9 @@
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 109 |
+| matched | 115 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 54 |
+| backend_without_frontend | 48 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
 | exit_candidate | 24 |
@@ -145,15 +145,15 @@
 | GET | `/contracts/:param/change-eligibility` | fetchContractChangeEligibility | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/copies` | copyAbandonedContractDraft | apps/web-admin/src/pages/contracts/ContractListPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/approval` | uploadContractFormalApprovalFile | apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/formal-files/final` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/contracts/:param/formal-files/final/confirmation` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/contracts/:param/formal-files/final/return` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contracts/:param/formal-files/final` | uploadMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/formal-files/final/confirmation` | confirmMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/formal-files/final/return` | returnMutuallySignedContractForCorrection | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/pdf-generation` | generateContractPdfArchive | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/readiness` | checkContractSubmissionReadiness | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/seal-approval` | approveContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/seal/approve` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/contracts/:param/seal/complete` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/contracts/:param/signing/material-change` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contracts/:param/seal/approve` | approveGovernedContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/seal/complete` | completeContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/signing/material-change` | executeContractSigningMaterialChange | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | GET | `/contracts/ledger-export` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contracts/lifecycle-ledger` | fetchContractLifecycleLedger |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/contracts/payment-create-options` | fetchPaymentContractOptions | apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue | matched | 保留 | 否 | — |

@@ -10,6 +10,7 @@ import {
 import { type FileObject, Prisma } from "@prisma/client";
 import {
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  canUseCurrentContractApprovalForm,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -68,6 +69,14 @@ export interface LinkFileReplacementInput {
 export interface InternalFileBuffer {
   file: FileObject;
   buffer: Buffer;
+}
+
+export interface ApprovalFormArchiveAnchorInput {
+  pdfDocumentId: string;
+  fileId: string;
+  businessType: string;
+  businessId: string;
+  approvalInstanceId: string | null;
 }
 
 type LockedFileReplacementRow = Pick<
@@ -1501,6 +1510,62 @@ export class FileService {
     });
   }
 
+  // 专用审批单下载已先完成业务 ACL；这里仅校验无水印归档锚点的绑定与存储完整性，
+  // 不能反向复用公开 fileId 下载 ACL，否则会把专用动态水印端点一并阻断。
+  async assertApprovalFormArchiveAnchor(input: ApprovalFormArchiveAnchorInput) {
+    const isSpotProcurementApproval =
+      input.businessType === "spot_procurement_version" ||
+      input.businessType === "spot_procurement_payment";
+    const allowedTemplateKeys = isSpotProcurementApproval
+      ? ["approval_form", SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY]
+      : ["approval_form"];
+    const [document, file, claim] = await Promise.all([
+      this.prisma.pdfDocument.findUnique({
+        where: { id: input.pdfDocumentId },
+        select: {
+          id: true,
+          fileId: true,
+          templateKey: true,
+          businessType: true,
+          businessId: true,
+          approvalInstanceId: true
+        }
+      }),
+      this.prisma.fileObject.findUnique({ where: { id: input.fileId } }),
+      input.approvalInstanceId
+        ? this.prisma.approvalFormGenerationClaim.findUnique({
+            where: { approvalInstanceId: input.approvalInstanceId },
+            select: {
+              status: true,
+              uploadedFileId: true,
+              pdfDocumentId: true
+            }
+          })
+        : null
+    ]);
+    if (
+      !document ||
+      document.fileId !== input.fileId ||
+      !allowedTemplateKeys.includes(document.templateKey) ||
+      document.businessType !== input.businessType ||
+      document.businessId !== input.businessId ||
+      document.approvalInstanceId !== input.approvalInstanceId ||
+      !file ||
+      (
+        input.approvalInstanceId !== null &&
+        (
+          !claim ||
+          claim.status !== "completed" ||
+          claim.uploadedFileId !== input.fileId ||
+          claim.pdfDocumentId !== input.pdfDocumentId
+        )
+      )
+    ) {
+      throw new Error("审批单归档锚点已变化，请刷新后重新下载");
+    }
+    await this.readVerifiedFileBuffer(file);
+  }
+
   async assertCanDownloadContractApprovalForm(
     contractVersionId: string,
     actorUserId: string
@@ -1508,7 +1573,7 @@ export class FileService {
     await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId },
-        select: { id: true, contractId: true }
+        select: { id: true, contractId: true, status: true }
       });
       const contract = version ? await tx.contract.findUnique({
         where: { id: version.contractId },
@@ -1520,12 +1585,17 @@ export class FileService {
       const instance = await tx.approvalInstance.findFirst({
         where: {
           businessType: "contract_version",
-          businessId: version.id,
-          status: "approved"
+          businessId: version.id
         },
-        orderBy: { updatedAt: "desc" }
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
       });
-      if (!instance) throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
+      if (
+        !instance ||
+        instance.status !== "approved" ||
+        !canUseCurrentContractApprovalForm(version.status)
+      ) {
+        throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
+      }
       if (contract.ownerUserId === actorUserId || instance.applicantUserId === actorUserId) return;
       if (await tx.approvalActionLog.findFirst({
         where: { approvalInstanceId: instance.id, actorUserId, action: "approve" },
@@ -1696,6 +1766,57 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    const approvalFormClients = tx as unknown as {
+      pdfDocument?: Prisma.TransactionClient["pdfDocument"];
+      approvalFormGenerationClaim?: Prisma.TransactionClient["approvalFormGenerationClaim"];
+    };
+    const [rawApprovalForm, generationClaim] = await Promise.all([
+      approvalFormClients.pdfDocument?.findFirst({
+        where: {
+          fileId: file.id,
+          OR: [
+            {
+              businessType: {
+                in: [
+                  "contract_version",
+                  "spot_procurement_version",
+                  "spot_procurement_payment"
+                ]
+              },
+              templateKey: "approval_form"
+            },
+            {
+              businessType: {
+                in: ["spot_procurement_version", "spot_procurement_payment"]
+              },
+              templateKey: SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
+            }
+          ]
+        },
+        select: { id: true, businessType: true, templateKey: true }
+      }) ?? null,
+      approvalFormClients.approvalFormGenerationClaim?.findFirst({
+        where: { uploadedFileId: file.id },
+        select: { approvalInstanceId: true }
+      }) ?? null
+    ]);
+    // 无水印审批单及其上传中间件只能作为内部归档锚点；公开 fileId 票据一律拒绝。
+    if (
+      (rawApprovalForm && (
+        (rawApprovalForm.businessType === "contract_version" &&
+          rawApprovalForm.templateKey === "approval_form") ||
+        (["spot_procurement_version", "spot_procurement_payment"].includes(
+          rawApprovalForm.businessType
+        ) && [
+          "approval_form",
+          SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
+        ].includes(rawApprovalForm.templateKey))
+      )) ||
+      generationClaim
+    ) {
+      throw new ForbiddenException("审批单必须通过专用下载入口下载");
+    }
+
     const governedSettlementAccess = await this.governedSettlementSignedDocumentAccess(
       tx,
       file.id,
@@ -2374,6 +2495,7 @@ export class FileService {
 
     // 审批 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载；
     // 结算审批中的 latest PDF 还允许审批链相关岗位读取，供后续审批人审阅。
+    // 合同与零采原始审批单已在本方法入口强制切到专用动态水印下载端点。
     const approvalForm = await tx.pdfDocument.findFirst({
       where: {
         fileId: file.id,
@@ -2610,21 +2732,16 @@ export class FileService {
     const clients = tx as unknown as {
       contractFormalFile?: Prisma.TransactionClient["contractFormalFile"];
       contractAuthorization?: Prisma.TransactionClient["contractAuthorization"];
-      pdfDocument?: Prisma.TransactionClient["pdfDocument"];
       contractSealTask?: Prisma.TransactionClient["contractSealTask"];
     };
     if (!clients.contractFormalFile || !clients.contractAuthorization ||
-      !clients.pdfDocument || !clients.contractSealTask) return null;
+      !clients.contractSealTask) return null;
 
-    const [formal, authorization, approvalForm] = await Promise.all([
+    const [formal, authorization] = await Promise.all([
       clients.contractFormalFile.findFirst({ where: { fileId } }),
-      clients.contractAuthorization.findFirst({ where: { fileId } }),
-      clients.pdfDocument.findFirst({
-        where: { fileId, templateKey: "approval_form", businessType: "contract_version" }
-      })
+      clients.contractAuthorization.findFirst({ where: { fileId } })
     ]);
-    const versionId = formal?.contractVersionId ??
-      authorization?.originContractVersionId ?? approvalForm?.businessId;
+    const versionId = formal?.contractVersionId ?? authorization?.originContractVersionId;
     if (!versionId) return null;
     if (formal && formal.status !== "active") return false;
     if (authorization && authorization.status !== "active") return false;
@@ -2640,12 +2757,10 @@ export class FileService {
     if (!contract || contract.voidedAt) return false;
     if (contract.ownerUserId === actorUserId) return true;
 
-    const instance = approvalForm?.approvalInstanceId
-      ? await tx.approvalInstance.findUnique({ where: { id: approvalForm.approvalInstanceId } })
-      : await tx.approvalInstance.findFirst({
-          where: { businessType: "contract_version", businessId: version!.id },
-          orderBy: { updatedAt: "desc" }
-        });
+    const instance = await tx.approvalInstance.findFirst({
+      where: { businessType: "contract_version", businessId: version!.id },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
     if (instance?.applicantUserId === actorUserId) return true;
     if (instance && await tx.approvalActionLog.findFirst({
       where: { approvalInstanceId: instance.id, actorUserId, action: "approve" }

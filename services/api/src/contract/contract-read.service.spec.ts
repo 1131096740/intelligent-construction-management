@@ -2,6 +2,109 @@ import * as ExcelJS from "exceljs";
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it.each([
+    ["approved_pending_seal", "pending_approval"],
+    ["in_seal", "in_seal"],
+    ["seal_approved_pending_archive", "completed"],
+    ["pending_archive_confirm", "completed"]
+  ])("publishes material-change capability only for exact %s/%s coordinates", (
+    status,
+    sealTaskStatus
+  ) => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: [],
+        context: Record<string, unknown>
+      ): Array<{ key: string; enabled: boolean; requiresComment?: boolean }>;
+    };
+    const context = {
+      actorUserId: "handler-1",
+      ownerUserId: "handler-1",
+      governed: true,
+      sealTask: { id: "seal-1", status: sealTaskStatus, handlerUserId: "handler-1" },
+      activeFinal: null,
+      approvalFormAvailable: false,
+      approvalParticipant: false,
+      canUploadGovernedFinal: false,
+      canReportSigningMaterialChange: true,
+      genericDraftActionsAllowed: false
+    };
+    const actions = service.contractActions(
+      status,
+      ["contract_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      context
+    );
+
+    expect(actions).toContainEqual(expect.objectContaining({
+      key: "report_signing_material_change",
+      enabled: true,
+      requiresComment: true
+    }));
+    expect(service.contractActions(
+      status,
+      ["contract_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      {
+        ...context,
+        sealTask: { ...context.sealTask, status: "cancelled" }
+      }
+    )).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "report_signing_material_change", enabled: true })
+    ]));
+  });
+
+  it.each([
+    ["frozen handler", "handler-1", true, true],
+    ["active global director", "director-1", true, true],
+    ["project-only director", "project-director-1", false, true],
+    ["inactive global director", "inactive-director-1", true, false]
+  ])("matches material-change write permission for %s", async (
+    _label,
+    actorUserId,
+    hasGlobalAssignment,
+    isActive
+  ) => {
+    const prisma = {
+      position: { findUnique: jest.fn().mockResolvedValue({ id: "position-director" }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive }) },
+      userPosition: {
+        findFirst: jest.fn().mockResolvedValue(
+          hasGlobalAssignment ? { id: "global-director-assignment" } : null
+        )
+      }
+    };
+    const service = new ContractReadService(prisma as never) as unknown as {
+      canReportSigningMaterialChange(
+        actorUserId: string | undefined,
+        sealTask: { handlerUserId: string } | null
+      ): Promise<boolean>;
+    };
+
+    await expect(service.canReportSigningMaterialChange(
+      actorUserId,
+      { handlerUserId: "handler-1" }
+    )).resolves.toBe(actorUserId === "handler-1" || (hasGlobalAssignment && isActive));
+
+    if (actorUserId !== "handler-1" && isActive) {
+      expect(prisma.userPosition.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: actorUserId,
+          projectId: null,
+          positionId: "position-director"
+        },
+        select: { id: true }
+      });
+    } else if (!isActive) {
+      expect(prisma.userPosition.findFirst).not.toHaveBeenCalled();
+    }
+  });
+
   it("exposes separate governed final-file confirmation and correction actions", () => {
     const service = new ContractReadService({} as never);
     const actions = (service as unknown as {
@@ -837,6 +940,7 @@ describe("ContractReadService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-draft-1",
           projectId: "project-1",
+          ownerUserId: "contract-owner-1",
           code: null,
           temporaryCode: "草稿-20260625-12345678",
           name: "",
@@ -878,16 +982,38 @@ describe("ContractReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "old-approved",
+          status: "approved",
+          applicantUserId: "contract-owner-1"
+        }),
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new ContractReadService(prisma as never);
 
-    const detail = await service.getDetail("contract-draft-1");
+    const detail = await service.getDetail(
+      "contract-draft-1",
+      undefined,
+      "contract-owner-1"
+    );
 
     expect(detail.id).toBe("草稿-20260625-12345678");
     expect(detail.title).toBe("草稿-20260625-12345678 · ");
     expect(detail.paymentTermStages).toEqual([]);
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥0.00" });
+    expect(detail.availableActions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "download_approval_form", enabled: true })
+    ]));
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "contract_version",
+        businessId: "contract-version-draft-1"
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
   });
 
   it("builds contract detail from persisted contract version and payment terms", async () => {
@@ -2111,7 +2237,8 @@ describe("ContractReadService", () => {
         findMany: jest.fn().mockResolvedValue([
           {
             contractVersionId: "version-signed",
-            purpose: "mutually_signed_final"
+            purpose: "mutually_signed_final",
+            status: "active"
           }
         ])
       },

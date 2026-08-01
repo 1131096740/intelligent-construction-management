@@ -2100,14 +2100,27 @@ describe("ContractWorkbenchService", () => {
       null,
       [{ id: "approval-1" }],
       1,
-      "存在审批记录"
+      "存在审批记录",
+      [],
+      []
     ],
     [
       "firstSubmittedAt",
       new Date("2026-07-30T01:00:00.000Z"),
       [],
       0,
-      "合同曾进入审批"
+      "合同曾进入审批",
+      [],
+      []
+    ],
+    [
+      "an invalidated signed final and cancelled seal task",
+      new Date("2026-07-30T01:00:00.000Z"),
+      [{ id: "approval-1" }],
+      1,
+      "存在正式合同文件",
+      [{ purpose: "mutually_signed_final", status: "invalidated" }],
+      [{ status: "cancelled" }]
     ]
   ] as const)(
     "advertises abandon_application when an otherwise draft version has %s",
@@ -2116,7 +2129,9 @@ describe("ContractWorkbenchService", () => {
       firstSubmittedAt,
       approvalInstances,
       approvalActionCount,
-      blocker
+      blocker,
+      formalFiles,
+      sealTasks
     ) => {
     const version = {
       id: "version-1",
@@ -2156,10 +2171,10 @@ describe("ContractWorkbenchService", () => {
       approvalActionLog: {
         count: jest.fn().mockResolvedValue(approvalActionCount)
       },
-      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue(formalFiles) },
       contractAuthorization: { count: jest.fn().mockResolvedValue(0) },
       contractVersionAuthorizationLink: { count: jest.fn().mockResolvedValue(0) },
-      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue(sealTasks) },
       contractArchiveFile: { count: jest.fn().mockResolvedValue(0) },
       settlement: { count: jest.fn().mockResolvedValue(0) },
       paymentRequest: { count: jest.fn().mockResolvedValue(0) }
@@ -2365,7 +2380,7 @@ describe("ContractWorkbenchService", () => {
     [
       "hard formal evidence",
       "original",
-      [{ purpose: "mutually_signed_final" }],
+      [{ purpose: "mutually_signed_final", status: "active" }],
       "合同版本当前不可按草稿办理，请刷新后重试"
     ],
     [

@@ -7,33 +7,33 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
-| webApiWrappers | blocked | `a6b2b6d93afbd47ed84e2e386f287ab51d27743f8d01d788f30ae498c2f0b3eb` |
-| webPageActions | blocked | `adb43ba4e08a03063d0c4157a2f2f196d308a95f9a872cdfc5b6d6dc83265afd` |
-| routeUsage | blocked | `6ff96c6e3e4871fe063d3d5efddba7ad1abab62a412338ed09a66803165a5d42` |
+| webApiWrappers | blocked | `185feec56489b26479cabcc6a019f4389ff9b958f92e1eb74496db86b79c9cb6` |
+| webPageActions | blocked | `ee6499da1f957f44c26718282d7640797585a57be3694b737a9621b22a077cc1` |
+| routeUsage | blocked | `f17dc53facaf84ab71237888355c66534d8d17d79a6c1d8c84cdfb1cbf7090a4` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 395 |
-| pageRouteCount | 286 |
+| pageRouteCount | 287 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 5 |
-| mainRequestBindingCount | 391 |
+| unclassifiedRouteCount | 4 |
+| mainRequestBindingCount | 393 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 40 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 49 |
-| actionBindingCount | 64 |
-| acceptedActionBindingCount | 34 |
+| registeredActionCount | 50 |
+| actionBindingCount | 66 |
+| acceptedActionBindingCount | 35 |
 | unresolvedActionBindingCount | 20 |
-| productionMutationConsumerPairCount | 272 |
-| coveredProductionMutationConsumerPairCount | 22 |
+| productionMutationConsumerPairCount | 273 |
+| coveredProductionMutationConsumerPairCount | 23 |
 | uncoveredProductionMutationConsumerPairCount | 250 |
-| blockerCount | 322 |
+| blockerCount | 321 |
 
 ## 路由矩阵
 
@@ -77,7 +77,7 @@
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
-| GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail | — | not_applicable | — |
+| GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail | contract.signing-material-change | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
 | GET | /contracts/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLifecycleLedger | — | not_applicable | ORPHAN_WRAPPER |
@@ -252,7 +252,7 @@
 | POST | /contracts/:contractVersionId/seal-approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveContractSeal | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/seal/approve | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveGovernedContractSeal | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/seal/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeContractSeal | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contracts/:contractVersionId/signing/material-change | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contracts/:contractVersionId/signing/material-change | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange | contract.signing-material-change | covered | — |
 | POST | /contracts | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft<br>apps/web-admin/src/api/core-flow-read.api.ts#createContractDraft | — | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED<br>ORPHAN_WRAPPER |
 | POST | /draft-retention/controlled-entry | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /expense-claims/:claimId/approval | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |

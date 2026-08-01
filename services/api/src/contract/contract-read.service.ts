@@ -3,6 +3,7 @@ import {
   CONTRACT_INVOICE_TYPES,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canCreatePaymentFromSettlementStatus,
+  canUseCurrentContractApprovalForm,
   contractInvoiceTypeLabel,
   type ContractWorkbenchLedgerPage,
   type ContractWorkbenchView,
@@ -10,6 +11,7 @@ import {
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractSettlementPaymentReadModel,
+  type ContractSigningMaterialChangeStatus,
   CoreFlowTone,
   type DetailActionReadModel,
   type DraftLedgerView,
@@ -62,6 +64,16 @@ function emptyApprovalReviewAccess(): ApprovalReviewAccess {
 const HISTORICAL_TAKEOVER_READ_ROLES = new Set<RoleKey>(
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS
 );
+
+const MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS: Record<
+  ContractSigningMaterialChangeStatus,
+  string
+> = {
+  approved_pending_seal: "pending_approval",
+  in_seal: "in_seal",
+  seal_approved_pending_archive: "completed",
+  pending_archive_confirm: "completed"
+};
 
 @Injectable()
 export class ContractReadService {
@@ -350,7 +362,9 @@ export class ContractReadService {
         findMany(args: unknown): Promise<Array<{ approvalInstanceId?: string }>>;
       };
       contractFormalFile?: {
-        findMany(args: unknown): Promise<Array<VersionFact & { purpose?: string }>>;
+        findMany(args: unknown): Promise<Array<
+          VersionFact & { purpose?: string; status?: string }
+        >>;
       };
       contractAuthorization?: {
         findMany(args: unknown): Promise<Array<{ originContractVersionId?: string }>>;
@@ -390,7 +404,7 @@ export class ContractReadService {
       }) ?? Promise.resolve([]),
       client.contractFormalFile?.findMany({
         where: { contractVersionId: { in: versionIds } },
-        select: { contractVersionId: true, purpose: true }
+        select: { contractVersionId: true, purpose: true, status: true }
       }) ?? Promise.resolve([]),
       client.contractAuthorization?.findMany({
         where: { originContractVersionId: { in: versionIds } },
@@ -477,6 +491,12 @@ export class ContractReadService {
       (row) => row.contractVersionId,
       (row) => row.purpose === "mutually_signed_final"
     );
+    const activeSignedFormalFileCounts = countByVersion(
+      formalFiles,
+      (row) => row.contractVersionId,
+      (row) =>
+        row.purpose === "mutually_signed_final" && row.status === "active"
+    );
     const authorizationCounts = countByVersion(
       authorizations,
       (row) => row.originContractVersionId
@@ -518,6 +538,8 @@ export class ContractReadService {
         approvalActionCount: approvalActionCounts.get(version.id) ?? 0,
         formalFileCount: formalFileCounts.get(version.id) ?? 0,
         signedFormalFileCount: signedFormalFileCounts.get(version.id) ?? 0,
+        activeSignedFormalFileCount:
+          activeSignedFormalFileCounts.get(version.id) ?? 0,
         authorizationCount: authorizationCounts.get(version.id) ?? 0,
         authorizationLinkCount: authorizationLinkCounts.get(version.id) ?? 0,
         sealTaskCount: sealTaskCounts.get(version.id) ?? 0,
@@ -1065,7 +1087,7 @@ export class ContractReadService {
       contractArchiveFiles,
       approvalTimeline,
       signingFacts,
-      approvedInstance,
+      latestApprovalInstance,
       historicalApprovedInstances
     ] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
@@ -1086,8 +1108,8 @@ export class ContractReadService {
         ? this.governedSigningFacts(version.id)
         : Promise.resolve({ sealTask: null, formalFiles: [] }),
       this.prisma.approvalInstance?.findFirst({
-        where: { businessType: "contract_version", businessId: version.id, status: "approved" },
-        orderBy: { updatedAt: "desc" }
+        where: { businessType: "contract_version", businessId: version.id },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
       }) ?? Promise.resolve(null),
       this.prisma.approvalInstance?.findMany({
         where: {
@@ -1137,6 +1159,10 @@ export class ContractReadService {
       contract.projectId,
       signingFacts.sealTask
     );
+    const canReportSigningMaterialChange = await this.canReportSigningMaterialChange(
+      actorUserId,
+      signingFacts.sealTask
+    );
     const draftLifecycle = (
       await this.contractDraftLifecycleByVersion([version])
     ).get(version.id);
@@ -1170,15 +1196,26 @@ export class ContractReadService {
         activeFinal: signingFacts.formalFiles.find((item) =>
           item.purpose === "mutually_signed_final" && item.status === "active"
         ) ?? null,
-        approvalFormAvailable: Boolean(approvedInstance),
-        approvalParticipant: Boolean(actorUserId && approvedInstance && (
-          approvedInstance.applicantUserId === actorUserId ||
+        approvalFormAvailable: Boolean(
+          latestApprovalInstance?.status === "approved" &&
+          canUseCurrentContractApprovalForm(version.status)
+        ),
+        approvalParticipant: Boolean(
+          actorUserId &&
+          latestApprovalInstance?.status === "approved" &&
+          canUseCurrentContractApprovalForm(version.status) && (
+          latestApprovalInstance.applicantUserId === actorUserId ||
           await this.prisma.approvalActionLog?.findFirst({
-            where: { approvalInstanceId: approvedInstance.id, actorUserId, action: "approve" },
+            where: {
+              approvalInstanceId: latestApprovalInstance.id,
+              actorUserId,
+              action: "approve"
+            },
             select: { id: true }
           })
         )),
         canUploadGovernedFinal,
+        canReportSigningMaterialChange,
         genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction)
       }
     );
@@ -1234,6 +1271,17 @@ export class ContractReadService {
           )
         } satisfies NonNullable<ContractDetailReadModel["ownerContractRisk"]>
       : null;
+    const signingMaterialChangeContext =
+      signingFacts.sealTask &&
+      availableActions.some(
+        (action) => action.key === "report_signing_material_change" && action.enabled
+      )
+        ? {
+            expectedRevision: version.draftRevision,
+            expectedSealTaskId: signingFacts.sealTask.id,
+            expectedStatus: version.status as ContractSigningMaterialChangeStatus
+          }
+        : null;
     return {
       id: contractCode,
       contractVersionId: version.id,
@@ -1295,6 +1343,7 @@ export class ContractReadService {
         ? { ownerContractRisk: ownerContractRiskReadModel }
         : {}),
       sealTask: signingFacts.sealTask,
+      signingMaterialChangeContext,
       approvalTimeline,
       availableActions,
       lifecycleKind: draftLifecycle.lifecycleKind,
@@ -1816,9 +1865,27 @@ export class ContractReadService {
       approvalFormAvailable: boolean;
       approvalParticipant: boolean;
       canUploadGovernedFinal: boolean;
+      canReportSigningMaterialChange: boolean;
       genericDraftActionsAllowed: boolean;
     }
   ): DetailActionReadModel[] {
+    const materialChangeStatus = status as ContractSigningMaterialChangeStatus;
+    const expectedMaterialChangeTaskStatus =
+      MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS[materialChangeStatus];
+    const signingMaterialChangeActions =
+      context?.governed &&
+      context.canReportSigningMaterialChange &&
+      context.sealTask?.status === expectedMaterialChangeTaskStatus
+        ? [detailAction({
+            key: "report_signing_material_change",
+            label: "申报签署内容实质变化（退回重审）",
+            kind: "danger",
+            roleKeys,
+            skipRoleCheck: true,
+            enabled: true,
+            requiresComment: true
+          })]
+        : [];
     const workflowActions = [
       detailAction({
         key: "download_approval_form",
@@ -1927,6 +1994,7 @@ export class ContractReadService {
           enabled: true,
           requiresPassword: true
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1942,6 +2010,7 @@ export class ContractReadService {
           enabled: Boolean(context?.actorUserId && context.sealTask?.handlerUserId === context.actorUserId),
           disabledReason: "仅冻结经办人可确认线下签署盖章完成"
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1961,6 +2030,7 @@ export class ContractReadService {
           disabledReason: "仅冻结经办人或符合条件的替代上传人可上传",
           requiresFile: true
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1988,6 +2058,7 @@ export class ContractReadService {
             : true,
           requiresPassword: true
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -2052,6 +2123,33 @@ export class ContractReadService {
       this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } })
     ]);
     return Boolean(member && actor?.isActive);
+  }
+
+  private async canReportSigningMaterialChange(
+    actorUserId: string | undefined,
+    sealTask: ContractDetailReadModel["sealTask"]
+  ) {
+    if (!actorUserId || !sealTask) return false;
+    if (sealTask.handlerUserId === actorUserId) return true;
+    const [position, user] = await Promise.all([
+      this.prisma.position.findUnique({
+        where: { key: "contract_director" },
+        select: { id: true }
+      }),
+      this.prisma.user.findUnique({
+        where: { id: actorUserId },
+        select: { isActive: true }
+      })
+    ]);
+    if (!position || !user?.isActive) return false;
+    return Boolean(await this.prisma.userPosition.findFirst({
+      where: {
+        userId: actorUserId,
+        projectId: null,
+        positionId: position.id
+      },
+      select: { id: true }
+    }));
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {

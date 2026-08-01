@@ -3,6 +3,7 @@ import type {
   ContractWorkbenchLedgerPage,
   ContractWorkbenchView,
   ContractDetailReadModel,
+  ContractSigningMaterialChangeStatus,
   ContractPaymentApplicationPreviewReadModel,
   DetailActionReadModel,
   DraftLedgerView,
@@ -17,6 +18,7 @@ import type {
 } from "@jiangkong/shared-domain";
 import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
 import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
+import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -113,6 +115,161 @@ async function deleteJson<TResponse>(path: string): Promise<TResponse> {
 
 export function fetchContractDetail(contractId: string) {
   return readJson<ContractDetailReadModel>(`/contracts/${contractId}`);
+}
+
+export interface ContractSigningMaterialChangeActionContext {
+  routeContractId: string;
+  contractId: string;
+  contractVersionId: string;
+  expectedRevision: number;
+  expectedSealTaskId: string;
+  expectedStatus: ContractSigningMaterialChangeStatus;
+}
+
+export interface ContractSigningMaterialChangePayload {
+  expectedRevision: number;
+  expectedSealTaskId: string;
+  expectedStatus: ContractSigningMaterialChangeStatus;
+  reason: string;
+}
+
+export interface ContractSigningMaterialChangeResponse {
+  status: "draft";
+  draftRevision: number;
+  requiresReapproval: true;
+}
+
+export interface ExecuteContractSigningMaterialChangeInput<
+  TContext extends ContractSigningMaterialChangeActionContext
+> {
+  capture(): TContext | null;
+  current(context: TContext, fresh?: ContractDetailReadModel): boolean;
+  stale(context: TContext): void | Promise<void>;
+  complete?(
+    context: TContext,
+    response: ContractSigningMaterialChangeResponse
+  ): void | Promise<void>;
+  fail?(context: TContext, error: unknown): void | Promise<void>;
+  finish?(context: TContext): void | Promise<void>;
+  reason: string | ((context: TContext) => string);
+}
+
+export type ExecuteContractSigningMaterialChangeResult<
+  TContext extends ContractSigningMaterialChangeActionContext
+> =
+  | { status: "not_started" }
+  | { status: "stale"; context: TContext }
+  | { status: "failed"; context: TContext }
+  | {
+      status: "completed";
+      context: TContext;
+      response: ContractSigningMaterialChangeResponse;
+    };
+
+const MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS: Record<
+  ContractSigningMaterialChangeStatus,
+  string
+> = {
+  approved_pending_seal: "pending_approval",
+  in_seal: "in_seal",
+  seal_approved_pending_archive: "completed",
+  pending_archive_confirm: "completed"
+};
+
+function assertContractSigningMaterialChangePreflight(
+  context: ContractSigningMaterialChangeActionContext,
+  fresh: ContractDetailReadModel
+) {
+  const enabledActions = fresh.availableActions.filter(
+    (action) =>
+      action.key === "report_signing_material_change" && action.enabled
+  );
+  const coordinates = fresh.signingMaterialChangeContext;
+  if (
+    fresh.id !== context.contractId ||
+    fresh.contractVersionId !== context.contractVersionId ||
+    fresh.draftRevision !== context.expectedRevision ||
+    fresh.sealTask?.id !== context.expectedSealTaskId ||
+    fresh.sealTask.status !==
+      MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS[context.expectedStatus] ||
+    enabledActions.length !== 1 ||
+    coordinates?.expectedRevision !== context.expectedRevision ||
+    coordinates.expectedSealTaskId !== context.expectedSealTaskId ||
+    coordinates.expectedStatus !== context.expectedStatus
+  ) {
+    throw new Error(
+      "合同签署状态已变化，未执行实质变化申报，请刷新详情后重试"
+    );
+  }
+}
+
+export async function executeContractSigningMaterialChange<
+  TContext extends ContractSigningMaterialChangeActionContext
+>(
+  input: ExecuteContractSigningMaterialChangeInput<TContext>
+): Promise<ExecuteContractSigningMaterialChangeResult<TContext>> {
+  const context = input.capture();
+  if (!context) return { status: "not_started" };
+  try {
+    if (!input.current(context)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+
+    const fresh = await fetchContractDetail(context.routeContractId);
+    if (!input.current(context, fresh)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    assertContractSigningMaterialChangePreflight(context, fresh);
+    const reason = typeof input.reason === "function"
+      ? input.reason(context)
+      : input.reason;
+
+    const payload: ContractSigningMaterialChangePayload = {
+      expectedRevision: context.expectedRevision,
+      expectedSealTaskId: context.expectedSealTaskId,
+      expectedStatus: context.expectedStatus,
+      reason
+    };
+    let response: ContractSigningMaterialChangeResponse;
+    try {
+      const rawResponse = await postJson<unknown>(
+        governedContractPath(
+          context.contractVersionId,
+          "signing/material-change"
+        ),
+        payload
+      );
+      if (
+        !rawResponse ||
+        typeof rawResponse !== "object" ||
+        (rawResponse as { status?: unknown }).status !== "draft" ||
+        (rawResponse as { requiresReapproval?: unknown }).requiresReapproval !== true ||
+        !Number.isInteger((rawResponse as { draftRevision?: unknown }).draftRevision) ||
+        (rawResponse as { draftRevision: number }).draftRevision !==
+          payload.expectedRevision + 1
+      ) {
+        throw new Error("服务端返回的退回重审结果与请求版本不一致");
+      }
+      response = rawResponse as ContractSigningMaterialChangeResponse;
+    } catch (error) {
+      if (error instanceof CoreFlowApiError) throw error;
+      throw new ContractSigningMaterialChangeResultUnknownError(error);
+    }
+    if (!input.current(context, fresh)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    await input.complete?.(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    if (!input.fail) throw error;
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    await input.finish?.(context);
+  }
 }
 
 export interface ContractChangeVersionProjection {

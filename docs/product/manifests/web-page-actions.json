@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 49,
-    "pageActionCount": 43,
+    "registeredActionCount": 50,
+    "pageActionCount": 44,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
-    "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 923,
+    "reachableProductionModuleCount": 230,
+    "templateEventDirectiveCount": 925,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 22,
-    "candidateProductionMutationConsumerCount": 41,
-    "acceptedProductionMutationConsumerCount": 22,
-    "productionMutationConsumerPairCount": 272,
+    "coveredProductionMutationConsumerCount": 23,
+    "candidateProductionMutationConsumerCount": 42,
+    "acceptedProductionMutationConsumerCount": 23,
+    "productionMutationConsumerPairCount": 273,
     "blockerCount": 296
   },
   "evidence": {
-    "totalProductionModuleCount": 236,
-    "reachableProductionModuleCount": 229,
+    "totalProductionModuleCount": 237,
+    "reachableProductionModuleCount": 230,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134
   },
@@ -1157,6 +1157,107 @@
           "causalProof": {
             "localCallChain": [
               "requestSubmission"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract.signing-material-change",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmSigningMaterialChange",
+        "kind": "event",
+        "sourceLine": 987,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractSigningCapability.availableActions",
+        "key": "report_signing_material_change",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractSigningMaterialChange",
+          "method": "GET",
+          "path": "/contracts/:param",
+          "normalizedKey": "GET /contracts/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/contracts/:contractId",
+            "normalizedKey": "GET /contracts/:param",
+            "controller": "ContractController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmSigningMaterialChange",
+              "executeContractSigningMaterialChange"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractSigningMaterialChange",
+          "method": "POST",
+          "path": "/contracts/:param/signing/material-change",
+          "normalizedKey": "POST /contracts/:param/signing/material-change",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/signing/material-change",
+            "normalizedKey": "POST /contracts/:param/signing/material-change",
+            "controller": "ContractController",
+            "handler": "invalidateSigningForMaterialChange",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmSigningMaterialChange",
+              "executeContractSigningMaterialChange"
             ]
           },
           "ticketFollowups": []

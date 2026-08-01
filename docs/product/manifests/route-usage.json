@@ -17,25 +17,25 @@
     "consumerSurfaceOverrideCount": 3,
     "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-    "derivedProductionPageCount": 283,
-    "pageRouteCount": 286,
+    "derivedProductionPageCount": 284,
+    "pageRouteCount": 287,
     "externalTakeoverCount": 59,
     "exitCandidateCount": 43,
     "internalTaskCount": 2,
-    "unclassifiedCount": 5,
+    "unclassifiedCount": 4,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 333,
+      "web_api_wrapper": 334,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 54
+      "none": 53
     },
-    "blockerCount": 5
+    "blockerCount": 9
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 333,
+    "productionWrapperRouteCount": 334,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -1550,6 +1550,16 @@
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "executeContractSigningMaterialChange",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param",
+            "normalizedKey": "GET /contracts/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          },
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "fetchContractDetail",
@@ -8810,12 +8820,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "executeContractSigningMaterialChange",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/signing/material-change",
+            "normalizedKey": "POST /contracts/:param/signing/material-change",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -15930,7 +15951,33 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [],
+    "expectationMismatches": [
+      {
+        "field": "consumerSurfaceCounts.none",
+        "expected": 54,
+        "actual": 53
+      },
+      {
+        "field": "consumerSurfaceCounts.web_api_wrapper",
+        "expected": 333,
+        "actual": 334
+      },
+      {
+        "field": "derivedProductionPageCount",
+        "expected": 283,
+        "actual": 284
+      },
+      {
+        "field": "usageCounts.page",
+        "expected": 286,
+        "actual": 287
+      },
+      {
+        "field": "usageCounts.unclassified",
+        "expected": 5,
+        "actual": 4
+      }
+    ],
     "unclassifiedRoutes": [
       {
         "method": "POST",
@@ -15939,15 +15986,6 @@
         "controller": "ContractBillController",
         "handler": "cancelRemainder",
         "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contracts/:contractVersionId/signing/material-change",
-        "normalizedKey": "POST /contracts/:param/signing/material-change",
-        "controller": "ContractController",
-        "handler": "invalidateSigningForMaterialChange",
-        "sourceFile": "services/api/src/contract/contract.controller.ts",
         "consumerSurface": "none"
       },
       {

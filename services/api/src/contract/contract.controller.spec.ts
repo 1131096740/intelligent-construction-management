@@ -122,6 +122,9 @@ const validContractRouteBodies = [
     documentOrderConfirmed: true
   }],
   ["contract.invalidateSigningForMaterialChange", ContractController, "invalidateSigningForMaterialChange", 2, {
+    expectedRevision: 4,
+    expectedSealTaskId: "seal-task-1",
+    expectedStatus: "in_seal",
     reason: "合同金额发生实质变化"
   }],
   ["contract.uploadArchiveFile", ContractController, "uploadArchiveFile", 2, { fileId: "file-1" }],

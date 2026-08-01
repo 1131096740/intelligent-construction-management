@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsBoolean, IsInt, IsNotEmpty, IsString, Matches, Min } from "class-validator";
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsString, Matches, Min } from "class-validator";
 
 export class ApproveContractSealDto {
   @IsString()
@@ -66,6 +66,24 @@ export class ReturnContractFormalFileDto {
 }
 
 export class InvalidateContractSigningDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  expectedRevision!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  expectedSealTaskId!: string;
+
+  @IsString()
+  @IsIn([
+    "approved_pending_seal",
+    "in_seal",
+    "seal_approved_pending_archive",
+    "pending_archive_confirm"
+  ])
+  expectedStatus!: string;
+
   @IsString()
   @IsNotEmpty()
   @Matches(/\S/u, { message: "实质变化原因不能为空白" })

@@ -112,6 +112,7 @@ import {
   approveContractSeal,
   approveGovernedContractSeal,
   completeContractSeal,
+  executeContractSigningMaterialChange,
   uploadMutuallySignedContract,
   returnMutuallySignedContractForCorrection,
   confirmMutuallySignedContract,
@@ -161,6 +162,7 @@ import {
   withdrawContractTakeoverContractSideConfirmation,
   withdrawContractTakeoverFinanceSideConfirmation
 } from "./core-flow-read.api";
+import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 
 describe("core flow read API client", () => {
   beforeEach(() => {
@@ -555,6 +557,277 @@ describe("core flow read API client", () => {
       "/api/contracts/version%2F1/formal-files/final/return",
       "/api/contracts/version%2F1/formal-files/final/confirmation"
     ]);
+  });
+
+  it("freshly verifies signing material-change coordinates before one POST", async () => {
+    const freshDetail = {
+      id: "HT-2026-001",
+      contractVersionId: "version/1",
+      draftRevision: 4,
+      sealTask: {
+        id: "seal/1",
+        status: "in_seal",
+        handlerUserId: "handler-1"
+      },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal/1",
+        expectedStatus: "in_seal"
+      },
+      availableActions: [{
+        key: "report_signing_material_change",
+        label: "申报签署内容实质变化",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true
+      }]
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => freshDetail
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "draft",
+          draftRevision: 5,
+          requiresReapproval: true
+        })
+      } as Response);
+    const stale = vi.fn();
+    const context = {
+      routeContractId: "HT-2026-001",
+      contractId: "HT-2026-001",
+      contractVersionId: "version/1",
+      expectedRevision: 4,
+      expectedSealTaskId: "seal/1",
+      expectedStatus: "in_seal" as const
+    };
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => context,
+      current: () => true,
+      stale,
+      reason: "线下核对发现合同金额发生实质变化"
+    })).resolves.toMatchObject({
+      status: "completed",
+      context,
+      response: { status: "draft", draftRevision: 5 }
+    });
+
+    expect(stale).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/HT-2026-001",
+      "/api/contracts/version%2F1/signing/material-change"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({
+      expectedRevision: 4,
+      expectedSealTaskId: "seal/1",
+      expectedStatus: "in_seal",
+      reason: "线下核对发现合同金额发生实质变化"
+    }));
+  });
+
+  it.each([
+    ["an invalid success body", {
+      ok: true,
+      json: async () => ({ status: "draft", draftRevision: 4, requiresReapproval: true })
+    }],
+    ["a lost response", new Error("socket closed after request dispatch")]
+  ])("marks material-change %s as result unknown", async (_label, postResult) => {
+    const freshDetail = {
+      id: "HT-2026-001",
+      contractVersionId: "version-1",
+      draftRevision: 4,
+      sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      },
+      availableActions: [{ key: "report_signing_material_change", enabled: true }]
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => freshDetail
+      } as Response);
+    if (postResult instanceof Error) {
+      fetchMock.mockRejectedValueOnce(postResult);
+    } else {
+      fetchMock.mockResolvedValueOnce(postResult as Response);
+    }
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => ({
+        routeContractId: "HT-2026-001",
+        contractId: "HT-2026-001",
+        contractVersionId: "version-1",
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }),
+      current: () => true,
+      stale: vi.fn(),
+      reason: "合同金额发生实质变化"
+    })).rejects.toBeInstanceOf(
+      ContractSigningMaterialChangeResultUnknownError
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes a handled material-change unknown result through fail and finish", async () => {
+    const fail = vi.fn();
+    const finish = vi.fn();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "HT-2026-001",
+          contractVersionId: "version-1",
+          draftRevision: 4,
+          sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+          signingMaterialChangeContext: {
+            expectedRevision: 4,
+            expectedSealTaskId: "seal-1",
+            expectedStatus: "in_seal"
+          },
+          availableActions: [{ key: "report_signing_material_change", enabled: true }]
+        })
+      } as Response)
+      .mockRejectedValueOnce(new Error("socket closed after request dispatch"));
+    const context = {
+      routeContractId: "HT-2026-001",
+      contractId: "HT-2026-001",
+      contractVersionId: "version-1",
+      expectedRevision: 4,
+      expectedSealTaskId: "seal-1",
+      expectedStatus: "in_seal" as const
+    };
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => context,
+      current: () => true,
+      stale: vi.fn(),
+      fail,
+      finish,
+      reason: "合同金额发生实质变化"
+    })).resolves.toEqual({ status: "failed", context });
+
+    expect(fail).toHaveBeenCalledWith(
+      context,
+      expect.any(ContractSigningMaterialChangeResultUnknownError)
+    );
+    expect(finish).toHaveBeenCalledWith(context);
+  });
+
+  it.each([
+    ["missing capability", { availableActions: [] }],
+    ["duplicate capability", {
+      availableActions: [
+        { key: "report_signing_material_change", enabled: true },
+        { key: "report_signing_material_change", enabled: true }
+      ]
+    }],
+    ["revision drift", {
+      draftRevision: 5,
+      signingMaterialChangeContext: {
+        expectedRevision: 5,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }
+    }],
+    ["task drift", {
+      sealTask: { id: "seal-2", status: "in_seal", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-2",
+        expectedStatus: "in_seal"
+      }
+    }],
+    ["status drift", {
+      sealTask: { id: "seal-1", status: "completed", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "pending_archive_confirm"
+      }
+    }]
+  ])("does not POST material change when fresh detail has %s", async (_label, overrides) => {
+    const detail = {
+      id: "HT-2026-001",
+      contractVersionId: "version-1",
+      draftRevision: 4,
+      sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      },
+      availableActions: [{ key: "report_signing_material_change", enabled: true }],
+      ...overrides
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => detail
+    } as Response);
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => ({
+        routeContractId: "HT-2026-001",
+        contractId: "HT-2026-001",
+        contractVersionId: "version-1",
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }),
+      current: () => true,
+      stale: vi.fn(),
+      reason: "合同金额发生实质变化"
+    })).rejects.toThrow("合同签署状态已变化");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it("stops a material-change submission after route ownership changes", async () => {
+    const stale = vi.fn();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "HT-2026-001",
+        contractVersionId: "version-1",
+        draftRevision: 4,
+        sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+        signingMaterialChangeContext: {
+          expectedRevision: 4,
+          expectedSealTaskId: "seal-1",
+          expectedStatus: "in_seal"
+        },
+        availableActions: [{ key: "report_signing_material_change", enabled: true }]
+      })
+    } as Response);
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => ({
+        routeContractId: "HT-2026-001",
+        contractId: "HT-2026-001",
+        contractVersionId: "version-1",
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }),
+      current: (_context, fresh) => fresh === undefined,
+      stale,
+      reason: "合同金额发生实质变化"
+    })).resolves.toMatchObject({ status: "stale" });
+
+    expect(stale).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("requests business contract option endpoints for settlement and payment forms", async () => {
