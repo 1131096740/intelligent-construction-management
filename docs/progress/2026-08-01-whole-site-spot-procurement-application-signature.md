@@ -103,6 +103,16 @@ ok spot application approval audit rollback
 `docker ps --all` 对该精确容器无输出，端口 61264 无监听，`/tmp` 无
 `jiangkong-spot-concurrency-*` 临时目录。未触碰既有其他容器。
 
+### 本轮独立授权复验
+
+用户在后续 Task 11 收口期间对同一限定范围重新明确授权后，再次执行相同
+`application-review-approve` runner。复验只连接随机回环地址
+`127.0.0.1:58022/jiangkong_spot_procurement_concurrency_verify`，空库 114 个迁移、第二次
+零待办、终点迁移唯一、签名坐标并发单赢家、缺签/文件与版本 SHA 漂移零写及 Audit 中段
+全事务回滚全部通过。guaranteed cleanup 删除一次性容器
+`jiangkong-spot-concurrency-1785587561677-76992` 后，独立只读核对确认该容器无输出、58022
+无监听且 `/tmp` 无同前缀临时目录。本次复验未连接生产，也未执行授权范围外的业务场景。
+
 ## 测试与静态门禁
 
 当前精确 diff 的验证结果：
