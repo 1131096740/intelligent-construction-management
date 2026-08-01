@@ -134,6 +134,27 @@ guaranteed cleanup 删除一次性容器
 查询无输出、64563 无监听、`/tmp` 无 `jiangkong-spot-concurrency-*` 临时目录。本轮未连接
 生产、未触碰其他容器，也未运行该限定 scope 之外的撤回、付款、收货、票据或其他业务场景。
 
+### 本轮新授权第四次独立复验
+
+用户再次明确授权同一精确范围后，第四次执行
+`SPOT_PROCUREMENT_CONCURRENCY_SCOPE=application-review-approve` 限定 runner。本轮只连接
+`127.0.0.1:56575/jiangkong_spot_procurement_concurrency_verify`：空库完整应用 114 个迁移，
+第二次 deploy 明确零待办，`migrate status` 已同步，且终点迁移
+`20260728161000_spot_procurement_application_revision_status` 恰好一条。
+
+三段真实 PostgreSQL 16 回执再次全部通过：
+
+- 双 backend 形成真实锁等待，签名坐标并发恰好一个 winner，loser 以陈旧坐标 409 失败；
+- 缺签与签名版本 SHA 漂移均在 ActionLog、审批节点、根单、版本、付款、收货和 Audit
+  写入前失败，调用前后事实完全相同；
+- Audit 中段故障注入时，事务内已观察签名 ActionLog、最终审批节点、已批根单/版本、付款、
+  收货与三条 Audit，抛错后事务外全部回到调用前且新增行数为零。
+
+runner 的 guaranteed cleanup 删除一次性容器
+`jiangkong-spot-concurrency-1785605040990-33105` 和临时目录。随后独立只读复核确认精确容器
+查询无输出、56575 无监听、`/tmp` 无 `jiangkong-spot-concurrency-*` 临时目录。本轮未连接
+生产、未触碰其他容器，也未运行该限定 scope 之外的撤回、付款、收货、票据或其他业务场景。
+
 ## 测试与静态门禁
 
 当前精确 diff 的验证结果：
