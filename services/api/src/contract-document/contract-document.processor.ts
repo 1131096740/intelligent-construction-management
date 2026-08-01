@@ -301,7 +301,9 @@ export class ContractDocumentProcessor
         }, {
           id: string;
           voidedAt: Date | null;
-        }>(tx, job.contractVersionId);
+        }>(tx, job.contractVersionId, {
+          allowHistoricalTakeoverInspection: true
+        });
         const currentRound = await tx.contractNegotiationRound.findUnique({
           where: { id: job.negotiationRoundId! }
         });
@@ -312,6 +314,7 @@ export class ContractDocumentProcessor
           mutationBoundary.formalBlockers.length > 0 ||
           !version ||
           version.changeType === "historical_takeover" ||
+          version.hasHistoricalTakeoverRelation === true ||
           !["draft", "approval_rejected"].includes(version.status) ||
           version.draftRevision !== job.sourceRevision ||
           !currentRound ||
@@ -569,7 +572,9 @@ export class ContractDocumentProcessor
         }, {
           id: string;
           voidedAt: Date | null;
-        }>(tx, job.contractVersionId);
+        }>(tx, job.contractVersionId, {
+          allowHistoricalTakeoverInspection: true
+        });
         const version = mutationBoundary?.version;
         if (
           !mutationBoundary ||
@@ -578,7 +583,8 @@ export class ContractDocumentProcessor
           !version ||
           version.draftRevision !== job.sourceRevision ||
           !["draft", "approval_rejected"].includes(version.status) ||
-          version.changeType === "historical_takeover"
+          version.changeType === "historical_takeover" ||
+          version.hasHistoricalTakeoverRelation === true
         ) {
           await tx.contractGeneratedDocument.updateMany({
             where: {

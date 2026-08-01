@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
   CONTRACT_INVOICE_TYPES,
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canCreatePaymentFromSettlementStatus,
   contractInvoiceTypeLabel,
   type ContractWorkbenchLedgerPage,
@@ -57,6 +58,10 @@ import { settlementContractTypeBlockReason } from "../settlement/contract-settle
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
 }
+
+const HISTORICAL_TAKEOVER_READ_ROLES = new Set<RoleKey>(
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS
+);
 
 @Injectable()
 export class ContractReadService {
@@ -269,6 +274,9 @@ export class ContractReadService {
         where: { id: { in: [...new Set(contracts.map((contract) => contract.projectId))] } }
       })
     ]);
+    const takeovers = await this.contractTakeoverLedgerRows(
+      versions.map((version) => version.id)
+    );
     const versionByContractId = new Map<string, (typeof versions)[number]>();
     for (const version of versions) {
       if (!versionByContractId.has(version.contractId)) versionByContractId.set(version.contractId, version);
@@ -285,12 +293,26 @@ export class ContractReadService {
       }
     }
     const projectById = new Map(projects.map((project) => [project.id, project]));
+    const takeoverByVersion = new Map(
+      takeovers.map((takeover) => [takeover.contractVersionId, takeover])
+    );
 
     const rows = contracts.flatMap((contract) => {
       const version = versionByContractId.get(contract.id);
       if (!version) return [];
       const termsVersion = termsByContractId.get(contract.id);
-      return [this.contractLedgerRow(contract, version, termsVersion, projectById.get(contract.projectId))];
+      return [this.contractLedgerRow(
+        contract,
+        version,
+        termsVersion,
+        projectById.get(contract.projectId),
+        this.contractTakeoverLedgerProjection(
+          contract,
+          version,
+          takeoverByVersion.get(version.id),
+          false
+        )
+      )];
     });
 
     return {
@@ -522,22 +544,28 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const versions = contractIds.length
-      ? await this.prisma.contractVersion.findMany({
-          where: { contractId: { in: contractIds } },
-          orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
-        })
-      : [];
-    const terms = contractIds.length
-      ? await this.prisma.paymentTermsVersion.findMany({
-          where: { contractId: { in: contractIds } },
-          orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
-        })
-      : [];
-    const projects = visibleProjectIds.length
-      ? await this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
-      : [];
-    const lifecycleByVersion = await this.contractDraftLifecycleByVersion(versions);
+    const [versions, terms, projects, takeoverReadableProjectIds] = await Promise.all([
+      contractIds.length
+        ? this.prisma.contractVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      contractIds.length
+        ? this.prisma.paymentTermsVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      visibleProjectIds.length
+        ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
+        : Promise.resolve([]),
+      this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds)
+    ]);
+    const [takeovers, lifecycleByVersion] = await Promise.all([
+      this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
+      this.contractDraftLifecycleByVersion(versions)
+    ]);
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
@@ -547,6 +575,9 @@ export class ContractReadService {
       ]);
     }
     const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
+    const takeoverByVersion = new Map(
+      takeovers.map((takeover) => [takeover.contractVersionId, takeover])
+    );
     const classified = contracts.flatMap((contract) => {
       const all = versionsByContract.get(contract.id) ?? [];
       const lifecycle = this.classifyContractLifecycle(
@@ -574,7 +605,13 @@ export class ContractReadService {
           abandonReason: rowVersion.abandonReason ?? null,
           copyAvailable: view === "ended" && rowVersion.status === "abandoned" &&
             rowVersion.changeType === "original" && rowVersion.versionNo === 1 &&
-            contract.ownerUserId === actorUserId
+            contract.ownerUserId === actorUserId,
+          ...this.contractTakeoverLedgerProjection(
+            contract,
+            rowVersion,
+            takeoverByVersion.get(rowVersion.id),
+            takeoverReadableProjectIds.has(contract.projectId)
+          )
         }
       )];
     });
@@ -630,7 +667,13 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const [versions, terms, projects, pendingWorkItems] = await Promise.all([
+    const [
+      versions,
+      terms,
+      projects,
+      pendingWorkItems,
+      takeoverReadableProjectIds
+    ] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
             where: { contractId: { in: contractIds } },
@@ -646,20 +689,27 @@ export class ContractReadService {
       visibleProjectIds.length
         ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
         : Promise.resolve([]),
-      this.me?.getContractPendingWorkItems(actorUserId) ?? Promise.resolve([])
+      this.me?.getContractPendingWorkItems(actorUserId) ?? Promise.resolve([]),
+      this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds)
     ]);
     const pendingVersionIds = new Set(
       pendingWorkItems
         .map((item) => item.businessId)
         .filter((businessId): businessId is string => Boolean(businessId))
     );
-    const lifecycleByVersion = await this.contractDraftLifecycleByVersion(versions);
+    const [takeovers, lifecycleByVersion] = await Promise.all([
+      this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
+      this.contractDraftLifecycleByVersion(versions)
+    ]);
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
       versionsByContract.set(version.contractId, [...(versionsByContract.get(version.contractId) ?? []), version]);
     }
     const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
+    const takeoverByVersion = new Map(
+      takeovers.map((takeover) => [takeover.contractVersionId, takeover])
+    );
     const classified = contracts.flatMap((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
       if (!version) return [];
@@ -691,7 +741,13 @@ export class ContractReadService {
             version.changeType === "original" && version.versionNo === 1 &&
             contract.ownerUserId === actorUserId,
           lifecycleUpdatedAt: version.updatedAt.toISOString(),
-          abandonReason: version.abandonReason ?? null
+          abandonReason: version.abandonReason ?? null,
+          ...this.contractTakeoverLedgerProjection(
+            contract,
+            version,
+            takeoverByVersion.get(version.id),
+            takeoverReadableProjectIds.has(contract.projectId)
+          )
         }
       )];
     });
@@ -2342,6 +2398,195 @@ export class ContractReadService {
 
   private toBigIntCents(amountCents: bigint): bigint {
     return dbMoneyToBigInt(amountCents, "合同金额");
+  }
+
+  private async contractTakeoverLedgerRows(
+    contractVersionIds: string[]
+  ): Promise<Array<{
+    id: string;
+    contractVersionId: string;
+    contractId: string;
+    projectId: string;
+    takeoverStatus: string;
+  }>> {
+    if (!contractVersionIds.length) return [];
+    const client = (this.prisma as unknown as {
+      contractTakeover?: {
+        findMany(args: {
+          where: {
+            contractVersionId: { in: string[] };
+          };
+          select: {
+            id: true;
+            contractVersionId: true;
+            contractId: true;
+            projectId: true;
+            takeoverStatus: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          contractVersionId: string;
+          contractId: string;
+          projectId: string;
+          takeoverStatus: string;
+        }>>;
+      };
+    }).contractTakeover;
+    if (!client) return [];
+    return client.findMany({
+      where: {
+        contractVersionId: { in: contractVersionIds }
+      },
+      select: {
+        id: true,
+        contractVersionId: true,
+        contractId: true,
+        projectId: true,
+        takeoverStatus: true
+      }
+    });
+  }
+
+  private async historicalTakeoverReadableProjectIds(
+    actorUserId: string,
+    visibleProjectIds: string[]
+  ): Promise<Set<string>> {
+    if (!this.projectVisibility || !visibleProjectIds.length) return new Set();
+    const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
+      actorUserId,
+      visibleProjectIds
+    );
+    return new Set(visibleProjectIds.filter((projectId) =>
+      (roleKeysByProject.get(projectId) ?? []).some((roleKey) =>
+        HISTORICAL_TAKEOVER_READ_ROLES.has(roleKey)
+      )
+    ));
+  }
+
+  private contractTakeoverLedgerProjection(
+    contract: { id: string; projectId: string; source?: string | null },
+    version: { id: string; contractId: string; changeType?: string | null },
+    takeover: {
+      id: string;
+      contractVersionId: string;
+      contractId: string;
+      projectId: string;
+      takeoverStatus: string;
+    } | undefined,
+    canReadTakeover: boolean
+  ): Record<string, unknown> {
+    const hasHistoricalMarker = version.changeType === "historical_takeover";
+    const hasTakeoverRelation = Boolean(takeover);
+    const hasExactTakeoverRelation = Boolean(
+      takeover &&
+      takeover.contractVersionId === version.id &&
+      takeover.contractId === version.contractId &&
+      takeover.contractId === contract.id &&
+      takeover.projectId === contract.projectId
+    );
+    const historicalTakeoverFlow = hasHistoricalMarker || hasTakeoverRelation;
+    const takeoverRelationMismatch =
+      hasHistoricalMarker !== hasExactTakeoverRelation ||
+      (hasTakeoverRelation && !hasExactTakeoverRelation);
+    const base = {
+      projectId: contract.projectId,
+      source: contract.source === "historical_takeover" ? "historical_takeover" : "system",
+      changeType: version.changeType ?? null,
+      historicalTakeoverFlow
+    };
+    if (!historicalTakeoverFlow) {
+      return {
+        ...base,
+        takeoverId: null,
+        takeoverStatus: null,
+        takeoverReadable: false
+      };
+    }
+    const historicalBase = {
+      ...base,
+      copyAvailable: false
+    };
+    if (!canReadTakeover) {
+      return {
+        ...historicalBase,
+        currentNode: "历史合同接管",
+        nodeTone: "default",
+        pendingOwner: "专用工作台",
+        ownerDepartment: "专用工作台",
+        nextAction: "查看详情",
+        takeoverReadable: false,
+        workbenchEditable: false
+      };
+    }
+
+    if (takeoverRelationMismatch) {
+      return {
+        ...historicalBase,
+        takeoverReadable: true,
+        takeoverRelationMismatch: true,
+        currentNode: "接管关联异常",
+        nodeTone: "danger",
+        pendingOwner: "历史接管工作台",
+        ownerDepartment: "历史接管工作台",
+        nextAction: "检查接管关联",
+        workbenchEditable: false
+      };
+    }
+
+    const view = ({
+      draft: {
+        currentNode: "接管准备",
+        nodeTone: "warning",
+        pendingOwner: "接管责任人",
+        nextAction: "继续接管"
+      },
+      needs_supplement: {
+        currentNode: "待补充",
+        nodeTone: "warning",
+        pendingOwner: "接管责任人",
+        nextAction: "补充接管资料"
+      },
+      pending_review: {
+        currentNode: "复核确认",
+        nodeTone: "primary",
+        pendingOwner: "合同部/财务部主管",
+        nextAction: "继续复核"
+      },
+      confirmed: {
+        currentNode: "已接管",
+        nodeTone: "success",
+        pendingOwner: "系统归档",
+        nextAction: "查看接管台账"
+      },
+      voided: {
+        currentNode: "已作废",
+        nodeTone: "danger",
+        pendingOwner: "系统归档",
+        nextAction: "查看历史记录"
+      },
+      abandoned: {
+        currentNode: "已放弃",
+        nodeTone: "default",
+        pendingOwner: "系统归档",
+        nextAction: "查看合同详情"
+      }
+    } as const)[takeover?.takeoverStatus as "draft" | "needs_supplement" |
+      "pending_review" | "confirmed" | "voided" | "abandoned"] ?? {
+      currentNode: "接管关联异常",
+      nodeTone: "danger",
+      pendingOwner: "历史接管工作台",
+      nextAction: "检查接管关联"
+    };
+    return {
+      ...historicalBase,
+      takeoverId: takeover?.id ?? null,
+      takeoverStatus: takeover?.takeoverStatus ?? null,
+      takeoverReadable: true,
+      takeoverRelationMismatch: false,
+      ...view,
+      ownerDepartment: view.pendingOwner,
+      workbenchEditable: false
+    };
   }
 
   private contractLedgerRow(

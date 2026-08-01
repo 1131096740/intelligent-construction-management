@@ -1248,7 +1248,14 @@ describe("ContractDocumentProcessor", () => {
     expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 
-  it("marks a generated document stale when the locked draft has formal business evidence", async () => {
+  it.each([
+    ["formal business evidence", false, true],
+    ["an exact historical takeover relation", true, false]
+  ])("marks a generated document stale when the locked draft has %s", async (
+    _case,
+    hasHistoricalTakeoverRelation,
+    hasSignedFormalFile
+  ) => {
     const prisma = makePrisma();
     const terminalQueries: string[] = [];
     prisma.tx.$queryRaw.mockImplementation(
@@ -1262,6 +1269,7 @@ describe("ContractDocumentProcessor", () => {
             draftRevision: 3,
             status: "draft",
             changeType: "original",
+            hasHistoricalTakeoverRelation,
             draftData: {}
           }];
         }
@@ -1273,7 +1281,7 @@ describe("ContractDocumentProcessor", () => {
           }];
         }
         return [{
-          hasSignedFormalFile: true,
+          hasSignedFormalFile,
           hasActiveSealTask: false,
           hasArchiveFile: false,
           hasSettlement: false,
@@ -1316,7 +1324,7 @@ describe("ContractDocumentProcessor", () => {
     expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 
-  it("stales an offline comparison when the locked draft is no longer mutable", async () => {
+  it("stales an offline comparison for a relation-only historical takeover", async () => {
     const prisma = makePrisma();
     prisma.contractOfflineRevision.findFirst.mockResolvedValue({
       id: "revision-1",
@@ -1367,9 +1375,10 @@ describe("ContractDocumentProcessor", () => {
           return [{
             id: "version-1",
             contractId: "contract-1",
-            draftRevision: 8,
+            draftRevision: 7,
             status: "draft",
             changeType: "original",
+            hasHistoricalTakeoverRelation: true,
             draftData: {},
             clauseSnapshot: [],
             templateSnapshot: {}

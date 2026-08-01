@@ -24,6 +24,22 @@ const correctionPanel = readFileSync(
 );
 
 describe("historical takeover unsaved-change governance", () => {
+  it("opens a dedicated ledger deep link without falling back to the first project", () => {
+    expect(page).toContain("useRoute");
+    expect(page).toContain("contractTakeoverRouteSelection(route.query)");
+    expect(page).toContain("await selectTakeover(requestedTakeover)");
+    expect(page).toContain("if (requestedSelection && !requestedProject)");
+    expect(page).toContain("selectedProjectId.value = \"\"");
+    expect(page).toContain("takeovers.value = []");
+    expect(page).toContain("return");
+    expect(page).toContain("takeoverSelectionRequestOwner.begin(projectId, takeover.id)");
+    expect(page).toContain("if (!selectionRequestCurrent(true)) return");
+    expect(page).toContain("requestGeneration === takeoverListRequestGeneration");
+    expect(page).toContain("if (!requestCurrent()) return");
+    expect(page).toContain("changeGeneration === projectChangeGeneration");
+    expect(page).toContain("if (!changeCurrent()) return");
+  });
+
   it("protects route, project, record and form-close transitions", () => {
     expect(page).toContain("useUnsavedChangesGuard");
     expect(page).toContain("takeoverLeaveGuard.requestClose()");

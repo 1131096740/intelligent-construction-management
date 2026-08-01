@@ -257,9 +257,11 @@
             <t-button
               size="small"
               variant="outline"
-              @click="returnToContractDetail"
+              @click="historicalTakeoverRouteRequired
+                ? returnToHistoricalTakeover()
+                : returnToContractDetail()"
             >
-              返回合同详情
+              {{ historicalTakeoverRouteRequired ? "返回历史合同接管" : "返回合同详情" }}
             </t-button>
           </div>
         </template>
@@ -1077,6 +1079,7 @@ import {
   publishedTemplateForSelection
 } from "../contract-templates/contract-template.config";
 import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
+import { historicalTakeoverReturnTargetFromError } from "./contract-list.config";
 import { centsTextToYuanText } from "../../lib/money";
 import {
   contractApprovalRouteText,
@@ -1510,6 +1513,11 @@ const manualSaveMessage = ref("");
 const sessionLastSavedAt = ref<Date | null>(null);
 const sessionSavedRevision = ref(0);
 const exactVersionError = ref("");
+const historicalTakeoverRouteRequired = ref(false);
+const historicalTakeoverReturnTarget = ref<{
+  projectId: string;
+  takeoverId: string;
+} | null>(null);
 const transferVisible = ref(false);
 const transferUserId = ref("");
 const transferUsers = ref<Array<{ id: string; name: string }>>([]);
@@ -2633,13 +2641,37 @@ async function onConfirmTransfer() {
 }
 
 async function loadExisting() {
-  if (!contractId.value) {
+  const loadContext = {
+    contractId: contractId.value,
+    versionId: queryText(route.query.versionId).trim()
+  };
+  if (!loadContext.contractId) {
     return;
   }
   try {
     exactVersionError.value = "";
-    await loadExpectedWorkbench(contractId.value);
+    historicalTakeoverRouteRequired.value = false;
+    historicalTakeoverReturnTarget.value = null;
+    await loadExpectedWorkbench(loadContext.contractId);
   } catch (error) {
+    if (!contractWorkbenchLoadContextCurrent(loadContext)) return;
+    const code = error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+    const message = error instanceof Error ? error.message : "";
+    if (
+      code === "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED" ||
+      message.includes("历史接管草稿必须在历史接管工作台办理")
+    ) {
+      historicalTakeoverRouteRequired.value = true;
+      historicalTakeoverReturnTarget.value =
+        historicalTakeoverReturnTargetFromError(error);
+      exactVersionError.value =
+        "这是一份历史合同接管记录，不能按新签合同办理。请返回历史合同接管工作台继续处理。";
+      workbench.value = null;
+      errorMessage.value = "";
+      return;
+    }
     if (
       error instanceof Error &&
       error.message.includes("响应版本与请求版本不一致")
@@ -2650,6 +2682,14 @@ async function loadExisting() {
     }
     errorMessage.value = error instanceof Error ? error.message : "工作台加载失败";
   }
+}
+
+function contractWorkbenchLoadContextCurrent(context: {
+  contractId: string;
+  versionId: string;
+}) {
+  return contractId.value === context.contractId &&
+    queryText(route.query.versionId).trim() === context.versionId;
 }
 
 async function loadExpectedWorkbench(id: string) {
@@ -2687,6 +2727,16 @@ function returnToContractDetail() {
   void router.push(`/contracts/${contractId.value}`);
 }
 
+function returnToHistoricalTakeover() {
+  const target = historicalTakeoverReturnTarget.value;
+  void router.push(target
+    ? {
+        path: "/历史合同接管",
+        query: { projectId: target.projectId, takeoverId: target.takeoverId }
+      }
+    : "/历史合同接管");
+}
+
 onMounted(() => {
   void loadProjectOptions();
   void loadContractTypeOptions();
@@ -2711,6 +2761,8 @@ watch(contractId, (next, previous) => {
     contractDraftAvailableActions.value = null;
     workbench.value = null;
     exactVersionError.value = "";
+    historicalTakeoverRouteRequired.value = false;
+    historicalTakeoverReturnTarget.value = null;
     void loadExisting();
   }
 });
@@ -2723,6 +2775,8 @@ watch(() => route.query.versionId, (next, previous) => {
     contractDraftAvailableActions.value = null;
     workbench.value = null;
     exactVersionError.value = "";
+    historicalTakeoverRouteRequired.value = false;
+    historicalTakeoverReturnTarget.value = null;
     void loadExisting();
   }
 });

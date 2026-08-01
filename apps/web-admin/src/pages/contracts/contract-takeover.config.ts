@@ -27,6 +27,45 @@ export interface TakeoverDepartmentAccess {
   canConfirmFinance: boolean;
 }
 
+export function contractTakeoverRouteSelection(query: {
+  projectId?: unknown;
+  takeoverId?: unknown;
+}): { projectId: string; takeoverId: string } | null {
+  if (typeof query.projectId !== "string" || typeof query.takeoverId !== "string") {
+    return null;
+  }
+  const projectId = query.projectId.trim();
+  const takeoverId = query.takeoverId.trim();
+  return projectId && takeoverId ? { projectId, takeoverId } : null;
+}
+
+export interface ContractTakeoverSelectionRequest {
+  generation: number;
+  projectId: string;
+  takeoverId: string;
+}
+
+export function createContractTakeoverSelectionRequestOwner() {
+  let generation = 0;
+  return {
+    begin(projectId: string, takeoverId: string): ContractTakeoverSelectionRequest {
+      return { generation: ++generation, projectId, takeoverId };
+    },
+    invalidate() {
+      generation += 1;
+    },
+    isCurrent(
+      request: ContractTakeoverSelectionRequest,
+      projectId = request.projectId,
+      takeoverId = request.takeoverId
+    ) {
+      return request.generation === generation &&
+        request.projectId === projectId &&
+        request.takeoverId === takeoverId;
+    }
+  };
+}
+
 export function contractTakeoverPerformanceStatus(
   lifecycleStatus: ContractLifecycleStatus
 ): ContractTakeoverPerformanceStatus {

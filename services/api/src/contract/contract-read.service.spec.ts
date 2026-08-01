@@ -105,6 +105,159 @@ describe("ContractReadService", () => {
     );
   });
 
+  it("fails closed when the current-version takeover marker and exact relation drift", () => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractTakeoverLedgerProjection(
+        contract: { id: string; projectId: string; source?: string | null },
+        version: { id: string; contractId: string; changeType?: string | null },
+        takeover: {
+          id: string;
+          contractVersionId: string;
+          contractId: string;
+          projectId: string;
+          takeoverStatus: string;
+        } | undefined,
+        canReadTakeover: boolean
+      ): Record<string, unknown>;
+    };
+    const contract = { id: "contract-1", projectId: "project-1", source: "system" };
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      changeType: "original"
+    };
+    const takeover = {
+      id: "takeover-1",
+      contractVersionId: "version-1",
+      contractId: "contract-1",
+      projectId: "project-1",
+      takeoverStatus: "draft"
+    };
+
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      takeoverReadable: true,
+      currentNode: "接管关联异常",
+      pendingOwner: "历史接管工作台",
+      nextAction: "检查接管关联",
+      workbenchEditable: false,
+      copyAvailable: false
+    }));
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      true
+    )).not.toHaveProperty("takeoverId");
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      true
+    )).not.toHaveProperty("takeoverStatus");
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      { ...version, changeType: "historical_takeover" },
+      undefined,
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      takeoverReadable: true,
+      currentNode: "接管关联异常",
+      nextAction: "检查接管关联",
+      workbenchEditable: false
+    }));
+
+    const protectedProjection = service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      false
+    );
+    expect(protectedProjection).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      currentNode: "历史合同接管",
+      pendingOwner: "专用工作台",
+      nextAction: "查看详情",
+      takeoverReadable: false,
+      workbenchEditable: false,
+      copyAvailable: false
+    }));
+    expect(protectedProjection).not.toHaveProperty("takeoverId");
+    expect(protectedProjection).not.toHaveProperty("takeoverStatus");
+    expect(protectedProjection).not.toHaveProperty("takeoverRelationMismatch");
+
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      { ...version, changeType: "historical_takeover" },
+      takeover,
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: false,
+      currentNode: "接管准备",
+      nextAction: "继续接管",
+      copyAvailable: false
+    }));
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      { ...version, changeType: "historical_takeover" },
+      { ...takeover, takeoverStatus: "abandoned" },
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      currentNode: "已放弃",
+      copyAvailable: false
+    }));
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      { ...takeover, takeoverStatus: "abandoned" },
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      copyAvailable: false
+    }));
+
+    for (const driftedTakeover of [
+      { ...takeover, contractId: "contract-other" },
+      { ...takeover, projectId: "project-other" },
+      { ...takeover, contractVersionId: "version-other" }
+    ]) {
+      const projection = service.contractTakeoverLedgerProjection(
+        contract,
+        { ...version, changeType: "historical_takeover" },
+        driftedTakeover,
+        true
+      );
+      expect(projection).toEqual(expect.objectContaining({
+        historicalTakeoverFlow: true,
+        takeoverRelationMismatch: true,
+        currentNode: "接管关联异常",
+        nextAction: "检查接管关联",
+        workbenchEditable: false,
+        copyAvailable: false
+      }));
+      expect(projection).not.toHaveProperty("takeoverId");
+      expect(projection).not.toHaveProperty("takeoverStatus");
+    }
+
+    expect(service.contractTakeoverLedgerProjection(
+      { ...contract, source: "historical_takeover" },
+      { ...version, id: "version-change", changeType: "change" },
+      undefined,
+      true
+    )).toEqual(expect.objectContaining({ historicalTakeoverFlow: false }));
+  });
+
   it("exports only the visible contract ledger rows and records the export audit", async () => {
     jest.useRealTimers();
     const prisma = {};
@@ -310,6 +463,69 @@ describe("ContractReadService", () => {
       take: 20,
       orderBy: { updatedAt: "desc" }
     });
+  });
+
+  it("keeps historical takeover drafts out of ordinary status semantics in the legacy ledger", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "contract-historical",
+          projectId: "project-1",
+          source: "historical_takeover",
+          code: "CHYB-机械-2026-006",
+          temporaryCode: null,
+          name: "历史机械合同",
+          counterparty: "历史供应商",
+          updatedAt: new Date("2026-08-01T00:00:00.000Z")
+        }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "version-historical",
+          contractId: "contract-historical",
+          versionNo: 1,
+          changeType: "historical_takeover",
+          status: "draft",
+          amountCents: 18_000_000n
+        }])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "takeover-1",
+          contractVersionId: "version-historical",
+          contractId: "contract-historical",
+          projectId: "project-1",
+          takeoverStatus: "draft"
+        }])
+      },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const result = await service.listRecent(50, ["project-1"]);
+
+    expect(prisma.contractTakeover.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: { in: ["version-historical"] } },
+      select: {
+        id: true,
+        contractVersionId: true,
+        contractId: true,
+        projectId: true,
+        takeoverStatus: true
+      }
+    });
+    expect(result.rows[0]).toMatchObject({
+      historicalTakeoverFlow: true,
+      currentNode: "历史合同接管",
+      nextAction: "查看详情",
+      takeoverReadable: false,
+      workbenchEditable: false
+    });
+    expect(result.rows[0]).not.toHaveProperty("takeoverId");
+    expect(result.rows[0]).not.toHaveProperty("takeoverStatus");
   });
 
   it("excludes abandoned-only contracts and falls back to the latest non-abandoned version", async () => {
@@ -1835,6 +2051,7 @@ describe("ContractReadService", () => {
       {
         id: "contract-takeover",
         projectId: "project-1",
+        source: "historical_takeover",
         code: "HT-TAKEOVER",
         temporaryCode: null,
         name: "历史接管草稿",
@@ -1905,9 +2122,26 @@ describe("ContractReadService", () => {
       contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
       contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
       settlement: { findMany: jest.fn().mockResolvedValue([]) },
-      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) }
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "takeover-1",
+          projectId: "project-1",
+          contractId: "contract-takeover",
+          contractVersionId: "version-takeover",
+          takeoverStatus: "draft"
+        }])
+      }
     };
-    const service = new ContractReadService(prisma as never);
+    const projectVisibility = {
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(new Map([
+        ["project-1", ["contract_staff"]]
+      ]))
+    };
+    const service = new ContractReadService(
+      prisma as never,
+      projectVisibility as never
+    );
 
     const [workbench, lifecycle] = await Promise.all([
       service.workbenchLedger("all", 1, 20, ["project-1"], "user-1"),
@@ -1922,6 +2156,10 @@ describe("ContractReadService", () => {
         lifecycleKind: "pristine_draft",
         lifecycleBlockers: [],
         draftRevision: 4,
+        source: "system",
+        changeType: "original",
+        takeoverId: null,
+        takeoverStatus: null,
         workbenchEditable: true
       }),
       expect.objectContaining({
@@ -1938,6 +2176,15 @@ describe("ContractReadService", () => {
       }),
       expect.objectContaining({
         contractVersionId: "version-takeover",
+        source: "historical_takeover",
+        changeType: "historical_takeover",
+        projectId: "project-1",
+        takeoverId: "takeover-1",
+        takeoverStatus: "draft",
+        takeoverReadable: true,
+        currentNode: "接管准备",
+        pendingOwner: "接管责任人",
+        nextAction: "继续接管",
         workbenchEditable: false
       })
     ]));
@@ -1980,6 +2227,44 @@ describe("ContractReadService", () => {
       where: { contractVersionId: { in: versions.map((item) => item.id) } },
       select: { contractVersionId: true }
     });
+    expect(prisma.contractTakeover.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.contractTakeover.findMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: { in: versions.map((item) => item.id) }
+      },
+      select: {
+        id: true,
+        contractVersionId: true,
+        contractId: true,
+        projectId: true,
+        takeoverStatus: true
+      }
+    });
+
+    projectVisibility.effectiveRoleKeysByProject.mockResolvedValueOnce(new Map([
+      ["project-1", ["budget_staff"]]
+    ]));
+    const ledgerWithoutTakeoverAccess = await service.workbenchLedger(
+      "all",
+      1,
+      20,
+      ["project-1"],
+      "budget-user"
+    );
+    const protectedHistoricalRow = ledgerWithoutTakeoverAccess.rows.find(
+      (row) => row.contractVersionId === "version-takeover"
+    );
+    expect(protectedHistoricalRow).toEqual(expect.objectContaining({
+      source: "historical_takeover",
+      changeType: "historical_takeover",
+      currentNode: "历史合同接管",
+      pendingOwner: "专用工作台",
+      nextAction: "查看详情",
+      takeoverReadable: false,
+      workbenchEditable: false
+    }));
+    expect(protectedHistoricalRow).not.toHaveProperty("takeoverId");
+    expect(protectedHistoricalRow).not.toHaveProperty("takeoverStatus");
   });
 
   it("keeps historical takeover detail outside generic draft-ending actions and exact-version downstream facts", async () => {

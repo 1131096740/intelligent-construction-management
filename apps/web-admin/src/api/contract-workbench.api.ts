@@ -25,15 +25,25 @@ async function ensureOk(
   let message = `${fallback}：${response.status}`;
   let code: string | undefined;
   let conflictReason: string | undefined;
+  let projectId: string | undefined;
+  let takeoverId: string | undefined;
   try {
     const data = (await response.clone().json()) as {
       message?: unknown;
       code?: unknown;
       conflictReason?: unknown;
+      projectId?: unknown;
+      takeoverId?: unknown;
     };
     if (preserveConflictDetails && typeof data.code === "string") code = data.code;
     if (preserveConflictDetails && typeof data.conflictReason === "string") {
       conflictReason = data.conflictReason;
+    }
+    if (preserveConflictDetails && typeof data.projectId === "string") {
+      projectId = data.projectId;
+    }
+    if (preserveConflictDetails && typeof data.takeoverId === "string") {
+      takeoverId = data.takeoverId;
     }
     if (typeof data.message === "string") {
       message = formatApiErrorMessage(data.message, response.status, fallback);
@@ -48,15 +58,19 @@ async function ensureOk(
   const error = new Error(message) as Error & {
     code?: string;
     conflictReason?: string;
+    projectId?: string;
+    takeoverId?: string;
   };
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
+  if (projectId) error.projectId = projectId;
+  if (takeoverId) error.takeoverId = takeoverId;
   throw error;
 }
 
-async function readJson<T>(path: string): Promise<T> {
+async function readJson<T>(path: string, preserveErrorCode = false): Promise<T> {
   const response = await apiFetch(path);
-  await ensureOk(response, "读取失败");
+  await ensureOk(response, "读取失败", preserveErrorCode);
   return response.json() as Promise<T>;
 }
 
@@ -327,7 +341,8 @@ export function fetchContractWorkbench(contractId: string) {
 
 export function fetchContractDraftWorkbench(contractVersionId: string) {
   return readJson<ContractDraftWorkbenchReadModel>(
-    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
+    true
   );
 }
 

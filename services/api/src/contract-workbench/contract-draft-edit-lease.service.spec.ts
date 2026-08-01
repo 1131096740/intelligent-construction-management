@@ -14,6 +14,7 @@ describe("ContractDraftEditLeaseService", () => {
   let ownerUserId: string;
   let director: boolean;
   let versionChangeType = "original";
+  let hasHistoricalTakeoverRelation = false;
   let formalEvidence = false;
 
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
@@ -24,7 +25,9 @@ describe("ContractDraftEditLeaseService", () => {
       if (sql.includes("FOR UPDATE OF cv")) {
         return [{
           id: "cv-1",
-          contractId: "contract-1"
+          contractId: "contract-1",
+          changeType: versionChangeType,
+          hasHistoricalTakeoverRelation
         }];
       }
       if (sql.includes('FROM "ContractFormalFile"')) {
@@ -131,6 +134,7 @@ describe("ContractDraftEditLeaseService", () => {
     ownerUserId = "owner-1";
     director = false;
     versionChangeType = "original";
+    hasHistoricalTakeoverRelation = false;
     formalEvidence = false;
     jest.clearAllMocks();
   });
@@ -172,6 +176,22 @@ describe("ContractDraftEditLeaseService", () => {
     await expect(
       service().heartbeat("cv-1", acquired.token)
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("blocks a relation-only takeover before creating a generic lease", async () => {
+    hasHistoricalTakeoverRelation = true;
+
+    await expect(
+      service().acquire("cv-1", "owner-1")
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractDraftEditLease.upsert).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("blocks acquire, takeover and heartbeat once hard formal evidence exists", async () => {

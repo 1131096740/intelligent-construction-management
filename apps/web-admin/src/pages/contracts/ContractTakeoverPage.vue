@@ -1814,7 +1814,7 @@
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   abandonContractTakeover,
   applyContractTakeoverBatchAbandonment,
@@ -1901,6 +1901,8 @@ import {
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
+  contractTakeoverRouteSelection,
+  createContractTakeoverSelectionRequestOwner,
   canConfirmHistoricalChangeBaseline,
   canConfirmTakeover,
   canReturnTakeoverForSupplement,
@@ -2055,6 +2057,8 @@ const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
 ];
 
 const router = useRouter();
+const route = useRoute();
+const takeoverSelectionRequestOwner = createContractTakeoverSelectionRequestOwner();
 const auth = useAuthStore();
 const roleKeys = computed(() => auth.user?.roleKeys ?? []);
 const canManageTakeovers = computed(() =>
@@ -3142,17 +3146,55 @@ onMounted(async () => {
   ]);
 });
 
-onBeforeUnmount(clearDepartmentSaveTimers);
+onBeforeUnmount(() => {
+  takeoverSelectionRequestOwner.invalidate();
+  takeoverListRequestGeneration += 1;
+  projectChangeGeneration += 1;
+  clearDepartmentSaveTimers();
+});
+
+let takeoverListRequestGeneration = 0;
+let projectChangeGeneration = 0;
 
 async function loadProjects() {
   loadingProjects.value = true;
   message.value = "";
   try {
     projects.value = await fetchProjects();
-    selectedProjectId.value = projects.value[0]?.id ?? "";
+    const requestedSelection = contractTakeoverRouteSelection(route.query);
+    const requestedProject = requestedSelection
+      ? projects.value.find((project) => project.id === requestedSelection.projectId)
+      : null;
+    if (requestedSelection && !requestedProject) {
+      takeoverSelectionRequestOwner.invalidate();
+      takeoverListRequestGeneration += 1;
+      projectChangeGeneration += 1;
+      loadingTakeovers.value = false;
+      loadingCompanyEntityCandidates.value = false;
+      selectedProjectId.value = "";
+      lastValidProjectId.value = "";
+      takeovers.value = [];
+      importBatches.value = [];
+      selectedTakeoverId.value = "";
+      resetDepartmentStates();
+      resetEvidenceDownloadForm(null);
+      setMessage("指定的历史接管项目不在当前账号可见范围内", "danger");
+      return;
+    }
+    selectedProjectId.value = requestedProject?.id ?? projects.value[0]?.id ?? "";
     lastValidProjectId.value = selectedProjectId.value;
     if (selectedProjectId.value) {
       await loadTakeovers();
+      if (requestedSelection) {
+        const requestedTakeover = takeovers.value.find(
+          (takeover) => takeover.id === requestedSelection.takeoverId
+        );
+        if (requestedTakeover) {
+          await selectTakeover(requestedTakeover);
+        } else {
+          setMessage("指定的历史接管记录不存在或当前账号无权查看", "danger");
+        }
+      }
     } else {
       setMessage("暂无可用项目", "default");
     }
@@ -3164,22 +3206,30 @@ async function loadProjects() {
 }
 
 async function changeProject() {
+  const changeGeneration = ++projectChangeGeneration;
   const nextProjectId = selectedProjectId.value;
   const previousProjectId = lastValidProjectId.value;
+  const changeCurrent = () =>
+    changeGeneration === projectChangeGeneration &&
+    selectedProjectId.value === nextProjectId;
   if (
     !(await flushEditableDepartmentSides(
       previousProjectId,
       selectedTakeoverId.value
     ))
   ) {
+    if (!changeCurrent()) return;
     selectedProjectId.value = previousProjectId;
     setMessage("部门侧自动保存未完成，已保留当前项目和本地输入", "danger");
     return;
   }
+  if (!changeCurrent()) return;
   if (!(await takeoverLeaveGuard.requestClose())) {
+    if (!changeCurrent()) return;
     selectedProjectId.value = lastValidProjectId.value;
     return;
   }
+  if (!changeCurrent()) return;
   closeCreateForm();
   taxFactDirty.value = false;
   resetDepartmentStates();
@@ -3198,9 +3248,16 @@ async function loadResponsibleUsers() {
 }
 
 async function loadTakeovers() {
+  takeoverSelectionRequestOwner.invalidate();
   invalidateChangeBaselineContext(true);
   const projectId = selectedProjectId.value;
+  const requestGeneration = ++takeoverListRequestGeneration;
+  const requestCurrent = () =>
+    requestGeneration === takeoverListRequestGeneration &&
+    selectedProjectId.value === projectId;
   if (!projectId) {
+    loadingTakeovers.value = false;
+    loadingCompanyEntityCandidates.value = false;
     takeovers.value = [];
     companyEntityCandidates.value = [];
     importBatches.value = [];
@@ -3211,58 +3268,51 @@ async function loadTakeovers() {
   }
 
   loadingTakeovers.value = true;
+  loadingCompanyEntityCandidates.value = canManageTakeovers.value;
   message.value = "";
   try {
-    const [nextTakeovers, nextImportBatches, candidateError] = await Promise.all([
+    const [nextTakeovers, nextImportBatches, candidateResult] = await Promise.all([
       listContractTakeovers(projectId),
       canManageTakeovers.value
         ? listContractTakeoverImportBatches(projectId)
         : Promise.resolve([]),
-      loadCompanyEntityCandidates()
-        .then(() => null)
-        .catch((error: unknown) => error)
+      canManageTakeovers.value
+        ? listHistoricalCompanyEntityCandidates(projectId)
+            .then((value) => ({ value, error: null as unknown }))
+            .catch((error: unknown) => ({ value: [], error }))
+        : Promise.resolve({ value: [], error: null as unknown })
     ]);
+    if (!requestCurrent()) return;
     takeovers.value = nextTakeovers;
     importBatches.value = nextImportBatches;
+    companyEntityCandidates.value = candidateResult.value;
     if (!nextTakeovers.some((takeover) => takeover.id === selectedTakeoverId.value)) {
       selectedTakeoverId.value = "";
       resetDepartmentStates();
       resetEvidenceDownloadForm(null);
     }
-    if (candidateError) {
+    if (candidateResult.error) {
       setMessage(
-        candidateError instanceof Error
-          ? `${candidateError.message}。历史接管台账已加载，但暂不能选择系统匹配主体。`
+        candidateResult.error instanceof Error
+          ? `${candidateResult.error.message}。历史接管台账已加载，但暂不能选择系统匹配主体。`
           : "历史接管台账已加载，但暂不能选择系统匹配主体，请稍后重试。",
         "danger"
       );
     }
   } catch (error) {
+    if (!requestCurrent()) return;
     takeovers.value = [];
+    companyEntityCandidates.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
     resetDepartmentStates();
     resetEvidenceDownloadForm(null);
     setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
   } finally {
-    loadingTakeovers.value = false;
-  }
-}
-
-async function loadCompanyEntityCandidates() {
-  const projectId = selectedProjectId.value;
-  if (!projectId || !canManageTakeovers.value) {
-    companyEntityCandidates.value = [];
-    return;
-  }
-  loadingCompanyEntityCandidates.value = true;
-  try {
-    companyEntityCandidates.value = await listHistoricalCompanyEntityCandidates(projectId);
-  } catch (error) {
-    companyEntityCandidates.value = [];
-    throw error;
-  } finally {
-    loadingCompanyEntityCandidates.value = false;
+    if (requestCurrent()) {
+      loadingTakeovers.value = false;
+      loadingCompanyEntityCandidates.value = false;
+    }
   }
 }
 
@@ -3664,16 +3714,26 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
     setMessage("请先选择项目", "danger");
     return;
   }
+  const selectionRequest = takeoverSelectionRequestOwner.begin(projectId, takeover.id);
+  const selectionRequestCurrent = (requireSelected = false) =>
+    takeoverSelectionRequestOwner.isCurrent(
+      selectionRequest,
+      selectedProjectId.value,
+      requireSelected ? selectedTakeoverId.value : selectionRequest.takeoverId
+    );
 
   const previousId = selectedTakeoverId.value;
   if (
     previousId !== takeover.id &&
     !(await flushEditableDepartmentSides(selectedProjectId.value, previousId))
   ) {
+    if (!selectionRequestCurrent()) return;
     setMessage("部门侧自动保存未完成，已保留当前记录和本地输入", "danger");
     return;
   }
+  if (!selectionRequestCurrent()) return;
   if (previousId !== takeover.id && !(await takeoverLeaveGuard.requestClose())) return;
+  if (!selectionRequestCurrent()) return;
   if (previousId !== takeover.id) {
     closeCreateForm();
     taxFactDirty.value = false;
@@ -3687,10 +3747,16 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   }
   try {
     const detail = await getContractTakeover(projectId, takeover.id);
+    if (!selectionRequestCurrent(true)) return;
+    if (detail.id !== selectionRequest.takeoverId) {
+      setMessage("接管详情响应与当前选择不一致，已停止应用该响应", "danger");
+      return;
+    }
     takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
     initializeDepartmentStates(detail);
     resetEvidenceDownloadForm(detail);
   } catch (error) {
+    if (!selectionRequestCurrent(true)) return;
     setMessage(error instanceof Error ? error.message : "加载接管详情失败", "danger");
   }
 }

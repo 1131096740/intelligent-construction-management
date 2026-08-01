@@ -39,13 +39,6 @@ export class ContractDraftAggregateService {
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
-    if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)) {
-      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
-    }
-    if (version.changeType === "historical_takeover") {
-      throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
-    }
-
     const legacyReadModel = await this.workbench.getDraftFromExactVersion(
       version,
       actorUserId
@@ -125,6 +118,13 @@ export class ContractDraftAggregateService {
         if (!mutationBoundary) {
           throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
         }
+        const [contract, version] = await Promise.all([
+          tx.contract.findUnique({ where: { id: mutationBoundary.contractId } }),
+          tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+        ]);
+        if (!contract || !version) {
+          throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+        }
         const receipt = await tx.contractDraftSaveRequest.findUnique({
           where: { idempotencyKey: input.idempotencyKey }
         });
@@ -147,16 +147,6 @@ export class ContractDraftAggregateService {
           WHERE "contractVersionId" = ${contractVersionId}
           FOR UPDATE
         `);
-        const [contract, version] = await Promise.all([
-          tx.contract.findUnique({ where: { id: mutationBoundary.contractId } }),
-          tx.contractVersion.findUnique({ where: { id: contractVersionId } })
-        ]);
-        if (!contract || !version) {
-          throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
-        }
-        if (version.changeType === "historical_takeover") {
-          throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
-        }
         if (mutationBoundary.formalBlockers.length > 0) {
           throw new ConflictException({
             statusCode: 409,
@@ -487,7 +477,10 @@ export class ContractDraftAggregateService {
           typeof response === "object" &&
           response !== null &&
           "code" in response &&
-          response.code === "DRAFT_VALIDATION_FAILED"
+          (
+            response.code === "DRAFT_VALIDATION_FAILED" ||
+            response.code === "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED"
+          )
         ) {
           throw error;
         }

@@ -2964,6 +2964,14 @@ export function fetchContractLedger() {
 export type ContractLifecycleLedgerRow = ContractLedgerListReadModel["rows"][number] & {
   contractId?: string;
   contractVersionId?: string;
+  projectId?: string;
+  source?: "system" | "historical_takeover";
+  changeType?: string | null;
+  historicalTakeoverFlow?: boolean;
+  takeoverId?: string | null;
+  takeoverStatus?: string | null;
+  takeoverReadable?: boolean;
+  takeoverRelationMismatch?: boolean;
   typePricing?: string;
   status?: string;
   workbenchEditable?: boolean;

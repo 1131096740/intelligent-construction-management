@@ -46,6 +46,7 @@ export class ContractDraftController {
   }
 
   @Put(":contractVersionId")
+  @RequireProjectRole("contract.create")
   saveDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string,

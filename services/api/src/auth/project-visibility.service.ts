@@ -47,10 +47,24 @@ export class ProjectVisibilityService {
   }
 
   async effectiveRoleKeys(userId: string, projectId: string): Promise<RoleKey[]> {
+    const roleKeysByProject = await this.effectiveRoleKeysByProject(userId, [projectId]);
+    return roleKeysByProject.get(projectId) ?? [];
+  }
+
+  async effectiveRoleKeysByProject(
+    userId: string,
+    rawProjectIds: string[]
+  ): Promise<Map<string, RoleKey[]>> {
+    const projectIds = Array.from(new Set(rawProjectIds.filter(Boolean)));
+    if (!projectIds.length) return new Map();
     const [globalPositions, projectPositions, projectMembers] = await Promise.all([
       this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
-      this.prisma.userPosition.findMany({ where: { userId, projectId } }),
-      this.prisma.projectMember.findMany({ where: { userId, projectId } })
+      this.prisma.userPosition.findMany({
+        where: { userId, projectId: { in: projectIds } }
+      }),
+      this.prisma.projectMember.findMany({
+        where: { userId, projectId: { in: projectIds } }
+      })
     ]);
     const positionIds = Array.from(
       new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
@@ -62,13 +76,17 @@ export class ProjectVisibilityService {
     const globalRoleKeys = globalPositions
       .map((position) => positionKeyById.get(position.positionId))
       .filter((role): role is RoleKey => Boolean(role));
-    const projectRoleKeys = [
-      ...projectPositions
-        .map((position) => positionKeyById.get(position.positionId))
-        .filter((role): role is RoleKey => Boolean(role)),
-      ...projectMembers.map((member) => member.positionKey as RoleKey)
-    ];
-
-    return resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys);
+    return new Map(projectIds.map((projectId) => {
+      const projectRoleKeys = [
+        ...projectPositions
+          .filter((position) => position.projectId === projectId)
+          .map((position) => positionKeyById.get(position.positionId))
+          .filter((role): role is RoleKey => Boolean(role)),
+        ...projectMembers
+          .filter((member) => member.projectId === projectId)
+          .map((member) => member.positionKey as RoleKey)
+      ];
+      return [projectId, resolveEffectiveRoleKeys(globalRoleKeys, projectRoleKeys)];
+    }));
   }
 }

@@ -349,6 +349,52 @@ describe("ContractDocumentService", () => {
     expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
 
+  it("blocks relation-only takeover before queueing a generic preview", async () => {
+    const tx = makeTx();
+    tx.$queryRaw.mockImplementation(
+      async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            changeType: "original",
+            hasHistoricalTakeoverRelation: true
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1" }];
+        }
+        if (sql.includes('AS "hasSignedFormalFile"')) {
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
+        }
+        return [];
+      }
+    );
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 7
+      })
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects draft preview generation after downstream business makes the draft formal", async () => {
     const tx = makeTx();
     tx.$queryRaw.mockImplementation(async (query: { strings?: readonly string[] }) => {

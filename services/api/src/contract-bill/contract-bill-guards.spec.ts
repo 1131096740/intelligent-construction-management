@@ -27,7 +27,10 @@ describe("loadOwnedEditableBill", () => {
     hasPaymentRequest: false
   };
 
-  function expectDraftBoundaryLockOrder(query: jest.Mock) {
+  function expectDraftBoundaryLockOrder(
+    query: jest.Mock,
+    expectFormalEvidenceQuery = true
+  ) {
     const statements = query.mock.calls
       .slice(0, 3)
       .map(([sql]) => (sql?.strings as string[] | undefined)?.join(" ") ?? "");
@@ -35,7 +38,9 @@ describe("loadOwnedEditableBill", () => {
     expect(statements[0]).toContain("FOR UPDATE OF c");
     expect(statements[1]).toContain('FROM "ContractVersion" cv');
     expect(statements[1]).toContain("FOR UPDATE OF cv");
-    expect(statements[2]).toContain('FROM "ContractFormalFile"');
+    if (expectFormalEvidenceQuery) {
+      expect(statements[2]).toContain('FROM "ContractFormalFile"');
+    }
   }
 
   it.each([
@@ -147,9 +152,47 @@ describe("loadOwnedEditableBill", () => {
           ? "历史接管工作台"
           : "正式业务事实"
       );
-      expectDraftBoundaryLockOrder(tx.$queryRaw);
+      expectDraftBoundaryLockOrder(
+        tx.$queryRaw,
+        _case !== "historical takeover"
+      );
     }
   );
+
+  it("blocks a relation-only historical takeover before loading mutable bill state", async () => {
+    const tx = {
+      contractBill: {
+        findUnique: jest.fn().mockResolvedValue(validBill)
+      },
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            ...validVersion,
+            hasHistoricalTakeoverRelation: true
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1" }];
+        }
+        return [{ ...noFormalEvidence }];
+      }),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue(validContract)
+      }
+    };
+
+    await expect(
+      loadOwnedEditableBill(tx as never, "bill-1", "owner-1")
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contract.findUnique).not.toHaveBeenCalled();
+  });
 });
 
 describe("contract bill row tax normalization", () => {

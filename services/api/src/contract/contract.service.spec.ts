@@ -39,7 +39,8 @@ describe("ContractService", () => {
       draftData: { fieldValues: { projectName: "示例项目" } },
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
-      updatedAt
+      updatedAt,
+      hasHistoricalTakeoverRelation: false
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([sourceVersion]),
@@ -95,6 +96,64 @@ describe("ContractService", () => {
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
       action: "contract.draft.copy"
     }));
+  });
+
+  it("blocks copying an abandoned relation-only takeover before creating a contract", async () => {
+    const updatedAt = new Date("2026-08-01T02:00:00.000Z");
+    const sourceVersion = {
+      id: "source-version",
+      contractId: "source-contract",
+      versionNo: 1,
+      changeType: "original",
+      status: "abandoned",
+      updatedAt,
+      hasHistoricalTakeoverRelation: true
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([sourceVersion]),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "source-contract",
+          projectId: "project-1",
+          source: "system",
+          name: "关系漂移的历史接管合同",
+          ownerUserId: "owner-1"
+        }),
+        create: jest.fn().mockResolvedValue({ id: "new-contract", projectId: "project-1" })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(sourceVersion),
+        create: jest.fn().mockResolvedValue({ id: "new-version", amountCents: 0n })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const copyAudit = { record: jest.fn() };
+    const service = new ContractService(prisma as never, copyAudit as never);
+
+    await expect(service.copyAbandonedDraft(
+      "source-version",
+      "owner-1",
+      { expectedUpdatedAt: updatedAt.toISOString() }
+    )).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+
+    expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
+    expect(tx.project.findUnique).not.toHaveBeenCalled();
+    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.create).not.toHaveBeenCalled();
+    expect(copyAudit.record).not.toHaveBeenCalled();
   });
 
   const audit = {
@@ -257,6 +316,61 @@ describe("ContractService", () => {
     expect(tx.contract.findUnique).not.toHaveBeenCalled();
   });
 
+  it("blocks an exact takeover relation before replaying an existing submission receipt", async () => {
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      status: "in_approval",
+      changeType: "original",
+      draftRevision: 8
+    };
+    const takeoverRelation = {
+      id: "takeover-1",
+      contractId: "contract-1",
+      projectId: "project-1"
+    };
+    const tx = {
+      $queryRaw: submitQueryLocks(version, { takeoverRelation }),
+      contractDraftSubmissionRequest: {
+        findUnique: jest.fn().mockResolvedValue({
+          contractVersionId: "version-1",
+          expectedRevision: 8,
+          applicantUserId: "owner-1",
+          requestSha256: createHash("sha256")
+            .update(JSON.stringify({
+              applicantUserId: "owner-1",
+              contractVersionId: "version-1",
+              expectedRevision: 8
+            }))
+            .digest("hex"),
+          responseSnapshot: { approvalInstanceId: "approval-1" }
+        })
+      }
+    };
+    const service = new ContractService({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never, audit as never);
+
+    const failure = await service.submitApproval(
+      "version-1",
+      "owner-1",
+      {
+        expectedRevision: 8,
+        idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125"
+      },
+      "expired-or-lost-token"
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(BadRequestException);
+    const response = (failure as BadRequestException).getResponse();
+    expect(response).toEqual(expect.objectContaining({
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      projectId: null,
+      takeoverId: null
+    }));
+    expect(tx.contractDraftSubmissionRequest.findUnique).not.toHaveBeenCalled();
+  });
+
   it("blocks approval submission until a contract director confirms the settlement mode", async () => {
     const version = {
       id: "version-1",
@@ -408,7 +522,10 @@ describe("ContractService", () => {
 
   function submitQueryLocks(
     version: Record<string, unknown>,
-    options: { projectActive?: boolean } = {}
+    options: {
+      projectActive?: boolean;
+      takeoverRelation?: { id: string; contractId: string; projectId: string } | null;
+    } = {}
   ): jest.Mock {
     return jest.fn(async (query: { strings?: string[] }) => {
       const sql = query.strings?.join(" ") ?? "";
@@ -424,7 +541,12 @@ describe("ContractService", () => {
           hasPaymentRequest: Boolean(version["hasPaymentRequest"])
         }];
       }
-      if (sql.includes('FROM "ContractVersion"')) return [version];
+      if (sql.includes('FROM "ContractVersion"')) {
+        return [{
+          ...version,
+          hasHistoricalTakeoverRelation: Boolean(options.takeoverRelation)
+        }];
+      }
       if (sql.includes('FROM "Project"')) {
         return [{ id: "project-1", isActive: options.projectActive ?? true }];
       }
@@ -479,7 +601,8 @@ describe("ContractService", () => {
             abandonedAt: null,
             abandonedByUserId: null,
             abandonReason: null,
-            ownerUserId: "owner-1"
+            ownerUserId: "owner-1",
+            hasHistoricalTakeoverRelation: false
           }];
         }
         if (sql.includes('FROM "Contract" c')) {
@@ -1943,8 +2066,14 @@ describe("ContractService", () => {
         })
       })
     });
-    expect(authorizations.freeze).toHaveBeenCalledWith(tx, version);
-    expect(formalFiles.freeze).toHaveBeenCalledWith(tx, version);
+    expect(authorizations.freeze).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining(version)
+    );
+    expect(formalFiles.freeze).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining(version)
+    );
     expect(formalFiles.freeze.mock.invocationCallOrder[0])
       .toBeLessThan(authorizations.freeze.mock.invocationCallOrder[0]);
   });
@@ -6034,7 +6163,8 @@ describe("ContractService", () => {
         abandonedAt: null,
         abandonedByUserId: null,
         abandonReason: null,
-        ownerUserId: "owner-1"
+        ownerUserId: "owner-1",
+        hasHistoricalTakeoverRelation: false
       }]),
       approvalInstance: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -6358,6 +6488,73 @@ describe("ContractService", () => {
       }
     )).rejects.toThrow("历史接管工作台");
 
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("checks abandonment authorization before the exact takeover relation gate", async () => {
+    const tx = abandonDraftTx({
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: "contract-version-1",
+        contractId: "contract-1",
+        versionNo: 1,
+        changeType: "original",
+        status: "draft",
+        draftRevision: 3,
+        firstSubmittedAt: null,
+        abandonedAt: null,
+        abandonedByUserId: null,
+        abandonReason: null,
+        ownerUserId: "owner-1",
+        hasHistoricalTakeoverRelation: true
+      }])
+    });
+    const service = new ContractService({
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as never, audit as never);
+
+    await expect(service.abandonDraft("contract-version-1", "intruder-1", {
+      expectedRevision: 3,
+      action: "abandon_application",
+      reason: "不再继续"
+    })).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks a relation-only takeover before terminal abandonment replay with null coordinates", async () => {
+    const tx = abandonDraftTx({
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: "contract-version-1",
+        contractId: "contract-1",
+        versionNo: 1,
+        changeType: "original",
+        status: "abandoned",
+        draftRevision: 4,
+        firstSubmittedAt: null,
+        abandonedAt: new Date("2026-08-01T01:00:00.000Z"),
+        abandonedByUserId: "owner-1",
+        abandonReason: null,
+        ownerUserId: "owner-1",
+        hasHistoricalTakeoverRelation: true
+      }])
+    });
+    const service = new ContractService({
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as never, audit as never);
+
+    const failure = await service.abandonDraft("contract-version-1", "owner-1", {
+      expectedRevision: 4,
+      action: "delete_pristine_draft"
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(BadRequestException);
+    const response = (failure as BadRequestException).getResponse();
+    expect(response).toEqual(expect.objectContaining({
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      projectId: null,
+      takeoverId: null
+    }));
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });

@@ -296,6 +296,44 @@ describe("contract draft lifecycle fact loading", () => {
 });
 
 describe("contract draft mutation boundary", () => {
+  it("rejects an exact historical takeover relation even when the version marker drifted", async () => {
+    const client = {
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            changeType: "original",
+            hasHistoricalTakeoverRelation: true
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1" }];
+        }
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      })
+    };
+
+    await expect(
+      lockContractDraftMutationBoundary(client as never, "version-1")
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
   it("locks parent then version and returns every hard formal blocker", async () => {
     const queries: string[] = [];
     const client = {
@@ -345,6 +383,10 @@ describe("contract draft mutation boundary", () => {
     });
     expect(queries[0]).toContain("FOR UPDATE OF c");
     expect(queries[1]).toContain("FOR UPDATE OF cv");
+    expect(queries[1]).toContain('FROM "ContractTakeover" takeover');
+    expect(queries[1]).toContain(
+      'takeover."contractVersionId" = cv."id"'
+    );
     expect(queries[1]).not.toContain('"ContractFormalFile"');
     expect(queries[2]).toContain(`f."purpose" = 'mutually_signed_final'`);
     expect(queries[2]).not.toMatch(/ContractFormalFile[^]*f\."status"/u);

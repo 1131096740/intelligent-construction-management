@@ -28,7 +28,8 @@ describe("BusinessPartyService", () => {
       | "hasSettlement"
       | "hasPaymentRequest",
       boolean
-    >> = {}
+    >> = {},
+    hasHistoricalTakeoverRelation = false
   ) {
     return jest.fn().mockImplementation(async (query: { strings?: string[] }) => {
       const sql = query.strings?.join(" ") ?? "";
@@ -38,7 +39,8 @@ describe("BusinessPartyService", () => {
       if (sql.includes("FOR UPDATE OF cv")) {
         return [{
           id: "contract-version-1",
-          contractId: "contract-1"
+          contractId: "contract-1",
+          hasHistoricalTakeoverRelation
         }];
       }
       return [{
@@ -89,10 +91,14 @@ describe("BusinessPartyService", () => {
 
   function guardedContractPartyTx(
     changeType: string,
-    hardFormal: Parameters<typeof contractPartyBoundaryQuery>[0] = {}
+    hardFormal: Parameters<typeof contractPartyBoundaryQuery>[0] = {},
+    hasHistoricalTakeoverRelation = false
   ) {
     return {
-      $queryRaw: contractPartyBoundaryQuery(hardFormal),
+      $queryRaw: contractPartyBoundaryQuery(
+        hardFormal,
+        hasHistoricalTakeoverRelation
+      ),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -311,6 +317,31 @@ describe("BusinessPartyService", () => {
       await expect(mutateContractParty(service, action)).rejects.toThrow(
         "历史接管草稿必须在历史接管工作台办理"
       );
+
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.update).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["add", "updateRole", "remove"] as const)(
+    "blocks relation-only takeover before contract party %s writes",
+    async (action) => {
+      const tx = guardedContractPartyTx("original", {}, true);
+      const service = new BusinessPartyService(
+        prismaWithTransaction(tx),
+        audit as never
+      );
+
+      await expect(mutateContractParty(service, action)).rejects.toMatchObject({
+        response: {
+          code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+          projectId: null,
+          takeoverId: null
+        }
+      });
 
       expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
       expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();

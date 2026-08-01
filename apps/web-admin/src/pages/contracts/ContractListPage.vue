@@ -187,9 +187,19 @@
           <template #operation="{ row }">
             <t-link
               theme="primary"
-              @click="row.copyAvailable ? copyEndedContract(row) : row.workbenchEditable ? openLifecycleRow(row) : openDetail(row.id)"
+              @click="row.copyAvailable
+                ? copyEndedContract(row)
+                : isHistoricalTakeoverLedgerRow(row)
+                  ? openHistoricalTakeoverRow(row)
+                  : row.workbenchEditable
+                    ? openLifecycleRow(row)
+                    : openDetail(row.id)"
             >
-              {{ row.copyAvailable ? (copyingId === row.contractVersionId ? '复制中' : '复制为新草稿') : row.workbenchEditable ? '继续办理' : '查看详情' }}
+              {{ row.copyAvailable
+                ? (copyingId === row.contractVersionId ? '复制中' : '复制为新草稿')
+                : isHistoricalTakeoverLedgerRow(row)
+                  ? historicalTakeoverLedgerOperationLabel(row)
+                  : row.workbenchEditable ? '继续办理' : '查看详情' }}
             </t-link>
           </template>
         </t-table>
@@ -271,9 +281,13 @@
           <t-space size="small">
             <t-link
               theme="primary"
-              @click="openLifecycleRow(row)"
+              @click="isHistoricalTakeoverLedgerRow(row)
+                ? openHistoricalTakeoverRow(row)
+                : openLifecycleRow(row)"
             >
-              {{ canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台" }}
+              {{ isHistoricalTakeoverLedgerRow(row)
+                ? historicalTakeoverLedgerOperationLabel(row)
+                : canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台" }}
             </t-link>
           </t-space>
         </template>
@@ -333,6 +347,9 @@ import {
   contractLedgerColumns,
   contractLedgerFilterOptions,
   contractWorkbenchRouteContractId,
+  historicalTakeoverOperationLabel,
+  historicalTakeoverRouteForContractLedgerRow,
+  isHistoricalTakeoverLedgerRow,
   contractPaginationBlockReason,
   contractSummaryItems,
   emptyContractLedgerFilters,
@@ -516,6 +533,35 @@ function openLifecycleRow(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
     path: `/contracts/${contractWorkbenchRouteContractId(row)}/workbench`,
     query: row.contractVersionId ? { versionId: row.contractVersionId } : undefined
   });
+}
+
+function historicalTakeoverLedgerOperationLabel(
+  row: ContractLedgerRow & ContractLifecycleLedgerRow
+) {
+  return canReadTakeovers.value && row.takeoverReadable !== false
+    ? historicalTakeoverOperationLabel(row)
+    : "查看详情";
+}
+
+async function openHistoricalTakeoverRow(
+  row: ContractLedgerRow & ContractLifecycleLedgerRow
+) {
+  if (
+    !canReadTakeovers.value ||
+    row.takeoverReadable === false ||
+    row.takeoverStatus === "abandoned"
+  ) {
+    openDetail(row.id);
+    return;
+  }
+  const target = historicalTakeoverRouteForContractLedgerRow(row);
+  if (!target) {
+    await MessagePlugin.error(
+      "历史接管关联未完整读取，已停止进入普通合同工作台，请刷新后重试或联系管理员。"
+    );
+    return;
+  }
+  await router.push(target);
 }
 
 function canDeleteDraftFromLedger(row: ContractLedgerRow & ContractLifecycleLedgerRow) {

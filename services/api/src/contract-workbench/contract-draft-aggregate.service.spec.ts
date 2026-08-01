@@ -30,6 +30,7 @@ describe("ContractDraftAggregateService", () => {
 
   function makeService(overrides: {
     foundVersion?: typeof version | null;
+    foundTakeover?: { id: string; projectId: string } | null;
     readError?: Error;
     lease?: {
       holderUserId: string;
@@ -42,6 +43,19 @@ describe("ContractDraftAggregateService", () => {
         findUnique: jest.fn().mockResolvedValue(
           overrides.foundVersion === undefined ? version : overrides.foundVersion
         )
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(
+          overrides.foundTakeover === undefined
+            ? null
+            : overrides.foundTakeover
+        )
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
       },
       contractDraftAttachment: {
         findMany: jest.fn().mockResolvedValue([])
@@ -91,6 +105,7 @@ describe("ContractDraftAggregateService", () => {
       where: { id: "cv-1" }
     });
     expect(workbench.getDraftFromExactVersion).toHaveBeenCalledWith(version, "actor-1");
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
     expect(result.version.id).toBe("cv-1");
     expect(result.draft).toEqual(version.draftData);
     expect(result).not.toHaveProperty("checkpoints");
@@ -107,30 +122,103 @@ describe("ContractDraftAggregateService", () => {
       makeService({ foundVersion: null }).service.getWorkbench("missing", "actor-1")
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
-      makeService({ foundVersion: { ...version, status: "effective" } }).service.getWorkbench(
-        "cv-1",
-        "actor-1"
-      )
+      makeService({
+        foundVersion: { ...version, status: "effective" },
+        readError: new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试")
+      }).service.getWorkbench("cv-1", "actor-1")
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("rejects a historical takeover version before opening the generic workbench", async () => {
-    const { workbench, service } = makeService({
-      foundVersion: { ...version, changeType: "historical_takeover" }
+    const legacyError = new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: "project-1",
+      takeoverId: "takeover-1"
+    });
+    const { prisma, workbench, service } = makeService({
+      foundVersion: { ...version, changeType: "historical_takeover" },
+      foundTakeover: { id: "takeover-1", projectId: "project-1" },
+      readError: legacyError
     });
 
     await expect(
       service.getWorkbench("cv-1", "actor-1")
-    ).rejects.toThrow("历史接管工作台");
-    expect(workbench.getDraftFromExactVersion).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        message: "历史接管草稿必须在历史接管工作台办理",
+        projectId: "project-1",
+        takeoverId: "takeover-1"
+      }
+    });
+    expect(workbench.getDraftFromExactVersion).toHaveBeenCalledWith(
+      { ...version, changeType: "historical_takeover" },
+      "actor-1"
+    );
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without inventing a historical takeover return target", async () => {
+    const legacyError = new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: "project-1",
+      takeoverId: null
+    });
+    const { prisma, service, workbench } = makeService({
+      foundVersion: { ...version, changeType: "historical_takeover" },
+      foundTakeover: null,
+      readError: legacyError
+    });
+
+    await expect(service.getWorkbench("cv-1", "actor-1")).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: "project-1",
+        takeoverId: null
+      }
+    });
+    expect(workbench.getDraftFromExactVersion).toHaveBeenCalledTimes(1);
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects a relation-drift takeover before ordinary status validation", async () => {
+    const legacyError = new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: null,
+      takeoverId: null
+    });
+    const { prisma, service, workbench } = makeService({
+      foundVersion: { ...version, status: "effective", changeType: "original" },
+      foundTakeover: { id: "takeover-drift", projectId: "project-2" },
+      readError: legacyError
+    });
+
+    await expect(service.getWorkbench("cv-1", "actor-1")).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(workbench.getDraftFromExactVersion).toHaveBeenCalledTimes(1);
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
   });
 
   it("preserves the workbench permission failure", async () => {
-    await expect(
-      makeService({
+    const { prisma, service } = makeService({
         readError: new ForbiddenException("无权查看该合同草稿")
-      }).service.getWorkbench("cv-1", "actor-2")
-    ).rejects.toBeInstanceOf(ForbiddenException);
+      });
+    await expect(service.getWorkbench("cv-1", "actor-2"))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
   });
 
   it("exposes an active lease as readonly and allows explicit director takeover", async () => {
@@ -208,6 +296,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     versionRevision?: number;
     versionStatus?: string;
     versionChangeType?: string;
+    foundTakeover?: { id: string; projectId: string } | null;
     fieldChanged?: boolean;
     referencesChanged?: boolean;
     formalEvidence?: Partial<{
@@ -262,10 +351,14 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     };
     const contract = {
       id: "contract-1",
+      projectId: "project-1",
       ownerUserId: "owner-1",
       voidedAt: null,
       contractTypeKey: "material_purchase",
       code: null
+    };
+    const takeoverRelationState = {
+      present: Boolean(options.foundTakeover)
     };
     const tx = {
       $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
@@ -283,7 +376,9 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         if (sql.includes("FOR UPDATE OF cv")) {
           return [{
             id: "cv-1",
-            contractId: "contract-1"
+            contractId: "contract-1",
+            changeType: version.changeType,
+            hasHistoricalTakeoverRelation: takeoverRelationState.present
           }];
         }
         if (sql.includes("FOR UPDATE OF c")) {
@@ -373,6 +468,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
     return {
       tx,
+      takeoverRelationState,
       prisma,
       workbench,
       audit,
@@ -429,9 +525,36 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         leaseToken,
         aggregateInput() as never
       )
-    ).rejects.toThrow("历史接管工作台");
-    expect(tx.contractDraftSaveRequest.findUnique).toHaveBeenCalledTimes(1);
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractDraftSaveRequest.findUnique).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks relation drift before replaying an older idempotency receipt", async () => {
+    const { service, tx, takeoverRelationState } = makeSaveService();
+    const input = aggregateInput();
+
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    takeoverRelationState.present = true;
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractDraftSaveRequest.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it.each([

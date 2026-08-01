@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 
@@ -207,7 +208,11 @@ describe("ContractWorkbenchService", () => {
     });
   }
 
-  function contractDraftBoundaryQuery(hardFormal = false) {
+  function contractDraftBoundaryQuery(
+    hardFormal = false,
+    changeType = "original",
+    hasHistoricalTakeoverRelation = false
+  ) {
     let callIndex = 0;
     return jest.fn().mockImplementation(async () => {
       callIndex += 1;
@@ -219,7 +224,9 @@ describe("ContractWorkbenchService", () => {
         return [{
           id: "version-1",
           contractId: "contract-1",
-          status: "draft"
+          status: "draft",
+          changeType,
+          hasHistoricalTakeoverRelation
         }];
       }
       return [{
@@ -1660,6 +1667,375 @@ describe("ContractWorkbenchService", () => {
     expect(voided).toEqual(voidedRows);
   });
 
+  it("excludes marker and relation-drift takeovers from the legacy draft list", async () => {
+    const contracts = [
+      { id: "contract-system", voidedAt: null },
+      { id: "contract-marker", voidedAt: null },
+      { id: "contract-relation", voidedAt: null }
+    ];
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockImplementation(({ where }) => Promise.resolve(
+          contracts.filter((contract) => where.id.in.includes(contract.id))
+        ))
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "version-system", contractId: "contract-system", changeType: "original" },
+          {
+            id: "version-marker",
+            contractId: "contract-marker",
+            changeType: "historical_takeover"
+          },
+          { id: "version-relation", contractId: "contract-relation", changeType: "original" }
+        ])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          { contractVersionId: "version-relation" }
+        ])
+      },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    await expect(service.listDrafts("owner-1", "my")).resolves.toEqual([
+      contracts[0]
+    ]);
+    expect(prisma.contract.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["contract-system"] } })
+    }));
+  });
+
+  it("rejects an exact relation before a legacy GET status error", async () => {
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          contractId: "contract-1",
+          projectId: "project-1"
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    await expect(service.getDraftFromExactVersion({
+      id: "version-1",
+      contractId: "contract-1",
+      status: "effective",
+      changeType: "original"
+    } as never, "owner-1")).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: "project-1",
+        takeoverId: "takeover-1"
+      }
+    });
+    expect(prisma.contractTakeover.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.contractTakeover.findUnique).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1" },
+      select: { id: true, contractId: true, projectId: true }
+    });
+  });
+
+  it.each([
+    ["contract", { contractId: "contract-other", projectId: "project-1" }],
+    ["project", { contractId: "contract-1", projectId: "project-other" }]
+  ] as const)(
+    "does not disclose takeover coordinates when the legacy GET relation drifts by %s",
+    async (_coordinate, drift) => {
+      const prisma = {
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "contract-1",
+            projectId: "project-1",
+            ownerUserId: "owner-1",
+            voidedAt: null
+          })
+        },
+        contractTakeover: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "takeover-drift",
+            ...drift
+          })
+        }
+      } as unknown as PrismaService;
+      const service = new ContractWorkbenchService(prisma, audit as never);
+
+      await expect(service.getDraftFromExactVersion({
+        id: "version-1",
+        contractId: "contract-1",
+        status: "draft",
+        changeType: "historical_takeover"
+      } as never, "owner-1")).rejects.toMatchObject({
+        response: {
+          code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+          projectId: null,
+          takeoverId: null
+        }
+      });
+    }
+  );
+
+  it("checks legacy GET view authorization before looking up takeover coordinates", async () => {
+    const relation = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "takeover-1",
+        contractId: "contract-1",
+        projectId: "project-1"
+      })
+    };
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractTakeover: relation,
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    await expect(service.getDraftFromExactVersion({
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      changeType: "historical_takeover"
+    } as never, "other-user")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(relation.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns the authorized contract project without inventing a marker-only takeover id", async () => {
+    const prisma = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    await expect(service.getDraftFromExactVersion({
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      changeType: "historical_takeover"
+    } as never, "owner-1")).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: "project-1",
+        takeoverId: null
+      }
+    });
+  });
+
+  it("keeps a later ordinary change of a historical-source contract in the generic workbench", async () => {
+    const version = {
+      id: "version-change",
+      contractId: "contract-1",
+      versionNo: 2,
+      changeType: "change",
+      status: "draft",
+      draftRevision: 3,
+      firstSubmittedAt: null,
+      contractGovernanceVersion: 0,
+      amountCents: 0n,
+      amountLimitType: "capped",
+      draftData: {},
+      templateSnapshot: TEMPLATE_SNAPSHOT,
+      clauseSnapshot: []
+    };
+    const relation = { findUnique: jest.fn().mockResolvedValue(null) };
+    const prisma = withEmptyDraftLifecycleModels({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          source: "historical_takeover",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractTakeover: relation,
+      contractBill: { findMany: jest.fn().mockResolvedValue([]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
+    }) as unknown as PrismaService;
+    const service = new ContractWorkbenchService(prisma, audit as never);
+
+    await expect(service.getDraftFromExactVersion(version as never, "owner-1"))
+      .resolves.toEqual(expect.objectContaining({
+        version: expect.objectContaining({
+          id: "version-change",
+          changeType: "change"
+        })
+      }));
+    expect(relation.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks preview ownership before looking up a historical relation", async () => {
+    const relation = { findUnique: jest.fn() };
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "historical_takeover"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractTakeover: relation
+    };
+
+    await expect(
+      makeService(tx).previewTypeChange("version-1", "other-user", {
+        expectedRevision: 4,
+        targetBusinessTemplateVersionId: "template-version-2"
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(relation.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("blocks relation drift through both preview and locked legacy mutation loaders", async () => {
+    const relation = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "takeover-1",
+        projectId: "project-1"
+      })
+    };
+    const previewTx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "original"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractTakeover: relation
+    };
+    await expect(
+      makeService(previewTx).previewTypeChange("version-1", "owner-1", {
+        expectedRevision: 4,
+        targetBusinessTemplateVersionId: "template-version-2"
+      })
+    ).rejects.toMatchObject({
+      response: { code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED" }
+    });
+
+    const lockedTx = ownedVersionTx({
+      $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            changeType: "original",
+            hasHistoricalTakeoverRelation: true
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", contractId: "contract-1" }];
+        }
+        return [];
+      })
+    });
+    await expect(
+      makeService(lockedTx).saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: { project_name: "新名称" },
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
+      })
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(lockedTx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(relation.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks legacy readiness before delegating when an exact takeover relation exists", async () => {
+    const readiness = { checkAndStore: jest.fn() };
+    const prisma = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          changeType: "original"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1"
+        })
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "takeover-1",
+          contractId: "contract-1",
+          projectId: "project-1"
+        })
+      }
+    } as unknown as PrismaService;
+    const service = new ContractWorkbenchService(
+      prisma,
+      audit as never,
+      readiness as never
+    );
+
+    await expect(service.checkReadiness("version-1", "owner-1")).rejects.toMatchObject({
+      response: { code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED" }
+    });
+    expect(readiness.checkAndStore).not.toHaveBeenCalled();
+  });
+
   it("allows a contract director to view another owner's draft", async () => {
     const prisma = withEmptyDraftLifecycleModels({
       contract: {
@@ -2892,7 +3268,7 @@ describe("ContractWorkbenchService", () => {
     "routes contract-level %s for a historical takeover draft to its dedicated workbench",
     async (_name, mutate) => {
       const tx = {
-        $queryRaw: contractDraftBoundaryQuery(),
+        $queryRaw: contractDraftBoundaryQuery(false, "historical_takeover"),
         contractVersion: editableContractVersionModel("historical_takeover"),
         contract: {
           findUnique: jest.fn(),

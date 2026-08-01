@@ -77,6 +77,7 @@ import {
   type ContractOwnerRisk
 } from "./contract-owner-risk";
 import {
+  assertGenericContractDraftVersion,
   loadContractDraftLifecycle,
   lockContractDraftMutationBoundary
 } from "./contract-draft-lifecycle";
@@ -437,17 +438,29 @@ export class ContractService {
         changeType: string;
         versionNo: number;
         updatedAt: Date;
+        hasHistoricalTakeoverRelation: boolean;
       }>>(Prisma.sql`
-        SELECT "id", "contractId", "status", "changeType", "versionNo", "updatedAt"
-        FROM "ContractVersion"
-        WHERE "id" = ${sourceVersionId}
-        FOR UPDATE
+        SELECT
+          cv."id", cv."contractId", cv."status", cv."changeType",
+          cv."versionNo", cv."updatedAt",
+          EXISTS (
+            SELECT 1
+            FROM "ContractTakeover" takeover
+            WHERE takeover."contractVersionId" = cv."id"
+          ) AS "hasHistoricalTakeoverRelation"
+        FROM "ContractVersion" cv
+        WHERE cv."id" = ${sourceVersionId}
+        FOR UPDATE OF cv
       `);
       if (!locked) throw new NotFoundException("未找到来源合同草稿");
       const sourceContract = await tx.contract.findUnique({ where: { id: locked.contractId } });
       if (!sourceContract || sourceContract.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只能复制本人已放弃的合同草稿");
       }
+      assertGenericContractDraftVersion({
+        changeType: locked.changeType,
+        hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
+      });
       if (locked.status !== "abandoned") {
         throw new ConflictException("只有已放弃的合同草稿可以复制为新草稿");
       }
@@ -984,12 +997,18 @@ export class ContractService {
           abandonedByUserId: string | null;
           abandonReason: string | null;
           ownerUserId: string | null;
+          hasHistoricalTakeoverRelation: boolean;
         }>>(Prisma.sql`
           SELECT
             v."id", v."contractId", v."versionNo", v."changeType", v."status",
             v."draftRevision", v."firstSubmittedAt", v."abandonedAt",
             v."abandonedByUserId", v."abandonReason",
-            c."ownerUserId"
+            c."ownerUserId",
+            EXISTS (
+              SELECT 1
+              FROM "ContractTakeover" takeover
+              WHERE takeover."contractVersionId" = v."id"
+            ) AS "hasHistoricalTakeoverRelation"
           FROM "Contract" c
           JOIN "ContractVersion" v ON v."contractId" = c."id"
           WHERE v."id" = ${contractVersionId}
@@ -1031,6 +1050,10 @@ export class ContractService {
           await this.auth.confirmPassword(actorUserId, currentPassword);
           proxyCleanup = true;
         }
+        assertGenericContractDraftVersion({
+          changeType: locked.changeType,
+          hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
+        });
         if (locked.abandonedAt || locked.status === "abandoned") {
           const terminalAction = locked.abandonReason
             ? "abandon_application"
@@ -1772,11 +1795,6 @@ export class ContractService {
             }
             return receipt.responseSnapshot;
           }
-        }
-        if (version.changeType === "historical_takeover") {
-          throw new BadRequestException(
-            "历史接管草稿必须在历史接管工作台办理"
-          );
         }
         if (mutationBoundary.formalBlockers.length > 0) {
           throw new ConflictException({

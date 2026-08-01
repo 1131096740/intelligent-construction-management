@@ -140,10 +140,15 @@ export class ContractWorkbenchService {
     private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
-  checkReadiness(contractVersionId: string, actorUserId: string) {
+  async checkReadiness(contractVersionId: string, actorUserId: string) {
     if (!this.readiness) {
       throw new BadRequestException("合同资料检查服务暂不可用，请稍后重试或联系管理员");
     }
+    await this.assertNotHistoricalTakeoverVersionId(
+      this.prisma,
+      contractVersionId,
+      actorUserId
+    );
     return this.readiness.checkAndStore(contractVersionId, actorUserId);
   }
 
@@ -154,11 +159,28 @@ export class ContractWorkbenchService {
     const isDirector = await this.hasGlobalContractDirector(this.prisma, actorUserId);
     const versions = await this.prisma.contractVersion.findMany({
       where: { status: { in: [...EDITABLE_STATUSES] } },
-      select: { contractId: true }
+      select: { id: true, contractId: true, changeType: true }
     });
+    const versionIds = versions.map((version) => version.id);
+    const lookupClient = this.historicalTakeoverLookupClient(this.prisma);
+    const takeoverRows = lookupClient.contractTakeover && versionIds.length
+      ? await lookupClient.contractTakeover.findMany({
+          where: { contractVersionId: { in: versionIds } },
+          select: { contractVersionId: true }
+        })
+      : [];
+    const takeoverVersionIds = new Set(
+      takeoverRows.map((takeover) => takeover.contractVersionId)
+    );
+    const ordinaryVersions = versions.filter((version) =>
+      version.changeType !== "historical_takeover" &&
+      !takeoverVersionIds.has(version.id)
+    );
     return this.toReadModel(await this.prisma.contract.findMany({
       where: {
-        id: { in: [...new Set(versions.map((version) => version.contractId))] },
+        id: {
+          in: [...new Set(ordinaryVersions.map((version) => version.contractId))]
+        },
         voidedAt: scope === "voided" ? { not: null } : null,
         ...(isDirector ? {} : { ownerUserId: actorUserId })
       },
@@ -171,9 +193,6 @@ export class ContractWorkbenchService {
   }
 
   async getDraftFromExactVersion(version: ContractVersion, actorUserId: string) {
-    if (!EDITABLE_STATUSES.has(version.status)) {
-      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
-    }
     return this.loadDraft(version.contractId, actorUserId, version);
   }
 
@@ -194,14 +213,17 @@ export class ContractWorkbenchService {
       orderBy: { versionNo: "desc" }
     });
     if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
+    await this.assertNotHistoricalTakeoverVersion(
+      this.prisma,
+      version,
+      contract
+    );
+    if (!EDITABLE_STATUSES.has(version.status)) {
+      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
+    }
     const lifecycle = await loadContractDraftLifecycle(this.prisma, version);
     const lifecycleAction = lifecycle.expectedAction;
     if (!lifecycleAction) {
-      if (version.changeType === "historical_takeover") {
-        throw new BadRequestException(
-          "历史接管草稿必须在历史接管工作台办理"
-        );
-      }
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
 
@@ -1517,6 +1539,11 @@ export class ContractWorkbenchService {
     if (contract.ownerUserId !== actorUserId) {
       throw new ForbiddenException("只有合同经办人可以编辑该草稿");
     }
+    await this.assertNotHistoricalTakeoverVersion(
+      tx,
+      version,
+      contract
+    );
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException("合同草稿当前不可编辑，请刷新后查看最新状态");
     }
@@ -1561,26 +1588,114 @@ export class ContractWorkbenchService {
     if (!mutationBoundary) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
-    if (mutationBoundary.formalBlockers.length > 0) {
-      throw new BadRequestException(
-        "合同已存在正式业务事实，不能继续编辑草稿"
-      );
-    }
     const version = await tx.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException(
+        "合同已存在正式业务事实，不能继续编辑草稿"
+      );
+    }
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException(invalidStatusMessage);
     }
-    if (version.changeType === "historical_takeover") {
-      throw new BadRequestException(
-        "历史接管草稿必须在历史接管工作台办理"
-      );
-    }
     return version;
+  }
+
+  private historicalTakeoverLookupClient(client: unknown) {
+    return client as {
+      contractTakeover?: {
+        findUnique(args: {
+          where: { contractVersionId: string };
+          select: { id: true; contractId: true; projectId: true };
+        }): Promise<{ id: string; contractId: string; projectId: string } | null>;
+        findMany(args: {
+          where: { contractVersionId: { in: string[] } };
+          select: { contractVersionId: true };
+        }): Promise<Array<{ contractVersionId: string }>>;
+      };
+      contractVersion?: {
+        findUnique(args: {
+          where: { id: string };
+          select: { id: true; contractId: true; changeType: true };
+        }): Promise<{
+          id: string;
+          contractId: string;
+          changeType: string | null;
+        } | null>;
+      };
+      contract?: {
+        findUnique(args: {
+          where: { id: string };
+          select: { id: true; ownerUserId: true; projectId: true };
+        }): Promise<{
+          id: string;
+          ownerUserId: string | null;
+          projectId: string;
+        } | null>;
+      };
+    };
+  }
+
+  private async assertNotHistoricalTakeoverVersionId(
+    client: unknown,
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    const lookupClient = this.historicalTakeoverLookupClient(client);
+    if (!lookupClient.contractVersion) return;
+    const version = await lookupClient.contractVersion.findUnique({
+      where: { id: contractVersionId },
+      select: { id: true, contractId: true, changeType: true }
+    });
+    if (!version) return;
+    if (!lookupClient.contract) return;
+    const contract = await lookupClient.contract.findUnique({
+      where: { id: version.contractId },
+      select: { id: true, ownerUserId: true, projectId: true }
+    });
+    if (!contract) return;
+    await this.assertCanView(
+      client as PrismaService,
+      contract.ownerUserId,
+      actorUserId
+    );
+    await this.assertNotHistoricalTakeoverVersion(client, version, contract);
+  }
+
+  private async assertNotHistoricalTakeoverVersion(
+    client: unknown,
+    version: { id: string; contractId: string; changeType: string | null },
+    contract: { id: string; projectId?: string | null }
+  ) {
+    const lookupClient = this.historicalTakeoverLookupClient(client);
+    const takeover = lookupClient.contractTakeover
+      ? await lookupClient.contractTakeover.findUnique({
+          where: { contractVersionId: version.id },
+          select: { id: true, contractId: true, projectId: true }
+        })
+      : null;
+    if (version.changeType !== "historical_takeover" && !takeover) return;
+
+    const relationCoordinatesMatch = Boolean(
+      takeover &&
+      takeover.contractId === version.contractId &&
+      takeover.contractId === contract.id &&
+      takeover.projectId === contract.projectId
+    );
+    const relationCoordinatesDrifted = Boolean(takeover) && !relationCoordinatesMatch;
+    throw new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: relationCoordinatesDrifted
+        ? null
+        : contract.projectId ?? null,
+      takeoverId: relationCoordinatesMatch ? takeover?.id ?? null : null
+    });
   }
 
   private async lockLatestEditableVersionForContract(

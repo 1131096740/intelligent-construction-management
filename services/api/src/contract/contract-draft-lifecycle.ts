@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
 export type ContractDraftLifecycleAction =
@@ -41,6 +42,37 @@ export interface LockedContractDraftMutationBoundary<
   contract: TContract;
   version: TVersion;
   formalBlockers: string[];
+}
+
+export interface GenericContractDraftVersionGuardFacts {
+  changeType?: string | null;
+  hasHistoricalTakeoverRelation?: boolean | null;
+}
+
+export interface ContractDraftMutationBoundaryOptions {
+  /**
+   * Only background processors that inspect a locked version in order to mark
+   * their own obsolete job stale may bypass the generic-write rejection.
+   */
+  allowHistoricalTakeoverInspection?: boolean;
+}
+
+export function assertGenericContractDraftVersion(
+  version: GenericContractDraftVersionGuardFacts
+) {
+  if (
+    version.changeType !== "historical_takeover" &&
+    version.hasHistoricalTakeoverRelation !== true
+  ) {
+    return;
+  }
+  throw new BadRequestException({
+    statusCode: 400,
+    code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+    message: "历史接管草稿必须在历史接管工作台办理",
+    projectId: null,
+    takeoverId: null
+  });
 }
 
 const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
@@ -155,8 +187,14 @@ export async function lockContractDraftMutationBoundary<
   }
 >(
   client: Pick<Prisma.TransactionClient, "$queryRaw">,
-  contractVersionId: string
-): Promise<LockedContractDraftMutationBoundary<TVersion, TContract> | null> {
+  contractVersionId: string,
+  options: ContractDraftMutationBoundaryOptions = {}
+): Promise<
+  LockedContractDraftMutationBoundary<
+    TVersion & GenericContractDraftVersionGuardFacts,
+    TContract
+  > | null
+> {
   const [contractLock] = await client.$queryRaw<Array<TContract>>(Prisma.sql`
     SELECT c.*
     FROM "Contract" c
@@ -166,13 +204,24 @@ export async function lockContractDraftMutationBoundary<
   `);
   if (!contractLock) return null;
 
-  const [versionLock] = await client.$queryRaw<Array<TVersion>>(Prisma.sql`
-    SELECT cv.*
+  const [versionLock] = await client.$queryRaw<Array<
+    TVersion & GenericContractDraftVersionGuardFacts
+  >>(Prisma.sql`
+    SELECT
+      cv.*,
+      EXISTS (
+        SELECT 1
+        FROM "ContractTakeover" takeover
+        WHERE takeover."contractVersionId" = cv."id"
+      ) AS "hasHistoricalTakeoverRelation"
     FROM "ContractVersion" cv
     WHERE cv."id" = ${contractVersionId}
     FOR UPDATE OF cv
   `);
   if (!versionLock) return null;
+  if (!options.allowHistoricalTakeoverInspection) {
+    assertGenericContractDraftVersion(versionLock);
+  }
 
   // This must be a separate statement after the version lock. Under
   // READ COMMITTED PostgreSQL gives it a fresh snapshot, so a transaction

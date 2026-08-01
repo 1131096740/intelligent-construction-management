@@ -4,6 +4,10 @@ import {
   contractFilterFields,
   contractLedgerColumns,
   contractLedgerFilterOptions,
+  historicalTakeoverRouteForContractLedgerRow,
+  historicalTakeoverOperationLabel,
+  historicalTakeoverReturnTargetFromError,
+  isHistoricalTakeoverLedgerRow,
   contractWorkbenchRouteContractId,
   contractPaginationBlockReason,
   contractSummaryItems,
@@ -46,7 +50,8 @@ describe("contract ledger page configuration", () => {
 
   it("keeps ended draft copy support in the all-contract root view", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("row.copyAvailable ? copyEndedContract(row)");
+    expect(source).toContain("row.copyAvailable");
+    expect(source).toContain("copyEndedContract(row)");
     expect(source).toContain("ended: \"all\"");
     expect(source).toContain("copyAbandonedContractDraft");
   });
@@ -106,7 +111,7 @@ describe("contract ledger page configuration", () => {
     expect(source).toContain(
       'canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台"'
     );
-    expect(source).toContain("@click=\"openLifecycleRow(row)\"");
+    expect(source).toContain("openLifecycleRow(row)");
     expect(source).toContain(
       "path: `/contracts/${contractWorkbenchRouteContractId(row)}/workbench`"
     );
@@ -121,6 +126,30 @@ describe("contract ledger page configuration", () => {
     expect(source).not.toContain("<SensitiveActionDialog");
   });
 
+  it("does not publish the dedicated takeover entry to a ledger-only role", () => {
+    const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain(
+      "canReadTakeovers.value && row.takeoverReadable !== false"
+    );
+    expect(source).toContain(
+      "row.takeoverReadable === false"
+    );
+    expect(source).toContain("openDetail(row.id)");
+  });
+
+  it("does not render a historical takeover as a new-sign workbench after a stale direct link", () => {
+    const source = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
+    expect(source).toContain("HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED");
+    expect(source).toContain("historicalTakeoverRouteRequired.value = true");
+    expect(source).toContain("historicalTakeoverReturnTarget.value");
+    expect(source).toContain('path: "/历史合同接管"');
+    expect(source).toContain("projectId: target.projectId");
+    expect(source).toContain("takeoverId: target.takeoverId");
+    expect(source).toContain("contractWorkbenchLoadContextCurrent(loadContext)");
+    expect(source).toContain("returnToHistoricalTakeover");
+    expect(source).toContain("返回历史合同接管");
+  });
+
   it("routes a coded draft by its internal contract id", () => {
     expect(
       contractWorkbenchRouteContractId(
@@ -130,6 +159,109 @@ describe("contract ledger page configuration", () => {
         })
       )
     ).toBe("contract-internal-1");
+  });
+
+  it("routes historical takeover rows back to their dedicated project record", () => {
+    const row = contractRow({
+      id: "HT-TAKEOVER-1",
+      contractId: "contract-takeover-1",
+      projectId: "project-2",
+      source: "historical_takeover",
+      changeType: "historical_takeover",
+      takeoverId: "takeover-1",
+      takeoverStatus: "draft"
+    });
+
+    expect(historicalTakeoverRouteForContractLedgerRow(row)).toEqual({
+      path: "/历史合同接管",
+      query: { projectId: "project-2", takeoverId: "takeover-1" }
+    });
+    expect(historicalTakeoverOperationLabel(row)).toBe("继续接管");
+    expect(historicalTakeoverRouteForContractLedgerRow(contractRow())).toBeNull();
+    expect(historicalTakeoverRouteForContractLedgerRow(contractRow({
+      source: "historical_takeover",
+      changeType: "historical_takeover",
+      projectId: "project-2",
+      takeoverId: null
+    }))).toBeNull();
+  });
+
+  it("builds a takeover return target only from non-empty string coordinates", () => {
+    expect(historicalTakeoverReturnTargetFromError({
+      projectId: " project-2 ",
+      takeoverId: " takeover-1 "
+    })).toEqual({ projectId: "project-2", takeoverId: "takeover-1" });
+    expect(historicalTakeoverReturnTargetFromError({
+      projectId: null,
+      takeoverId: null
+    })).toBeNull();
+    expect(historicalTakeoverReturnTargetFromError({
+      projectId: "null",
+      takeoverId: undefined
+    })).toBeNull();
+  });
+
+  it("prefers the stable historical-flow flag and fails closed on relation drift", () => {
+    expect(isHistoricalTakeoverLedgerRow(contractRow({
+      historicalTakeoverFlow: true,
+      source: "system",
+      changeType: "original"
+    }))).toBe(true);
+    expect(isHistoricalTakeoverLedgerRow(contractRow({
+      historicalTakeoverFlow: false,
+      source: "historical_takeover",
+      changeType: "historical_takeover"
+    }))).toBe(false);
+    expect(isHistoricalTakeoverLedgerRow(contractRow({
+      source: "historical_takeover",
+      changeType: "historical_takeover"
+    }))).toBe(true);
+
+    const mismatch = contractRow({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      projectId: "project-2",
+      source: "system",
+      changeType: "original",
+      takeoverId: "takeover-1",
+      takeoverStatus: "draft"
+    });
+    expect(historicalTakeoverRouteForContractLedgerRow(mismatch)).toBeNull();
+    expect(historicalTakeoverOperationLabel(mismatch)).toBe("检查关联");
+  });
+
+  it("keeps confirmed historical takeovers on the dedicated read path", () => {
+    expect(historicalTakeoverOperationLabel(contractRow({
+      source: "historical_takeover",
+      changeType: "historical_takeover",
+      takeoverStatus: "confirmed"
+    }))).toBe("查看接管");
+  });
+
+  it("keeps abandoned takeovers out of the active takeover workspace", () => {
+    const row = contractRow({
+      source: "historical_takeover",
+      changeType: "historical_takeover",
+      takeoverStatus: "abandoned",
+      projectId: "project-2",
+      takeoverId: "takeover-abandoned"
+    });
+
+    expect(historicalTakeoverOperationLabel(row)).toBe("查看详情");
+    expect(historicalTakeoverRouteForContractLedgerRow(row)).toBeNull();
+  });
+
+  it("keeps later changes to a historical contract in the normal contract workbench", () => {
+    expect(isHistoricalTakeoverLedgerRow(contractRow({
+      source: "historical_takeover",
+      changeType: "change"
+    }))).toBe(false);
+    expect(historicalTakeoverRouteForContractLedgerRow(contractRow({
+      source: "historical_takeover",
+      changeType: "change",
+      projectId: "project-2",
+      takeoverId: "takeover-1"
+    }))).toBeNull();
   });
 
   it("builds stable select options from the currently loaded contract ledger", () => {
@@ -233,7 +365,7 @@ describe("contract ledger page configuration", () => {
   });
 });
 
-function contractRow(overrides: Partial<ContractLedgerRow>): ContractLedgerRow {
+function contractRow(overrides: Partial<ContractLedgerRow> = {}): ContractLedgerRow {
   return {
     id: "contract",
     contractNo: "HT-001",

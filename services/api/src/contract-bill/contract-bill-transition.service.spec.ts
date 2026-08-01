@@ -77,7 +77,10 @@ function context(
 type TestContext = ReturnType<typeof context>;
 type MutationKind = "save" | "confirm" | "discard";
 
-function expectDraftBoundaryLockOrder(query: jest.Mock) {
+function expectDraftBoundaryLockOrder(
+  query: jest.Mock,
+  expectFormalEvidenceQuery = true
+) {
   const statements = query.mock.calls
     .slice(0, 3)
     .map(([sql]) => (sql?.strings as string[] | undefined)?.join(" ") ?? "");
@@ -85,7 +88,9 @@ function expectDraftBoundaryLockOrder(query: jest.Mock) {
   expect(statements[0]).toContain("FOR UPDATE OF c");
   expect(statements[1]).toContain('FROM "ContractVersion" cv');
   expect(statements[1]).toContain("FOR UPDATE OF cv");
-  expect(statements[2]).toContain('FROM "ContractFormalFile"');
+  if (expectFormalEvidenceQuery) {
+    expect(statements[2]).toContain('FROM "ContractFormalFile"');
+  }
 }
 
 function prepareSuccessfulMutation(current: TestContext, kind: MutationKind) {
@@ -192,7 +197,7 @@ describe("ContractBillTransitionService", () => {
       await expect(invokeMutation(current, kind)).rejects.toBeInstanceOf(
         BadRequestException
       );
-      expectDraftBoundaryLockOrder(current.tx.$queryRaw);
+      expectDraftBoundaryLockOrder(current.tx.$queryRaw, false);
       expect(current.tx.contractBillRowTransition.updateMany).not.toHaveBeenCalled();
       expect(current.tx.contractBillRowTransition.upsert).not.toHaveBeenCalled();
       expect(current.tx.contractVersion.updateMany).not.toHaveBeenCalled();

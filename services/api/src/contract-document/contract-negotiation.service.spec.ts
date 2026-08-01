@@ -27,7 +27,10 @@ describe("ContractNegotiationService", () => {
     });
   });
 
-  function makeTx(options: { formalEvidence?: boolean } = {}) {
+  function makeTx(options: {
+    formalEvidence?: boolean;
+    historicalTakeoverRelation?: boolean;
+  } = {}) {
     const version = {
       id: "version-1",
       contractId: "contract-1",
@@ -67,7 +70,11 @@ describe("ContractNegotiationService", () => {
       $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
         const sql = query.strings?.join(" ") ?? "";
         if (sql.includes("FOR UPDATE OF cv")) {
-          return [version];
+          return [{
+            ...version,
+            hasHistoricalTakeoverRelation:
+              options.historicalTakeoverRelation ?? false
+          }];
         }
         if (sql.includes("FOR UPDATE OF c")) return [contract];
         if (sql.includes('AS "hasSignedFormalFile"')) {
@@ -223,6 +230,23 @@ describe("ContractNegotiationService", () => {
     await expect(
       subject.openRound("version-1", "owner-1")
     ).rejects.toThrow("正式业务事实");
+    expect(tx.contractNegotiationRound.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("blocks relation-only takeover before opening a negotiation round", async () => {
+    const tx = makeTx({ historicalTakeoverRelation: true });
+    const { service: subject } = service(tx);
+
+    await expect(
+      subject.openRound("version-1", "owner-1")
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
     expect(tx.contractNegotiationRound.create).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });

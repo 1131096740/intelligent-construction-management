@@ -70,6 +70,15 @@ describe("ContractDraftController", () => {
     ).toBe("contract.create");
   });
 
+  it("protects aggregate PUT with the contract create project action", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.saveDraft
+      )
+    ).toBe("contract.create");
+  });
+
   it("queues preview generation for the exact saved revision", async () => {
     const { controller, documents } = makeController();
 

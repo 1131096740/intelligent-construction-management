@@ -224,6 +224,26 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1");
   });
 
+  it("preserves the stable historical-takeover routing code on a workbench read failure", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: "project-2",
+      takeoverId: "takeover-1"
+    }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    await expect(fetchContractDraftWorkbench("version-takeover")).rejects.toMatchObject({
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      projectId: "project-2",
+      takeoverId: "takeover-1",
+      message: expect.stringContaining("历史接管草稿必须在历史接管工作台办理")
+    });
+  });
+
   it("uses the exact version-scoped aggregate draft routes and lease header", async () => {
     mockApiFetch.mockImplementation(() => makeOkJson({
       contractVersionId: "version/1",
