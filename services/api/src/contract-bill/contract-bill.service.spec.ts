@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
+import { ContractBillLineageService } from "./contract-bill-lineage.service";
 import { SaveContractBillRowDto } from "./dto/contract-bill.dto";
 import { ContractBillService } from "./contract-bill.service";
 
 describe("ContractBillService", () => {
   const audit = { record: jest.fn().mockResolvedValue({}) };
+  const occupancyToken = "a".repeat(64);
+  const leaseToken = "remainder-cancellation-lease";
 
   beforeEach(() => audit.record.mockClear());
 
@@ -22,6 +25,9 @@ describe("ContractBillService", () => {
     schemaSnapshot?: unknown;
     rows?: Array<Record<string, unknown>>;
     otherBills?: Array<Record<string, unknown>>;
+    lineage?: ContractBillLineageService;
+    baseVersionId?: string | null;
+    leaseState?: "valid" | "missing" | "mismatch" | "expired";
   } = {}) {
     const bill = {
       id: "bill-1",
@@ -38,6 +44,7 @@ describe("ContractBillService", () => {
     };
     const version = {
       id: "version-1",
+      baseVersionId: options.baseVersionId ?? null,
       contractId: "contract-1",
       status: "draft",
       draftRevision: 5,
@@ -78,6 +85,9 @@ describe("ContractBillService", () => {
             hasSettlement: false,
             hasPaymentRequest: false
           }];
+        }
+        if (sql.includes('FROM "ContractDraftEditLease"')) {
+          return [{ contractVersionId: version.id }];
         }
         throw new Error(`unexpected test SQL: ${sql}`);
       }),
@@ -159,12 +169,38 @@ describe("ContractBillService", () => {
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      contractDraftEditLease: {
+        findUnique: jest.fn().mockResolvedValue(
+          options.leaseState === "missing"
+            ? null
+            : {
+                contractVersionId: version.id,
+                holderUserId: "owner-1",
+                tokenHash: options.leaseState === "mismatch"
+                  ? "b".repeat(64)
+                  : createHash("sha256").update(leaseToken).digest("hex"),
+                expiresAt: options.leaseState === "expired"
+                  ? new Date("2020-01-01T00:00:00.000Z")
+                  : new Date("2099-01-01T00:00:00.000Z")
+              }
+        )
+      },
       auditLog: { create: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) }
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
-    return { service: new ContractBillService(prisma, audit as never), tx, bill, version, rows };
+    return {
+      service: new ContractBillService(
+        prisma,
+        audit as never,
+        options.lineage
+      ),
+      tx,
+      bill,
+      version,
+      rows
+    };
   }
 
   const rowInput = {
@@ -495,6 +531,393 @@ describe("ContractBillService", () => {
     expect(bill.taxAmountCents).toBe(20n);
   });
 
+  it("converges an occupied remainder to the mapped historical quantity with one audit receipt", async () => {
+    const row = {
+      ...existingRow(1),
+      quantity: new Prisma.Decimal("10"),
+      unitPrice: new Prisma.Decimal("100"),
+      taxRate: new Prisma.Decimal("13"),
+      remainderDisposition: null
+    };
+    const lineage = {
+      remainderCancellationFacts: jest.fn().mockResolvedValue(new Map([
+        [row.id, {
+          hasHistoricalOccupancy: true,
+          canCancel: true,
+          historicalQuantity: new Prisma.Decimal("3.5"),
+          historicalAmountCents: 35_000n,
+          disabledReason: null,
+          expectedOccupancyToken: occupancyToken
+        }]
+      ]))
+    } as unknown as ContractBillLineageService;
+    const { service, tx, bill, version } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    const result = await service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 5,
+        expectedOccupancyToken: occupancyToken,
+        reason: "现场范围核减"
+      }
+    );
+
+    expect(tx.contractBillRow.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "row-1",
+        contractBillId: "bill-1",
+        rowKey: "key-1"
+      }),
+      data: expect.objectContaining({
+        quantity: "3.5",
+        taxInclusiveAmountCents: 35_000n,
+        taxExclusiveAmountCents: 30_973n,
+        taxAmountCents: 4_027n,
+        remainderDisposition: "cancelled",
+        remainderDispositionReason: "现场范围核减",
+        remainderDispositionByUserId: "owner-1",
+        remainderDispositionAt: expect.any(Date)
+      })
+    });
+    expect(bill.revision).toBe(3);
+    expect(version.draftRevision).toBe(6);
+    expect(result.rows[0]).toEqual(expect.objectContaining({
+      rowKey: "key-1",
+      quantity: "3.5",
+      remainderDisposition: "cancelled"
+    }));
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.bill.row.remainder_cancellation",
+      businessId: "bill-1",
+      metadata: expect.objectContaining({
+        rowKey: "key-1",
+        previousQuantity: "10",
+        historicalQuantity: "3.5",
+        reason: "现场范围核减",
+        newRevision: 3
+      })
+    }));
+  });
+
+  it("rejects a repeated remainder cancellation before revision or audit writes", async () => {
+    const row = {
+      ...existingRow(1),
+      remainderDisposition: "cancelled",
+      remainderDispositionReason: "已办理"
+    };
+    const lineage = {
+      remainderCancellationFacts: jest.fn()
+    } as unknown as ContractBillLineageService;
+    const { service, tx } = fixture({ rows: [row], lineage });
+
+    await expect(service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 5,
+        expectedOccupancyToken: occupancyToken,
+        reason: "再次覆盖"
+      }
+    )).rejects.toThrow("该清单行的未实施余量已经取消");
+
+    expect(lineage.remainderCancellationFacts).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects incomplete historical quantity facts without any bill mutation", async () => {
+    const row = { ...existingRow(1), quantity: new Prisma.Decimal("10") };
+    const lineage = {
+      remainderCancellationFacts: jest.fn().mockResolvedValue(new Map([
+        [row.id, {
+          hasHistoricalOccupancy: true,
+          canCancel: false,
+          historicalQuantity: null,
+          historicalAmountCents: 10_000n,
+          disabledReason: "历史结算存在未记录数量的明细",
+          expectedOccupancyToken: occupancyToken
+        }]
+      ]))
+    } as unknown as ContractBillLineageService;
+    const { service, tx } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 5,
+        expectedOccupancyToken: occupancyToken,
+        reason: "无法确认数量"
+      }
+    )).rejects.toThrow("历史结算存在未记录数量的明细");
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale draft revision before reading occupancy or writing revisions", async () => {
+    const lineage = {
+      remainderCancellationFacts: jest.fn()
+    } as unknown as ContractBillLineageService;
+    const { service, tx } = fixture({
+      rows: [existingRow(1)],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 4,
+        expectedOccupancyToken: occupancyToken,
+        reason: "陈旧草稿"
+      }
+    )).rejects.toThrow("合同草稿已变化，请刷新后重试");
+
+    expect(lineage.remainderCancellationFacts).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale occupancy token before bill, row, or audit writes", async () => {
+    const row = { ...existingRow(1), quantity: new Prisma.Decimal("10") };
+    const lineage = {
+      remainderCancellationFacts: jest.fn().mockResolvedValue(new Map([
+        [row.id, {
+          hasHistoricalOccupancy: true,
+          canCancel: true,
+          historicalQuantity: new Prisma.Decimal("3.5"),
+          historicalAmountCents: 35_000n,
+          disabledReason: null,
+          expectedOccupancyToken: occupancyToken
+        }]
+      ]))
+    } as unknown as ContractBillLineageService;
+    const { service, tx } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 5,
+        expectedOccupancyToken: "b".repeat(64),
+        reason: "令牌漂移"
+      }
+    )).rejects.toMatchObject({
+      response: {
+        statusCode: 409,
+        code: "SETTLEMENT_SOURCE_OCCUPANCY_CHANGED",
+        message: "历史占用或跨版本映射已变化，请刷新后重试"
+      }
+    });
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", "EDIT_LEASE_REQUIRED"],
+    ["mismatch", "EDIT_LEASE_LOST"],
+    ["expired", "EDIT_LEASE_LOST"]
+  ] as const)("rejects a %s edit lease before occupancy or business writes", async (
+    leaseState,
+    code
+  ) => {
+    const lineage = {
+      remainderCancellationFacts: jest.fn()
+    } as unknown as ContractBillLineageService;
+    const { service, tx } = fixture({
+      rows: [existingRow(1)],
+      lineage,
+      baseVersionId: "version-0",
+      leaseState
+    });
+
+    await expect(service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 5,
+        expectedOccupancyToken: occupancyToken,
+        reason: "租约门禁"
+      }
+    )).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
+
+    expect(lineage.remainderCancellationFacts).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["P2034", { code: "P2034" }],
+    ["40001", { code: "40001" }],
+    ["40P01", { code: "40P01" }],
+    ["P2010/meta 40001", { code: "P2010", meta: { code: "40001" } }],
+    ["P2010/meta 40P01", { code: "P2010", meta: { code: "40P01" } }]
+  ])(
+    "maps transaction conflict %s to one stable refresh response",
+    async (_label, transactionError) => {
+      const prisma = {
+        $transaction: jest.fn().mockRejectedValue(transactionError)
+      } as unknown as PrismaService;
+      const service = new ContractBillService(prisma, audit as never);
+
+      await expect(service.cancelRemainder(
+        "bill-1",
+        "key-1",
+        "owner-1",
+        leaseToken,
+        {
+          expectedBillRevision: 2,
+          expectedDraftRevision: 5,
+          expectedOccupancyToken: occupancyToken,
+          reason: "并发冲突"
+        }
+      )).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: "REMAINDER_CANCELLATION_CONFLICT"
+        })
+      });
+    }
+  );
+
+  it("blocks ordinary delete through the same cross-version policy before revision writes", async () => {
+    const lineage = {
+      assertRowsDeletable: jest.fn().mockRejectedValue(
+        new Error("清单行已有历史结算占用")
+      )
+    } as unknown as ContractBillLineageService;
+    const { service, tx } = fixture({
+      rows: [existingRow(1)],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.deleteRow("bill-1", "key-1", "owner-1", 2))
+      .rejects.toThrow("清单行已有历史结算占用");
+
+    expect(lineage.assertRowsDeletable).toHaveBeenCalledWith(
+      tx,
+      ["row-1"],
+      { id: "version-1", baseVersionId: "version-0" }
+    );
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("keeps a cancelled remainder row immutable through ordinary row editing", async () => {
+    const row = {
+      ...existingRow(1),
+      remainderDisposition: "cancelled",
+      remainderDispositionReason: "已收敛"
+    };
+    const { service, tx } = fixture({ rows: [row] });
+
+    await expect(service.updateRow(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      { ...rowInput, quantity: "4" }
+    )).rejects.toThrow("已取消未实施余量的清单行不能通过普通编辑修改");
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("blocks an occupied row ordinary update before draft or bill revision writes", async () => {
+    const lineage = {
+      assertRowsOrdinarilyMutable: jest.fn().mockRejectedValue(
+        new Error("请使用取消未实施余量流程")
+      )
+    } as unknown as ContractBillLineageService;
+    const row = existingRow(1);
+    const { service, tx } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.updateRow(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      { ...rowInput, quantity: "3.30" }
+    )).rejects.toThrow("请使用取消未实施余量流程");
+
+    expect(lineage.assertRowsOrdinarilyMutable).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects an overlong cancellation reason before opening a transaction", async () => {
+    const { service, tx } = fixture({ rows: [existingRow(1)] });
+
+    await expect(service.cancelRemainder(
+      "bill-1",
+      "key-1",
+      "owner-1",
+      leaseToken,
+      {
+        expectedBillRevision: 2,
+        expectedDraftRevision: 5,
+        expectedOccupancyToken: occupancyToken,
+        reason: "原".repeat(501)
+      }
+    )).rejects.toThrow("取消未实施余量原因不能超过 500 个字符");
+
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects quantity precision beyond the bill schema", async () => {
     const { service, tx } = fixture({ quantityScale: 2 });
 
@@ -751,6 +1174,114 @@ describe("ContractBillService", () => {
     expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
     expect(tx.contractBillRow.update).not.toHaveBeenCalled();
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks aggregate deletion through the cross-version policy before its bill CAS write", async () => {
+    const row = existingRow(0);
+    const lineage = {
+      assertRowsDeletable: jest.fn().mockRejectedValue(
+        new Error("清单行已有历史结算占用")
+      )
+    } as unknown as ContractBillLineageService;
+    const { service, tx, bill, version } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.replaceRowsInTransaction(
+      tx as never,
+      "owner-1",
+      version,
+      bill,
+      { expectedRevision: 2, rows: [] }
+    )).rejects.toThrow("清单行已有历史结算占用");
+
+    expect(lineage.assertRowsDeletable).toHaveBeenCalledWith(
+      tx,
+      ["row-0"],
+      { id: "version-1", baseVersionId: "version-0" }
+    );
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps a cancelled remainder row immutable through aggregate save", async () => {
+    const row = {
+      ...existingRow(0),
+      remainderDisposition: "cancelled",
+      remainderDispositionReason: "已收敛"
+    };
+    const { service, tx, bill, version } = fixture({ rows: [row] });
+
+    await expect(service.replaceRowsInTransaction(
+      tx as never,
+      "owner-1",
+      version,
+      bill,
+      {
+        expectedRevision: 2,
+        rows: [batchRow("aggregate-row", "key-0", { itemName: "试图覆盖" })]
+      } as never
+    )).rejects.toThrow("已取消未实施余量的清单行不能通过普通编辑修改");
+
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks an occupied row aggregate update before its bill revision CAS", async () => {
+    const lineage = {
+      assertRowsOrdinarilyMutable: jest.fn().mockRejectedValue(
+        new Error("请使用取消未实施余量流程")
+      )
+    } as unknown as ContractBillLineageService;
+    const row = existingRow(0);
+    const { service, tx, bill, version } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.replaceRowsInTransaction(
+      tx as never,
+      "owner-1",
+      version,
+      bill,
+      {
+        expectedRevision: 2,
+        rows: [batchRow("aggregate-row", "key-0", { quantity: "3.30" })]
+      } as never
+    )).rejects.toThrow("请使用取消未实施余量流程");
+
+    expect(lineage.assertRowsOrdinarilyMutable).toHaveBeenCalledTimes(1);
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks an occupied row batch replacement before draft or bill revision writes", async () => {
+    const lineage = {
+      assertRowsOrdinarilyMutable: jest.fn().mockRejectedValue(
+        new Error("请使用取消未实施余量流程")
+      )
+    } as unknown as ContractBillLineageService;
+    const row = existingRow(0);
+    const { service, tx } = fixture({
+      rows: [row],
+      lineage,
+      baseVersionId: "version-0"
+    });
+
+    await expect(service.replaceRows("bill-1", "owner-1", {
+      expectedBillRevision: 2,
+      idempotencyKey: "occupied-row-convergence",
+      rows: [batchRow("row-0", "key-0", { quantity: "3.30" })]
+    })).rejects.toThrow("请使用取消未实施余量流程");
+
+    expect(lineage.assertRowsOrdinarilyMutable).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("accepts aggregate rows transformed into validated DTO instances", async () => {

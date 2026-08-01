@@ -1,9 +1,11 @@
 import * as ExcelJS from "exceljs";
 import type { Cell } from "exceljs";
+import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ContractBillExcelService } from "./contract-bill-excel.service";
+import { ContractBillLineageService } from "./contract-bill-lineage.service";
 
 const DATA_SHEET = "清单数据";
 const INSTRUCTION_SHEET = "填写说明";
@@ -59,7 +61,11 @@ async function buildWorkbookBuffer(options: {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
+function billFixture(options: {
+  rows?: Array<Record<string, unknown>>;
+  baseVersionId?: string | null;
+  lineage?: ContractBillLineageService;
+} = {}) {
   const bill = {
     id: "bill-1",
     contractVersionId: "version-1",
@@ -76,6 +82,7 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
   };
   const version = {
     id: "version-1",
+    baseVersionId: options.baseVersionId ?? null,
     contractId: "contract-1",
     status: "draft",
     draftRevision: 5,
@@ -225,7 +232,8 @@ function billFixture(options: { rows?: Array<Record<string, unknown>> } = {}) {
   const service = new ContractBillExcelService(
     prisma,
     audit as never,
-    fileService
+    fileService,
+    options.lineage
   );
   return { service, tx, bill, version, rows, imports, fileService, audit };
 }
@@ -820,6 +828,119 @@ describe("ContractBillExcelService", () => {
         itemName: "新名称"
       })
     ]);
+  });
+
+  it("blocks replacement deletion through the cross-version history policy before revision writes", async () => {
+    const existing = {
+      id: "row-occupied",
+      contractBillId: "bill-1",
+      rowKey: "occupied-key",
+      lineageId: "lineage-1",
+      sortOrder: 0,
+      itemName: "历史已结算项",
+      unit: "t",
+      taxInclusiveAmountCents: 100n,
+      taxExclusiveAmountCents: 100n,
+      taxAmountCents: 0n
+    };
+    const lineage = {
+      assertRowsDeletable: jest.fn().mockRejectedValue(
+        new BadRequestException("清单行已有历史结算占用，不能普通删除")
+      )
+    } as unknown as ContractBillLineageService;
+    const { service, tx, fileService } = billFixture({
+      rows: [{ ...existing }],
+      baseVersionId: "version-0",
+      lineage
+    });
+    const buffer = await buildWorkbookBuffer({
+      rows: [{
+        values: {
+          itemName: "新清单项",
+          unit: "t",
+          quantity: "1",
+          unitPrice: "10",
+          taxRatePercent: "13"
+        }
+      }]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-block-history-delete", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-block-history-delete",
+      mode: "replace"
+    });
+
+    await expect(service.applyImport(preview.importId, "owner-1"))
+      .rejects.toThrow("不能普通删除");
+    expect(lineage.assertRowsDeletable).toHaveBeenCalledWith(
+      tx,
+      ["row-occupied"],
+      { id: "version-1", baseVersionId: "version-0" }
+    );
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks an occupied row Excel update before draft or bill revision writes", async () => {
+    const existing = {
+      id: "row-occupied-update",
+      contractBillId: "bill-1",
+      rowKey: "occupied-update-key",
+      lineageId: "lineage-1",
+      sortOrder: 0,
+      itemName: "历史已结算项",
+      unit: "t",
+      quantity: new Prisma.Decimal("3"),
+      unitPrice: new Prisma.Decimal("10"),
+      taxRate: new Prisma.Decimal("13"),
+      taxInclusiveAmountCents: 3000n,
+      taxExclusiveAmountCents: 2655n,
+      taxAmountCents: 345n
+    };
+    const lineage = {
+      assertRowsOrdinarilyMutable: jest.fn().mockRejectedValue(
+        new BadRequestException("请使用取消未实施余量流程")
+      )
+    } as unknown as ContractBillLineageService;
+    const { service, tx, fileService } = billFixture({
+      rows: [{ ...existing }],
+      baseVersionId: "version-0",
+      lineage
+    });
+    const buffer = await buildWorkbookBuffer({
+      rows: [{
+        rowKey: "occupied-update-key",
+        values: {
+          itemName: "历史已结算项",
+          unit: "t",
+          quantity: "2",
+          unitPrice: "10",
+          taxRatePercent: "13"
+        }
+      }]
+    });
+    (fileService.getFileBuffer as jest.Mock).mockResolvedValue({
+      file: { id: "file-block-history-update", originalName: "bill.xlsx" },
+      buffer
+    });
+
+    const preview = await service.previewImport("bill-1", "owner-1", {
+      fileId: "file-block-history-update",
+      mode: "version_replace"
+    } as never);
+    await expect(service.applyImport(preview.importId, "owner-1"))
+      .rejects.toThrow("请使用取消未实施余量流程");
+
+    expect(lineage.assertRowsOrdinarilyMutable).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.updateMany).not.toHaveBeenCalled();
   });
 
   it("blocks the whole version replacement when an explicit row changes unit", async () => {

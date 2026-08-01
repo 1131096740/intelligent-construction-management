@@ -1,4 +1,8 @@
-import { isContractBillCustomColumn, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import {
+  isContractBillCustomColumn,
+  normalizeTaxRatePercent,
+  type DetailActionReadModel
+} from "@jiangkong/shared-domain";
 
 export interface WorkbenchBillColumn {
   key: string;
@@ -29,7 +33,17 @@ export interface WorkbenchBillRow {
   settlementBasis?: string | null;
   isProvisional?: boolean;
   customData?: Record<string, unknown>;
+  availableActions?: DetailActionReadModel[];
+  remainderCancellation?: WorkbenchBillRemainderCancellationFacts;
   [key: string]: unknown;
+}
+
+export interface WorkbenchBillRemainderCancellationFacts {
+  expectedBillRevision: number;
+  expectedDraftRevision: number;
+  expectedOccupancyToken: string;
+  historicalQuantity: string;
+  historicalAmountCents: string;
 }
 
 export interface WorkbenchBill {
@@ -213,6 +227,56 @@ export function updateRowPreservingKey(
   return rows.map((row) =>
     row.rowKey === rowKey ? { ...row, ...patch, rowKey } : row
   );
+}
+
+export function mergeFocusedBillAggregate(
+  base: WorkbenchBill,
+  aggregate: {
+    expectedRevision: number;
+    rows: Array<Record<string, unknown>>;
+  }
+): WorkbenchBill {
+  const authoritativeRows = new Map(
+    base.rows.map((row) => [row.rowKey, row])
+  );
+  return {
+    ...base,
+    revision: aggregate.expectedRevision,
+    rows: aggregate.rows.map((source) => {
+      const draftRow = { ...source };
+      delete draftRow["availableActions"];
+      delete draftRow["remainderCancellation"];
+      const rowKey = typeof draftRow["rowKey"] === "string"
+        ? draftRow["rowKey"]
+        : "";
+      const authoritative = authoritativeRows.get(rowKey);
+      const customData =
+        draftRow["customData"] !== null &&
+        typeof draftRow["customData"] === "object" &&
+        !Array.isArray(draftRow["customData"])
+          ? { ...draftRow["customData"] as Record<string, unknown> }
+          : {};
+      return {
+        ...authoritative,
+        ...draftRow,
+        customData,
+        ...(authoritative?.availableActions
+          ? {
+              availableActions: authoritative.availableActions.map(
+                (action) => ({ ...action })
+              )
+            }
+          : {}),
+        ...(authoritative?.remainderCancellation
+          ? {
+              remainderCancellation: {
+                ...authoritative.remainderCancellation
+              }
+            }
+          : {})
+      } as WorkbenchBillRow;
+    })
+  };
 }
 
 export function rowValue(row: WorkbenchBillRow, key: string): string {

@@ -1394,6 +1394,337 @@ export function deleteBillRow(
   return deleteJson<unknown>(`/contract-bills/${billId}/rows/${rowKey}`, body);
 }
 
+export interface CancelContractBillRemainderPayload {
+  expectedBillRevision: number;
+  expectedDraftRevision: number;
+  expectedOccupancyToken: string;
+  reason: string;
+}
+
+async function cancelContractBillRemainder(
+  billId: string,
+  rowKey: string,
+  leaseToken: string,
+  body: CancelContractBillRemainderPayload
+) {
+  let response: Response;
+  try {
+    response = await apiFetch(
+      `/contract-bills/${encodeURIComponent(billId)}/rows/${encodeURIComponent(rowKey)}/remainder-cancellation`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": leaseToken
+        },
+        body: JSON.stringify(body)
+      }
+    );
+  } catch (error) {
+    throw contractBillRemainderResultUnknownError(error);
+  }
+  try {
+    await ensureOk(response, "取消未实施余量失败", true);
+  } catch (error) {
+    if (response.status === 408 || response.status >= 500) {
+      throw contractBillRemainderResultUnknownError(error);
+    }
+    throw error;
+  }
+  try {
+    return await response.json() as unknown;
+  } catch (error) {
+    throw contractBillRemainderResultUnknownError(error);
+  }
+}
+
+export interface ContractBillRemainderCancellationOperationContext {
+  ownerScope: string;
+  routeGeneration: number;
+  operationId: number;
+  contractId: string;
+  versionId: string;
+  billId: string;
+  billKey: string;
+  rowKey: string;
+  leaseToken: string;
+  reason: string;
+}
+
+export interface ContractBillRemainderCancellationFlushResult {
+  saved: boolean;
+  expectedDraftRevision?: number;
+  error?: string;
+}
+
+export interface ExecuteContractBillRemainderCancellationInput {
+  capture: () => ContractBillRemainderCancellationOperationContext | null;
+  flush: (
+    context: ContractBillRemainderCancellationOperationContext
+  ) => Promise<ContractBillRemainderCancellationFlushResult>;
+  isCurrent: (
+    context: ContractBillRemainderCancellationOperationContext
+  ) => boolean;
+}
+
+interface PreparedContractBillRemainderCancellation {
+  expectedBillRevision: number;
+  expectedDraftRevision: number;
+  expectedOccupancyToken: string;
+  historicalQuantity: string;
+  historicalAmountCents: string;
+}
+
+export type ExecuteContractBillRemainderCancellationResult =
+  | { status: "not_started" }
+  | {
+      status: "save_failed";
+      context: ContractBillRemainderCancellationOperationContext;
+      error: Error;
+    }
+  | {
+      status: "stale";
+      context: ContractBillRemainderCancellationOperationContext;
+    }
+  | {
+      status: "failed";
+      context: ContractBillRemainderCancellationOperationContext;
+      error: unknown;
+      resultUnknown: boolean;
+    }
+  | {
+      status: "completed";
+      context: ContractBillRemainderCancellationOperationContext;
+      prepared: PreparedContractBillRemainderCancellation;
+      preflight: ContractDraftWorkbenchReadModel;
+      response: unknown;
+    };
+
+export async function executeContractBillRemainderCancellation(
+  input: ExecuteContractBillRemainderCancellationInput
+): Promise<ExecuteContractBillRemainderCancellationResult> {
+  const captured = input.capture();
+  if (!captured) return { status: "not_started" };
+
+  let context: ContractBillRemainderCancellationOperationContext;
+  try {
+    context = normalizeContractBillRemainderCancellationContext(captured);
+  } catch (error) {
+    return { status: "failed", context: captured, error, resultUnknown: false };
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+
+  let flush: ContractBillRemainderCancellationFlushResult;
+  try {
+    flush = await input.flush(context);
+  } catch (error) {
+    return {
+      status: "save_failed",
+      context,
+      error: error instanceof Error ? error : new Error("合同草稿未保存成功")
+    };
+  }
+  if (!flush.saved) {
+    return {
+      status: "save_failed",
+      context,
+      error: new Error(flush.error?.trim() || "合同草稿未保存成功，本次取消未执行")
+    };
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+  if (
+    !Number.isInteger(flush.expectedDraftRevision) ||
+    Number(flush.expectedDraftRevision) < 1
+  ) {
+    return {
+      status: "failed",
+      context,
+      error: contractBillRemainderOperationError(
+        "CONTRACT_BILL_REMAINDER_INVALID_CONTEXT",
+        "合同草稿保存修订无效，本次取消未执行"
+      ),
+      resultUnknown: false
+    };
+  }
+
+  let preflight: ContractDraftWorkbenchReadModel;
+  let prepared: PreparedContractBillRemainderCancellation;
+  try {
+    preflight = await fetchContractDraftWorkbench(context.versionId);
+    if (!input.isCurrent(context)) return { status: "stale", context };
+    prepared = prepareContractBillRemainderCancellation(
+      context,
+      Number(flush.expectedDraftRevision),
+      preflight
+    );
+  } catch (error) {
+    return { status: "failed", context, error, resultUnknown: false };
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+
+  let response: unknown;
+  try {
+    response = await cancelContractBillRemainder(
+      context.billId,
+      context.rowKey,
+      context.leaseToken,
+      {
+        expectedBillRevision: prepared.expectedBillRevision,
+        expectedDraftRevision: prepared.expectedDraftRevision,
+        expectedOccupancyToken: prepared.expectedOccupancyToken,
+        reason: context.reason
+      }
+    );
+  } catch (error) {
+    return {
+      status: "failed",
+      context,
+      error,
+      resultUnknown: contractBillRemainderErrorCode(error) ===
+        "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN"
+    };
+  }
+  return { status: "completed", context, prepared, preflight, response };
+}
+
+function normalizeContractBillRemainderCancellationContext(
+  context: ContractBillRemainderCancellationOperationContext
+): ContractBillRemainderCancellationOperationContext {
+  const normalized = {
+    ...context,
+    ownerScope: context.ownerScope.trim(),
+    contractId: context.contractId.trim(),
+    versionId: context.versionId.trim(),
+    billId: context.billId.trim(),
+    billKey: context.billKey.trim(),
+    rowKey: context.rowKey.trim(),
+    leaseToken: context.leaseToken.trim(),
+    reason: context.reason.trim()
+  };
+  if (
+    !normalized.ownerScope ||
+    !normalized.contractId ||
+    !normalized.versionId ||
+    !normalized.billId ||
+    !normalized.billKey ||
+    !normalized.rowKey ||
+    !normalized.leaseToken ||
+    !normalized.reason ||
+    normalized.reason.length > 500 ||
+    !Number.isInteger(normalized.routeGeneration) ||
+    normalized.routeGeneration < 0 ||
+    !Number.isInteger(normalized.operationId) ||
+    normalized.operationId < 1
+  ) {
+    throw contractBillRemainderOperationError(
+      "CONTRACT_BILL_REMAINDER_INVALID_CONTEXT",
+      "取消未实施余量的页面上下文已失效，请重新读取当前清单"
+    );
+  }
+  return normalized;
+}
+
+function prepareContractBillRemainderCancellation(
+  context: ContractBillRemainderCancellationOperationContext,
+  expectedDraftRevision: number,
+  preflight: ContractDraftWorkbenchReadModel
+): PreparedContractBillRemainderCancellation {
+  const matchingBills = preflight.bills.filter((candidate) => {
+    const value = contractBillRemainderObject(candidate);
+    return value["id"] === context.billId && value["billKey"] === context.billKey;
+  });
+  const bill = matchingBills[0];
+  const billValue = contractBillRemainderObject(bill);
+  const rows = Array.isArray(billValue["rows"])
+    ? billValue["rows"] as unknown[]
+    : [];
+  const matchingRows = rows.filter(
+    (candidate) => contractBillRemainderObject(candidate)["rowKey"] === context.rowKey
+  );
+  const rowValue = contractBillRemainderObject(matchingRows[0]);
+  const actions = Array.isArray(rowValue["availableActions"])
+    ? rowValue["availableActions"] as unknown[]
+    : [];
+  const matchingActions = actions
+    .map(contractBillRemainderObject)
+    .filter((action) => action["key"] === "contract-bill.remainder-cancellation");
+  const action = matchingActions[0] ?? {};
+  const facts = contractBillRemainderObject(rowValue["remainderCancellation"]);
+  const expectedBillRevision = Number(facts["expectedBillRevision"]);
+  const factDraftRevision = Number(facts["expectedDraftRevision"]);
+  const billRevision = Number(billValue["revision"]);
+  const expectedOccupancyToken =
+    typeof facts["expectedOccupancyToken"] === "string"
+      ? facts["expectedOccupancyToken"].trim()
+      : "";
+  const historicalQuantity =
+    typeof facts["historicalQuantity"] === "string"
+      ? facts["historicalQuantity"].trim()
+      : "";
+  const historicalAmountCents =
+    typeof facts["historicalAmountCents"] === "string"
+      ? facts["historicalAmountCents"].trim()
+      : "";
+  if (
+    preflight.contract.id !== context.contractId ||
+    preflight.contract.ownerUserId !== context.ownerScope ||
+    preflight.version.id !== context.versionId ||
+    preflight.version.draftRevision !== expectedDraftRevision ||
+    matchingBills.length !== 1 ||
+    matchingRows.length !== 1 ||
+    matchingActions.length !== 1 ||
+    action["enabled"] !== true ||
+    action["kind"] !== "danger" ||
+    action["requiresComment"] !== true ||
+    action["requiresPassword"] !== false ||
+    !Number.isInteger(billRevision) ||
+    !Number.isInteger(expectedBillRevision) ||
+    expectedBillRevision !== billRevision ||
+    !Number.isInteger(factDraftRevision) ||
+    factDraftRevision !== expectedDraftRevision ||
+    !expectedOccupancyToken ||
+    !historicalQuantity ||
+    !/^\d+$/u.test(historicalAmountCents)
+  ) {
+    throw contractBillRemainderOperationError(
+      "CONTRACT_BILL_REMAINDER_PREFLIGHT_MISMATCH",
+      "当前清单余量取消条件已变化，本次未写入，请按最新工作台重新确认"
+    );
+  }
+  return {
+    expectedBillRevision,
+    expectedDraftRevision,
+    expectedOccupancyToken,
+    historicalQuantity,
+    historicalAmountCents
+  };
+}
+
+function contractBillRemainderObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function contractBillRemainderOperationError(code: string, message: string) {
+  return Object.assign(new Error(message), { code });
+}
+
+function contractBillRemainderResultUnknownError(cause: unknown) {
+  return Object.assign(
+    new Error(
+      "取消未实施余量的提交结果未知，已禁止自动重试；请重新读取工作台后核对"
+    ),
+    { code: "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN", cause }
+  );
+}
+
+function contractBillRemainderErrorCode(error: unknown): string {
+  return error && typeof error === "object" && "code" in error
+    ? String(error.code)
+    : "";
+}
+
 export interface ReorderBillRowsPayload {
   expectedBillRevision: number;
   rowKeys: string[];

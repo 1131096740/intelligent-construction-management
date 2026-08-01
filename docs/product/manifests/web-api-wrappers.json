@@ -8,17 +8,17 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 391,
-    "transportWrapperCount": 380,
+    "exportedFunctionCount": 392,
+    "transportWrapperCount": 381,
     "pureExportCount": 11,
-    "mainRequestBindingCount": 393,
+    "mainRequestBindingCount": 395,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 392,
-    "productionConsumerCount": 340,
+    "requestEdgeCount": 394,
+    "productionConsumerCount": 341,
     "orphanWrapperCount": 40,
     "testOnlyWrapperCount": 39,
     "unreferencedWrapperCount": 1,
-    "duplicateNormalizedRouteGroupCount": 9,
+    "duplicateNormalizedRouteGroupCount": 10,
     "authTransportExceptionCount": 5
   },
   "evidence": {
@@ -1572,7 +1572,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1516,
+          "sourceLine": 1847,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1602,7 +1602,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1516,
+          "sourceLine": 1847,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1621,6 +1621,52 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "executeContractBillRemainderCancellation",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 72,
+          "method": "GET",
+          "path": "/contract-drafts/:param/workbench",
+          "normalizedPath": "/contract-drafts/:param/workbench",
+          "normalizedKey": "GET /contract-drafts/:param/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "executeContractBillRemainderCancellation",
+              "fetchContractDraftWorkbench",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 1412,
+          "method": "POST",
+          "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
+          "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
+          "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeContractBillRemainderCancellation",
+              "cancelContractBillRemainder"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-workbench.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -11829,6 +11875,23 @@
     }
   ],
   "duplicateNormalizedRoutes": [
+    {
+      "normalizedKey": "GET /contract-drafts/:param/workbench",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractDraftLifecycleAction"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractDraftWorkbench"
+        }
+      ]
+    },
     {
       "normalizedKey": "GET /contract-number-rules",
       "wrappers": [

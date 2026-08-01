@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661",
+      "sha256": "46aff527dfd034ba7e373f7b46549598b4ccb849a42df570030b2fcc9bcf461f",
       "status": "ready",
       "summary": {
         "routeCount": 395
@@ -22,49 +22,49 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "185feec56489b26479cabcc6a019f4389ff9b958f92e1eb74496db86b79c9cb6",
+      "sha256": "c3329ff0b89e3142cd7d59570c469c274444e67403d19a5cb485b664e569e598",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 391,
-        "transportWrapperCount": 380,
+        "exportedFunctionCount": 392,
+        "transportWrapperCount": 381,
         "pureExportCount": 11,
-        "mainRequestBindingCount": 393,
+        "mainRequestBindingCount": 395,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 392,
-        "productionConsumerCount": 340,
+        "requestEdgeCount": 394,
+        "productionConsumerCount": 341,
         "orphanWrapperCount": 40,
         "testOnlyWrapperCount": 39,
         "unreferencedWrapperCount": 1,
-        "duplicateNormalizedRouteGroupCount": 9,
+        "duplicateNormalizedRouteGroupCount": 10,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "ee6499da1f957f44c26718282d7640797585a57be3694b737a9621b22a077cc1",
+      "sha256": "738e11e8467a2ce8bcac3ffbb7f538859156f72bb11e48536e64399c82fdc30c",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 50,
-        "pageActionCount": 44,
+        "registeredActionCount": 51,
+        "pageActionCount": 45,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 230,
-        "templateEventDirectiveCount": 925,
-        "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 23,
-        "candidateProductionMutationConsumerCount": 42,
-        "acceptedProductionMutationConsumerCount": 23,
-        "productionMutationConsumerPairCount": 273,
+        "templateEventDirectiveCount": 926,
+        "propCallbackDirectiveCount": 11,
+        "coveredProductionMutationConsumerCount": 24,
+        "candidateProductionMutationConsumerCount": 43,
+        "acceptedProductionMutationConsumerCount": 24,
+        "productionMutationConsumerPairCount": 274,
         "blockerCount": 296
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "f17dc53facaf84ab71237888355c66534d8d17d79a6c1d8c84cdfb1cbf7090a4",
+      "sha256": "c6d766ad270a152078d92430b371d5dbfc0dc511198d3d6fad1cc24830af7d66",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -74,44 +74,44 @@
         "consumerSurfaceOverrideCount": 3,
         "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
         "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-        "derivedProductionPageCount": 284,
-        "pageRouteCount": 287,
+        "derivedProductionPageCount": 285,
+        "pageRouteCount": 288,
         "externalTakeoverCount": 59,
         "exitCandidateCount": 43,
         "internalTaskCount": 2,
-        "unclassifiedCount": 4,
+        "unclassifiedCount": 3,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 334,
+          "web_api_wrapper": 335,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 1,
           "operator_endpoint": 1,
-          "none": 53
+          "none": 52
         },
-        "blockerCount": 9
+        "blockerCount": 8
       }
     }
   },
   "summary": {
     "routeCount": 395,
-    "pageRouteCount": 287,
+    "pageRouteCount": 288,
     "externalTakeoverRouteCount": 59,
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 2,
-    "unclassifiedRouteCount": 4,
-    "mainRequestBindingCount": 393,
+    "unclassifiedRouteCount": 3,
+    "mainRequestBindingCount": 395,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 40,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 50,
-    "actionBindingCount": 66,
-    "acceptedActionBindingCount": 35,
+    "registeredActionCount": 51,
+    "actionBindingCount": 68,
+    "acceptedActionBindingCount": 36,
     "unresolvedActionBindingCount": 20,
-    "productionMutationConsumerPairCount": 273,
-    "coveredProductionMutationConsumerPairCount": 23,
+    "productionMutationConsumerPairCount": 274,
+    "coveredProductionMutationConsumerPairCount": 24,
     "uncoveredProductionMutationConsumerPairCount": 250,
-    "blockerCount": 321
+    "blockerCount": 320
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -390,15 +390,6 @@
       }
     ],
     "unclassifiedRoutes": [
-      {
-        "method": "POST",
-        "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
-        "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
-        "controller": "ContractBillController",
-        "handler": "cancelRemainder",
-        "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
-        "consumerSurface": "none"
-      },
       {
         "method": "POST",
         "path": "/projects/:projectId/financing-quotas",
@@ -3686,6 +3677,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation",
+          "method": "GET",
+          "path": "/contract-drafts/:param/workbench",
+          "normalizedKey": "GET /contract-drafts/:param/workbench",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-workbench.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "executeContractDraftLifecycleAction",
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
@@ -3717,6 +3722,32 @@
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "contract-bill.remainder-cancellation",
+          "bindingIndex": 0,
+          "identity": "contract-bill.remainder-cancellation\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeContractBillRemainderCancellation\u0000GET\u0000GET /contract-drafts/:param/workbench\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "contractDraftAvailableActions",
+            "key": "contract-bill.remainder-cancellation",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        },
         {
           "actionId": "contract-draft.abandon-application",
           "bindingIndex": 0,
@@ -9479,23 +9510,63 @@
         "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation",
+          "method": "POST",
+          "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
+          "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-workbench.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-bill.remainder-cancellation",
+          "bindingIndex": 1,
+          "identity": "contract-bill.remainder-cancellation\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeContractBillRemainderCancellation\u0000POST\u0000POST /contract-bills/:param/rows/:param/remainder-cancellation\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "contractDraftAvailableActions",
+            "key": "contract-bill.remainder-cancellation",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

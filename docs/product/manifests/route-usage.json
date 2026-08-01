@@ -17,25 +17,25 @@
     "consumerSurfaceOverrideCount": 3,
     "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-    "derivedProductionPageCount": 284,
-    "pageRouteCount": 287,
+    "derivedProductionPageCount": 285,
+    "pageRouteCount": 288,
     "externalTakeoverCount": 59,
     "exitCandidateCount": 43,
     "internalTaskCount": 2,
-    "unclassifiedCount": 4,
+    "unclassifiedCount": 3,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 334,
+      "web_api_wrapper": 335,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 53
+      "none": 52
     },
-    "blockerCount": 9
+    "blockerCount": 8
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 334,
+    "productionWrapperRouteCount": 335,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -936,6 +936,16 @@
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "executeContractBillRemainderCancellation",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/workbench",
+            "normalizedKey": "GET /contract-drafts/:param/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          },
           {
             "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
             "wrapper": "executeContractDraftLifecycleAction",
@@ -6155,19 +6165,30 @@
       "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "executeContractBillRemainderCancellation",
+            "method": "POST",
+            "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
+            "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -15955,39 +15976,30 @@
       {
         "field": "consumerSurfaceCounts.none",
         "expected": 54,
-        "actual": 53
+        "actual": 52
       },
       {
         "field": "consumerSurfaceCounts.web_api_wrapper",
         "expected": 333,
-        "actual": 334
+        "actual": 335
       },
       {
         "field": "derivedProductionPageCount",
         "expected": 283,
-        "actual": 284
+        "actual": 285
       },
       {
         "field": "usageCounts.page",
         "expected": 286,
-        "actual": 287
+        "actual": 288
       },
       {
         "field": "usageCounts.unclassified",
         "expected": 5,
-        "actual": 4
+        "actual": 3
       }
     ],
     "unclassifiedRoutes": [
-      {
-        "method": "POST",
-        "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
-        "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
-        "controller": "ContractBillController",
-        "handler": "cancelRemainder",
-        "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
-        "consumerSurface": "none"
-      },
       {
         "method": "POST",
         "path": "/projects/:projectId/financing-quotas",

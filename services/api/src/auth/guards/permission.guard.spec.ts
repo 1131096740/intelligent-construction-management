@@ -1171,6 +1171,143 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("resolves a contract bill route from its persisted project before request project ids", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(
+            where.projectId === "project-a"
+              ? [{ positionKey: "contract_staff" }]
+              : []
+          )
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractBill: {
+        findUnique: jest.fn().mockResolvedValue({
+          contractVersionId: "contract-version-1"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("contract.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "contract-staff-1" },
+          params: { billId: "bill-1" },
+          query: { projectId: "project-b" },
+          body: { projectId: "project-b" }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.contractBill.findUnique).toHaveBeenCalledWith({
+      where: { id: "bill-1" },
+      select: { contractVersionId: true }
+    });
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "contract-staff-1", projectId: "project-a" }
+    });
+  });
+
+  it("does not let a forged request project authorize another project's contract bill", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+          Promise.resolve(
+            where.projectId === "project-b"
+              ? [{ positionKey: "contract_staff" }]
+              : []
+          )
+        )
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractBill: {
+        findUnique: jest.fn().mockResolvedValue({
+          contractVersionId: "contract-version-1"
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+      }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("contract.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "project-b-contract-staff" },
+          params: { billId: "bill-1" },
+          query: { projectId: "project-b" },
+          body: { projectId: "project-b" }
+        })
+      )
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "project-b-contract-staff", projectId: "project-a" }
+    });
+  });
+
+  it("fails closed when a contract bill route does not resolve to a persisted bill", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractBill: { findUnique: jest.fn().mockResolvedValue(null) }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("contract.create")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "user-1" },
+          params: { billId: "missing-bill" },
+          query: { projectId: "project-b" }
+        })
+      )
+    ).rejects.toThrow("合同清单资源不存在或当前账号无权访问");
+    expect(prisma.contractBill.findUnique).toHaveBeenCalledWith({
+      where: { id: "missing-bill" },
+      select: { contractVersionId: true }
+    });
+    expect(prisma.projectMember.findMany).not.toHaveBeenCalled();
+  });
+
   it("resolves project roles from body contractVersionId for settlement creation", async () => {
     const prisma = {
       userPosition: {

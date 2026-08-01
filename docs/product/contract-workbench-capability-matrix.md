@@ -7,7 +7,7 @@
 | 证据 | 状态 |
 | --- | --- |
 | Controller 源码路由 | 已扫描 184 条 |
-| Web API 请求 | 已扫描 138 条 |
+| Web API 请求 | 已扫描 139 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 395 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 24 条合同专项候选；物理删除授权固定为否 |
@@ -16,9 +16,9 @@
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 115 |
+| matched | 116 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 48 |
+| backend_without_frontend | 47 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
 | exit_candidate | 24 |
@@ -48,7 +48,7 @@
 | PUT | `/contract-bills/:param/rows` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | DELETE | `/contract-bills/:param/rows/:param` | deleteBillRow |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | PATCH | `/contract-bills/:param/rows/:param` | updateBillRow |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contract-bills/:param/rows/:param/remainder-cancellation` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contract-bills/:param/rows/:param/remainder-cancellation` | executeContractBillRemainderCancellation | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-bills/:param/rows/reorder` | reorderBillRows |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/contract-business-scenarios` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-business-scenarios` | — |  | backend_without_frontend | 补入口 | 否 | — |

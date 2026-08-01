@@ -307,6 +307,11 @@ export class ContractWorkbenchService {
         })
       : [];
     assertContractBillDerivedUnitPrices(rows);
+    const remainderCancellationFacts = await this.lineage.remainderCancellationFacts(
+      this.prisma,
+      { id: version.id, baseVersionId: version.baseVersionId },
+      rows
+    );
     const baseVersion = version.baseVersionId
       ? await this.prisma.contractVersion.findUnique({
           where: { id: version.baseVersionId },
@@ -327,19 +332,52 @@ export class ContractWorkbenchService {
     const changePolicy = isChangeVersion
       ? this.parseTemplateSnapshot(version.templateSnapshot).supplementChangePolicy ?? null
       : null;
+    const remainderFacts = [...remainderCancellationFacts.values()].filter(
+      (facts) => facts.hasHistoricalOccupancy
+    );
+    const hasCompleteCancellableRemainder = remainderFacts.some(
+      (facts) =>
+        facts.canCancel &&
+        facts.historicalQuantity !== null &&
+        Boolean(facts.expectedOccupancyToken?.trim())
+    );
+    const remainderActionEnabled =
+      isOwner &&
+      EDITABLE_STATUSES.has(version.status) &&
+      hasCompleteCancellableRemainder;
+    const remainderAction = remainderFacts.length
+      ? {
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: remainderActionEnabled,
+          disabledReason: remainderActionEnabled
+            ? null
+            : !isOwner
+              ? "只有当前合同经办人可以取消未实施余量"
+              : !EDITABLE_STATUSES.has(version.status)
+                ? "合同版本当前不可编辑"
+                : "当前没有事实完整且可取消的未实施余量",
+          requiresComment: true,
+          requiresPassword: false
+        }
+      : null;
     return this.toReadModel({
       lifecycleKind: lifecycle.lifecycleKind,
       availableLifecycleActions: lifecycleAction ? [lifecycleAction] : [],
-      availableActions: lifecycleAction ? [{
-        key: lifecycleAction,
-        label: lifecycleAction === "abandon_application" ? "放弃合同申请" : "删除草稿",
-        kind: "danger",
-        enabled: canExecuteLifecycleAction,
-        disabledReason: lifecycleDisabledReasons.length ? lifecycleDisabledReasons.join("；") : null,
-        requiresComment:
-          lifecycleAction === "abandon_application" || isDirectorProxyCleanup,
-        requiresPassword: isDirectorProxyCleanup
-      }] : [],
+      availableActions: [
+        ...(lifecycleAction ? [{
+          key: lifecycleAction,
+          label: lifecycleAction === "abandon_application" ? "放弃合同申请" : "删除草稿",
+          kind: "danger",
+          enabled: canExecuteLifecycleAction,
+          disabledReason: lifecycleDisabledReasons.length ? lifecycleDisabledReasons.join("；") : null,
+          requiresComment:
+            lifecycleAction === "abandon_application" || isDirectorProxyCleanup,
+          requiresPassword: isDirectorProxyCleanup
+        }] : []),
+        ...(remainderAction ? [remainderAction] : [])
+      ],
       lifecycleBlockers: [...lifecycle.blockers, ...lifecycleDisabledReasons],
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       expectedDraftRevision: version.draftRevision,
@@ -391,11 +429,56 @@ export class ContractWorkbenchService {
         ...bill,
         rows: rows
           .filter((row) => row.contractBillId === bill.id)
-          .map((row) => ({
-            ...row,
-            unitPrice: this.formatUnitPrice(row.unitPrice),
-            taxRatePercent: row.taxRate?.toString() ?? null
-          }))
+          .map((row) => {
+            const facts = remainderCancellationFacts.get(row.id);
+            if (!facts?.hasHistoricalOccupancy) {
+              return {
+                ...row,
+                unitPrice: this.formatUnitPrice(row.unitPrice),
+                taxRatePercent: row.taxRate?.toString() ?? null
+              };
+            }
+            const factsComplete =
+              facts.historicalQuantity !== null &&
+              Boolean(facts.expectedOccupancyToken?.trim());
+            const enabled =
+              isOwner &&
+              EDITABLE_STATUSES.has(version.status) &&
+              facts.canCancel &&
+              factsComplete;
+            const disabledReason = enabled
+              ? null
+              : !isOwner
+                ? "只有当前合同经办人可以取消未实施余量"
+                : !EDITABLE_STATUSES.has(version.status)
+                  ? "合同版本当前不可编辑"
+                  : facts.disabledReason ?? (
+                    factsComplete
+                      ? "该清单行当前没有可取消的未实施余量"
+                      : "历史结算占用事实不完整，请刷新后重试"
+                  );
+            return {
+              ...row,
+              unitPrice: this.formatUnitPrice(row.unitPrice),
+              taxRatePercent: row.taxRate?.toString() ?? null,
+              availableActions: [{
+                key: "contract-bill.remainder-cancellation",
+                label: "取消未实施余量",
+                kind: "danger",
+                enabled,
+                disabledReason,
+                requiresComment: true,
+                requiresPassword: false
+              }],
+              remainderCancellation: {
+                expectedBillRevision: bill.revision,
+                expectedDraftRevision: version.draftRevision,
+                expectedOccupancyToken: facts.expectedOccupancyToken,
+                historicalQuantity: facts.historicalQuantity,
+                historicalAmountCents: facts.historicalAmountCents
+              }
+            };
+          })
       })),
       checkpoints,
       parties,
@@ -1142,6 +1225,10 @@ export class ContractWorkbenchService {
           "保存点中的我方公司主体版本已变更，不能恢复，请重新选择并保存"
         );
       }
+      await this.lineage.assertVersionRowsReplaceableByCheckpoint(tx, {
+        id: version.id,
+        baseVersionId: version.baseVersionId
+      });
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: contractVersionId,

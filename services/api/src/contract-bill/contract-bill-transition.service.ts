@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
+import { loadSettlementLineOccupancy } from "../settlement/settlement-line-occupancy";
 import type {
   ConfirmContractBillTransitionsDto,
   DiscardContractBillTransitionsDto,
@@ -53,6 +54,12 @@ export class ContractBillTransitionService {
       const mappings = await this.resolveMappings(tx, input.mappings, context);
       const sourceIds = [...new Set(mappings.map((mapping) => mapping.sourceContractBillRowId))];
       const targetIds = [...new Set(mappings.map((mapping) => mapping.targetContractBillRowId))];
+      await this.assertMappingsNotFrozenByRemainderCancellation(
+        tx,
+        context,
+        sourceIds,
+        targetIds
+      );
       const existing = await tx.contractBillRowTransition.findMany({
         where: {
           fromContractVersionId: context.fromVersion.id,
@@ -173,6 +180,12 @@ export class ContractBillTransitionService {
       if (!transitions.length) {
         throw new BadRequestException("当前合同版本没有待确认的人工跨版本映射");
       }
+      await this.assertMappingsNotFrozenByRemainderCancellation(
+        tx,
+        context,
+        [...new Set(transitions.map((transition) => transition.sourceContractBillRowId))],
+        [...new Set(transitions.map((transition) => transition.targetContractBillRowId))]
+      );
       await this.assertDraftMappingsConserved(tx, context, transitions);
       const confirmedAt = new Date();
       const confirmed = await tx.contractBillRowTransition.updateMany({
@@ -218,6 +231,13 @@ export class ContractBillTransitionService {
         actorUserId,
         input.expectedTargetVersionRevision,
         false
+      );
+      await this.assertMappingsNotFrozenByRemainderCancellation(
+        tx,
+        context,
+        [],
+        [],
+        true
       );
       const discarded = await tx.contractBillRowTransition.updateMany({
         where: {
@@ -275,28 +295,28 @@ export class ContractBillTransitionService {
       this.prisma.contractBill.findMany({ where: { contractVersionId: version.id }, select: { id: true } })
     ]);
     const [sourceRows, targetRows] = await Promise.all([
-      sourceBills.length ? this.prisma.contractBillRow.findMany({ where: { contractBillId: { in: sourceBills.map((bill) => bill.id) } }, select: { id: true, itemName: true, specification: true, unit: true } }) : [],
+      sourceBills.length ? this.prisma.contractBillRow.findMany({ where: { contractBillId: { in: sourceBills.map((bill) => bill.id) } }, select: { id: true, lineageId: true, itemName: true, specification: true, unit: true } }) : [],
       targetBills.length ? this.prisma.contractBillRow.findMany({ where: { contractBillId: { in: targetBills.map((bill) => bill.id) } }, select: { id: true, itemName: true, specification: true, unit: true } }) : []
     ]);
-    const settlements = await this.prisma.settlement.findMany({
-      where: { contractId: version.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
-      select: { id: true }
-    });
-    const lines = settlements.length && sourceRows.length
-      ? await this.prisma.settlementLine.findMany({
-          where: { settlementId: { in: settlements.map((settlement) => settlement.id) }, contractBillRowId: { in: sourceRows.map((row) => row.id) } },
-          select: { contractBillRowId: true, quantity: true, amountCents: true }
-        })
-      : [];
+    const occupancy = await loadSettlementLineOccupancy(
+      this.prisma,
+      version.baseVersionId,
+      sourceRows,
+      { mode: "irreversible_history" }
+    );
     return {
       fromContractVersionId: version.baseVersionId,
       canConfirm,
       sources: sourceRows.map((row) => {
-        const matched = lines.filter((line) => line.contractBillRowId === row.id);
-        const quantity = matched.some((line) => line.quantity === null)
-          ? null
-          : matched.reduce((total, line) => total.plus(line.quantity!), new Prisma.Decimal(0));
-        return { ...row, historicalQuantity: quantity?.toString() ?? null, historicalAmountCents: matched.reduce((total, line) => total + line.amountCents, 0n).toString() };
+        const facts = occupancy.get(row.id);
+        return {
+          ...row,
+          historicalQuantity: facts?.quantityComplete
+            ? facts.quantity.toString()
+            : null,
+          historicalAmountCents: facts?.amountCents.toString() ?? "0",
+          hasReversibleOccupancy: facts?.hasReversibleOccupancy ?? false
+        };
       }).filter((row) => row.historicalQuantity !== null || row.historicalAmountCents !== "0"),
       targets: targetRows
     };
@@ -435,32 +455,75 @@ export class ContractBillTransitionService {
     const sourceIds = [...new Set(transitions.map((transition) => transition.sourceContractBillRowId))];
     const sourceRows = await tx.contractBillRow.findMany({ where: { id: { in: sourceIds } } });
     if (sourceRows.length !== sourceIds.length) throw new BadRequestException("来源清单行已变化，请刷新后重试");
-    const settlements = await tx.settlement.findMany({
-      where: { contractId: context.toVersion.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
-      select: { id: true }
-    });
-    const lines = settlements.length
-      ? await tx.settlementLine.findMany({
-          where: { settlementId: { in: settlements.map((settlement) => settlement.id) }, contractBillRowId: { in: sourceIds } },
-          select: { contractBillRowId: true, quantity: true, amountCents: true }
-        })
-      : [];
+    const occupancy = await loadSettlementLineOccupancy(
+      tx,
+      context.fromVersion.id,
+      sourceRows,
+      { mode: "irreversible_history" }
+    );
     for (const sourceId of sourceIds) {
-      const sourceLines = lines.filter((line) => line.contractBillRowId === sourceId);
-      if (!sourceLines.length) {
+      const source = sourceRows.find((row) => row.id === sourceId)!;
+      const facts = occupancy.get(sourceId);
+      if (facts?.hasReversibleOccupancy) {
+        throw new BadRequestException(
+          "来源版本存在尚未生效的在途结算，请先完成或撤回后再确认映射"
+        );
+      }
+      const hasOccupancy = Boolean(facts && (
+        !facts.quantityComplete ||
+        !facts.quantity.isZero() ||
+        facts.amountCents !== 0n ||
+        facts.count > (source.lineageId ? 1 : 0)
+      ));
+      if (!hasOccupancy) {
         throw new BadRequestException("未发现该来源行的已生效历史结算，不能确认历史分配");
       }
-      if (sourceLines.some((line) => line.quantity === null)) {
+      if (!facts!.quantityComplete) {
         throw new BadRequestException("来源行存在没有数量的历史结算，不能确认数量分配");
       }
-      const sourceQuantity = sourceLines.reduce((total, line) => total.plus(line.quantity!), new Prisma.Decimal(0));
-      const sourceAmountCents = sourceLines.reduce((total, line) => total + line.amountCents, 0n);
       const edges = transitions.filter((transition) => transition.sourceContractBillRowId === sourceId);
       const quantityAllocated = edges.reduce((total, edge) => total.plus(edge.sourceSettledQuantityAllocated!), new Prisma.Decimal(0));
       const amountAllocated = edges.reduce((total, edge) => total + edge.settledAmountAllocatedCents!, 0n);
-      if (!quantityAllocated.equals(sourceQuantity) || amountAllocated !== sourceAmountCents) {
+      if (!quantityAllocated.equals(facts!.quantity) || amountAllocated !== facts!.amountCents) {
         throw new BadRequestException("人工跨版本映射的历史数量或金额分配不守恒");
       }
+    }
+  }
+
+  private async assertMappingsNotFrozenByRemainderCancellation(
+    tx: Prisma.TransactionClient,
+    context: Awaited<ReturnType<ContractBillTransitionService["lockEditablePair"]>>,
+    sourceIds: string[],
+    targetIds: string[],
+    wholePair = false
+  ) {
+    const scopedPredicate = wholePair
+      ? Prisma.sql`TRUE`
+      : Prisma.sql`
+          target."id" IN (${Prisma.join(targetIds)})
+          OR EXISTS (
+            SELECT 1
+            FROM "ContractBillRowTransition" scoped
+            WHERE scoped."fromContractVersionId" = ${context.fromVersion.id}
+              AND scoped."toContractVersionId" = ${context.toVersion.id}
+              AND scoped."status" <> 'invalidated'
+              AND scoped."targetContractBillRowId" = target."id"
+              AND scoped."sourceContractBillRowId" IN (${Prisma.join(sourceIds)})
+          )
+        `;
+    const frozen = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT target."id"
+      FROM "ContractBillRow" target
+      JOIN "ContractBill" bill ON bill."id" = target."contractBillId"
+      WHERE bill."contractVersionId" = ${context.toVersion.id}
+        AND target."remainderDisposition" = 'cancelled'
+        AND (${scopedPredicate})
+      LIMIT 1
+    `);
+    if (frozen.length) {
+      throw new ConflictException(
+        "已取消未实施余量的清单行及其历史来源映射已冻结；如需修正请新建合同版本"
+      );
     }
   }
 

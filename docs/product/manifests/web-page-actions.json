@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 50,
-    "pageActionCount": 44,
+    "registeredActionCount": 51,
+    "pageActionCount": 45,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 230,
-    "templateEventDirectiveCount": 925,
-    "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 23,
-    "candidateProductionMutationConsumerCount": 42,
-    "acceptedProductionMutationConsumerCount": 23,
-    "productionMutationConsumerPairCount": 273,
+    "templateEventDirectiveCount": 926,
+    "propCallbackDirectiveCount": 11,
+    "coveredProductionMutationConsumerCount": 24,
+    "candidateProductionMutationConsumerCount": 43,
+    "acceptedProductionMutationConsumerCount": 24,
+    "productionMutationConsumerPairCount": 274,
     "blockerCount": 296
   },
   "evidence": {
@@ -199,6 +199,109 @@
       ]
     },
     {
+      "id": "contract-bill.remainder-cancellation",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "contract-bill-focus-editor",
+        "event": "action-handler",
+        "handler": "executeFocusedBillRemainderCancellation",
+        "kind": "prop_callback",
+        "sourceLine": 482,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractDraftAvailableActions",
+        "key": "contract-bill.remainder-cancellation",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation",
+          "method": "GET",
+          "path": "/contract-drafts/:param/workbench",
+          "normalizedKey": "GET /contract-drafts/:param/workbench",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/contract-drafts/:contractVersionId/workbench",
+            "normalizedKey": "GET /contract-drafts/:param/workbench",
+            "controller": "ContractDraftController",
+            "handler": "workbench",
+            "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "executeFocusedBillRemainderCancellation",
+              "executeContractBillRemainderCancellation"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeContractBillRemainderCancellation",
+          "method": "POST",
+          "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
+          "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
+            "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
+            "controller": "ContractBillController",
+            "handler": "cancelRemainder",
+            "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "executeFocusedBillRemainderCancellation",
+              "executeContractBillRemainderCancellation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-draft.abandon-application",
       "usage": "page_action",
       "routePaths": [
@@ -215,7 +318,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 955,
+        "sourceLine": 958,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -321,7 +424,7 @@
         "handler": "performSave",
         "variant": "auto",
         "kind": "background_call",
-        "sourceLine": 1496,
+        "sourceLine": 1572,
         "sourceColumn": 2
       },
       "semantic": "technical_write",
@@ -384,7 +487,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 922,
+        "sourceLine": 925,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -489,7 +592,7 @@
         "event": "call",
         "handler": "load",
         "kind": "background_call",
-        "sourceLine": 1325,
+        "sourceLine": 1401,
         "sourceColumn": 2
       },
       "semantic": "technical_write",
@@ -552,7 +655,7 @@
         "event": "call",
         "handler": "performLeaseVerification",
         "kind": "background_call",
-        "sourceLine": 1160,
+        "sourceLine": 1236,
         "sourceColumn": 2
       },
       "semantic": "technical_write",
@@ -615,7 +718,7 @@
         "event": "call",
         "handler": "releaseCurrentLease",
         "kind": "background_call",
-        "sourceLine": 1242,
+        "sourceLine": 1318,
         "sourceColumn": 2
       },
       "semantic": "technical_write",
@@ -741,7 +844,7 @@
         "event": "call",
         "handler": "queuePreviewForCurrentRevision",
         "kind": "background_call",
-        "sourceLine": 1685,
+        "sourceLine": 1761,
         "sourceColumn": 2
       },
       "semantic": "technical_write",
@@ -804,7 +907,7 @@
         "event": "confirm",
         "handler": "onConfirmTransfer",
         "kind": "prop_callback",
-        "sourceLine": 1016,
+        "sourceLine": 1019,
         "sourceColumn": 6
       },
       "semantic": "business_write",

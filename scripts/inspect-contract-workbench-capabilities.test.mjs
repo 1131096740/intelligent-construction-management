@@ -157,6 +157,55 @@ test("matches governed contract path helpers to their controller route", async (
   );
 });
 
+test("attributes a private transport helper route to its exported orchestrator", async () => {
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contract-bills")
+        export class ExampleController {
+          @Post(":billId/rows/:rowKey/remainder-cancellation")
+          cancelRemainder() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": `
+        function cancelContractBillRemainder(billId, rowKey) {
+          return apiFetch(
+            \`/contract-bills/\${billId}/rows/\${rowKey}/remainder-cancellation\`,
+            { method: "POST" }
+          );
+        }
+        export function executeContractBillRemainderCancellation(billId, rowKey) {
+          return cancelContractBillRemainder(billId, rowKey);
+        }
+      `,
+      "apps/web-admin/src/api/core-flow-read.api.ts": "",
+      "apps/web-admin/src/pages/contracts/Page.vue": `
+        <script setup>
+        import { executeContractBillRemainderCancellation } from "../../api/contract-workbench.api";
+        const cancel = () => executeContractBillRemainderCancellation("bill-1", "row-1");
+        </script>
+      `
+    },
+    async (root) => {
+      const report = await inspectCapabilityProject({ root, legacyRoutes: [] });
+      const route = report.capabilities.filter(
+        (item) =>
+          item.route ===
+          "/contract-bills/:param/rows/:param/remainder-cancellation"
+      );
+      assert.equal(route.length, 1);
+      assert.equal(
+        route[0]?.wrapper,
+        "executeContractBillRemainderCancellation"
+      );
+      assert.deepEqual(route[0]?.consumers, [
+        "apps/web-admin/src/pages/contracts/Page.vue"
+      ]);
+      assert.equal(route[0]?.classification, "matched");
+    }
+  );
+});
+
 test("finds a page import that points to no API wrapper", async () => {
   await withFixture(
     {

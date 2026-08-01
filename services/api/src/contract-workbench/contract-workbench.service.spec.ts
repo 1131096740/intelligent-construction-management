@@ -39,11 +39,16 @@ describe("ContractWorkbenchService", () => {
     validationSchema: []
   };
 
-  function makeService(tx: Record<string, unknown>) {
+  function makeService(tx: Record<string, unknown>, lineage?: Record<string, unknown>) {
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
     } as unknown as PrismaService;
-    return new ContractWorkbenchService(prisma, audit as never);
+    return new ContractWorkbenchService(
+      prisma,
+      audit as never,
+      undefined,
+      lineage as never
+    );
   }
 
   function withEmptyDraftLifecycleModels<T extends Record<string, unknown>>(
@@ -2715,6 +2720,318 @@ describe("ContractWorkbenchService", () => {
     });
   });
 
+  it("projects remainder-cancellation capability from one batched lineage lookup", async () => {
+    const version = {
+      id: "version-2",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 9,
+      firstSubmittedAt: null,
+      changeType: "change",
+      baseVersionId: "version-1",
+      contractGovernanceVersion: 0,
+      amountCents: 200_000n,
+      amountLimitType: "capped",
+      originalBaseAmountCents: 100_000n,
+      cumulativeIncreaseCents: 100_000n,
+      cumulativeDecreaseCents: 0n,
+      templateSnapshot: TEMPLATE_SNAPSHOT,
+      clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema,
+      draftData: {}
+    };
+    const rows = [
+      {
+        id: "row-occupied",
+        contractBillId: "bill-1",
+        rowKey: "occupied",
+        sortOrder: 0,
+        unit: "m3",
+        quantity: new Prisma.Decimal("10"),
+        unitPrice: new Prisma.Decimal("100"),
+        taxRate: new Prisma.Decimal("0"),
+        taxInclusiveAmountCents: 100_000n,
+        taxExclusiveAmountCents: 100_000n,
+        taxAmountCents: 0n
+      },
+      {
+        id: "row-new",
+        contractBillId: "bill-1",
+        rowKey: "new",
+        sortOrder: 1,
+        unit: "m3",
+        quantity: new Prisma.Decimal("1"),
+        unitPrice: new Prisma.Decimal("100"),
+        taxRate: new Prisma.Decimal("0"),
+        taxInclusiveAmountCents: 10_000n,
+        taxExclusiveAmountCents: 10_000n,
+        taxAmountCents: 0n
+      },
+      {
+        id: "row-no-remainder",
+        contractBillId: "bill-1",
+        rowKey: "no-remainder",
+        sortOrder: 2,
+        unit: "m3",
+        quantity: new Prisma.Decimal("2"),
+        unitPrice: new Prisma.Decimal("100"),
+        taxRate: new Prisma.Decimal("0"),
+        taxInclusiveAmountCents: 20_000n,
+        taxExclusiveAmountCents: 20_000n,
+        taxAmountCents: 0n
+      },
+      {
+        id: "row-incomplete",
+        contractBillId: "bill-1",
+        rowKey: "incomplete",
+        sortOrder: 3,
+        unit: "m3",
+        quantity: new Prisma.Decimal("2"),
+        unitPrice: new Prisma.Decimal("100"),
+        taxRate: new Prisma.Decimal("0"),
+        taxInclusiveAmountCents: 20_000n,
+        taxExclusiveAmountCents: 20_000n,
+        taxAmountCents: 0n
+      }
+    ];
+    const prisma = withEmptyDraftLifecycleModels({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue(version),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: 100_000n
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "bill-1",
+          contractVersionId: "version-2",
+          revision: 7,
+          taxInclusiveAmountCents: 110_000n,
+          taxExclusiveAmountCents: 110_000n,
+          taxAmountCents: 0n
+        }])
+      },
+      contractBillRow: { findMany: jest.fn().mockResolvedValue(rows) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) }
+    }) as unknown as PrismaService;
+    const remainderCancellationFacts = jest.fn().mockResolvedValue(new Map([
+      ["row-occupied", {
+        hasHistoricalOccupancy: true,
+        canCancel: true,
+        historicalQuantity: new Prisma.Decimal("3.5"),
+        historicalAmountCents: 35_000n,
+        disabledReason: null,
+        expectedOccupancyToken: "occupancy-token-1"
+      }],
+      ["row-new", {
+        hasHistoricalOccupancy: false,
+        canCancel: false,
+        historicalQuantity: null,
+        historicalAmountCents: 0n,
+        disabledReason: null,
+        expectedOccupancyToken: null
+      }],
+      ["row-no-remainder", {
+        hasHistoricalOccupancy: true,
+        canCancel: false,
+        historicalQuantity: new Prisma.Decimal("2"),
+        historicalAmountCents: 20_000n,
+        disabledReason: "新版清单数量已收敛到历史累计数量",
+        expectedOccupancyToken: "occupancy-token-3"
+      }],
+      ["row-incomplete", {
+        hasHistoricalOccupancy: true,
+        canCancel: true,
+        historicalQuantity: null,
+        historicalAmountCents: 20_000n,
+        disabledReason: null,
+        expectedOccupancyToken: null
+      }]
+    ]));
+    const service = new ContractWorkbenchService(
+      prisma,
+      audit as never,
+      undefined,
+      { remainderCancellationFacts } as never
+    );
+
+    const result = await service.getDraft("contract-1", "owner-1");
+
+    expect(remainderCancellationFacts).toHaveBeenCalledTimes(1);
+    expect(remainderCancellationFacts).toHaveBeenCalledWith(
+      prisma,
+      { id: "version-2", baseVersionId: "version-1" },
+      rows
+    );
+    expect(result.availableActions).toEqual(expect.arrayContaining([{
+      key: "contract-bill.remainder-cancellation",
+      label: "取消未实施余量",
+      kind: "danger",
+      enabled: true,
+      disabledReason: null,
+      requiresComment: true,
+      requiresPassword: false
+    }]));
+    expect(result.bills[0]?.rows[0]).toEqual(expect.objectContaining({
+      availableActions: [{
+        key: "contract-bill.remainder-cancellation",
+        label: "取消未实施余量",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true,
+        requiresPassword: false
+      }],
+      remainderCancellation: {
+        expectedBillRevision: 7,
+        expectedDraftRevision: 9,
+        expectedOccupancyToken: "occupancy-token-1",
+        historicalQuantity: "3.5",
+        historicalAmountCents: "35000"
+      }
+    }));
+    expect(result.bills[0]?.rows[1]).not.toHaveProperty("availableActions");
+    expect(result.bills[0]?.rows[1]).not.toHaveProperty("remainderCancellation");
+    expect(result.bills[0]?.rows[2]).toEqual(expect.objectContaining({
+      availableActions: [expect.objectContaining({
+        enabled: false,
+        disabledReason: "新版清单数量已收敛到历史累计数量"
+      })]
+    }));
+    expect(result.bills[0]?.rows[3]).toEqual(expect.objectContaining({
+      availableActions: [expect.objectContaining({
+        enabled: false,
+        disabledReason: "历史结算占用事实不完整，请刷新后重试"
+      })],
+      remainderCancellation: expect.objectContaining({
+        expectedOccupancyToken: null,
+        historicalQuantity: null
+      })
+    }));
+    expect(() => JSON.stringify(result)).not.toThrow();
+  });
+
+  it("keeps a visible remainder-cancellation action disabled for a non-owner viewer", async () => {
+    const version = {
+      id: "version-2",
+      contractId: "contract-1",
+      status: "approval_rejected",
+      draftRevision: 4,
+      firstSubmittedAt: new Date("2026-08-01T01:00:00.000Z"),
+      changeType: "change",
+      baseVersionId: "version-1",
+      contractGovernanceVersion: 0,
+      amountCents: 100_000n,
+      amountLimitType: "capped",
+      originalBaseAmountCents: 100_000n,
+      cumulativeIncreaseCents: 0n,
+      cumulativeDecreaseCents: 0n,
+      templateSnapshot: TEMPLATE_SNAPSHOT,
+      clauseSnapshot: TEMPLATE_SNAPSHOT.clauseSchema,
+      draftData: {}
+    };
+    const row = {
+      id: "row-occupied",
+      contractBillId: "bill-1",
+      rowKey: "occupied",
+      sortOrder: 0,
+      unit: "m3",
+      quantity: new Prisma.Decimal("10"),
+      unitPrice: new Prisma.Decimal("100"),
+      taxRate: new Prisma.Decimal("0"),
+      taxInclusiveAmountCents: 100_000n,
+      taxExclusiveAmountCents: 100_000n,
+      taxAmountCents: 0n
+    };
+    const prisma = withEmptyDraftLifecycleModels({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue(version),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          versionNo: 1,
+          status: "effective",
+          amountCents: 100_000n
+        })
+      },
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "bill-1",
+          contractVersionId: "version-2",
+          revision: 2,
+          taxInclusiveAmountCents: 100_000n,
+          taxExclusiveAmountCents: 100_000n,
+          taxAmountCents: 0n
+        }])
+      },
+      contractBillRow: { findMany: jest.fn().mockResolvedValue([row]) },
+      contractDraftCheckpoint: { findMany: jest.fn().mockResolvedValue([]) },
+      contractPartySnapshot: { findMany: jest.fn().mockResolvedValue([]) },
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "contract-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "contract-director", key: "contract_director" }])
+      }
+    }) as unknown as PrismaService;
+    const remainderCancellationFacts = jest.fn().mockResolvedValue(new Map([
+      ["row-occupied", {
+        hasHistoricalOccupancy: true,
+        canCancel: true,
+        historicalQuantity: new Prisma.Decimal("3.5"),
+        historicalAmountCents: 35_000n,
+        disabledReason: null,
+        expectedOccupancyToken: "occupancy-token-2"
+      }]
+    ]));
+    const service = new ContractWorkbenchService(
+      prisma,
+      audit as never,
+      undefined,
+      { remainderCancellationFacts } as never
+    );
+
+    const result = await service.getDraft("contract-1", "director-1");
+
+    const projectedRow = result.bills[0]?.rows[0] as Record<string, unknown> | undefined;
+    expect(result.availableActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: "contract-bill.remainder-cancellation",
+        enabled: false,
+        disabledReason: "只有当前合同经办人可以取消未实施余量"
+      })
+    ]));
+    expect(projectedRow?.availableActions).toEqual([
+      expect.objectContaining({
+        key: "contract-bill.remainder-cancellation",
+        enabled: false,
+        disabledReason: "只有当前合同经办人可以取消未实施余量"
+      })
+    ]);
+  });
+
   it("creates a manual checkpoint snapshot", async () => {
     const checkpoints = {
       findMany: jest.fn().mockResolvedValue([{ sequenceNo: 2 }, { sequenceNo: 1 }]),
@@ -3073,6 +3390,45 @@ describe("ContractWorkbenchService", () => {
         companyEntityName: null
       }
     }));
+  });
+
+  it("fails checkpoint restore before revision, bill, row, or audit writes when lineage facts are frozen", async () => {
+    const tx = ownedVersionTx({
+      contractDraftCheckpoint: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "checkpoint-frozen",
+          contractVersionId: "version-1",
+          snapshot: {
+            draftData: {},
+            clauseSnapshot: [],
+            pricingNature: "fixed_total",
+            amountSource: "manual",
+            amountCents: "1000000",
+            amountAdjustmentReason: null,
+            layoutTemplateVersionId: null,
+            bills: []
+          }
+        })
+      }
+    });
+    const lineage = {
+      assertVersionRowsReplaceableByCheckpoint: jest.fn().mockRejectedValue(
+        new Error("当前合同版本已有历史清单事实")
+      )
+    };
+    const service = makeService(tx, lineage);
+
+    await expect(service.restoreCheckpoint(
+      "version-1",
+      "checkpoint-frozen",
+      "owner-1"
+    )).rejects.toThrow("历史清单事实");
+
+    expect(lineage.assertVersionRowsReplaceableByCheckpoint).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractBillRow.deleteMany).not.toHaveBeenCalled();
+    expect(tx.contractBill.deleteMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it.each([

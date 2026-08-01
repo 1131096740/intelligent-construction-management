@@ -65,7 +65,8 @@ function context(
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
     position: { findMany: jest.fn().mockResolvedValue([]) },
     settlement: { findMany: jest.fn() },
-    settlementLine: { findMany: jest.fn() }
+    settlementLine: { findMany: jest.fn() },
+    contractBillRowCarryForward: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const prisma = {
     $transaction: jest.fn(async (operation: (client: typeof tx) => unknown) => operation(tx)),
@@ -91,6 +92,20 @@ function expectDraftBoundaryLockOrder(
   if (expectFormalEvidenceQuery) {
     expect(statements[2]).toContain('FROM "ContractFormalFile"');
   }
+}
+
+function mockIrreversibleSettlementStatuses(
+  mock: jest.Mock,
+  effectiveIds = ["settlement-1"],
+  reversibleIds: string[] = []
+) {
+  mock.mockImplementation(({ where }: {
+    where: { status: { in: readonly string[] } };
+  }) => Promise.resolve(
+    where.status.in.includes("in_approval")
+      ? reversibleIds.map((id) => ({ id }))
+      : effectiveIds.map((id) => ({ id }))
+  ));
 }
 
 function prepareSuccessfulMutation(current: TestContext, kind: MutationKind) {
@@ -128,8 +143,10 @@ function prepareSuccessfulMutation(current: TestContext, kind: MutationKind) {
     current.tx.contractBillRow.findMany.mockResolvedValue([
       { id: "source-row", contractBillId: "source-bill", unit: "m" }
     ]);
-    current.tx.settlement.findMany.mockResolvedValue([{ id: "settlement-1" }]);
+    mockIrreversibleSettlementStatuses(current.tx.settlement.findMany);
     current.tx.settlementLine.findMany.mockResolvedValue([{
+      id: "line-1",
+      settlementId: "settlement-1",
       contractBillRowId: "source-row",
       quantity: new Prisma.Decimal("30"),
       amountCents: 3000n
@@ -181,6 +198,26 @@ describe("ContractBillTransitionService", () => {
         BadRequestException
       );
       expectDraftBoundaryLockOrder(current.tx.$queryRaw);
+      expect(current.tx.contractBillRowTransition.updateMany).not.toHaveBeenCalled();
+      expect(current.tx.contractBillRowTransition.upsert).not.toHaveBeenCalled();
+      expect(current.tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(current.tx.auditLog.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each<MutationKind>(["save", "confirm", "discard"])(
+    "freezes %s mapping changes after a target row cancels its unimplemented remainder",
+    async (kind) => {
+      const current = context();
+      prepareSuccessfulMutation(current, kind);
+      current.tx.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: "cancelled-target-row" }]);
+
+      await expect(invokeMutation(current, kind)).rejects.toThrow(
+        "映射已冻结"
+      );
+
       expect(current.tx.contractBillRowTransition.updateMany).not.toHaveBeenCalled();
       expect(current.tx.contractBillRowTransition.upsert).not.toHaveBeenCalled();
       expect(current.tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -366,8 +403,10 @@ describe("ContractBillTransitionService", () => {
       .mockResolvedValueOnce([]);
     current.tx.contractBillRowTransition.updateMany.mockResolvedValue({ count: 2 });
     current.tx.contractBillRow.findMany.mockResolvedValue([{ id: "source-row", contractBillId: "source-bill", unit: "m" }]);
-    current.tx.settlement.findMany.mockResolvedValue([{ id: "settlement-1" }]);
+    mockIrreversibleSettlementStatuses(current.tx.settlement.findMany);
     current.tx.settlementLine.findMany.mockResolvedValue([{
+      id: "line-1",
+      settlementId: "settlement-1",
       contractBillRowId: "source-row",
       quantity: new Prisma.Decimal("30"),
       amountCents: 3000n
@@ -381,6 +420,113 @@ describe("ContractBillTransitionService", () => {
       where: { id: { in: ["transition-a", "transition-b"] }, status: "draft" },
       data: expect.objectContaining({ status: "confirmed", confirmedByUserId: "director-1" })
     }));
+  });
+
+  it("confirms allocation against carry-forward plus active source-version settlement occupancy", async () => {
+    const current = context();
+    current.tx.userPosition.findMany.mockResolvedValue([
+      { positionId: "position-contract-director" }
+    ]);
+    current.tx.position.findMany.mockResolvedValue([
+      { id: "position-contract-director", key: "contract_director" }
+    ]);
+    current.tx.contractBillRowTransition.findMany
+      .mockResolvedValueOnce([{
+        id: "transition-carry",
+        sourceContractBillRowId: "source-row",
+        targetContractBillRowId: "target-row",
+        sourceSettledQuantityAllocated: new Prisma.Decimal("40"),
+        targetOpeningQuantity: new Prisma.Decimal("40"),
+        settledAmountAllocatedCents: 4000n
+      }])
+      .mockResolvedValueOnce([]);
+    current.tx.contractBillRow.findMany.mockResolvedValue([{
+      id: "source-row",
+      contractBillId: "source-bill",
+      lineageId: "lineage-1",
+      unit: "m"
+    }]);
+    current.tx.contractBillRowCarryForward.findMany.mockResolvedValue([{
+      contractBillRowId: "source-row",
+      lineageId: "lineage-1",
+      priorSettledQuantity: new Prisma.Decimal("30"),
+      priorSettledAmountCents: 3000n,
+      sourceSnapshotHash: "a".repeat(64),
+      updatedAt: new Date("2026-07-30T00:00:00.000Z")
+    }]);
+    mockIrreversibleSettlementStatuses(
+      current.tx.settlement.findMany,
+      ["settlement-current"]
+    );
+    current.tx.settlementLine.findMany.mockResolvedValue([{
+      id: "line-current",
+      settlementId: "settlement-current",
+      contractBillRowId: "source-row",
+      quantity: new Prisma.Decimal("10"),
+      amountCents: 1000n
+    }]);
+    current.tx.contractBillRowTransition.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(current.service.confirmDraftMappings(
+      "version-2",
+      "director-1",
+      { expectedTargetVersionRevision: 4 }
+    )).resolves.toEqual([]);
+
+    expect(current.tx.contractBillRowTransition.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ["transition-carry"] } }),
+        data: expect.objectContaining({ status: "confirmed" })
+      })
+    );
+    expect(current.tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(current.tx.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks confirmation while the source has reversible settlement occupancy", async () => {
+    const current = context();
+    current.tx.userPosition.findMany.mockResolvedValue([
+      { positionId: "position-contract-director" }
+    ]);
+    current.tx.position.findMany.mockResolvedValue([
+      { id: "position-contract-director", key: "contract_director" }
+    ]);
+    current.tx.contractBillRowTransition.findMany.mockResolvedValueOnce([{
+      id: "transition-pending",
+      sourceContractBillRowId: "source-row",
+      targetContractBillRowId: "target-row",
+      sourceSettledQuantityAllocated: new Prisma.Decimal("30"),
+      targetOpeningQuantity: new Prisma.Decimal("30"),
+      settledAmountAllocatedCents: 3000n
+    }]);
+    current.tx.contractBillRow.findMany.mockResolvedValue([{
+      id: "source-row",
+      contractBillId: "source-bill",
+      lineageId: null,
+      unit: "m"
+    }]);
+    mockIrreversibleSettlementStatuses(
+      current.tx.settlement.findMany,
+      [],
+      ["settlement-in-approval"]
+    );
+    current.tx.settlementLine.findMany.mockResolvedValue([{
+      id: "line-in-approval",
+      settlementId: "settlement-in-approval",
+      contractBillRowId: "source-row",
+      quantity: new Prisma.Decimal("30"),
+      amountCents: 3000n
+    }]);
+
+    await expect(current.service.confirmDraftMappings(
+      "version-2",
+      "director-1",
+      { expectedTargetVersionRevision: 4 }
+    )).rejects.toThrow("尚未生效的在途结算");
+
+    expect(current.tx.contractBillRowTransition.updateMany).not.toHaveBeenCalled();
+    expect(current.tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(current.tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("lets the draft owner revoke only unconfirmed manual mappings", async () => {
@@ -413,8 +559,14 @@ describe("ContractBillTransitionService", () => {
       sourceSettledQuantityAllocated: new Prisma.Decimal("30"), targetOpeningQuantity: new Prisma.Decimal("30"), settledAmountAllocatedCents: 3000n
     }]);
     current.tx.contractBillRow.findMany.mockResolvedValue([{ id: "source-row", contractBillId: "source-bill", unit: "m" }]);
-    current.tx.settlement.findMany.mockResolvedValue([{ id: "settlement-1" }]);
-    current.tx.settlementLine.findMany.mockResolvedValue([{ contractBillRowId: "source-row", quantity: new Prisma.Decimal("30"), amountCents: 3000n }]);
+    mockIrreversibleSettlementStatuses(current.tx.settlement.findMany);
+    current.tx.settlementLine.findMany.mockResolvedValue([{
+      id: "line-1",
+      settlementId: "settlement-1",
+      contractBillRowId: "source-row",
+      quantity: new Prisma.Decimal("30"),
+      amountCents: 3000n
+    }]);
     current.tx.contractBillRowTransition.updateMany.mockResolvedValue({ count: 1 });
     current.tx.contractVersion.updateMany.mockResolvedValue({ count: 0 });
 

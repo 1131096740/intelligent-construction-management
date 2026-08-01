@@ -359,6 +359,11 @@ export class PermissionGuard implements CanActivate {
       return settlement?.projectId;
     }
 
+    const contractBillIdFromParams = request.params?.billId;
+    if (contractBillIdFromParams) {
+      return this.extractProjectIdFromContractBill(contractBillIdFromParams);
+    }
+
     const contractVersionIdFromParams = request.params?.contractVersionId;
     if (contractVersionIdFromParams) {
       return this.extractProjectIdFromContractVersion(contractVersionIdFromParams);
@@ -435,5 +440,22 @@ export class PermissionGuard implements CanActivate {
     });
 
     return contract?.projectId;
+  }
+
+  private async extractProjectIdFromContractBill(contractBillId: string) {
+    const bill = await this.prisma.contractBill.findUnique({
+      where: { id: contractBillId },
+      select: { contractVersionId: true }
+    });
+    if (!bill) {
+      throw new ForbiddenException("合同清单资源不存在或当前账号无权访问");
+    }
+    const projectId = await this.extractProjectIdFromContractVersion(
+      bill.contractVersionId
+    );
+    if (!projectId) {
+      throw new ForbiddenException("合同清单资源不存在或当前账号无权访问");
+    }
+    return projectId;
   }
 }

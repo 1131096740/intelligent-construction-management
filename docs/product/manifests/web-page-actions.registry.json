@@ -132,6 +132,32 @@
       ]
     },
     {
+      "id": "contract-bill.remainder-cancellation",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "contract-bill-focus-editor",
+        "event": "action-handler",
+        "handler": "executeFocusedBillRemainderCancellation"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractDraftAvailableActions",
+        "key": "contract-bill.remainder-cancellation"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "executeContractBillRemainderCancellation"
+        }
+      ]
+    },
+    {
       "id": "contract-draft.lease-acquire",
       "usage": "background",
       "routePaths": [

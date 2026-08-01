@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
+import { loadSettlementLineOccupancy } from "../settlement/settlement-line-occupancy";
 
 type ContractVersion = {
   id: string;
@@ -14,6 +15,22 @@ type BillRow = {
   id: string;
   lineageId: string | null;
   unit: string;
+  quantity: Prisma.Decimal | null;
+  remainderDisposition: string | null;
+};
+
+type TargetAllocation = {
+  sourceId: string;
+  quantity: Prisma.Decimal | null;
+  amountCents: bigint;
+  transitionId?: string;
+  sourceSnapshotToken?: string | null;
+};
+
+type PendingTransitionUpdate = {
+  id: string;
+  quantity: Prisma.Decimal | null;
+  amountCents: bigint;
 };
 
 type SettlementLine = {
@@ -68,7 +85,16 @@ type ActivationStore = {
     findMany(args: { where: { contractVersionId: string }; select: { id: true } }): Promise<Array<{ id: string }>>;
   };
   contractBillRow?: {
-    findMany(args: { where: { contractBillId: { in: string[] } }; select: { id: true; lineageId: true; unit: true } }): Promise<BillRow[]>;
+    findMany(args: {
+      where: { contractBillId: { in: string[] } };
+      select: {
+        id: true;
+        lineageId: true;
+        unit: true;
+        quantity: true;
+        remainderDisposition: true;
+      };
+    }): Promise<BillRow[]>;
   };
   settlement?: {
     findMany(args: { where: { contractId: string; status: { in: string[] } }; select: { id: true } }): Promise<Array<{ id: string }>>;
@@ -88,6 +114,24 @@ type ActivationStore = {
     }): Promise<unknown>;
   };
   contractBillRowCarryForward?: {
+    findMany?: (args: {
+      where: { contractVersionId: string; contractBillRowId: { in: string[] } };
+      select: {
+        contractBillRowId: true;
+        lineageId: true;
+        priorSettledQuantity: true;
+        priorSettledAmountCents: true;
+        sourceSnapshotHash: true;
+        updatedAt: true;
+      };
+    }) => Promise<Array<{
+      contractBillRowId: string;
+      lineageId: string;
+      priorSettledQuantity: Prisma.Decimal | null;
+      priorSettledAmountCents: bigint;
+      sourceSnapshotHash: string;
+      updatedAt: Date;
+    }>>;
     create(args: {
       data: {
         contractVersionId: string;
@@ -261,7 +305,8 @@ export class ContractVersionActivationService {
       throw this.unresolvedLineage("新合同版本存在未确认来源身份的清单行");
     }
 
-    const targetAllocations = new Map<string, Array<{ sourceId: string; quantity: Prisma.Decimal | null; amountCents: bigint; transitionId?: string }>>();
+    const targetAllocations = new Map<string, TargetAllocation[]>();
+    const pendingTransitionUpdates: PendingTransitionUpdate[] = [];
     if (predecessor) {
       const sourceRows = await this.rowsForVersion(store, predecessor.id);
       await this.allocateHistoricalSettlement(
@@ -270,14 +315,46 @@ export class ContractVersionActivationService {
         version,
         sourceRows,
         targetRows,
-        targetAllocations
+        targetAllocations,
+        pendingTransitionUpdates
       );
     }
 
-    for (const target of targetRows) {
+    const targetCarryFacts = targetRows.map((target) => {
       const allocations = (targetAllocations.get(target.id) ?? []).sort((left, right) => left.sourceId.localeCompare(right.sourceId));
       const priorSettledQuantity = this.sumQuantity(allocations.map((allocation) => allocation.quantity));
       const priorSettledAmountCents = allocations.reduce((total, allocation) => total + allocation.amountCents, 0n);
+      if (target.remainderDisposition === "cancelled" && (
+        target.quantity === null ||
+        priorSettledQuantity === null ||
+        priorSettledQuantity.isNegative() ||
+        !target.quantity.equals(priorSettledQuantity)
+      )) {
+        throw new ConflictException({
+          code: "SETTLEMENT_SOURCE_OCCUPANCY_CHANGED",
+          message: "已取消未实施余量的历史累计数量已变化；请重新建立合同变更版本并再次处置后再确认生效。"
+        });
+      }
+      return { target, allocations, priorSettledQuantity, priorSettledAmountCents };
+    });
+
+    for (const pending of pendingTransitionUpdates) {
+      await store.contractBillRowTransition!.update({
+        where: { id: pending.id },
+        data: {
+          sourceSettledQuantityAllocated: pending.quantity,
+          targetOpeningQuantity: pending.quantity,
+          settledAmountAllocatedCents: pending.amountCents
+        }
+      });
+    }
+
+    for (const {
+      target,
+      allocations,
+      priorSettledQuantity,
+      priorSettledAmountCents
+    } of targetCarryFacts) {
       await store.contractBillRowCarryForward.create({
         data: {
           contractVersionId: version.id,
@@ -292,7 +369,8 @@ export class ContractVersionActivationService {
             allocations: allocations.map((allocation) => ({
               sourceId: allocation.sourceId,
               quantity: allocation.quantity?.toString() ?? null,
-              amountCents: allocation.amountCents.toString()
+              amountCents: allocation.amountCents.toString(),
+              sourceSnapshotToken: allocation.sourceSnapshotToken ?? null
             }))
           })
         }
@@ -306,20 +384,40 @@ export class ContractVersionActivationService {
     version: ContractVersion,
     sourceRows: BillRow[],
     targetRows: BillRow[],
-    targetAllocations: Map<string, Array<{ sourceId: string; quantity: Prisma.Decimal | null; amountCents: bigint; transitionId?: string }>>
+    targetAllocations: Map<string, TargetAllocation[]>,
+    pendingTransitionUpdates: PendingTransitionUpdate[]
   ) {
     if (!store.settlement || !store.settlementLine || !store.contractBillRowTransition) return;
-    const settlements = await store.settlement.findMany({
-      where: { contractId: version.contractId, status: { in: ["effective", "partially_paid", "paid"] } },
-      select: { id: true }
-    });
-    if (!settlements.length || !sourceRows.length) return;
-    const sourceIds = sourceRows.map((row) => row.id);
-    const lines = await store.settlementLine.findMany({
-      where: { settlementId: { in: settlements.map((settlement) => settlement.id) }, contractBillRowId: { in: sourceIds } },
-      select: { contractBillRowId: true, quantity: true, amountCents: true, settlementId: true }
-    });
-    const occupiedSourceIds = [...new Set(lines.flatMap((line) => line.contractBillRowId ? [line.contractBillRowId] : []))];
+    if (!sourceRows.length) return;
+    const occupancy = await loadSettlementLineOccupancy(
+      {
+        settlement: store.settlement,
+        settlementLine: store.settlementLine,
+        ...(store.contractBillRowCarryForward?.findMany
+          ? { contractBillRowCarryForward: store.contractBillRowCarryForward }
+          : {})
+      },
+      predecessor.id,
+      sourceRows,
+      { mode: "irreversible_history" }
+    );
+    if ([...occupancy.values()].some((facts) => facts.hasReversibleOccupancy)) {
+      throw new ConflictException({
+        code: "CONTRACT_VERSION_BLOCKED_BY_ACTIVE_SETTLEMENT",
+        message: "旧版存在尚未生效的在途结算；请先使其生效、退回或正式作废后再确认新合同版本。"
+      });
+    }
+    const occupiedSourceIds = sourceRows
+      .filter((row) => {
+        const facts = occupancy.get(row.id);
+        return Boolean(facts && (
+          !facts.quantityComplete ||
+          !facts.quantity.isZero() ||
+          facts.amountCents !== 0n ||
+          facts.count > (row.lineageId ? 1 : 0)
+        ));
+      })
+      .map((row) => row.id);
     if (!occupiedSourceIds.length) return;
     const sourceById = new Map(sourceRows.map((row) => [row.id, row]));
     if (occupiedSourceIds.some((id) => !sourceById.get(id)?.lineageId)) {
@@ -343,31 +441,32 @@ export class ContractVersionActivationService {
       if (!matching.length) {
         throw this.unresolvedLineage("历史结算占用的清单行缺少已确认的跨版本映射");
       }
-      const sourceLines = lines.filter((line) => line.contractBillRowId === sourceId);
-      const quantity = this.sumQuantity(sourceLines.map((line) => line.quantity));
-      const amountCents = sourceLines.reduce((total, line) => total + line.amountCents, 0n);
+      const sourceOccupancy = occupancy.get(sourceId)!;
+      const quantity = sourceOccupancy.quantityComplete
+        ? sourceOccupancy.quantity
+        : null;
+      const amountCents = sourceOccupancy.amountCents;
       const autoOneToOne = matching.length === 1 &&
         matching[0].relationType === "one_to_one" &&
         targetById.get(matching[0].targetContractBillRowId)?.lineageId === source.lineageId &&
+        targetById.get(matching[0].targetContractBillRowId)?.unit === source.unit &&
         matching[0].sourceSettledQuantityAllocated === null &&
         matching[0].targetOpeningQuantity === null &&
         matching[0].settledAmountAllocatedCents === null;
 
       if (autoOneToOne) {
         const transition = matching[0];
-        await store.contractBillRowTransition.update({
-          where: { id: transition.id },
-          data: {
-            sourceSettledQuantityAllocated: quantity,
-            targetOpeningQuantity: quantity,
-            settledAmountAllocatedCents: amountCents
-          }
+        pendingTransitionUpdates.push({
+          id: transition.id,
+          quantity,
+          amountCents
         });
         this.appendTargetAllocation(targetAllocations, transition.targetContractBillRowId, {
           sourceId,
           quantity,
           amountCents,
-          transitionId: transition.id
+          transitionId: transition.id,
+          sourceSnapshotToken: sourceOccupancy.sourceSnapshotToken
         });
         continue;
       }
@@ -384,16 +483,17 @@ export class ContractVersionActivationService {
           sourceId,
           quantity: transition.targetOpeningQuantity,
           amountCents: transition.settledAmountAllocatedCents!,
-          transitionId: transition.id
+          transitionId: transition.id,
+          sourceSnapshotToken: sourceOccupancy.sourceSnapshotToken
         });
       }
     }
   }
 
   private appendTargetAllocation(
-    targetAllocations: Map<string, Array<{ sourceId: string; quantity: Prisma.Decimal | null; amountCents: bigint; transitionId?: string }>>,
+    targetAllocations: Map<string, TargetAllocation[]>,
     targetId: string,
-    allocation: { sourceId: string; quantity: Prisma.Decimal | null; amountCents: bigint; transitionId?: string }
+    allocation: TargetAllocation
   ) {
     const allocations = targetAllocations.get(targetId) ?? [];
     allocations.push(allocation);
@@ -452,14 +552,22 @@ export class ContractVersionActivationService {
     if (!bills.length) return [];
     return store.contractBillRow!.findMany({
       where: { contractBillId: { in: bills.map((bill) => bill.id) } },
-      select: { id: true, lineageId: true, unit: true }
+      select: {
+        id: true,
+        lineageId: true,
+        unit: true,
+        quantity: true,
+        remainderDisposition: true
+      }
     });
   }
 
   private sumQuantity(values: Array<Prisma.Decimal | null>) {
-    const nonNull = values.filter((value): value is Prisma.Decimal => value !== null);
-    if (!nonNull.length) return null;
-    return nonNull.reduce((total, value) => total.plus(value), new Prisma.Decimal(0));
+    if (values.some((value) => value === null)) return null;
+    return (values as Prisma.Decimal[]).reduce(
+      (total, value) => total.plus(value),
+      new Prisma.Decimal(0)
+    );
   }
 
   private snapshotHash(value: unknown) {

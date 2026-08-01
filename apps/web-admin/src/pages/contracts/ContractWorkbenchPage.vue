@@ -357,14 +357,15 @@
       <t-alert
         v-if="pendingLocalRecovery"
         theme="warning"
-        title="发现旧服务端修订上的本机副本"
-        message="服务端修订已更新，系统没有自动覆盖当前数据。请先比较，再决定恢复本机副本或放弃副本。"
+        :title="localRecoveryError ? '本机副本已被安全阻止' : '发现旧服务端修订上的本机副本'"
+        :message="localRecoveryError || '服务端修订已更新，系统没有自动覆盖当前数据。请先比较，再决定恢复本机副本或放弃副本。'"
         class="workbench-governance-alert"
       >
         <template #operation>
           <t-space>
             <t-button
               size="small"
+              :disabled="Boolean(localRecoveryError)"
               @click="restorePendingLocalRecovery"
             >
               恢复本机副本
@@ -477,6 +478,8 @@
         :bill="focusedBill"
         :contract-version-id="workbench?.version.id ?? ''"
         :disabled="editorDisabled"
+        :action-disabled="!contractDraftActionEnabled('contract-bill.remainder-cancellation')"
+        :action-handler="executeFocusedBillRemainderCancellation"
         @close="requestBillFocusClose"
         @update:rows="updateFocusedBillRows"
         @edited="markDirty('bills')"
@@ -1050,6 +1053,7 @@ import {
   applyContractTypeChange,
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
+  executeContractBillRemainderCancellation,
   executeContractDraftLifecycleAction,
   fetchContractDraftWorkbench,
   listPublishedContractTemplates,
@@ -1059,6 +1063,7 @@ import {
   type ContractDraftLifecycleAction,
   type ContractDraftLifecycleOperationContext,
   type ContractDraftPartyModel,
+  type ContractBillRemainderCancellationOperationContext,
   type ExecuteContractDraftLifecycleActionResult,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
@@ -1095,7 +1100,10 @@ import {
 } from "./contract-scenario.state";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
-import ContractBillFocusEditor from "./workbench/ContractBillFocusEditor.vue";
+import ContractBillFocusEditor, {
+  type ContractBillRemainderCancellationExecutionResult,
+  type ContractBillRemainderCancellationRequest
+} from "./workbench/ContractBillFocusEditor.vue";
 import ContractBillTransitionsSection from "./workbench/ContractBillTransitionsSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
@@ -1142,7 +1150,10 @@ import type {
   ContractOfflineRevisionReadModel
 } from "../../api/contract-negotiation.api";
 import type { ContractBillCandidateRow } from "./workbench/contract-bill-grid";
-import type { WorkbenchBill } from "./workbench/contract-bill-editor";
+import {
+  mergeFocusedBillAggregate,
+  type WorkbenchBill
+} from "./workbench/contract-bill-editor";
 import {
   useContractDraft,
   type ContractDraftModel
@@ -1187,8 +1198,10 @@ const {
   formalSaveCompleted,
   lastSavedAt,
   lease,
+  currentLeaseToken,
   canEdit,
   pendingLocalRecovery,
+  localRecoveryError,
   saveNow,
   queuePreviewForCurrentRevision,
   submitNow,
@@ -1235,6 +1248,8 @@ const contractDraftLifecycleActionBusy = ref(false);
 const deletePristineDraftError = ref("");
 const abandonApplicationError = ref("");
 let contractWorkbenchComponentAlive = true;
+let contractBillRemainderOperationSequence = 0;
+let activeContractBillRemainderOperationId = 0;
 
 useUnsavedChangesGuard({
   isDirty: () =>
@@ -1303,7 +1318,7 @@ const abandonApplicationRequiresPassword = computed(
   () => abandonApplicationCapability.value?.requiresPassword === true
 );
 
-function contractDraftActionEnabled(key: ContractDraftLifecycleAction) {
+function contractDraftActionEnabled(key: string) {
   return Boolean(
     contractDraftAvailableActions.value?.some(
       (action) => action.key === key && action.enabled
@@ -1797,19 +1812,7 @@ const focusedBill = computed<WorkbenchBill | null>(() => {
     (bill) => bill.billKey === base.billKey
   );
   if (!draftBill) return base;
-  return {
-    ...base,
-    revision: draftBill.expectedRevision,
-    rows: draftBill.rows.map((row) => ({
-      ...row,
-      customData:
-        row["customData"] !== null &&
-        typeof row["customData"] === "object" &&
-        !Array.isArray(row["customData"])
-          ? { ...row["customData"] }
-          : {}
-    })) as WorkbenchBill["rows"]
-  };
+  return mergeFocusedBillAggregate(base, draftBill);
 });
 
 function openBillFocus(billKey: string, openImport = false) {
@@ -2519,6 +2522,154 @@ async function prepareGovernanceMutation() {
     governanceMutationLocked.value = false;
     throw error;
   }
+}
+
+function contractBillRemainderContextCurrent(
+  context: ContractBillRemainderCancellationOperationContext
+) {
+  const currentBill = focusedBill.value;
+  return contractBillRemainderRouteCurrent(context) &&
+    context.routeGeneration === workbenchLoadRequestId &&
+    workbench.value?.contract.id === context.contractId &&
+    workbench.value.version.id === context.versionId &&
+    currentBill?.id === context.billId &&
+    currentBill.billKey === context.billKey &&
+    currentBill.rows.some((row) => row.rowKey === context.rowKey) &&
+    currentLeaseToken() === context.leaseToken;
+}
+
+function contractBillRemainderRouteCurrent(
+  context: ContractBillRemainderCancellationOperationContext
+) {
+  return contractWorkbenchComponentAlive &&
+    context.operationId === activeContractBillRemainderOperationId &&
+    authStore.user?.id === context.ownerScope &&
+    contractId.value === context.contractId &&
+    queryText(route.query.versionId).trim() === context.versionId;
+}
+
+function executeFocusedBillRemainderCancellation(
+  request: ContractBillRemainderCancellationRequest
+): Promise<ContractBillRemainderCancellationExecutionResult> {
+  let context: ContractBillRemainderCancellationOperationContext | null = null;
+  let operationId = 0;
+  return executeContractBillRemainderCancellation({
+      capture: () => {
+        if (governanceMutationLocked.value) {
+          throw new Error("另一项合同治理操作正在进行，请稍后重试");
+        }
+        const ownerScope = authStore.user?.id?.trim() ?? "";
+        const leaseToken = currentLeaseToken();
+        const currentVersionId = workbench.value?.version.id ?? "";
+        if (!ownerScope || !leaseToken || !currentVersionId) {
+          throw new Error("当前页面未取得有效编辑租约，本次取消未执行");
+        }
+        operationId = ++contractBillRemainderOperationSequence;
+        context = {
+          ownerScope,
+          routeGeneration: workbenchLoadRequestId,
+          operationId,
+          contractId: contractId.value,
+          versionId: currentVersionId,
+          billId: request.billId,
+          billKey: request.billKey,
+          rowKey: request.rowKey,
+          leaseToken,
+          reason: request.reason
+        };
+        activeContractBillRemainderOperationId = operationId;
+        governanceMutationLocked.value = true;
+        errorMessage.value = "";
+        return context;
+      },
+      flush: async () => {
+        try {
+          const saved = await saveNow();
+          return {
+            saved,
+            ...(saved ? { expectedDraftRevision: savedRevision.value } : {}),
+            ...(!saved && saveError.value ? { error: saveError.value } : {})
+          };
+        } catch (error) {
+          return {
+            saved: false,
+            error: error instanceof Error
+              ? error.message
+              : "合同草稿未保存成功"
+          };
+        }
+      },
+      isCurrent: contractBillRemainderContextCurrent
+    })
+    .then(async (
+      result
+    ): Promise<ContractBillRemainderCancellationExecutionResult> => {
+    const operationContext = context;
+    if (!operationContext) {
+      throw new Error("当前合同页面已变化，本次取消已停止");
+    }
+    if (result.status === "completed") {
+      if (contractBillRemainderRouteCurrent(operationContext)) {
+        try {
+          await loadExpectedWorkbench(operationContext.contractId);
+        } catch (reloadError) {
+          return {
+            status: "submitted_refresh_failed",
+            message:
+              "操作已提交，但工作台刷新失败；请手动刷新核对，不要重复提交。" +
+              (reloadError instanceof Error && reloadError.message.trim()
+                ? `（${reloadError.message}）`
+                : "")
+          };
+        }
+        if (contractBillRemainderRouteCurrent(operationContext)) {
+          showManualSaveMessage("未实施余量已按历史完成量收敛，工作台已重新读取。");
+        }
+      }
+      return { status: "completed" };
+    }
+    if (result.status === "not_started" || result.status === "stale") {
+      throw new Error("当前合同页面已变化，本次取消已停止");
+    }
+    if (result.status === "save_failed") throw result.error;
+
+    const code = contractBillRemainderErrorCode(result.error);
+    if (
+      contractBillRemainderRouteCurrent(operationContext) &&
+      (
+        result.resultUnknown ||
+        code === "CONTRACT_BILL_REMAINDER_PREFLIGHT_MISMATCH"
+      )
+    ) {
+      try {
+        await loadExpectedWorkbench(operationContext.contractId);
+      } catch (reloadError) {
+        if (result.resultUnknown) {
+          throw new Error(
+            `取消结果未知，且服务端重新读取失败：${
+              reloadError instanceof Error ? reloadError.message : "请手动刷新核对"
+            }`
+          );
+        }
+      }
+    }
+    throw result.error;
+  })
+    .finally(() => {
+      if (
+        operationId > 0 &&
+        activeContractBillRemainderOperationId === operationId
+      ) {
+        activeContractBillRemainderOperationId = 0;
+        governanceMutationLocked.value = false;
+      }
+    });
+}
+
+function contractBillRemainderErrorCode(error: unknown) {
+  return error && typeof error === "object" && "code" in error
+    ? String(error.code)
+    : "";
 }
 
 async function completeGovernanceMutation(reload: boolean) {

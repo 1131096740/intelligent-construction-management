@@ -61,6 +61,41 @@ const bill: WorkbenchBill = {
   ]
 };
 
+const governedBill: WorkbenchBill = {
+  ...bill,
+  rows: [{
+    ...bill.rows[0]!,
+    availableActions: [{
+      key: "contract-bill.remainder-cancellation",
+      label: "取消未实施余量",
+      kind: "danger",
+      enabled: true,
+      disabledReason: null,
+      requiresComment: true,
+      requiresPassword: false
+    }],
+    remainderCancellation: {
+      expectedBillRevision: 7,
+      expectedDraftRevision: 12,
+      expectedOccupancyToken: "occupancy-token-1",
+      historicalQuantity: "3.5",
+      historicalAmountCents: "35000"
+    }
+  }, bill.rows[1]!]
+};
+
+const malformedGovernedBill = {
+  ...governedBill,
+  rows: [{
+    ...governedBill.rows[0]!,
+    remainderCancellation: {
+      ...governedBill.rows[0]!.remainderCancellation,
+      expectedOccupancyToken: null,
+      historicalQuantity: null
+    }
+  }, governedBill.rows[1]!]
+} as unknown as WorkbenchBill;
+
 function preview(
   patch: Partial<ContractDraftBillExcelImportPreview> = {}
 ): ContractDraftBillExcelImportPreview {
@@ -236,6 +271,172 @@ describe("ContractBillFocusEditor aggregate editing", () => {
     ]);
     expect(emit).not.toHaveBeenCalled();
   });
+
+  it("keeps governed rows out of local delete and confirms the independent dangerous action", async () => {
+    const executeRemainderCancellation = vi.fn().mockResolvedValue(undefined);
+    const emit = vi.fn();
+    const controller = createContractBillFocusController({
+      bill: () => governedBill,
+      contractVersionId: () => "version-1",
+      disabled: () => false,
+      emit,
+      executeRemainderCancellation
+    });
+
+    expect(controller.selectedRowCapability.value).toMatchObject({
+      action: expect.objectContaining({
+        key: "contract-bill.remainder-cancellation",
+        enabled: true
+      }),
+      facts: expect.objectContaining({
+        expectedOccupancyToken: "occupancy-token-1"
+      })
+    });
+
+    controller.deleteSelectedRow();
+    expect(controller.rows.value).toHaveLength(2);
+    expect(emit).not.toHaveBeenCalled();
+
+    controller.openRemainderCancellation();
+    await controller.confirmRemainderCancellation({
+      reason: "  已核对历史完成量  ",
+      password: ""
+    });
+
+    expect(executeRemainderCancellation).toHaveBeenCalledWith({
+      billId: "bill-1",
+      billKey: "materials",
+      rowKey: "server-1",
+      reason: "已核对历史完成量"
+    });
+    expect(controller.remainderCancellationVisible.value).toBe(false);
+    expect(controller.remainderCancellationError.value).toBe("");
+  });
+
+  it("fails closed without crashing when governed facts contain runtime nulls", () => {
+    const emit = vi.fn();
+    const executeRemainderCancellation = vi.fn();
+    const controller = createContractBillFocusController({
+      bill: () => malformedGovernedBill,
+      contractVersionId: () => "version-1",
+      disabled: () => false,
+      emit,
+      executeRemainderCancellation
+    });
+
+    expect(() => controller.selectedRowCapability.value).not.toThrow();
+    expect(controller.selectedRowCapability.value).toBeNull();
+    expect(controller.selectedRowHasRemainderCancellationCapability.value).toBe(true);
+
+    controller.deleteSelectedRow();
+    controller.openRemainderCancellation();
+
+    expect(controller.rows.value).toHaveLength(2);
+    expect(controller.messageDanger.value).toBe(true);
+    expect(executeRemainderCancellation).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("rejects an Excel whole-table candidate that omits a governed server row", async () => {
+    const emit = vi.fn();
+    const controller = createContractBillFocusController({
+      bill: () => governedBill,
+      contractVersionId: () => "version-1",
+      disabled: () => false,
+      emit,
+      deps: {
+        uploadFile: vi.fn().mockResolvedValue({ id: "file-1" }),
+        previewImport: vi.fn().mockResolvedValue(preview()),
+        downloadTemplate: vi.fn()
+      }
+    });
+
+    await controller.previewExcel(new File(["xlsx"], "遗漏历史行.xlsx"));
+
+    expect(controller.replaceConfirmVisible.value).toBe(false);
+    expect(controller.pendingImportRows.value).toBeNull();
+    expect(controller.rows.value).toHaveLength(2);
+    expect(controller.message.value).toContain("历史履约占用行");
+    expect(controller.messageDanger.value).toBe(true);
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("keeps the remainder dialog open and reports a failed governed write", async () => {
+    const controller = createContractBillFocusController({
+      bill: () => governedBill,
+      contractVersionId: () => "version-1",
+      disabled: () => false,
+      emit: vi.fn(),
+      executeRemainderCancellation: vi.fn().mockRejectedValue(
+        new Error("取消结果未知，已重新读取服务端")
+      )
+    });
+
+    controller.openRemainderCancellation();
+    await controller.confirmRemainderCancellation({
+      reason: "已核对历史完成量",
+      password: ""
+    });
+
+    expect(controller.remainderCancellationVisible.value).toBe(true);
+    expect(controller.remainderCancellationError.value).toContain("结果未知");
+  });
+
+  it("locks the governed action when the write was submitted but authoritative refresh failed", async () => {
+    const executeRemainderCancellation = vi.fn().mockResolvedValue({
+      status: "submitted_refresh_failed",
+      message: "操作已提交，但工作台刷新失败；请手动刷新核对，不要重复提交。"
+    });
+    const controller = createContractBillFocusController({
+      bill: () => governedBill,
+      contractVersionId: () => "version-1",
+      disabled: () => false,
+      emit: vi.fn(),
+      executeRemainderCancellation
+    });
+
+    controller.openRemainderCancellation();
+    await controller.confirmRemainderCancellation({
+      reason: "已核对历史完成量",
+      password: ""
+    });
+    controller.openRemainderCancellation();
+
+    expect(controller.remainderCancellationVisible.value).toBe(false);
+    expect(controller.remainderCancellationRetryLocked.value).toBe(true);
+    expect(controller.message.value).toContain("已提交");
+    expect(controller.message.value).toContain("不要重复提交");
+    expect(controller.messageDanger.value).toBe(true);
+    expect(executeRemainderCancellation).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a late governed-write callback after the authoritative row capability changes", async () => {
+    let resolveWrite!: () => void;
+    const write = new Promise<void>((resolve) => {
+      resolveWrite = resolve;
+    });
+    const controller = createContractBillFocusController({
+      bill: () => governedBill,
+      contractVersionId: () => "version-1",
+      disabled: () => false,
+      emit: vi.fn(),
+      executeRemainderCancellation: vi.fn(() => write)
+    });
+
+    controller.openRemainderCancellation();
+    const confirmation = controller.confirmRemainderCancellation({
+      reason: "已核对历史完成量",
+      password: ""
+    });
+    controller.syncBill(bill);
+    resolveWrite();
+    await confirmation;
+
+    expect(controller.remainderCancellationVisible.value).toBe(false);
+    expect(controller.remainderCancellationBusy.value).toBe(false);
+    expect(controller.message.value).toBe("");
+    expect(controller.remainderCancellationError.value).toBe("");
+  });
 });
 
 describe("Contract bill workbench surfaces", () => {
@@ -287,6 +488,24 @@ describe("Contract bill workbench surfaces", () => {
     expect(closeButton).toBeTruthy();
     expect(closeButton).not.toContain("disabled");
   });
+
+  it("renders remainder cancellation separately and disables ordinary delete for a governed row", async () => {
+    const app = createSSRApp(ContractBillFocusEditor, {
+      bill: governedBill,
+      contractVersionId: "version-1",
+      disabled: false,
+      executeRemainderCancellation: vi.fn()
+    });
+    registerTDesignStubs(app);
+    const html = await renderToString(app);
+    const deleteButton = html.match(
+      /<button[^>]*data-testid="bill-delete-row"[^>]*>/u
+    )?.[0];
+
+    expect(html).toContain("取消未实施余量");
+    expect(html).toContain("data-testid=\"bill-cancel-remainder\"");
+    expect(deleteButton).toContain("disabled");
+  });
 });
 
 function registerTDesignStubs(app: App) {
@@ -321,6 +540,18 @@ function registerTDesignStubs(app: App) {
     props: { accept: { type: String, default: "" } },
     setup(props, { attrs }) {
       return () => h("input", { ...attrs, type: "file", accept: props.accept });
+    }
+  }));
+  app.component("TTextarea", defineComponent({
+    inheritAttrs: false,
+    setup(_props, { attrs }) {
+      return () => h("textarea", attrs);
+    }
+  }));
+  app.component("TInput", defineComponent({
+    inheritAttrs: false,
+    setup(_props, { attrs }) {
+      return () => h("input", attrs);
     }
   }));
 }

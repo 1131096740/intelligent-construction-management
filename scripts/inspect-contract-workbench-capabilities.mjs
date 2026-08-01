@@ -492,13 +492,17 @@ function functionDefinitions(relativePath, source) {
     if (
       ts.isFunctionDeclaration(statement) &&
       statement.name &&
-      statement.body &&
-      hasExportModifier(statement)
+      statement.body
     ) {
-      definitions.push({ name: statement.name.text, node: statement, ast });
+      definitions.push({
+        name: statement.name.text,
+        node: statement,
+        ast,
+        exported: hasExportModifier(statement)
+      });
       continue;
     }
-    if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) continue;
+    if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
       if (
         ts.isIdentifier(declaration.name) &&
@@ -509,7 +513,8 @@ function functionDefinitions(relativePath, source) {
         definitions.push({
           name: declaration.name.text,
           node: declaration.initializer,
-          ast
+          ast,
+          exported: hasExportModifier(statement)
         });
       }
     }
@@ -531,8 +536,13 @@ function methodFromApiFetch(call) {
 
 function wrapperRoutes(relativePath, source) {
   const wrappers = [];
-  for (const definition of functionDefinitions(relativePath, source)) {
+  const definitions = functionDefinitions(relativePath, source);
+  const definitionsByName = new Map(
+    definitions.map((definition) => [definition.name, definition])
+  );
+  for (const definition of definitions.filter((candidate) => candidate.exported)) {
     const requests = [];
+    const visitedHelpers = new Set([definition.name]);
     function visit(node) {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
         const helper = node.expression.text;
@@ -543,6 +553,15 @@ function wrapperRoutes(relativePath, source) {
           if (isContractCapability(route)) {
             requests.push({ method, route, key: `${method} ${route}` });
           }
+        }
+        const localHelper = definitionsByName.get(helper);
+        if (
+          localHelper &&
+          !localHelper.exported &&
+          !visitedHelpers.has(localHelper.name)
+        ) {
+          visitedHelpers.add(localHelper.name);
+          visit(localHelper.node);
         }
       }
       ts.forEachChild(node, visit);

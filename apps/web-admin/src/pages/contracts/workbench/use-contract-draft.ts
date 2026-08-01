@@ -279,10 +279,14 @@ export interface UseContractDraft {
   /** Client time of the latest successful server save in this editing session. */
   lastSavedAt: Readonly<Ref<Date | null>>;
   lease: Readonly<Ref<ContractDraftLeaseView>>;
+  /** Returns the current in-memory edit lease only to an immediate governed write. */
+  currentLeaseToken: () => string | null;
   canEdit: ComputedRef<boolean>;
   pendingLocalRecovery: Ref<
     ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
   >;
+  /** Explains why a discovered local recovery is unsafe to restore. */
+  localRecoveryError: Readonly<Ref<string>>;
   initializeDraft: InitializeDraftController;
   load: (
     contractVersionId: string
@@ -572,6 +576,8 @@ function draftBillRowForSave(row: Record<string, unknown>): Record<string, unkno
   delete payload["taxInclusiveAmountCents"];
   delete payload["taxExclusiveAmountCents"];
   delete payload["taxAmountCents"];
+  delete payload["availableActions"];
+  delete payload["remainderCancellation"];
   return payload;
 }
 
@@ -600,6 +606,55 @@ function isAggregateRecoverySnapshot(
     Array.isArray(value["attachments"]) &&
     isRecord(value["negotiationDocuments"]) &&
     Array.isArray(value["negotiationDocuments"]["referencedGeneratedDocumentIds"]);
+}
+
+function recoveryPreservesGovernedBillRows(
+  currentWorkbench: ContractDraftWorkbenchReadModel | null,
+  snapshot: ContractDraftAggregateModel
+): boolean {
+  for (const currentBill of currentWorkbench?.bills ?? []) {
+    const governedRowKeys = currentBill.rows.flatMap((row) => {
+      const value = row as Record<string, unknown>;
+      const hasAction = Array.isArray(value["availableActions"]) &&
+        value["availableActions"].some(
+          (action) =>
+            isRecord(action) &&
+            action["key"] === "contract-bill.remainder-cancellation"
+        );
+      const hasFacts = isRecord(value["remainderCancellation"]);
+      if (!hasAction && !hasFacts) return [];
+      const rowKey = typeof value["rowKey"] === "string"
+        ? value["rowKey"].trim()
+        : "";
+      return [rowKey];
+    });
+    if (governedRowKeys.length === 0) continue;
+    if (governedRowKeys.some((rowKey) => !rowKey)) return false;
+
+    const candidateBills = snapshot.bills.filter(
+      (bill) => bill.billKey === currentBill.billKey
+    );
+    if (candidateBills.length !== 1) return false;
+    const candidateRowKeyCounts = new Map<string, number>();
+    for (const row of candidateBills[0]!.rows) {
+      const rowKey = typeof row["rowKey"] === "string"
+        ? row["rowKey"].trim()
+        : "";
+      if (!rowKey) continue;
+      candidateRowKeyCounts.set(
+        rowKey,
+        (candidateRowKeyCounts.get(rowKey) ?? 0) + 1
+      );
+    }
+    if (
+      governedRowKeys.some(
+        (rowKey) => candidateRowKeyCounts.get(rowKey) !== 1
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isCompanyEntitySelection(value: unknown): value is ContractCompanyEntitySelection {
@@ -980,6 +1035,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const pendingLocalRecovery = ref<
     ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
   >(null);
+  const localRecoveryError = ref("");
 
   // Loaded contract-version identity + revision drive every save's optimistic lock.
   const contractVersionId = ref<string | null>(null);
@@ -1012,6 +1068,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const canEdit = computed(
     () => !submissionCompleted.value && contractDraftLeaseCanEdit(lease.value)
   );
+
+  function currentLeaseToken(): string | null {
+    return canEdit.value && leaseToken ? leaseToken : null;
+  }
 
   function recoveryIdentity(): ContractDraftRecoveryIdentity | null {
     const storage = getStorage();
@@ -1048,14 +1108,18 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   function clearBackup(): void {
     const storage = getStorage();
     const identity = recoveryIdentity();
-    if (!storage || !identity) return;
-    clearContractDraftLocalRecoveryScope(storage, identity);
+    if (storage && identity) {
+      clearContractDraftLocalRecoveryScope(storage, identity);
+    }
     pendingLocalRecovery.value = null;
+    localRecoveryError.value = "";
   }
 
   function inspectLocalRecovery(): void {
     const storage = getStorage();
     const identity = recoveryIdentity();
+    pendingLocalRecovery.value = null;
+    localRecoveryError.value = "";
     if (!storage || !identity) return;
     const found = findContractDraftLocalRecovery<ContractDraftAggregateModel>(
       storage,
@@ -1064,6 +1128,12 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (!found) return;
     if (!isAggregateRecoverySnapshot(found.recovery.snapshot)) {
       clearContractDraftLocalRecoveryScope(storage, identity);
+      return;
+    }
+    if (!recoveryPreservesGovernedBillRows(workbench.value, found.recovery.snapshot)) {
+      pendingLocalRecovery.value = found;
+      localRecoveryError.value =
+        "本机副本遗漏已有历史履约占用行，不能直接恢复或保存；请保留服务端清单并人工核对。";
       return;
     }
     if (found.revisionMatches) {
@@ -1080,9 +1150,15 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       clearBackup();
       return false;
     }
+    if (!recoveryPreservesGovernedBillRows(workbench.value, found.recovery.snapshot)) {
+      localRecoveryError.value =
+        "本机副本遗漏已有历史履约占用行，不能直接恢复或保存；请保留服务端清单并人工核对。";
+      return false;
+    }
     assignAggregateModel(aggregateModel, found.recovery.snapshot);
     markAllAggregateSectionsEdited();
     pendingLocalRecovery.value = null;
+    localRecoveryError.value = "";
     writeBackup();
     scheduleSave();
     return true;
@@ -1995,8 +2071,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     formalSaveCompleted: readonly(formalSaveCompleted),
     lastSavedAt: readonly(lastSavedAt),
     lease: readonly(lease),
+    currentLeaseToken,
     canEdit,
     pendingLocalRecovery,
+    localRecoveryError: readonly(localRecoveryError),
     initializeDraft,
     load,
     reload: reloadWorkbench,

@@ -147,6 +147,45 @@ function makeDraft() {
   });
 }
 
+function makeGovernedBillWorkbench(): ContractDraftWorkbenchReadModel {
+  return makeWorkbench({
+    bills: [{
+      id: "bill-1",
+      billKey: "main",
+      name: "主清单",
+      revision: 7,
+      totalAmountCents: "1130",
+      rows: [{
+        rowKey: "row-1",
+        sortOrder: 0,
+        itemName: "钢材",
+        unit: "吨",
+        quantity: "2",
+        unitPrice: "565",
+        taxRatePercent: "13",
+        taxRateSource: "version_default",
+        customData: {},
+        availableActions: [{
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null,
+          requiresComment: true,
+          requiresPassword: false
+        }],
+        remainderCancellation: {
+          expectedBillRevision: 7,
+          expectedDraftRevision: 3,
+          expectedOccupancyToken: "occupancy-token-1",
+          historicalQuantity: "1",
+          historicalAmountCents: "565"
+        }
+      }]
+    }]
+  } as Partial<ContractDraftWorkbenchReadModel>);
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -381,6 +420,7 @@ describe("useContractDraft", () => {
       heartbeatIntervalMs: 30_000
     });
     expect(JSON.stringify(draft.lease.value)).not.toContain("lease-token");
+    expect(draft.currentLeaseToken()).toBe("lease-token");
     expect(contractDraftRecoveryText()).toBeNull();
 
     await vi.advanceTimersByTimeAsync(29_999);
@@ -410,6 +450,7 @@ describe("useContractDraft", () => {
       canTakeOver: false
     });
     expect(draft.canEdit.value).toBe(false);
+    expect(draft.currentLeaseToken()).toBeNull();
   });
 
   it.each(["available", "expired"] as const)(
@@ -658,6 +699,53 @@ describe("useContractDraft", () => {
     expect(payload?.bills[0]?.rows[0]).not.toHaveProperty(
       "taxExclusiveUnitPrice"
     );
+  });
+
+  it("strips server-only bill capability restored from localStorage at the final save boundary", async () => {
+    const workbench = makeGovernedBillWorkbench();
+    mockFetchWorkbench.mockResolvedValue(workbench);
+    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
+    const first = makeDraft();
+    await first.load("cv-1");
+    Object.assign(first.aggregateModel.bills[0]!.rows[0]!, {
+      availableActions: [{
+        key: "contract-bill.remainder-cancellation",
+        enabled: true
+      }],
+      remainderCancellation: {
+        expectedOccupancyToken: "recovered-forged-token"
+      }
+    });
+    first.markDirty("bills");
+    expect(contractDraftRecoveryText()).toContain("availableActions");
+
+    const restored = makeDraft();
+    await restored.load("cv-1");
+    await expect(restored.saveNow()).resolves.toBe(true);
+
+    const payloadRow = mockSaveDraft.mock.calls[0]?.[2].bills[0]?.rows[0];
+    expect(payloadRow).not.toHaveProperty("availableActions");
+    expect(payloadRow).not.toHaveProperty("remainderCancellation");
+  });
+
+  it("refuses a same-revision local recovery that omits a governed server row", async () => {
+    const workbench = makeGovernedBillWorkbench();
+    mockFetchWorkbench.mockResolvedValue(workbench);
+    const first = makeDraft();
+    await first.load("cv-1");
+    first.aggregateModel.bills[0]!.rows = [];
+    first.markDirty("bills");
+
+    const restored = makeDraft();
+    await restored.load("cv-1");
+
+    expect(restored.aggregateModel.bills[0]?.rows).toEqual([
+      expect.objectContaining({ rowKey: "row-1" })
+    ]);
+    expect(restored.pendingLocalRecovery.value).not.toBeNull();
+    expect(restored.localRecoveryError.value).toContain("历史履约占用行");
+    expect(restored.restoreLocalRecovery()).toBe(false);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
   });
 
   it("persists an incomplete manual amount as zero on explicit save", async () => {

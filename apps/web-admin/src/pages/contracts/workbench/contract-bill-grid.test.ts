@@ -15,6 +15,7 @@ import {
   netUnitPriceDetail,
   netUnitPriceDisplay,
   removeBillCandidateRow,
+  rowHasRemainderCancellationCapability,
   toReplaceBillRowsInput,
   validateBillCandidateRows,
   type ContractBillCandidateRow
@@ -91,6 +92,50 @@ describe("contract bill grid candidate model", () => {
 
     expect(rows[0]?.clientRowKey).toBe("local-new-7");
     expect(rows[0]?.rowKey).toBe("server-row-1");
+  });
+
+  it("preserves server-only remainder capability for display but strips it from copies and save DTOs", () => {
+    const governed = fromWorkbenchBill({
+      ...bill,
+      rows: [{
+        ...bill.rows[0]!,
+        availableActions: [{
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null,
+          requiresComment: true,
+          requiresPassword: false
+        }],
+        remainderCancellation: {
+          expectedBillRevision: 7,
+          expectedDraftRevision: 12,
+          expectedOccupancyToken: "occupancy-token-1",
+          historicalQuantity: "3.5",
+          historicalAmountCents: "35000"
+        }
+      }]
+    })[0]!;
+
+    expect(rowHasRemainderCancellationCapability(governed)).toBe(true);
+    expect(governed.remainderCancellation).toMatchObject({
+      expectedOccupancyToken: "occupancy-token-1"
+    });
+    expect(governed.availableActions).toEqual([
+      expect.objectContaining({ key: "contract-bill.remainder-cancellation" })
+    ]);
+
+    const copied = copyBillCandidateRow([governed], governed.clientRowKey)[1]!;
+    expect(copied).not.toHaveProperty("availableActions");
+    expect(copied).not.toHaveProperty("remainderCancellation");
+
+    const payload = toReplaceBillRowsInput([governed], {
+      expectedBillRevision: 7,
+      idempotencyKey: "server-only-capability"
+    });
+    expect(payload.rows[0]).not.toHaveProperty("availableActions");
+    expect(payload.rows[0]).not.toHaveProperty("remainderCancellation");
   });
 
   it("preserves authoritative net prices for display but never submits them", () => {
@@ -252,6 +297,25 @@ describe("contract bill grid candidate model", () => {
     expect(moveBillCandidateRow(rows, "two", 1)).toBe(rows);
   });
 
+  it("never removes a row governed by the independent remainder-cancellation action", () => {
+    const governed = validRow({
+      clientRowKey: "governed",
+      rowKey: "server-row-1",
+      availableActions: [{
+        key: "contract-bill.remainder-cancellation",
+        label: "取消未实施余量",
+        kind: "danger",
+        enabled: false,
+        disabledReason: "历史占用已变化",
+        requiresComment: true,
+        requiresPassword: false
+      }]
+    });
+    const rows = [governed, validRow({ clientRowKey: "ordinary" })];
+
+    expect(removeBillCandidateRow(rows, "governed")).toBe(rows);
+  });
+
   it("maps the full candidate set to replace DTO semantics", () => {
     expect(toReplaceBillRowsInput([validRow({ itemCode: " ", specification: "", quantity: "" })], {
       expectedBillRevision: 7,
@@ -304,7 +368,23 @@ describe("contract bill grid candidate model", () => {
       initialQuantity: "1.123",
       initialUnitPrice: "2.345",
       initialTaxRatePercent: "13",
-      customData: { brand: "进口" }
+      customData: { brand: "进口" },
+      availableActions: [{
+        key: "contract-bill.remainder-cancellation",
+        label: "伪造的导入能力",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true,
+        requiresPassword: false
+      }],
+      remainderCancellation: {
+        expectedBillRevision: 7,
+        expectedDraftRevision: 12,
+        expectedOccupancyToken: "forged-token",
+        historicalQuantity: "3.5",
+        historicalAmountCents: "35000"
+      }
     })];
 
     expect(applyExcelCandidateRows(original, imported, false)).toBe(original);
@@ -313,6 +393,8 @@ describe("contract bill grid candidate model", () => {
     expect(confirmed[0]?.clientRowKey).toBe("import-1");
     expect(confirmed[0]?.customData).not.toBe(imported[0]?.customData);
     expect(confirmed[0]?.precisionPolicy).toBeUndefined();
+    expect(confirmed[0]).not.toHaveProperty("availableActions");
+    expect(confirmed[0]).not.toHaveProperty("remainderCancellation");
   });
 
   it("rebuilds authoritative candidates after batch save and discards temporary keys", () => {

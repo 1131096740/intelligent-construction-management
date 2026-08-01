@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
-| webApiWrappers | blocked | `185feec56489b26479cabcc6a019f4389ff9b958f92e1eb74496db86b79c9cb6` |
-| webPageActions | blocked | `ee6499da1f957f44c26718282d7640797585a57be3694b737a9621b22a077cc1` |
-| routeUsage | blocked | `f17dc53facaf84ab71237888355c66534d8d17d79a6c1d8c84cdfb1cbf7090a4` |
+| nestRoutes | ready | `46aff527dfd034ba7e373f7b46549598b4ccb849a42df570030b2fcc9bcf461f` |
+| webApiWrappers | blocked | `c3329ff0b89e3142cd7d59570c469c274444e67403d19a5cb485b664e569e598` |
+| webPageActions | blocked | `738e11e8467a2ce8bcac3ffbb7f538859156f72bb11e48536e64399c82fdc30c` |
+| routeUsage | blocked | `c6d766ad270a152078d92430b371d5dbfc0dc511198d3d6fad1cc24830af7d66` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 395 |
-| pageRouteCount | 287 |
+| pageRouteCount | 288 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 4 |
-| mainRequestBindingCount | 393 |
+| unclassifiedRouteCount | 3 |
+| mainRequestBindingCount | 395 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 40 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 50 |
-| actionBindingCount | 66 |
-| acceptedActionBindingCount | 35 |
+| registeredActionCount | 51 |
+| actionBindingCount | 68 |
+| acceptedActionBindingCount | 36 |
 | unresolvedActionBindingCount | 20 |
-| productionMutationConsumerPairCount | 273 |
-| coveredProductionMutationConsumerPairCount | 23 |
+| productionMutationConsumerPairCount | 274 |
+| coveredProductionMutationConsumerPairCount | 24 |
 | uncoveredProductionMutationConsumerPairCount | 250 |
-| blockerCount | 321 |
+| blockerCount | 320 |
 
 ## 路由矩阵
 
@@ -61,7 +61,7 @@
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
 | GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
 | GET | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
 | GET | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedLayoutTemplates | — | not_applicable | — |
@@ -184,7 +184,7 @@
 | POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/excel-imports | exit_candidate | none | — | — | not_applicable | — |
-| POST | /contract-bills/:billId/rows/:rowKey/remainder-cancellation | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contract-bills/:billId/rows/:rowKey/remainder-cancellation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation | contract-bill.remainder-cancellation | covered | — |
 | POST | /contract-bills/:billId/rows | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#addBillRow | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contract-bills/:billId/rows/reorder | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#reorderBillRows | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contract-business-scenarios/:scenarioId/template-mappings | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#createContractScenarioMapping | — | uncovered | MUTATION_CONSUMER_UNCOVERED |

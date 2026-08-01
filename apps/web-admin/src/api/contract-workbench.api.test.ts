@@ -27,6 +27,7 @@ import {
   downloadBillExcelTemplate,
   downloadContractDraftBillExcelTemplate,
   executeContractDraftLifecycleAction,
+  executeContractBillRemainderCancellation,
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
   fetchContractDraftWorkbench,
@@ -173,6 +174,82 @@ function contractDraftLifecycleInput(
     onCapabilityFailure: vi.fn(),
     ...overrides
   };
+}
+
+function contractBillRemainderWorkbench(
+  overrides: {
+    ownerUserId?: string;
+    versionId?: string;
+    draftRevision?: number;
+    billId?: string;
+    billKey?: string;
+    billRevision?: number;
+    rowKey?: string;
+    actionEnabled?: boolean;
+    occupancyToken?: string;
+  } = {}
+) {
+  const draftRevision = overrides.draftRevision ?? 12;
+  const billRevision = overrides.billRevision ?? 7;
+  return {
+    contract: {
+      id: "contract-1",
+      ownerUserId: overrides.ownerUserId ?? "owner-1"
+    },
+    version: {
+      id: overrides.versionId ?? "version-1",
+      draftRevision
+    },
+    bills: [{
+      id: overrides.billId ?? "bill-1",
+      billKey: overrides.billKey ?? "materials",
+      revision: billRevision,
+      rows: [{
+        rowKey: overrides.rowKey ?? "row/1",
+        availableActions: [{
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: overrides.actionEnabled ?? true,
+          disabledReason: overrides.actionEnabled === false ? "历史占用已变化" : null,
+          requiresComment: true,
+          requiresPassword: false
+        }],
+        remainderCancellation: {
+          expectedBillRevision: billRevision,
+          expectedDraftRevision: draftRevision,
+          expectedOccupancyToken: overrides.occupancyToken ?? "occupancy-token-1",
+          historicalQuantity: "3.5",
+          historicalAmountCents: "35000"
+        }
+      }]
+    }]
+  };
+}
+
+function contractBillRemainderInput(
+  overrides: Partial<Parameters<typeof executeContractBillRemainderCancellation>[0]> = {}
+) {
+  return {
+    capture: () => ({
+      ownerScope: "owner-1",
+      routeGeneration: 4,
+      operationId: 9,
+      contractId: "contract-1",
+      versionId: "version-1",
+      billId: "bill-1",
+      billKey: "materials",
+      rowKey: "row/1",
+      leaseToken: "lease-token-1",
+      reason: "已核对历史完成量"
+    }),
+    flush: vi.fn().mockResolvedValue({
+      saved: true,
+      expectedDraftRevision: 12
+    }),
+    isCurrent: vi.fn(() => true),
+    ...overrides
+  } satisfies Parameters<typeof executeContractBillRemainderCancellation>[0];
 }
 
 describe("contract workbench API client", () => {
@@ -712,6 +789,210 @@ describe("contract workbench API client", () => {
       contractDraftLifecycleInput()
     )).resolves.toBeUndefined();
     expect(mockApiFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("flushes first, then re-reads and submits the fresh remainder capability coordinates", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench({
+        billId: "bill/1"
+      })))
+      .mockReturnValueOnce(makeOkJson({ revision: 13 }));
+    const input = contractBillRemainderInput({
+      capture: () => ({
+        ownerScope: "owner-1",
+        routeGeneration: 4,
+        operationId: 9,
+        contractId: "contract-1",
+        versionId: "version-1",
+        billId: "bill/1",
+        billKey: "materials",
+        rowKey: "row/1",
+        leaseToken: "lease-token-1",
+        reason: "已核对历史完成量"
+      })
+    });
+
+    await expect(
+      executeContractBillRemainderCancellation(input)
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(input.flush).toHaveBeenCalledOnce();
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-drafts/version-1/workbench"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-bills/bill%2F1/rows/row%2F1/remainder-cancellation",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": "lease-token-1"
+        },
+        body: JSON.stringify({
+          expectedBillRevision: 7,
+          expectedDraftRevision: 12,
+          expectedOccupancyToken: "occupancy-token-1",
+          reason: "已核对历史完成量"
+        })
+      })
+    );
+  });
+
+  it("performs zero preflight and zero write when the dirty aggregate flush fails", async () => {
+    const input = contractBillRemainderInput({
+      flush: vi.fn().mockResolvedValue({
+        saved: false,
+        error: "草稿保存失败"
+      })
+    });
+
+    await expect(
+      executeContractBillRemainderCancellation(input)
+    ).resolves.toMatchObject({
+      status: "save_failed",
+      error: expect.objectContaining({ message: "草稿保存失败" })
+    });
+
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("performs zero flush, zero preflight and zero POST when the current lease token is missing", async () => {
+    const input = contractBillRemainderInput({
+      capture: () => ({
+        ownerScope: "owner-1",
+        routeGeneration: 4,
+        operationId: 9,
+        contractId: "contract-1",
+        versionId: "version-1",
+        billId: "bill-1",
+        billKey: "materials",
+        rowKey: "row/1",
+        leaseToken: "",
+        reason: "已核对历史完成量"
+      })
+    });
+
+    await expect(
+      executeContractBillRemainderCancellation(input)
+    ).resolves.toMatchObject({
+      status: "failed",
+      resultUnknown: false,
+      error: expect.objectContaining({
+        code: "CONTRACT_BILL_REMAINDER_INVALID_CONTEXT"
+      })
+    });
+
+    expect(input.flush).not.toHaveBeenCalled();
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["owner", { ownerUserId: "owner-2" }],
+    ["draft revision", { draftRevision: 13 }],
+    ["bill identity", { billId: "bill-2" }],
+    ["row identity", { rowKey: "row-2" }],
+    ["disabled action", { actionEnabled: false }],
+    ["occupancy token", { occupancyToken: "" }]
+  ] as const)("fails closed before POST when the fresh %s drifts", async (_label, drift) => {
+    mockApiFetch.mockReturnValueOnce(
+      makeOkJson(contractBillRemainderWorkbench(drift))
+    );
+
+    await expect(
+      executeContractBillRemainderCancellation(contractBillRemainderInput())
+    ).resolves.toMatchObject({
+      status: "failed",
+      resultUnknown: false,
+      error: expect.objectContaining({
+        code: "CONTRACT_BILL_REMAINDER_PREFLIGHT_MISMATCH"
+      })
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns stale without POST when the route owner changes after the fresh GET", async () => {
+    const preflight = deferred<Response>();
+    let current = true;
+    mockApiFetch.mockReturnValueOnce(preflight.promise);
+    const input = contractBillRemainderInput({
+      isCurrent: vi.fn(() => current)
+    });
+    const operation = executeContractBillRemainderCancellation(input);
+
+    await vi.waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    });
+    current = false;
+    preflight.resolve(await makeOkJson(contractBillRemainderWorkbench()));
+
+    await expect(operation).resolves.toMatchObject({ status: "stale" });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a transport failure as result unknown so callers can force an authoritative reload", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench()))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await expect(
+      executeContractBillRemainderCancellation(contractBillRemainderInput())
+    ).resolves.toMatchObject({
+      status: "failed",
+      resultUnknown: true,
+      error: expect.objectContaining({
+        code: "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN"
+      })
+    });
+  });
+
+  it.each([408, 500, 503])(
+    "marks an ambiguous POST %s response as result unknown",
+    async (status) => {
+      mockApiFetch
+        .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench()))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          message: "提交结果未能确认"
+        }), {
+          status,
+          headers: { "Content-Type": "application/json" }
+        }));
+
+      await expect(
+        executeContractBillRemainderCancellation(contractBillRemainderInput())
+      ).resolves.toMatchObject({
+        status: "failed",
+        resultUnknown: true,
+        error: expect.objectContaining({
+          code: "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN"
+        })
+      });
+    }
+  );
+
+  it("reports a successful late POST response as completed so the caller can authoritatively reload", async () => {
+    const post = deferred<Response>();
+    let current = true;
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench()))
+      .mockReturnValueOnce(post.promise);
+    const operation = executeContractBillRemainderCancellation(
+      contractBillRemainderInput({
+        isCurrent: vi.fn(() => current)
+      })
+    );
+
+    await vi.waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    });
+    current = false;
+    post.resolve(await makeOkJson({ revision: 13 }));
+
+    await expect(operation).resolves.toMatchObject({ status: "completed" });
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
   });
 
   it("connects the governed signing facts and submission readiness routes", async () => {
