@@ -1036,6 +1036,31 @@
       ]
     },
     {
+      "id": "spot-procurement.invoice-append",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "appendInvoice"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotReceiptCapability.availableActions",
+        "key": "append_invoice"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementInvoiceAppend"
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.invoice-invalidate",
       "usage": "page_action",
       "routePaths": [

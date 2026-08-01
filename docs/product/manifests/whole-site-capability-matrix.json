@@ -22,31 +22,31 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1cd5d3c5998531fc511a89722281b9ae32ab34471503e71bbc85c267af55968f",
+      "sha256": "dd2b87fcf11185f03d815fc37fa2fd75ec1af181f63d9473bb80d0688529c261",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 399,
-        "transportWrapperCount": 387,
+        "exportedFunctionCount": 398,
+        "transportWrapperCount": 386,
         "pureExportCount": 12,
-        "mainRequestBindingCount": 397,
+        "mainRequestBindingCount": 398,
         "ticketFollowupCount": 2,
         "requestEdgeCount": 397,
         "productionConsumerCount": 339,
-        "orphanWrapperCount": 48,
-        "testOnlyWrapperCount": 46,
+        "orphanWrapperCount": 47,
+        "testOnlyWrapperCount": 45,
         "unreferencedWrapperCount": 2,
-        "duplicateNormalizedRouteGroupCount": 9,
+        "duplicateNormalizedRouteGroupCount": 10,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "b5ed8de102bdcfbb75fa414c00e4f8da949ff57ae265b5f44d436233e84aa925",
+      "sha256": "adb43ba4e08a03063d0c4157a2f2f196d308a95f9a872cdfc5b6d6dc83265afd",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 48,
-        "pageActionCount": 42,
+        "registeredActionCount": 49,
+        "pageActionCount": 43,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
@@ -55,31 +55,31 @@
         "reachableProductionModuleCount": 229,
         "templateEventDirectiveCount": 923,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 21,
-        "candidateProductionMutationConsumerCount": 40,
-        "acceptedProductionMutationConsumerCount": 21,
+        "coveredProductionMutationConsumerCount": 22,
+        "candidateProductionMutationConsumerCount": 41,
+        "acceptedProductionMutationConsumerCount": 22,
         "productionMutationConsumerPairCount": 272,
-        "blockerCount": 297
+        "blockerCount": 296
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "f082d516aa16745da6bbb4134a25ea4c25e26da29ccbdcf362eaa175e00f1393",
+      "sha256": "e38fab0e018ba592c6fd6d73c8ffa25eeb64864d16cc2abf7cb8334bb2cd82c1",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
         "exactRouteCount": 395,
         "normalizedRouteCount": 395,
-        "classificationOverrideCount": 87,
+        "classificationOverrideCount": 96,
         "consumerSurfaceOverrideCount": 3,
-        "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
+        "classificationOverrideSha256": "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad",
         "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
         "derivedProductionPageCount": 283,
         "pageRouteCount": 286,
         "externalTakeoverCount": 59,
-        "exitCandidateCount": 23,
+        "exitCandidateCount": 32,
         "internalTaskCount": 2,
-        "unclassifiedCount": 25,
+        "unclassifiedCount": 16,
         "consumerSurfaceCounts": {
           "web_api_wrapper": 333,
           "auth_store": 5,
@@ -88,7 +88,7 @@
           "operator_endpoint": 1,
           "none": 54
         },
-        "blockerCount": 30
+        "blockerCount": 16
       }
     }
   },
@@ -96,22 +96,22 @@
     "routeCount": 395,
     "pageRouteCount": 286,
     "externalTakeoverRouteCount": 59,
-    "exitCandidateRouteCount": 23,
+    "exitCandidateRouteCount": 32,
     "internalTaskRouteCount": 2,
-    "unclassifiedRouteCount": 25,
-    "mainRequestBindingCount": 397,
+    "unclassifiedRouteCount": 16,
+    "mainRequestBindingCount": 398,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 48,
+    "orphanWrapperCount": 47,
     "duplicateMutationRouteCount": 4,
-    "registeredActionCount": 48,
-    "actionBindingCount": 61,
-    "acceptedActionBindingCount": 33,
+    "registeredActionCount": 49,
+    "actionBindingCount": 64,
+    "acceptedActionBindingCount": 34,
     "unresolvedActionBindingCount": 20,
     "productionMutationConsumerPairCount": 272,
-    "coveredProductionMutationConsumerPairCount": 21,
-    "uncoveredProductionMutationConsumerPairCount": 251,
-    "blockerCount": 352
+    "coveredProductionMutationConsumerPairCount": 22,
+    "uncoveredProductionMutationConsumerPairCount": 250,
+    "blockerCount": 341
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -373,11 +373,6 @@
         "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
         "wrapper": "createSpotProcurementPaymentDraft",
         "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "fetchVatRateOptions",
-        "classification": "test_only"
       }
     ],
     "duplicateMutationRoutes": [
@@ -462,30 +457,12 @@
         "consumerSurface": "none"
       },
       {
-        "method": "GET",
-        "path": "/vat-rate-options",
-        "normalizedKey": "GET /vat-rate-options",
-        "controller": "VatRateOptionController",
-        "handler": "listEnabled",
-        "sourceFile": "services/api/src/invoice-ledger/vat-rate-option.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
         "method": "PATCH",
         "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
         "normalizedKey": "PATCH /contract-workbench/:param/parties/:param",
         "controller": "BusinessPartyController",
         "handler": "updateContractPartyRole",
         "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PATCH",
-        "path": "/vat-rate-options/:optionId",
-        "normalizedKey": "PATCH /vat-rate-options/:param",
-        "controller": "VatRateOptionController",
-        "handler": "update",
-        "sourceFile": "services/api/src/invoice-ledger/vat-rate-option.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -544,15 +521,6 @@
       },
       {
         "method": "POST",
-        "path": "/invoice-allocations/:allocationId/reversal",
-        "normalizedKey": "POST /invoice-allocations/:param/reversal",
-        "controller": "InvoiceLedgerController",
-        "handler": "reverseAllocation",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/me/signature",
         "normalizedKey": "POST /me/signature",
         "controller": "MeController",
@@ -598,65 +566,11 @@
       },
       {
         "method": "POST",
-        "path": "/spot-procurements/:procurementId/invoice-exceptions",
-        "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions",
-        "controller": "InvoiceLedgerController",
-        "handler": "createInvoiceException",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review",
-        "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions/:param/review",
-        "controller": "InvoiceLedgerController",
-        "handler": "reviewInvoiceException",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/invoices",
-        "normalizedKey": "POST /spot-procurements/:param/invoices",
-        "controller": "InvoiceLedgerController",
-        "handler": "createProcurementInvoice",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/no-invoice-confirmations",
-        "normalizedKey": "POST /spot-procurements/:param/no-invoice-confirmations",
-        "controller": "InvoiceLedgerController",
-        "handler": "createNoInvoiceConfirmation",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review",
-        "normalizedKey": "POST /spot-procurements/:param/no-invoice-confirmations/:param/review",
-        "controller": "InvoiceLedgerController",
-        "handler": "reviewNoInvoiceConfirmation",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/spot-procurements/:procurementId/supplier-balance-credit",
         "normalizedKey": "POST /spot-procurements/:param/supplier-balance-credit",
         "controller": "SpotProcurementController",
         "handler": "creditSupplierBalance",
         "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/vat-rate-options",
-        "normalizedKey": "POST /vat-rate-options",
-        "controller": "VatRateOptionController",
-        "handler": "create",
-        "sourceFile": "services/api/src/invoice-ledger/vat-rate-option.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -2501,14 +2415,6 @@
         "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /spot-procurement-payments/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "appendSpotProcurementPaymentInvoice",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/invoices"
         ]
       },
       {
@@ -7630,6 +7536,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "method": "GET",
+          "path": "/spot-procurement-payments/:param",
+          "normalizedKey": "GET /spot-procurement-payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
           "wrapper": "fetchSpotProcurementPaymentDetail",
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
@@ -7659,7 +7579,34 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement.invoice-append",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.invoice-append\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementInvoiceAppend\u0000GET\u0000GET /spot-procurement-payments/:param\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotReceiptCapability.availableActions",
+            "key": "append_invoice",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -7728,6 +7675,20 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "method": "GET",
+          "path": "/spot-procurements/:param/receipt",
+          "normalizedKey": "GET /spot-procurements/:param/receipt",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
           "wrapper": "fetchSpotProcurementReceipt",
           "method": "GET",
           "path": "/spot-procurements/:param/receipt",
@@ -7742,7 +7703,34 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement.invoice-append",
+          "bindingIndex": 1,
+          "identity": "spot-procurement.invoice-append\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementInvoiceAppend\u0000GET\u0000GET /spot-procurements/:param/receipt\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotReceiptCapability.availableActions",
+            "key": "append_invoice",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -8087,29 +8075,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "fetchVatRateOptions",
-          "method": "GET",
-          "path": "/vat-rate-options",
-          "normalizedKey": "GET /vat-rate-options",
-          "bodyKind": "none",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/spot-procurement.api.test.ts"
-          ]
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9137,15 +9109,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13907,15 +13877,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20069,7 +20037,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "appendSpotProcurementPaymentInvoice",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
           "method": "POST",
           "path": "/spot-procurement-payments/:param/invoices",
           "normalizedKey": "POST /spot-procurement-payments/:param/invoices",
@@ -20083,11 +20051,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.invoice-append",
+          "bindingIndex": 2,
+          "identity": "spot-procurement.invoice-append\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementInvoiceAppend\u0000POST\u0000POST /spot-procurement-payments/:param/invoices\u00002",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotReceiptCapability.availableActions",
+            "key": "append_invoice",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20603,15 +20596,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20631,15 +20622,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20659,15 +20648,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20687,15 +20674,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20715,15 +20700,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21557,15 +21540,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {

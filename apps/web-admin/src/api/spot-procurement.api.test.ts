@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { apiFetch } from "./api-fetch";
 import {
-  appendSpotProcurementPaymentInvoice,
   abandonSpotProcurementDraft,
   abandonSpotProcurementPaymentDraft,
   confirmSpotProcurementAbnormalTermination,
@@ -11,6 +10,7 @@ import {
   fetchSpotProcurementApplicationTextSuggestions,
   createSpotProcurementPaymentDraft,
   createSpotProcurementVersion,
+  executeSpotProcurementInvoiceAppend,
   executeSpotProcurementPaymentReviewAction,
   executeSpotProcurementReviewAction,
   prepareSpotProcurementPaymentReviewAction,
@@ -21,7 +21,6 @@ import {
   fetchSpotProcurementReceipt,
   fetchSpotProcurementPayments,
   fetchSpotProcurements,
-  fetchVatRateOptions,
   recordSpotProcurementPaymentExecution,
   recordSpotProcurementRefund,
   recreateSpotProcurementPaymentDraft,
@@ -56,23 +55,13 @@ describe("spot procurement API client", () => {
     mockApiFetch.mockImplementation(async () => jsonResponse({ id: "ok" }));
   });
 
-  it("reads capabilities and the controlled VAT-rate dictionary", async () => {
-    mockApiFetch
-      .mockResolvedValueOnce(jsonResponse({ enabled: true }))
-      .mockResolvedValueOnce(
-        jsonResponse([
-          { id: "vat-3", label: "3%", rateValue: "0.03", enabled: true }
-        ])
-      );
+  it("reads capabilities", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse({ enabled: true }));
 
     await fetchSpotProcurementCapabilities("project/1");
-    await expect(fetchVatRateOptions()).resolves.toEqual([
-      { id: "vat-3", label: "3%", rateValue: "0.03", isEnabled: true }
-    ]);
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurements/capabilities?projectId=project%2F1",
-      "/vat-rate-options"
+      "/spot-procurements/capabilities?projectId=project%2F1"
     ]);
   });
 
@@ -170,7 +159,7 @@ describe("spot procurement API client", () => {
     ]);
   });
 
-  it("uses only replenishment or refund for real-form shortage handling and appends a payment-level invoice", async () => {
+  it("uses only replenishment or refund for real-form shortage handling", async () => {
     const refund = {
       amountCents: "1200",
       receivedAt: "2026-07-18",
@@ -185,12 +174,10 @@ describe("spot procurement API client", () => {
       note: "商户承诺补货"
     });
     await recordSpotProcurementRefund("procurement/1", refund);
-    await appendSpotProcurementPaymentInvoice("payment/1", "invoice-file-1");
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/procurement%2F1/discrepancy",
-      "/spot-procurements/procurement%2F1/refunds",
-      "/spot-procurement-payments/payment%2F1/invoices"
+      "/spot-procurements/procurement%2F1/refunds"
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
       JSON.stringify({
@@ -198,9 +185,501 @@ describe("spot procurement API client", () => {
         resolutionType: "replenishment",
         note: "商户承诺补货"
       }),
-      JSON.stringify(refund),
-      JSON.stringify({ fileId: "invoice-file-1" })
+      JSON.stringify(refund)
     ]);
+  });
+
+  it("preflights the current append capability before uploading and appends only to the captured payment", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          receipt: { procurementId: "procurement/1" },
+          availableActions: [{ key: "append_invoice", enabled: true }]
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          payment: {
+            id: "payment/1",
+            procurement: { id: "procurement/1" },
+            status: "paid",
+            paymentType: "company_direct"
+          },
+          executions: [{ active: true }]
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "invoice-link-1" }));
+    const file = new Blob(["invoice"], { type: "application/pdf" });
+    const upload = vi.fn().mockResolvedValue({ id: "invoice-file-1" });
+    const stale = vi.fn();
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file,
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload,
+        current: () => true,
+        stale,
+        complete,
+        completionFail: vi.fn(),
+        fail,
+        finish
+      })
+    ).resolves.toMatchObject({ status: "completed" });
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/receipt",
+      "/spot-procurement-payments/payment%2F1",
+      "/spot-procurement-payments/payment%2F1/invoices"
+    ]);
+    expect(mockApiFetch.mock.calls[2]?.[1]?.body).toBe(
+      JSON.stringify({ fileId: "invoice-file-1" })
+    );
+    expect(upload).toHaveBeenCalledWith(
+      file,
+      "发票.pdf",
+      "invoice-upload-attempt-1"
+    );
+    expect(stale).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed without upload or append when the fresh capability is disabled", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      jsonResponse({
+        receipt: { procurementId: "procurement/1" },
+        availableActions: [{ key: "append_invoice", enabled: false }]
+      })
+    );
+    const upload = vi.fn().mockResolvedValue({ id: "invoice-file-1" });
+    const fail = vi.fn();
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file: new Blob(["invoice"]),
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail,
+        finish: vi.fn()
+      })
+    ).resolves.toMatchObject({ status: "failed" });
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/receipt"
+    ]);
+    expect(upload).not.toHaveBeenCalled();
+    expect(fail).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentId: "payment/1" }),
+      expect.objectContaining({
+        message: "发票追加权限或采购坐标已变化，请刷新当前收货单后重试"
+      })
+    );
+  });
+
+  it("fails closed before upload when the server returns duplicate append capabilities", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      jsonResponse({
+        receipt: { procurementId: "procurement/1" },
+        availableActions: [
+          { key: "append_invoice", enabled: true },
+          { key: "append_invoice", enabled: true }
+        ]
+      })
+    );
+    const upload = vi.fn();
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file: new Blob(["invoice"]),
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toMatchObject({ status: "failed" });
+
+    expect(upload).not.toHaveBeenCalled();
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps not-started, upload failure and POST failure mutually exclusive and finishes each started attempt once", async () => {
+    const noContextFinish = vi.fn();
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => null,
+        upload: vi.fn(),
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail: vi.fn(),
+        finish: noContextFinish
+      })
+    ).resolves.toEqual({ status: "not_started" });
+    expect(noContextFinish).not.toHaveBeenCalled();
+
+    const context = {
+      procurementId: "procurement/1",
+      paymentId: "payment/1",
+      file: new Blob(["invoice"]),
+      fileName: "发票.pdf",
+      uploadIdempotencyKey: "invoice-upload-attempt-1"
+    };
+    const freshReceipt = {
+      receipt: { procurementId: "procurement/1" },
+      availableActions: [{ key: "append_invoice", enabled: true }]
+    };
+    const freshPayment = {
+      payment: {
+        id: "payment/1",
+        procurement: { id: "procurement/1" },
+        status: "paid",
+        paymentType: "company_direct"
+      },
+      executions: [{ active: true }]
+    };
+
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(freshReceipt))
+      .mockResolvedValueOnce(jsonResponse(freshPayment));
+    const uploadFail = vi.fn();
+    const uploadFinish = vi.fn();
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => context,
+        upload: vi.fn().mockRejectedValue(new Error("upload failed")),
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail: uploadFail,
+        finish: uploadFinish
+      })
+    ).resolves.toMatchObject({ status: "failed" });
+    expect(uploadFail).toHaveBeenCalledTimes(1);
+    expect(uploadFinish).toHaveBeenCalledTimes(1);
+
+    mockApiFetch.mockReset();
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(freshReceipt))
+      .mockResolvedValueOnce(jsonResponse(freshPayment))
+      .mockResolvedValueOnce(jsonResponse({ message: "unknown" }, 503));
+    const postFail = vi.fn();
+    const postFinish = vi.fn();
+    const postComplete = vi.fn();
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => context,
+        upload: vi.fn().mockResolvedValue({ id: "invoice-file-1" }),
+        current: () => true,
+        stale: vi.fn(),
+        complete: postComplete,
+        completionFail: vi.fn(),
+        fail: postFail,
+        finish: postFinish
+      })
+    ).resolves.toMatchObject({ status: "failed" });
+    expect(postFail).toHaveBeenCalledTimes(1);
+    expect(postComplete).not.toHaveBeenCalled();
+    expect(postFinish).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the same upload key and file id when a POST result is unknown and the page retries", async () => {
+    const context = {
+      procurementId: "procurement/1",
+      paymentId: "payment/1",
+      file: new Blob(["invoice"]),
+      fileName: "发票.pdf",
+      uploadIdempotencyKey: "invoice-upload-attempt-1"
+    };
+    const freshReceipt = {
+      receipt: { procurementId: context.procurementId },
+      availableActions: [{ key: "append_invoice", enabled: true }]
+    };
+    const freshPayment = {
+      payment: {
+        id: context.paymentId,
+        procurement: { id: context.procurementId },
+        status: "paid",
+        paymentType: "company_direct"
+      },
+      executions: [{ active: true }]
+    };
+    mockApiFetch.mockReset();
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(freshReceipt))
+      .mockResolvedValueOnce(jsonResponse(freshPayment))
+      .mockResolvedValueOnce(jsonResponse({ message: "unknown" }, 503))
+      .mockResolvedValueOnce(jsonResponse(freshReceipt))
+      .mockResolvedValueOnce(jsonResponse(freshPayment))
+      .mockResolvedValueOnce(jsonResponse({ id: "invoice-link-1" }));
+    const upload = vi.fn(
+      async (_file: Blob, _fileName: string, idempotencyKey: string) => ({
+        id: `file:${idempotencyKey}`
+      })
+    );
+    const execute = () =>
+      executeSpotProcurementInvoiceAppend({
+        capture: () => context,
+        upload,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      });
+
+    await expect(execute()).resolves.toMatchObject({ status: "failed" });
+    await expect(execute()).resolves.toMatchObject({ status: "completed" });
+
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(upload.mock.calls.map(([, , key]) => key)).toEqual([
+      context.uploadIdempotencyKey,
+      context.uploadIdempotencyKey
+    ]);
+    const appendBodies = mockApiFetch.mock.calls
+      .filter(([path]) => path.endsWith("/invoices"))
+      .map(([, init]) => init?.body);
+    expect(appendBodies).toEqual([
+      JSON.stringify({ fileId: "file:invoice-upload-attempt-1" }),
+      JSON.stringify({ fileId: "file:invoice-upload-attempt-1" })
+    ]);
+  });
+
+  it("fails closed before upload when the captured payment no longer belongs to the procurement", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          receipt: { procurementId: "procurement/1" },
+          availableActions: [{ key: "append_invoice", enabled: true }]
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          payment: {
+            id: "payment/1",
+            procurement: { id: "procurement/2" },
+            status: "paid",
+            paymentType: "company_direct"
+          },
+          executions: [{ active: true }]
+        })
+      );
+    const upload = vi.fn().mockResolvedValue({ id: "invoice-file-1" });
+    const fail = vi.fn();
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file: new Blob(["invoice"]),
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail,
+        finish: vi.fn()
+      })
+    ).resolves.toMatchObject({ status: "failed" });
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/receipt",
+      "/spot-procurement-payments/payment%2F1"
+    ]);
+    expect(upload).not.toHaveBeenCalled();
+    expect(fail).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentId: "payment/1" }),
+      expect.objectContaining({
+        message: "发票对应付款已变化或尚无有效实付，请刷新当前收货单后重试"
+      })
+    );
+  });
+
+  it("discards a stale owner after upload without appending any invoice", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          receipt: { procurementId: "procurement/1" },
+          availableActions: [{ key: "append_invoice", enabled: true }]
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          payment: {
+            id: "payment/1",
+            procurement: { id: "procurement/1" },
+            status: "paid",
+            paymentType: "company_direct"
+          },
+          executions: [{ active: true }]
+        })
+      );
+    const upload = vi.fn().mockResolvedValue({ id: "invoice-file-1" });
+    const stale = vi.fn();
+    let currentCheck = 0;
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file: new Blob(["invoice"]),
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload,
+        current: () => ++currentCheck < 4,
+        stale,
+        complete: vi.fn(),
+        completionFail: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toMatchObject({ status: "stale" });
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/receipt",
+      "/spot-procurement-payments/payment%2F1"
+    ]);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(stale).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a confirmed append as detached when the page owner changes during the POST", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          receipt: { procurementId: "procurement/1" },
+          availableActions: [{ key: "append_invoice", enabled: true }]
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          payment: {
+            id: "payment/1",
+            procurement: { id: "procurement/1" },
+            status: "paid",
+            paymentType: "company_direct"
+          },
+          executions: [{ active: true }]
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "invoice-link-1" }));
+    let currentCheck = 0;
+    const complete = vi.fn();
+    const stale = vi.fn();
+    const fail = vi.fn();
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file: new Blob(["invoice"]),
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload: vi.fn().mockResolvedValue({ id: "invoice-file-1" }),
+        current: () => ++currentCheck < 5,
+        stale,
+        complete,
+        completionFail: vi.fn(),
+        fail,
+        finish: vi.fn()
+      })
+    ).resolves.toMatchObject({ status: "completed_detached" });
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/spot-procurements/procurement%2F1/receipt",
+      "/spot-procurement-payments/payment%2F1",
+      "/spot-procurement-payments/payment%2F1/invoices"
+    ]);
+    expect(stale).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it("keeps a confirmed append distinct from a later refresh failure", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        jsonResponse({
+          receipt: { procurementId: "procurement/1" },
+          availableActions: [{ key: "append_invoice", enabled: true }]
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          payment: {
+            id: "payment/1",
+            procurement: { id: "procurement/1" },
+            status: "paid",
+            paymentType: "company_direct"
+          },
+          executions: [{ active: true }]
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "invoice-link-1" }));
+    const completionFail = vi.fn();
+    const fail = vi.fn();
+
+    await expect(
+      executeSpotProcurementInvoiceAppend({
+        capture: () => ({
+          procurementId: "procurement/1",
+          paymentId: "payment/1",
+          file: new Blob(["invoice"]),
+          fileName: "发票.pdf",
+          uploadIdempotencyKey: "invoice-upload-attempt-1"
+        }),
+        upload: vi.fn().mockResolvedValue({ id: "invoice-file-1" }),
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn().mockRejectedValue(new Error("refresh failed")),
+        completionFail,
+        fail,
+        finish: vi.fn()
+      })
+    ).resolves.toMatchObject({ status: "completed_with_refresh_error" });
+
+    expect(completionFail).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentId: "payment/1" }),
+      expect.objectContaining({ message: "refresh failed" })
+    );
+    expect(fail).not.toHaveBeenCalled();
   });
 
   it("connects the four retained zero-procurement actions with encoded ids and exact confirmation bodies", async () => {

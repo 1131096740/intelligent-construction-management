@@ -56,6 +56,9 @@ function context(roleKey = "material_staff") {
       findMany: jest.fn().mockResolvedValue([])
     },
     spotProcurementPaymentLine: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementPaymentExecution: {
+      findFirst: jest.fn().mockResolvedValue({ id: "execution-1" })
+    },
     fileObject: { findMany: jest.fn().mockResolvedValue([]) }
   };
   const prisma = { $transaction: jest.fn(async (operation) => operation(tx)) };
@@ -106,6 +109,12 @@ describe("SpotProcurementInvoiceService", () => {
       status: "active",
       uploadedByUserId: "handler-1"
     });
+    expect(
+      tx.spotProcurementPaymentExecution.findFirst
+    ).toHaveBeenCalledWith({
+      where: { paymentId: "payment-1", voidedAt: null },
+      select: { id: true }
+    });
     expect(tx.spotProcurementPaymentInvoice.create).toHaveBeenCalledWith({
       data: {
         paymentId: "payment-1",
@@ -144,6 +153,47 @@ describe("SpotProcurementInvoiceService", () => {
         fileId: "file-1"
       })
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("rejects a revoked handler role and a payment without active execution before any file or invoice write", async () => {
+    const revokedHandler = context("employee");
+    revokedHandler.tx.$queryRaw
+      .mockResolvedValueOnce([payment()])
+      .mockResolvedValueOnce([procurement()]);
+    await expect(
+      revokedHandler.service.append("payment-1", "handler-1", {
+        fileId: "file-1"
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(
+      revokedHandler.files.assertFileHasNoBusinessBinding
+    ).not.toHaveBeenCalled();
+    expect(
+      revokedHandler.tx.spotProcurementPaymentInvoice.create
+    ).not.toHaveBeenCalled();
+    expect(revokedHandler.audit.record).not.toHaveBeenCalled();
+
+    const unpaid = context();
+    unpaid.tx.$queryRaw
+      .mockResolvedValueOnce([payment()])
+      .mockResolvedValueOnce([procurement()]);
+    unpaid.tx.spotProcurementPaymentExecution.findFirst.mockResolvedValue(
+      null
+    );
+    await expect(
+      unpaid.service.append("payment-1", "handler-1", {
+        fileId: "file-1"
+      })
+    ).rejects.toEqual(
+      new ConflictException("付款申请尚无有效实际付款，不能追加发票附件")
+    );
+    expect(
+      unpaid.files.assertFileHasNoBusinessBinding
+    ).not.toHaveBeenCalled();
+    expect(
+      unpaid.tx.spotProcurementPaymentInvoice.create
+    ).not.toHaveBeenCalled();
+    expect(unpaid.audit.record).not.toHaveBeenCalled();
   });
 
   it("allows pre-closure invalidation but keeps closed procurements append-only", async () => {

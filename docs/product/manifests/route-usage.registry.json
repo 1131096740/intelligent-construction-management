@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 395,
-    "classificationOverrideCount": 87,
-    "derivedProductionPageCount": 282,
-    "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
+    "classificationOverrideCount": 96,
+    "derivedProductionPageCount": 283,
+    "classificationOverrideSha256": "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
     "usageCounts": {
-      "page": 285,
+      "page": 286,
       "external_takeover": 59,
-      "exit_candidate": 23,
+      "exit_candidate": 32,
       "internal_task": 2,
-      "unclassified": 26
+      "unclassified": 16
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 332,
+      "web_api_wrapper": 333,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 55
+      "none": 54
     }
   },
   "overrides": [
@@ -146,6 +146,12 @@
       "reason": "legacy_lifecycle_ledger_candidate_only_no_deletion_authorization"
     },
     {
+      "method": "GET",
+      "path": "/vat-rate-options",
+      "usage": "exit_candidate",
+      "reason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization"
+    },
+    {
       "method": "PATCH",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "usage": "exit_candidate",
@@ -174,6 +180,12 @@
       "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/review-result",
       "usage": "external_takeover",
       "reason": "historical_contract_takeover_external_workbench"
+    },
+    {
+      "method": "PATCH",
+      "path": "/vat-rate-options/:optionId",
+      "usage": "exit_candidate",
+      "reason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -246,6 +258,12 @@
       "path": "/draft-retention/controlled-entry",
       "usage": "internal_task",
       "reason": "super_admin_operator_preview_only"
+    },
+    {
+      "method": "POST",
+      "path": "/invoice-allocations/:allocationId/reversal",
+      "usage": "exit_candidate",
+      "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -534,6 +552,42 @@
       "path": "/settlements",
       "usage": "exit_candidate",
       "reason": "legacy_direct_settlement_create_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/invoice-exceptions",
+      "usage": "exit_candidate",
+      "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review",
+      "usage": "exit_candidate",
+      "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/invoices",
+      "usage": "exit_candidate",
+      "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/no-invoice-confirmations",
+      "usage": "exit_candidate",
+      "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review",
+      "usage": "exit_candidate",
+      "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/vat-rate-options",
+      "usage": "exit_candidate",
+      "reason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization"
     },
     {
       "method": "PUT",

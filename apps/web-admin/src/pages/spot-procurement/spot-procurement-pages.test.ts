@@ -1051,6 +1051,31 @@ describe("spot procurement web pages", () => {
     const workbench = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
     const receipt = pageSource("SpotProcurementReceiptPage.vue");
     const uploader = pageSource("components/ReceiptPhotoUploader.vue");
+    const invoiceAppendRegistration = pageActionRegistry.actions.find(
+      (action) => action.id === "spot-procurement.invoice-append"
+    );
+
+    expect(invoiceAppendRegistration).toMatchObject({
+      usage: "page_action",
+      routePaths: ["/零星采购收货/:procurementId"],
+      sourceFile:
+        "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      trigger: {
+        element: "t-button",
+        event: "click",
+        handler: "appendInvoice"
+      },
+      capability: {
+        source: "spotReceiptCapability.availableActions",
+        key: "append_invoice"
+      },
+      wrappers: [
+        {
+          apiFile: "apps/web-admin/src/api/spot-procurement.api.ts",
+          name: "executeSpotProcurementInvoiceAppend"
+        }
+      ]
+    });
 
     expect(workbench).toContain("fetchSpotProcurements");
     expect(workbench).toContain("待实际付款");
@@ -1067,7 +1092,40 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
     expect(receipt).toContain("prepareSpotRefundWithUpload(");
-    expect(receipt).toContain("appendSpotProcurementPaymentInvoice");
+    expect(receipt).toContain("executeSpotProcurementInvoiceAppend");
+    expect(receipt).toContain("const appendInvoiceAction = computed(() =>");
+    expect(receipt).toContain(
+      "function captureInvoiceAppendOperation()"
+    );
+    expect(receipt).toContain(
+      "function invoiceAppendContextIsCurrent("
+    );
+    expect(receipt).toContain(
+      "return executeSpotProcurementInvoiceAppend({"
+    );
+    expect(receipt).toContain(
+      "capture: captureInvoiceAppendOperation"
+    );
+    expect(receipt).toContain(
+      "current: invoiceAppendContextIsCurrent"
+    );
+    expect(receipt).toContain("upload: uploadPrivateFile");
+    expect(receipt).toContain("uploadIdempotencyKey");
+    expect(receipt).toContain(
+      "previousAttempt.file === file"
+    );
+    expect(receipt).toContain(
+      "activeInvoiceAppendOperationId === context.operationId"
+    );
+    expect(receipt).toContain("invoiceAppendComponentActive");
+    expect(receipt).toContain("onBeforeUnmount(() => {");
+    expect(receipt).toContain(
+      "if (!(await load())) {"
+    );
+    expect(receipt).toContain('v-if="appendInvoiceAction?.enabled"');
+    expect(receipt).not.toContain(
+      "await act(async (context) => {\n    const payment = paymentDetail.value"
+    );
     expect(receipt).toContain("invalidateSpotProcurementPaymentInvoice");
     expect(receipt).toContain("refreshSpotProcurementReceiptPdf");
     expect(receipt).toContain("const spotPaymentCapability = ref<SpotProcurementPaymentDetailReadModel | null>(null)");

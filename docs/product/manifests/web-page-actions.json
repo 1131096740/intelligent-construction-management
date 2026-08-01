@@ -9,8 +9,8 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 48,
-    "pageActionCount": 42,
+    "registeredActionCount": 49,
+    "pageActionCount": 43,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 229,
     "templateEventDirectiveCount": 923,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 21,
-    "candidateProductionMutationConsumerCount": 40,
-    "acceptedProductionMutationConsumerCount": 21,
+    "coveredProductionMutationConsumerCount": 22,
+    "candidateProductionMutationConsumerCount": 41,
+    "acceptedProductionMutationConsumerCount": 22,
     "productionMutationConsumerPairCount": 272,
-    "blockerCount": 297
+    "blockerCount": 296
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -3126,6 +3126,143 @@
       ]
     },
     {
+      "id": "spot-procurement.invoice-append",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "appendInvoice",
+        "kind": "event",
+        "sourceLine": 1196,
+        "sourceColumn": 14
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotReceiptCapability.availableActions",
+        "key": "append_invoice",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "method": "GET",
+          "path": "/spot-procurement-payments/:param",
+          "normalizedKey": "GET /spot-procurement-payments/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/spot-procurement-payments/:paymentId",
+            "normalizedKey": "GET /spot-procurement-payments/:param",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "appendInvoice",
+              "executeSpotProcurementInvoiceAppend"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "method": "GET",
+          "path": "/spot-procurements/:param/receipt",
+          "normalizedKey": "GET /spot-procurements/:param/receipt",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/spot-procurements/:procurementId/receipt",
+            "normalizedKey": "GET /spot-procurements/:param/receipt",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "detail",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "appendInvoice",
+              "executeSpotProcurementInvoiceAppend"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementInvoiceAppend",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/invoices",
+          "normalizedKey": "POST /spot-procurement-payments/:param/invoices",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/invoices",
+            "normalizedKey": "POST /spot-procurement-payments/:param/invoices",
+            "controller": "SpotProcurementInvoiceController",
+            "handler": "append",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-invoice.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.invoice.append"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "appendInvoice",
+              "executeSpotProcurementInvoiceAppend"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.invoice-invalidate",
       "usage": "page_action",
       "routePaths": [
@@ -3140,7 +3277,7 @@
         "event": "confirm",
         "handler": "invalidateInvoice",
         "kind": "event",
-        "sourceLine": 1057,
+        "sourceLine": 1230,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -3205,7 +3342,7 @@
         "event": "confirm",
         "handler": "refreshReceiptPdf",
         "kind": "event",
-        "sourceLine": 965,
+        "sourceLine": 1138,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -6029,15 +6166,6 @@
         "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
         "normalizedKeys": [
           "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "appendSpotProcurementPaymentInvoice",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/invoices"
         ]
       },
       {

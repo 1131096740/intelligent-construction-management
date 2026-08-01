@@ -729,9 +729,6 @@ test("locally resumes an incomplete A5 draft without inventing payment facts and
   const writeOrder: string[] = [];
 
   await mockLogin(page);
-  await page.route("**/api/vat-rate-options", (route) =>
-    route.fulfill({ contentType: "application/json", body: "[]" })
-  );
   await page.route("**/api/spot-procurement-payments?*", (route) =>
     route.fulfill({
       contentType: "application/json",

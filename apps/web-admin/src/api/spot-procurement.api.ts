@@ -165,6 +165,50 @@ export interface SpotProcurementReceiptDetailReadModel {
   availableActions: DetailActionReadModel[];
 }
 
+export interface SpotProcurementInvoiceAppendActionContext {
+  procurementId: string;
+  paymentId: string;
+  file: Blob;
+  fileName: string;
+  uploadIdempotencyKey: string;
+}
+
+export interface ExecuteSpotProcurementInvoiceAppendInput<
+  TContext extends SpotProcurementInvoiceAppendActionContext =
+    SpotProcurementInvoiceAppendActionContext
+> {
+  capture: () => TContext | null;
+  upload: (
+    file: Blob,
+    fileName: string,
+    idempotencyKey: string
+  ) => Promise<{ id: string }>;
+  current: (
+    context: TContext,
+    freshReceipt?: SpotProcurementReceiptDetailReadModel,
+    freshPayment?: SpotProcurementPaymentDetailReadModel
+  ) => boolean;
+  stale: (context: TContext) => void | Promise<void>;
+  complete: (context: TContext) => void | Promise<void>;
+  completionFail: (
+    context: TContext,
+    error: unknown
+  ) => void | Promise<void>;
+  fail: (context: TContext, error: unknown) => void | Promise<void>;
+  finish: (context: TContext) => void;
+}
+
+export type ExecuteSpotProcurementInvoiceAppendResult<
+  TContext extends SpotProcurementInvoiceAppendActionContext =
+    SpotProcurementInvoiceAppendActionContext
+> =
+  | { status: "not_started" }
+  | { status: "stale"; context: TContext }
+  | { status: "completed"; context: TContext }
+  | { status: "completed_detached"; context: TContext }
+  | { status: "completed_with_refresh_error"; context: TContext }
+  | { status: "failed"; context: TContext };
+
 export interface SpotProcurementReceiptLineReadModel {
   procurementLineId: string;
   sortOrder: number;
@@ -220,13 +264,6 @@ export interface SpotProcurementCapabilitiesReadModel {
   canExecutePayment: boolean;
   unavailableReason: string | null;
   handlerOptions: SpotProcurementHandlerOptionReadModel[];
-}
-
-export interface VatRateOptionReadModel {
-  id: string;
-  label: string;
-  rateValue: string;
-  isEnabled?: boolean;
 }
 
 export type SpotProcurementInvoiceComposition =
@@ -1365,7 +1402,7 @@ export function recordSpotProcurementRefund(
   );
 }
 
-export function appendSpotProcurementPaymentInvoice(
+function postSpotProcurementPaymentInvoice(
   paymentId: string,
   fileId: string
 ) {
@@ -1373,6 +1410,85 @@ export function appendSpotProcurementPaymentInvoice(
     `/spot-procurement-payments/${encodeURIComponent(paymentId)}/invoices`,
     { fileId }
   );
+}
+
+export async function executeSpotProcurementInvoiceAppend<
+  TContext extends SpotProcurementInvoiceAppendActionContext
+>(
+  input: ExecuteSpotProcurementInvoiceAppendInput<TContext>
+): Promise<ExecuteSpotProcurementInvoiceAppendResult<TContext>> {
+  const context = input.capture();
+  if (!context) return { status: "not_started" };
+  let appendCompleted = false;
+
+  try {
+    if (!input.current(context)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    const freshReceipt = await fetchSpotProcurementReceipt(
+      context.procurementId
+    );
+    const appendActions = freshReceipt.availableActions.filter(
+      (action) => action.key === "append_invoice"
+    );
+    if (
+      freshReceipt.receipt.procurementId !== context.procurementId ||
+      appendActions.length !== 1 ||
+      appendActions[0]?.enabled !== true
+    ) {
+      throw new Error(
+        "发票追加权限或采购坐标已变化，请刷新当前收货单后重试"
+      );
+    }
+    if (!input.current(context, freshReceipt)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    const freshPayment = await fetchSpotProcurementPaymentDetail(
+      context.paymentId
+    );
+    if (
+      freshPayment.payment.id !== context.paymentId ||
+      freshPayment.payment.procurement.id !== context.procurementId ||
+      freshPayment.payment.status === "invalidated" ||
+      !freshPayment.payment.paymentType ||
+      !freshPayment.executions.some((execution) => execution.active)
+    ) {
+      throw new Error(
+        "发票对应付款已变化或尚无有效实付，请刷新当前收货单后重试"
+      );
+    }
+    if (!input.current(context, freshReceipt, freshPayment)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    const uploaded = await input.upload(
+      context.file,
+      context.fileName,
+      context.uploadIdempotencyKey
+    );
+    if (!input.current(context, freshReceipt, freshPayment)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    await postSpotProcurementPaymentInvoice(context.paymentId, uploaded.id);
+    appendCompleted = true;
+    if (!input.current(context, freshReceipt, freshPayment)) {
+      return { status: "completed_detached", context };
+    }
+    await input.complete(context);
+    return { status: "completed", context };
+  } catch (error) {
+    if (appendCompleted) {
+      await input.completionFail(context, error);
+      return { status: "completed_with_refresh_error", context };
+    }
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
 }
 
 export function invalidateSpotProcurementPaymentInvoice(
@@ -1407,23 +1523,6 @@ export function refreshSpotProcurementReceiptPdf(procurementId: string) {
   return postJson<unknown>(
     `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/pdf-refresh`
   );
-}
-
-export async function fetchVatRateOptions(): Promise<VatRateOptionReadModel[]> {
-  const options = await readJson<
-    Array<{
-      id: string;
-      label: string;
-      rateValue: string;
-      enabled?: boolean;
-    }>
-  >("/vat-rate-options");
-  return options.map((option) => ({
-    id: option.id,
-    label: option.label,
-    rateValue: option.rateValue,
-    ...(option.enabled === undefined ? {} : { isEnabled: option.enabled })
-  }));
 }
 
 export function createSpotProcurementDraft(

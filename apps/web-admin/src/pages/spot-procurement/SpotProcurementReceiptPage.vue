@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
-  appendSpotProcurementPaymentInvoice,
   attachSpotProcurementReceiptPhoto,
   createSpotProcurementDiscrepancy,
   createSpotProcurementReceiptDelegation,
   deleteSpotProcurementReceiptPhoto,
+  executeSpotProcurementInvoiceAppend,
   fetchSpotProcurementDetail,
   fetchSpotProcurementPaymentDetail,
   fetchSpotProcurementReceipt,
@@ -20,6 +20,7 @@ import {
   submitSpotProcurementReceipt,
   updateSpotProcurementReceiptDraft,
   type SpotProcurementDetailReadModel,
+  type SpotProcurementInvoiceAppendActionContext,
   type SpotProcurementPaymentDetailReadModel,
   type SpotProcurementPaymentInvoiceReadModel,
   type SpotProcurementReceiptDetailReadModel,
@@ -84,6 +85,11 @@ const selectedInvoiceInvalidationAction = computed(() =>
     .find((invoice) => invoice.id === selectedInvoiceId.value)?.availableActions ?? [])
     .find((action) => action.key === "invalidate_invoice") ?? null
 );
+const appendInvoiceAction = computed(() =>
+  spotReceiptCapability.value?.availableActions?.find(
+    (action) => action.key === "append_invoice"
+  ) ?? null
+);
 const receiptPdfRefreshAction = computed(() =>
   spotReceiptCapability.value?.availableActions?.find(
     (action) => action.key === "refresh_receipt_pdf"
@@ -96,12 +102,22 @@ const receiptWorkflow = computed(() =>
     : undefined
 );
 const receiptResetAction = computed(() => receiptWorkflow.value?.resetAction);
-const ROUTE_CHANGED_MESSAGE = "页面已切换到另一笔采购；过期操作未绑定任何收货、照片或退款事实，请在当前单据重新办理。";
+const ROUTE_CHANGED_MESSAGE = "页面已切换到另一笔采购；过期操作未绑定任何收货、照片、退款或发票事实，请在当前单据重新办理。";
 let routeGeneration = 0;
 let loadRequestId = 0;
 let receiptActionOperationSequence = 0;
 let activeReceiptActionOperationId = 0;
 let receiptActionBusyOwnerId = 0;
+let invoiceAppendOperationSequence = 0;
+let activeInvoiceAppendOperationId = 0;
+let invoiceAppendBusyOwnerId = 0;
+let invoiceAppendComponentActive = true;
+let invoiceAppendUploadAttempt: null | {
+  procurementId: string;
+  paymentId: string;
+  file: File;
+  idempotencyKey: string;
+} = null;
 
 type ReceiptPageContext = { procurementId: string; generation: number };
 type InvoiceInvalidationOperationContext = ReceiptPageContext & {
@@ -109,6 +125,10 @@ type InvoiceInvalidationOperationContext = ReceiptPageContext & {
   invoiceId: string;
   operationId: number;
 };
+type InvoiceAppendOperationContext = ReceiptPageContext &
+  SpotProcurementInvoiceAppendActionContext & {
+    operationId: number;
+  };
 type ReceiptPdfRefreshOperationContext = ReceiptPageContext & {
   operationId: number;
 };
@@ -157,6 +177,9 @@ function clearTransientState() {
   receiptPdfRefreshGeneration.value = -1;
   activeReceiptActionOperationId = 0;
   receiptActionBusyOwnerId = 0;
+  activeInvoiceAppendOperationId = 0;
+  invoiceAppendBusyOwnerId = 0;
+  invoiceAppendUploadAttempt = null;
   discrepancyForm.resolutionType = "replenishment";
   discrepancyForm.note = "";
   refundForm.amountYuan = "";
@@ -188,10 +211,10 @@ function invoiceLabel(invoice: SpotProcurementPaymentInvoiceReadModel) {
   return invoice.file?.originalName ?? invoice.fileId;
 }
 
-async function load() {
+async function load(): Promise<boolean> {
   const context = captureContext();
   const requestId = ++loadRequestId;
-  if (!context.procurementId) return;
+  if (!context.procurementId) return false;
   spotReceiptCapability.value = null;
   spotPaymentCapability.value = null;
   busy.value = true;
@@ -205,7 +228,7 @@ async function load() {
     void procurementDetailRequest.catch(() => undefined);
     const receiptResult = await receiptRequest;
     const procurementDetail = await procurementDetailRequest;
-    if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+    if (requestId !== loadRequestId || !contextIsCurrent(context)) return false;
     const receiptView = structuredClone(receiptResult);
     spotReceiptCapability.value = receiptResult;
     const nextLines = receiptView.lines.map((line) => ({
@@ -243,7 +266,7 @@ async function load() {
       try {
         const paymentRequest = fetchSpotProcurementPaymentDetail(payment.id);
         const paymentResult = await paymentRequest;
-        if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+        if (requestId !== loadRequestId || !contextIsCurrent(context)) return false;
         if (
           paymentResult.payment.id !== payment.id ||
           paymentResult.payment.procurement.id !== context.procurementId
@@ -258,16 +281,18 @@ async function load() {
         nextPaymentNotice = paymentError instanceof Error ? `付款、发票与归档资料按最小权限展示：${paymentError.message}` : "付款、发票与归档资料按最小权限展示。";
       }
     }
-    if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+    if (requestId !== loadRequestId || !contextIsCurrent(context)) return false;
     receipt.value = receiptView;
     detail.value = procurementDetail;
     lines.value = nextLines;
     paymentDetail.value = nextPaymentDetail;
     paymentNotice.value = nextPaymentNotice;
     refundForm.amountYuan = nextRefundAmountYuan;
+    return true;
   } catch (loadError) {
-    if (requestId !== loadRequestId || !contextIsCurrent(context)) return;
+    if (requestId !== loadRequestId || !contextIsCurrent(context)) return false;
     error.value = loadError instanceof Error ? loadError.message : "读取收货详情失败";
+    return false;
   } finally {
     if (requestId === loadRequestId && contextIsCurrent(context)) busy.value = false;
   }
@@ -413,19 +438,156 @@ async function recordRefund() {
   }, "退款到账事实和凭证已登记");
 }
 
-async function appendInvoice() {
-  await act(async (context) => {
-    const payment = paymentDetail.value;
-    const file = selectedUploadFiles(invoiceFiles.value)[0];
-    if (!payment) throw new Error("当前无权限读取关联付款申请");
-    if (!hasActualPayment.value) throw new Error("请先登记实际付款，再追加整单发票");
-    if (!file) throw new Error("请选择发票图片或 PDF 文件");
-    const uploaded = await uploadPrivateFile(file, file.name);
-    assertCurrentContext(context);
-    await appendSpotProcurementPaymentInvoice(payment.payment.id, uploaded.id);
-    assertCurrentContext(context);
-    invoiceFiles.value = [];
-  }, "发票已关联整张付款申请，并追加生成新的归档版本");
+function captureInvoiceAppendOperation(): InvoiceAppendOperationContext | null {
+  const context = captureContext();
+  const payment = paymentDetail.value;
+  const file = selectedUploadFiles(invoiceFiles.value)[0];
+  if (
+    busy.value ||
+    appendInvoiceAction.value?.enabled !== true ||
+    !context.procurementId ||
+    spotReceiptCapability.value?.receipt.procurementId !==
+      context.procurementId
+  ) {
+    return null;
+  }
+  if (!payment) {
+    error.value = "当前无权限读取关联付款申请";
+    return null;
+  }
+  if (!hasActualPayment.value) {
+    error.value = "请先登记实际付款，再追加整单发票";
+    return null;
+  }
+  if (!file) {
+    error.value = "请选择发票图片或 PDF 文件";
+    return null;
+  }
+  const previousAttempt = invoiceAppendUploadAttempt;
+  const uploadIdempotencyKey =
+    previousAttempt?.procurementId === context.procurementId &&
+    previousAttempt.paymentId === payment.payment.id &&
+    previousAttempt.file === file
+      ? previousAttempt.idempotencyKey
+      : globalThis.crypto?.randomUUID?.();
+  if (!uploadIdempotencyKey) {
+    error.value = "当前浏览器无法生成安全上传标识，请刷新后重试";
+    return null;
+  }
+  invoiceAppendUploadAttempt = {
+    procurementId: context.procurementId,
+    paymentId: payment.payment.id,
+    file,
+    idempotencyKey: uploadIdempotencyKey
+  };
+  const operationId = ++invoiceAppendOperationSequence;
+  const operation: InvoiceAppendOperationContext = {
+    ...context,
+    paymentId: payment.payment.id,
+    file,
+    fileName: file.name,
+    uploadIdempotencyKey,
+    operationId
+  };
+  activeInvoiceAppendOperationId = operationId;
+  invoiceAppendBusyOwnerId = operationId;
+  busy.value = true;
+  error.value = "";
+  return operation;
+}
+
+function invoiceAppendContextIsCurrent(
+  context: InvoiceAppendOperationContext,
+  freshReceipt?: SpotProcurementReceiptDetailReadModel,
+  freshPayment?: SpotProcurementPaymentDetailReadModel
+) {
+  return Boolean(
+    invoiceAppendComponentActive &&
+      activeInvoiceAppendOperationId === context.operationId &&
+      contextIsCurrent(context) &&
+      spotReceiptCapability.value?.receipt.procurementId ===
+        context.procurementId &&
+      spotPaymentCapability.value?.payment.id === context.paymentId &&
+      spotPaymentCapability.value?.payment.procurement.id ===
+        context.procurementId &&
+      (!freshReceipt ||
+        (freshReceipt.receipt.procurementId === context.procurementId &&
+          freshReceipt.availableActions.some(
+            (action) =>
+              action.key === "append_invoice" && action.enabled
+          ))) &&
+      (!freshPayment ||
+        (freshPayment.payment.id === context.paymentId &&
+          freshPayment.payment.procurement.id === context.procurementId))
+  );
+}
+
+async function completeInvoiceAppend(
+  context: InvoiceAppendOperationContext
+) {
+  assertCurrentContext(context);
+  invoiceAppendUploadAttempt = null;
+  invoiceFiles.value = [];
+  if (!(await load())) {
+    throw new Error("发票已关联，但当前收货单刷新失败");
+  }
+  message.value =
+    "发票已关联整张付款申请；付款归档版本状态以刷新结果为准";
+}
+
+function failInvoiceAppend(
+  context: InvoiceAppendOperationContext,
+  actionError: unknown
+) {
+  if (!contextIsCurrent(context)) {
+    routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+    return;
+  }
+  error.value =
+    actionError instanceof Error ? actionError.message : "操作失败";
+}
+
+function failInvoiceAppendCompletion(
+  context: InvoiceAppendOperationContext
+) {
+  if (!contextIsCurrent(context)) return;
+  invoiceAppendUploadAttempt = null;
+  error.value =
+    "发票已经关联成功，但页面刷新失败；请手动刷新当前收货单核对";
+}
+
+function finishInvoiceAppend(context: InvoiceAppendOperationContext) {
+  if (invoiceAppendBusyOwnerId === context.operationId) {
+    invoiceAppendBusyOwnerId = 0;
+    if (invoiceAppendComponentActive) busy.value = false;
+  }
+  if (activeInvoiceAppendOperationId === context.operationId) {
+    activeInvoiceAppendOperationId = 0;
+  }
+}
+
+function markInvoiceAppendStale(context: InvoiceAppendOperationContext) {
+  if (
+    !invoiceAppendComponentActive ||
+    (activeInvoiceAppendOperationId !== 0 &&
+      activeInvoiceAppendOperationId !== context.operationId)
+  ) {
+    return;
+  }
+  routeSafetyNotice.value = ROUTE_CHANGED_MESSAGE;
+}
+
+function appendInvoice() {
+  return executeSpotProcurementInvoiceAppend({
+    capture: captureInvoiceAppendOperation,
+    upload: uploadPrivateFile,
+    current: invoiceAppendContextIsCurrent,
+    stale: markInvoiceAppendStale,
+    complete: completeInvoiceAppend,
+    completionFail: failInvoiceAppendCompletion,
+    fail: failInvoiceAppend,
+    finish: finishInvoiceAppend
+  });
 }
 
 function openInvoiceInvalidation(invoice: SpotProcurementPaymentInvoiceReadModel) {
@@ -686,6 +848,17 @@ watch(procurementId, () => {
   clearTransientState();
   void load();
 }, { immediate: true });
+
+onBeforeUnmount(() => {
+  invoiceAppendComponentActive = false;
+  routeGeneration += 1;
+  loadRequestId += 1;
+  activeInvoiceAppendOperationId = 0;
+  invoiceAppendBusyOwnerId = 0;
+  invoiceAppendUploadAttempt = null;
+  activeReceiptActionOperationId = 0;
+  receiptActionBusyOwnerId = 0;
+});
 </script>
 
 <template>
@@ -1012,12 +1185,12 @@ watch(procurementId, () => {
               theme="file-flow"
               :auto-upload="false"
               :multiple="false"
-              :disabled="!hasActualPayment || !actionEnabled('append_invoice')"
+              :disabled="!hasActualPayment || !appendInvoiceAction?.enabled"
               :accept="CORE_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
               :size-limit="{ size: CORE_ARCHIVE_UPLOAD_POLICY.limitBytes, unit: 'B' }"
             />
             <t-button
-              v-if="actionEnabled('append_invoice')"
+              v-if="appendInvoiceAction?.enabled"
               :disabled="!hasActualPayment"
               :loading="busy"
               @click="appendInvoice"

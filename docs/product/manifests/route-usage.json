@@ -13,16 +13,16 @@
     "routeCount": 395,
     "exactRouteCount": 395,
     "normalizedRouteCount": 395,
-    "classificationOverrideCount": 87,
+    "classificationOverrideCount": 96,
     "consumerSurfaceOverrideCount": 3,
-    "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
+    "classificationOverrideSha256": "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
     "derivedProductionPageCount": 283,
     "pageRouteCount": 286,
     "externalTakeoverCount": 59,
-    "exitCandidateCount": 23,
+    "exitCandidateCount": 32,
     "internalTaskCount": 2,
-    "unclassifiedCount": 25,
+    "unclassifiedCount": 16,
     "consumerSurfaceCounts": {
       "web_api_wrapper": 333,
       "auth_store": 5,
@@ -31,7 +31,7 @@
       "operator_endpoint": 1,
       "none": 54
     },
-    "blockerCount": 30
+    "blockerCount": 16
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
@@ -4301,6 +4301,16 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "executeSpotProcurementInvoiceAppend",
+            "method": "GET",
+            "normalizedPath": "/spot-procurement-payments/:param",
+            "normalizedKey": "GET /spot-procurement-payments/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
             "wrapper": "fetchSpotProcurementPaymentDetail",
             "method": "GET",
             "normalizedPath": "/spot-procurement-payments/:param",
@@ -4452,6 +4462,16 @@
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "executeSpotProcurementInvoiceAppend",
+            "method": "GET",
+            "normalizedPath": "/spot-procurements/:param/receipt",
+            "normalizedKey": "GET /spot-procurements/:param/receipt",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          },
           {
             "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
             "wrapper": "fetchSpotProcurementReceipt",
@@ -4691,9 +4711,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -4702,7 +4722,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -5596,9 +5616,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -5607,7 +5627,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -9553,9 +9573,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -9564,7 +9584,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14438,7 +14458,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "appendSpotProcurementPaymentInvoice",
+            "wrapper": "executeSpotProcurementInvoiceAppend",
             "method": "POST",
             "normalizedPath": "/spot-procurement-payments/:param/invoices",
             "normalizedKey": "POST /spot-procurement-payments/:param/invoices",
@@ -14870,9 +14890,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -14881,7 +14901,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14899,9 +14919,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -14910,7 +14930,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14928,9 +14948,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -14939,7 +14959,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14957,9 +14977,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -14968,7 +14988,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14986,9 +15006,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -14997,7 +15017,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15697,9 +15717,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -15708,7 +15728,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PUT",
@@ -15910,33 +15930,7 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [
-      {
-        "field": "consumerSurfaceCounts.none",
-        "expected": 55,
-        "actual": 54
-      },
-      {
-        "field": "consumerSurfaceCounts.web_api_wrapper",
-        "expected": 332,
-        "actual": 333
-      },
-      {
-        "field": "derivedProductionPageCount",
-        "expected": 282,
-        "actual": 283
-      },
-      {
-        "field": "usageCounts.page",
-        "expected": 285,
-        "actual": 286
-      },
-      {
-        "field": "usageCounts.unclassified",
-        "expected": 26,
-        "actual": 25
-      }
-    ],
+    "expectationMismatches": [],
     "unclassifiedRoutes": [
       {
         "method": "DELETE",
@@ -15957,30 +15951,12 @@
         "consumerSurface": "none"
       },
       {
-        "method": "GET",
-        "path": "/vat-rate-options",
-        "normalizedKey": "GET /vat-rate-options",
-        "controller": "VatRateOptionController",
-        "handler": "listEnabled",
-        "sourceFile": "services/api/src/invoice-ledger/vat-rate-option.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
         "method": "PATCH",
         "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
         "normalizedKey": "PATCH /contract-workbench/:param/parties/:param",
         "controller": "BusinessPartyController",
         "handler": "updateContractPartyRole",
         "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PATCH",
-        "path": "/vat-rate-options/:optionId",
-        "normalizedKey": "PATCH /vat-rate-options/:param",
-        "controller": "VatRateOptionController",
-        "handler": "update",
-        "sourceFile": "services/api/src/invoice-ledger/vat-rate-option.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -16039,15 +16015,6 @@
       },
       {
         "method": "POST",
-        "path": "/invoice-allocations/:allocationId/reversal",
-        "normalizedKey": "POST /invoice-allocations/:param/reversal",
-        "controller": "InvoiceLedgerController",
-        "handler": "reverseAllocation",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/me/signature",
         "normalizedKey": "POST /me/signature",
         "controller": "MeController",
@@ -16093,65 +16060,11 @@
       },
       {
         "method": "POST",
-        "path": "/spot-procurements/:procurementId/invoice-exceptions",
-        "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions",
-        "controller": "InvoiceLedgerController",
-        "handler": "createInvoiceException",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review",
-        "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions/:param/review",
-        "controller": "InvoiceLedgerController",
-        "handler": "reviewInvoiceException",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/invoices",
-        "normalizedKey": "POST /spot-procurements/:param/invoices",
-        "controller": "InvoiceLedgerController",
-        "handler": "createProcurementInvoice",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/no-invoice-confirmations",
-        "normalizedKey": "POST /spot-procurements/:param/no-invoice-confirmations",
-        "controller": "InvoiceLedgerController",
-        "handler": "createNoInvoiceConfirmation",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review",
-        "normalizedKey": "POST /spot-procurements/:param/no-invoice-confirmations/:param/review",
-        "controller": "InvoiceLedgerController",
-        "handler": "reviewNoInvoiceConfirmation",
-        "sourceFile": "services/api/src/invoice-ledger/invoice-ledger.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/spot-procurements/:procurementId/supplier-balance-credit",
         "normalizedKey": "POST /spot-procurements/:param/supplier-balance-credit",
         "controller": "SpotProcurementController",
         "handler": "creditSupplierBalance",
         "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/vat-rate-options",
-        "normalizedKey": "POST /vat-rate-options",
-        "controller": "VatRateOptionController",
-        "handler": "create",
-        "sourceFile": "services/api/src/invoice-ledger/vat-rate-option.controller.ts",
         "consumerSurface": "none"
       },
       {

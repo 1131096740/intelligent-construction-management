@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  ACTION_REQUIRED_ROLES,
   resolveEffectiveRoleKeys,
   type DetailActionReadModel,
   type RoleKey
@@ -79,6 +80,9 @@ const RECEIPT_HANDLER_ROLES = new Set<RoleKey>([
   "material_staff",
   "material_director"
 ]);
+const INVOICE_APPEND_ROLES = new Set<RoleKey>(
+  ACTION_REQUIRED_ROLES["spot_procurement.invoice.append"]
+);
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
 const PNG_IEND_TAIL = Buffer.from("0000000049454e44ae426082", "hex");
@@ -838,6 +842,9 @@ export class SpotProcurementReceiptService {
     const canAppendInvoice =
       Boolean(input.firstActualPayment) &&
       actorScope.active &&
+      actorScope.effectiveRoleKeys.some((role) =>
+        INVOICE_APPEND_ROLES.has(role)
+      ) &&
       (isHandler ||
         actorScope.effectiveRoleKeys.includes("finance_staff") ||
         actorScope.effectiveRoleKeys.includes("finance_director"));
@@ -879,7 +886,7 @@ export class SpotProcurementReceiptService {
       action("initiate_discrepancy", "发起少货处理", "primary", businessOpen && isCurrentHandler && input.receipt.status === "reviewed" && !input.discrepancy, "仅当前采购经办人可对已复核收货发起少货处理"),
       action("confirm_discrepancy", "确认少货事实", "primary", businessOpen && isMaterialDirector && input.discrepancy?.status === "pending_resolution", "仅本项目物资主管可确认待处理少货事实"),
       action("record_refund", "登记退款", "primary", businessOpen && isProjectFinanceStaff && input.discrepancy?.status === "awaiting_refund", "仅本项目财务人员可登记待退款事实"),
-      action("append_invoice", "追加整单发票", "normal", canAppendInvoice, "仅采购经办人或财务人员可在实际付款后追加发票"),
+      action("append_invoice", "追加整单发票", "normal", canAppendInvoice, "仅采购经办人或财务人员可在实际付款后追加发票", "spot_procurement.invoice.append"),
       action("refresh_receipt_pdf", "重新生成收货 PDF", "normal", canRefreshReceiptPdf, "仅本项目物资主管可对坐标一致且已复核通过的当前收货确认重新生成正式 PDF", "spot_procurement.receipt.review")
     ];
   }

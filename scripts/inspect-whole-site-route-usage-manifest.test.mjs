@@ -1063,9 +1063,19 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     Object.fromEntries(
       [
         ["GET", "/projects/affiliate-mapping-report"],
+        ["GET", "/contract-workbench/:contractVersionId/offline-revisions"],
+        ["GET", "/vat-rate-options"],
+        ["PATCH", "/vat-rate-options/:optionId"],
         ["POST", "/projects/:projectId/affiliate-assignment"],
         ["POST", "/projects/:projectId/receipts"],
         ["POST", "/projects/:projectId/proxy-payments"],
+        ["POST", "/invoice-allocations/:allocationId/reversal"],
+        ["POST", "/spot-procurements/:procurementId/invoices"],
+        ["POST", "/spot-procurements/:procurementId/no-invoice-confirmations"],
+        ["POST", "/spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review"],
+        ["POST", "/spot-procurements/:procurementId/invoice-exceptions"],
+        ["POST", "/spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review"],
+        ["POST", "/vat-rate-options"],
         ["POST", "/contract-bill-imports/:importId/apply"],
         ["POST", "/contract-bills/:billId/excel-imports"]
       ].map(([method, path]) => {
@@ -1078,36 +1088,46 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     ),
     {
       "GET /projects/affiliate-mapping-report": "external_takeover",
+      "GET /contract-workbench/:contractVersionId/offline-revisions": "page",
+      "GET /vat-rate-options": "exit_candidate",
+      "PATCH /vat-rate-options/:optionId": "exit_candidate",
       "POST /projects/:projectId/affiliate-assignment": "external_takeover",
       "POST /projects/:projectId/receipts": "exit_candidate",
       "POST /projects/:projectId/proxy-payments": "exit_candidate",
+      "POST /invoice-allocations/:allocationId/reversal": "exit_candidate",
+      "POST /spot-procurements/:procurementId/invoices": "exit_candidate",
+      "POST /spot-procurements/:procurementId/no-invoice-confirmations": "exit_candidate",
+      "POST /spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review": "exit_candidate",
+      "POST /spot-procurements/:procurementId/invoice-exceptions": "exit_candidate",
+      "POST /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review": "exit_candidate",
+      "POST /vat-rate-options": "exit_candidate",
       "POST /contract-bill-imports/:importId/apply": "unclassified",
       "POST /contract-bills/:billId/excel-imports": "unclassified"
     }
   );
   assert.equal(manifest.summary.routeCount, 395);
-  assert.equal(manifest.summary.classificationOverrideCount, 87);
+  assert.equal(manifest.summary.classificationOverrideCount, 96);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190"
+    "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
     "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 282);
-  assert.equal(manifest.summary.pageRouteCount, 285);
+  assert.equal(manifest.summary.derivedProductionPageCount, 283);
+  assert.equal(manifest.summary.pageRouteCount, 286);
   assert.equal(manifest.summary.externalTakeoverCount, 59);
-  assert.equal(manifest.summary.exitCandidateCount, 23);
+  assert.equal(manifest.summary.exitCandidateCount, 32);
   assert.equal(manifest.summary.internalTaskCount, 2);
-  assert.equal(manifest.summary.unclassifiedCount, 26);
+  assert.equal(manifest.summary.unclassifiedCount, 16);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 332,
+    web_api_wrapper: 333,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 1,
     operator_endpoint: 1,
-    none: 55
+    none: 54
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>
@@ -1129,7 +1149,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     ]
   );
   assert.deepEqual(nonZeroBlockers, {
-    unclassifiedRoutes: 26
+    unclassifiedRoutes: 16
   });
   assert.ok(
     manifest.routes
@@ -1146,30 +1166,20 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     ),
     [
       "DELETE /contract-workbench/:param/parties/:param",
-      "GET /contract-workbench/:param/offline-revisions",
       "GET /contracts/:param/authorizations/readiness",
-      "GET /vat-rate-options",
       "PATCH /contract-workbench/:param/parties/:param",
-      "PATCH /vat-rate-options/:param",
       "POST /contract-bill-imports/:param/apply",
       "POST /contract-bills/:param/excel-imports",
       "POST /contract-bills/:param/rows/:param/remainder-cancellation",
       "POST /contract-workbench/:param/parties",
       "POST /contracts/:param/approval-submission",
       "POST /contracts/:param/signing/material-change",
-      "POST /invoice-allocations/:param/reversal",
       "POST /me/signature",
       "POST /projects/:param/financing-quotas",
       "POST /projects/:param/financing-quotas/:param/approval",
       "POST /projects/:param/financing-quotas/:param/termination",
       "POST /spot-procurement-payments/:param/balance-execution",
-      "POST /spot-procurements/:param/invoice-exceptions",
-      "POST /spot-procurements/:param/invoice-exceptions/:param/review",
-      "POST /spot-procurements/:param/invoices",
-      "POST /spot-procurements/:param/no-invoice-confirmations",
-      "POST /spot-procurements/:param/no-invoice-confirmations/:param/review",
       "POST /spot-procurements/:param/supplier-balance-credit",
-      "POST /vat-rate-options",
       "PUT /contract-bills/:param/rows"
     ]
   );

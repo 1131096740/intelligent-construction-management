@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
-| webApiWrappers | blocked | `1cd5d3c5998531fc511a89722281b9ae32ab34471503e71bbc85c267af55968f` |
-| webPageActions | blocked | `b5ed8de102bdcfbb75fa414c00e4f8da949ff57ae265b5f44d436233e84aa925` |
-| routeUsage | blocked | `f082d516aa16745da6bbb4134a25ea4c25e26da29ccbdcf362eaa175e00f1393` |
+| webApiWrappers | blocked | `dd2b87fcf11185f03d815fc37fa2fd75ec1af181f63d9473bb80d0688529c261` |
+| webPageActions | blocked | `adb43ba4e08a03063d0c4157a2f2f196d308a95f9a872cdfc5b6d6dc83265afd` |
+| routeUsage | blocked | `e38fab0e018ba592c6fd6d73c8ffa25eeb64864d16cc2abf7cb8334bb2cd82c1` |
 
 ## 汇总
 
@@ -18,22 +18,22 @@
 | routeCount | 395 |
 | pageRouteCount | 286 |
 | externalTakeoverRouteCount | 59 |
-| exitCandidateRouteCount | 23 |
+| exitCandidateRouteCount | 32 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 25 |
-| mainRequestBindingCount | 397 |
+| unclassifiedRouteCount | 16 |
+| mainRequestBindingCount | 398 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 48 |
+| orphanWrapperCount | 47 |
 | duplicateMutationRouteCount | 4 |
-| registeredActionCount | 48 |
-| actionBindingCount | 61 |
-| acceptedActionBindingCount | 33 |
+| registeredActionCount | 49 |
+| actionBindingCount | 64 |
+| acceptedActionBindingCount | 34 |
 | unresolvedActionBindingCount | 20 |
 | productionMutationConsumerPairCount | 272 |
-| coveredProductionMutationConsumerPairCount | 21 |
-| uncoveredProductionMutationConsumerPairCount | 251 |
-| blockerCount | 352 |
+| coveredProductionMutationConsumerPairCount | 22 |
+| uncoveredProductionMutationConsumerPairCount | 250 |
+| blockerCount | 341 |
 
 ## 路由矩阵
 
@@ -137,9 +137,9 @@
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
 | GET | /settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementWorkbenchLedger | — | not_applicable | — |
-| GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction | — | not_applicable | — |
+| GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction | spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurement-payments | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPayments | — | not_applicable | — |
-| GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | — | not_applicable | — |
+| GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementWithdrawalAction | — | not_applicable | — |
 | GET | /spot-procurements/application-text-suggestions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationTextSuggestions | — | not_applicable | — |
 | GET | /spot-procurements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCapabilities | — | not_applicable | — |
@@ -147,7 +147,7 @@
 | GET | /spot-procurements | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurements | — | not_applicable | — |
 | GET | /standard-clauses/history | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listStandardClauseHistory | — | not_applicable | — |
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
-| GET | /vat-rate-options | unclassified | none | apps/web-admin/src/api/spot-procurement.api.ts#fetchVatRateOptions | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| GET | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | — | not_applicable | — |
 | PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | ORPHAN_WRAPPER |
@@ -170,7 +170,7 @@
 | PATCH | /spot-procurement-payments/:paymentId/payer | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentPayer | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| PATCH | /vat-rate-options/:optionId | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
 | POST | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |
@@ -271,7 +271,7 @@
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | affiliate-company-contract.record<br>payment-execution.record<br>project-expense.execution-local-status<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /invoice-allocations/:allocationId/reversal | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -396,7 +396,7 @@
 | POST | /spot-procurement-payments/:paymentId/balance-execution | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /spot-procurement-payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementPaymentExecution | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#invalidateSpotProcurementPaymentInvoice | spot-procurement.invoice-invalidate | covered | — |
-| POST | /spot-procurement-payments/:paymentId/invoices | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#appendSpotProcurementPaymentInvoice | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /spot-procurement-payments/:paymentId/invoices | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend | spot-procurement.invoice-append | covered | — |
 | POST | /spot-procurement-payments/:paymentId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/voiding | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#voidSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -405,11 +405,11 @@
 | POST | /spot-procurements/:procurementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementWithdrawalAction | spot-procurement.withdraw | covered | — |
 | POST | /spot-procurements/:procurementId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementReviewAction | spot-procurement.review-approve<br>spot-procurement.review-reject<br>spot-procurement.review-return-to-applicant | covered | — |
 | POST | /spot-procurements/:procurementId/discrepancy | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
-| POST | /spot-procurements/:procurementId/invoice-exceptions | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
-| POST | /spot-procurements/:procurementId/invoices | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
-| POST | /spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
-| POST | /spot-procurements/:procurementId/no-invoice-confirmations | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/invoice-exceptions | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/invoices | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/no-invoice-confirmations | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/payment-drafts | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recreateSpotProcurementPaymentDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/delegations | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementReceiptDelegation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/receipt/draft-reset | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#resetSpotProcurementReceiptDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -428,7 +428,7 @@
 | POST | /standard-clause-versions/:versionId/publication | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#publishStandardClauseVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /standard-clause-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitStandardClauseVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /vat-rate-options | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-bills/:billId/rows | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#replaceContractBillRows | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
 | PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -494,7 +494,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadSignature（unreferenced）
 - apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord（test_only）
 - apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementPaymentDraft（test_only）
-- apps/web-admin/src/api/spot-procurement.api.ts#fetchVatRateOptions（test_only）
 
 ### 未覆盖写入消费者
 
@@ -727,7 +726,6 @@
 - apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementPaymentDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
-- apps/web-admin/src/api/spot-procurement.api.ts#appendSpotProcurementPaymentInvoice → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#attachSpotProcurementReceiptPhoto → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue

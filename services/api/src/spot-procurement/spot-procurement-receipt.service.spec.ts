@@ -946,6 +946,30 @@ describe("SpotProcurementReceiptService workflow", () => {
       "submit_receipt",
       "append_invoice"
     ]);
+    expect(
+      handlerDetail.availableActions.find(
+        (action) => action.key === "append_invoice"
+      )
+    ).toMatchObject({
+      enabled: true,
+      requiredAction: "spot_procurement.invoice.append"
+    });
+
+    const revokedHandler = createHarness({
+      actionProjectRoleKeys: ["employee"]
+    });
+    const revokedHandlerDetail = await revokedHandler.service.getReceipt(
+      "procurement-1",
+      "handler-1"
+    );
+    expect(
+      revokedHandlerDetail.availableActions.find(
+        (action) => action.key === "append_invoice"
+      )
+    ).toMatchObject({
+      enabled: false,
+      requiredAction: "spot_procurement.invoice.append"
+    });
 
     const delegate = createHarness({
       activeDelegation: true,
