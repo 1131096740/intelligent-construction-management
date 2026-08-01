@@ -85,7 +85,7 @@ runner 自行生成随机密码和随机本地端口，仅连接：
 - 终点迁移：`20260728161000_spot_procurement_application_revision_status`；
 - 审批坐标并发：双真实 backend PID 锁等待后恰好一个成功，陈旧请求严格 409；节点
   `0→1`，唯一 ActionLog/Audit，签名岗位/账号/文件/SHA/版本精确匹配，付款/收货为 0；
-- 缺签与文件/版本 SHA 漂移：均为 400，根单、版本、审批实例、ActionLog、Audit、付款、
+- 缺签与签名版本 SHA 漂移：均为 400，根单、版本、审批实例、ActionLog、Audit、付款、
   收货全部与调用前完全一致；
 - Audit 中段注入故障：事务内已观察签名 ActionLog、最终审批节点、已批根单/版本、1 条付款、
   1 条收货和 3 条 Audit，抛错后事务外全部回到调用前，新增行数均为 0。
@@ -108,10 +108,31 @@ ok spot application approval audit rollback
 用户在后续 Task 11 收口期间对同一限定范围重新明确授权后，再次执行相同
 `application-review-approve` runner。复验只连接随机回环地址
 `127.0.0.1:58022/jiangkong_spot_procurement_concurrency_verify`，空库 114 个迁移、第二次
-零待办、终点迁移唯一、签名坐标并发单赢家、缺签/文件与版本 SHA 漂移零写及 Audit 中段
+零待办、终点迁移唯一、签名坐标并发单赢家、缺签/签名版本 SHA 漂移零写及 Audit 中段
 全事务回滚全部通过。guaranteed cleanup 删除一次性容器
 `jiangkong-spot-concurrency-1785587561677-76992` 后，独立只读核对确认该容器无输出、58022
 无监听且 `/tmp` 无同前缀临时目录。本次复验未连接生产，也未执行授权范围外的业务场景。
+
+### 本次新授权第三轮独立复验
+
+用户再次明确授权同一精确范围后，第三次执行
+`SPOT_PROCUREMENT_CONCURRENCY_SCOPE=application-review-approve` 限定 runner。本轮只连接
+`127.0.0.1:64563/jiangkong_spot_procurement_concurrency_verify`：空库完整应用 114 个迁移，
+第二次 deploy 明确零待办，`migrate status` 已同步，且终点迁移
+`20260728161000_spot_procurement_application_revision_status` 恰好一条。
+
+三段真实 PostgreSQL 16 回执全部通过：
+
+- 双 backend 形成真实锁等待，签名坐标并发恰好一个 winner，loser 以陈旧坐标 409 失败；
+- 缺签与签名版本 SHA 漂移均在 ActionLog、审批节点、根单、版本、付款、
+  收货和 Audit 写入前失败，调用前后事实完全相同；
+- Audit 中段故障注入时，事务内已观察签名 ActionLog、最终审批节点、已批根单/版本、付款、
+  收货与三条 Audit，抛错后事务外全部回到调用前且新增行数为零。
+
+guaranteed cleanup 删除一次性容器
+`jiangkong-spot-concurrency-1785595782733-49329` 和临时目录后，独立只读复核确认精确容器
+查询无输出、64563 无监听、`/tmp` 无 `jiangkong-spot-concurrency-*` 临时目录。本轮未连接
+生产、未触碰其他容器，也未运行该限定 scope 之外的撤回、付款、收货、票据或其他业务场景。
 
 ## 测试与静态门禁
 
