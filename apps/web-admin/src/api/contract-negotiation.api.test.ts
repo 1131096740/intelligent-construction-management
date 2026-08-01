@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   closeContractNegotiationRound,
   disposeContractDocumentDifference,
+  listContractOfflineRevisionHistory,
   listContractNegotiationRounds,
   openContractNegotiationRound,
   openContractRevisionPreview,
@@ -45,6 +46,142 @@ describe("contract negotiation API", () => {
       "/contract-document-differences/difference%2F1/disposition"
     ]);
     expect(mockApiFetch.mock.calls[1][1]?.body).toBe(JSON.stringify({ note: "第一轮" }));
+  });
+
+  it("lists a strict read-only offline revision history without exposing comparison internals", async () => {
+    mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify([
+      {
+        id: "legacy-revision-1",
+        label: "旧流程修订稿",
+        note: "上线前留存",
+        status: "succeeded",
+        hasPreviewPdf: false,
+        errorMessage: null,
+        createdAt: "2026-07-11T09:00:00.000Z",
+        completedAt: "2026-07-11T09:01:00.000Z",
+        comparison: null,
+        negotiationRound: null
+      },
+      {
+        id: "governed-revision-1",
+        label: "第一轮修订稿",
+        note: null,
+        status: "succeeded",
+        hasPreviewPdf: true,
+        errorMessage: null,
+        createdAt: "2026-07-12T09:00:00.000Z",
+        completedAt: "2026-07-12T09:01:00.000Z",
+        comparison: {
+          id: "comparison-1",
+          status: "succeeded",
+          algorithmVersion: "contract-docx-patience-v1",
+          errorMessage: null,
+          completedAt: "2026-07-12T09:01:00.000Z",
+          differences: [
+            {
+              id: "difference-1",
+              sortOrder: 1,
+              changeType: "replace",
+              kind: "paragraph",
+              locationPath: "正文/第3段",
+              basePath: "p3",
+              revisedPath: "p3",
+              beforeText: "原内容",
+              afterText: "修订内容",
+              candidate: {
+                kind: "key_clause",
+                clauseKey: "payment",
+                title: "付款条款",
+                proposedText: "修订内容",
+                baseTextSha256: "a".repeat(64)
+              },
+              disposition: "pending",
+              dispositionReason: null,
+              disposedAt: null
+            }
+          ]
+        },
+        negotiationRound: {
+          id: "round-1",
+          roundNo: 1,
+          status: "open",
+          sourceRevision: 3
+        }
+      }
+    ]), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    await expect(listContractOfflineRevisionHistory("version/1")).resolves.toEqual([
+      {
+        id: "legacy-revision-1",
+        label: "旧流程修订稿",
+        note: "上线前留存",
+        status: "succeeded",
+        hasPreviewPdf: false,
+        errorMessage: null,
+        createdAt: "2026-07-11T09:00:00.000Z",
+        completedAt: "2026-07-11T09:01:00.000Z",
+        negotiationRound: null
+      },
+      {
+        id: "governed-revision-1",
+        label: "第一轮修订稿",
+        note: null,
+        status: "succeeded",
+        hasPreviewPdf: true,
+        errorMessage: null,
+        createdAt: "2026-07-12T09:00:00.000Z",
+        completedAt: "2026-07-12T09:01:00.000Z",
+        negotiationRound: {
+          id: "round-1",
+          roundNo: 1,
+          status: "open",
+          sourceRevision: 3
+        }
+      }
+    ]);
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/contract-workbench/version%2F1/offline-revisions"
+    );
+  });
+
+  it("fails closed on duplicate, sensitive or undeclared offline revision history fields", async () => {
+    const legacy = {
+      id: "legacy-revision-1",
+      label: "旧流程修订稿",
+      note: null,
+      status: "succeeded",
+      hasPreviewPdf: false,
+      errorMessage: null,
+      createdAt: "2026-07-11T09:00:00.000Z",
+      completedAt: "2026-07-11T09:01:00.000Z",
+      comparison: null,
+      negotiationRound: null
+    };
+    for (const invalid of [
+      [legacy, legacy],
+      [{ ...legacy, fileId: "private-file" }],
+      [{ ...legacy, undeclared: true }],
+      [{ ...legacy, comparison: { id: "comparison-injected" } }],
+      [{ ...legacy, hasPreviewPdf: true }],
+      [{
+        ...legacy,
+        negotiationRound: {
+          id: "round-1",
+          roundNo: 1,
+          status: "open",
+          sourceRevision: 3,
+          openedByUserId: "private-actor"
+        }
+      }]
+    ]) {
+      mockApiFetch.mockResolvedValueOnce(new Response(JSON.stringify(invalid), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }));
+      await expect(listContractOfflineRevisionHistory("version-1")).rejects.toThrow(
+        /格式不正确|重复/u
+      );
+    }
   });
 
   it("uploads only the user file and confirmation without accepting source ids", async () => {

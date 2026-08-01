@@ -7,21 +7,21 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
-| webApiWrappers | blocked | `b1900c2e346ccf8f6afc5cf2222237d165cfd5b1d0c453186a1c70721444a810` |
+| webApiWrappers | blocked | `1cd5d3c5998531fc511a89722281b9ae32ab34471503e71bbc85c267af55968f` |
 | webPageActions | blocked | `b5ed8de102bdcfbb75fa414c00e4f8da949ff57ae265b5f44d436233e84aa925` |
-| routeUsage | blocked | `5544f80cff2f2bd93ee50e1ded7c8b90ee000b6621f8367a77e306056583841a` |
+| routeUsage | blocked | `f082d516aa16745da6bbb4134a25ea4c25e26da29ccbdcf362eaa175e00f1393` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 395 |
-| pageRouteCount | 285 |
+| pageRouteCount | 286 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 396 |
+| unclassifiedRouteCount | 25 |
+| mainRequestBindingCount | 397 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 48 |
@@ -33,7 +33,7 @@
 | productionMutationConsumerPairCount | 272 |
 | coveredProductionMutationConsumerPairCount | 21 |
 | uncoveredProductionMutationConsumerPairCount | 251 |
-| blockerCount | 353 |
+| blockerCount | 352 |
 
 ## 路由矩阵
 
@@ -73,7 +73,7 @@
 | GET | /contract-workbench/:contractId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractWorkbench | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /contract-workbench/:contractVersionId/documents | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listContractDocuments | — | not_applicable | — |
 | GET | /contract-workbench/:contractVersionId/negotiation-rounds | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractNegotiationRounds | — | not_applicable | — |
-| GET | /contract-workbench/:contractVersionId/offline-revisions | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| GET | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractOfflineRevisionHistory | — | not_applicable | — |
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /contracts/:contractVersionId/authorizations/readiness | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |

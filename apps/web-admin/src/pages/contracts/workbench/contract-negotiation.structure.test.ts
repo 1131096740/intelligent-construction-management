@@ -49,4 +49,24 @@ describe("contract negotiation workbench structure", () => {
     expect(canvas).toContain("canApplyContractNegotiationSelectionResponse");
     expect(canvas).toContain("onBeforeUnmount");
   });
+
+  it("loads old-process revisions in the same guarded refresh without adding them to disposition selection", () => {
+    expect(section).toContain("listContractOfflineRevisionHistory");
+    expect(section).toMatch(
+      /Promise\.all\(\[[\s\S]*listContractNegotiationRounds\(versionId\)[\s\S]*listContractOfflineRevisionHistory\(versionId\)[\s\S]*\]\)/u
+    );
+    expect(section).toContain("旧流程修订记录");
+    expect(section).toContain("仅供查阅，不进入当前磋商差异处置");
+    expect(section).toContain("revision.negotiationRound === null");
+    expect(section).toMatch(/resetVersionState\(\)[\s\S]*offlineRevisionHistory\.value = \[\]/u);
+    expect(section).toMatch(/onBeforeUnmount\([\s\S]*offlineRevisionHistory\.value = \[\]/u);
+
+    const legacyStart = section.indexOf('class="legacy-revision-history"');
+    const legacyEnd = section.indexOf("<t-dialog", legacyStart);
+    const legacyMarkup = section.slice(legacyStart, legacyEnd);
+    expect(legacyStart).toBeGreaterThan(-1);
+    expect(legacyEnd).toBeGreaterThan(legacyStart);
+    expect(legacyMarkup).not.toContain("selectRevision");
+    expect(legacyMarkup).not.toContain("selectedRevisionId");
+  });
 });

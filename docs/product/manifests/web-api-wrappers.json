@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 398,
-    "transportWrapperCount": 386,
+    "exportedFunctionCount": 399,
+    "transportWrapperCount": 387,
     "pureExportCount": 12,
-    "mainRequestBindingCount": 396,
+    "mainRequestBindingCount": 397,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 396,
-    "productionConsumerCount": 338,
+    "requestEdgeCount": 397,
+    "productionConsumerCount": 339,
     "orphanWrapperCount": 48,
     "testOnlyWrapperCount": 46,
     "unreferencedWrapperCount": 2,
@@ -214,7 +214,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 217,
+          "sourceLine": 469,
           "method": "POST",
           "path": "/contract-negotiation-rounds/:param/close",
           "normalizedPath": "/contract-negotiation-rounds/:param/close",
@@ -244,7 +244,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 217,
+          "sourceLine": 469,
           "method": "POST",
           "path": "/contract-document-differences/:param/disposition",
           "normalizedPath": "/contract-document-differences/:param/disposition",
@@ -274,7 +274,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 211,
+          "sourceLine": 463,
           "method": "GET",
           "path": "/contract-workbench/:param/negotiation-rounds",
           "normalizedPath": "/contract-workbench/:param/negotiation-rounds",
@@ -297,6 +297,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "listContractOfflineRevisionHistory",
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 463,
+          "method": "GET",
+          "path": "/contract-workbench/:param/offline-revisions",
+          "normalizedPath": "/contract-workbench/:param/offline-revisions",
+          "normalizedKey": "GET /contract-workbench/:param/offline-revisions",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listContractOfflineRevisionHistory",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-negotiation.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "openContractNegotiationRound",
       "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
       "kind": "transport",
@@ -304,7 +334,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 217,
+          "sourceLine": 469,
           "method": "POST",
           "path": "/contract-workbench/:param/negotiation-rounds",
           "normalizedPath": "/contract-workbench/:param/negotiation-rounds",
@@ -334,7 +364,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 217,
+          "sourceLine": 469,
           "method": "POST",
           "path": "/contract-offline-revisions/:param/preview-download-ticket",
           "normalizedPath": "/contract-offline-revisions/:param/preview-download-ticket",
@@ -349,7 +379,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 143,
+          "sourceLine": 170,
           "method": "GET",
           "ticketField": "downloadPath",
           "bodyKind": "none",
@@ -376,7 +406,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 217,
+          "sourceLine": 469,
           "method": "POST",
           "path": "/contract-offline-revisions/:param/retry",
           "normalizedPath": "/contract-offline-revisions/:param/retry",
@@ -406,7 +436,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 217,
+          "sourceLine": 469,
           "method": "POST",
           "path": "/contract-workbench/:param/offline-revisions",
           "normalizedPath": "/contract-workbench/:param/offline-revisions",

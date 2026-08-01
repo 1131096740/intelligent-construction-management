@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "b1900c2e346ccf8f6afc5cf2222237d165cfd5b1d0c453186a1c70721444a810",
+      "sha256": "1cd5d3c5998531fc511a89722281b9ae32ab34471503e71bbc85c267af55968f",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 398,
-        "transportWrapperCount": 386,
+        "exportedFunctionCount": 399,
+        "transportWrapperCount": 387,
         "pureExportCount": 12,
-        "mainRequestBindingCount": 396,
+        "mainRequestBindingCount": 397,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 396,
-        "productionConsumerCount": 338,
+        "requestEdgeCount": 397,
+        "productionConsumerCount": 339,
         "orphanWrapperCount": 48,
         "testOnlyWrapperCount": 46,
         "unreferencedWrapperCount": 2,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "5544f80cff2f2bd93ee50e1ded7c8b90ee000b6621f8367a77e306056583841a",
+      "sha256": "f082d516aa16745da6bbb4134a25ea4c25e26da29ccbdcf362eaa175e00f1393",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -74,32 +74,32 @@
         "consumerSurfaceOverrideCount": 3,
         "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
         "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-        "derivedProductionPageCount": 282,
-        "pageRouteCount": 285,
+        "derivedProductionPageCount": 283,
+        "pageRouteCount": 286,
         "externalTakeoverCount": 59,
         "exitCandidateCount": 23,
         "internalTaskCount": 2,
-        "unclassifiedCount": 26,
+        "unclassifiedCount": 25,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 332,
+          "web_api_wrapper": 333,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 1,
           "operator_endpoint": 1,
-          "none": 55
+          "none": 54
         },
-        "blockerCount": 26
+        "blockerCount": 30
       }
     }
   },
   "summary": {
     "routeCount": 395,
-    "pageRouteCount": 285,
+    "pageRouteCount": 286,
     "externalTakeoverRouteCount": 59,
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
-    "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 396,
+    "unclassifiedRouteCount": 25,
+    "mainRequestBindingCount": 397,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 48,
@@ -111,7 +111,7 @@
     "productionMutationConsumerPairCount": 272,
     "coveredProductionMutationConsumerPairCount": 21,
     "uncoveredProductionMutationConsumerPairCount": 251,
-    "blockerCount": 353
+    "blockerCount": 352
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -450,15 +450,6 @@
         "controller": "BusinessPartyController",
         "handler": "removeContractParty",
         "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "GET",
-        "path": "/contract-workbench/:contractVersionId/offline-revisions",
-        "normalizedKey": "GET /contract-workbench/:param/offline-revisions",
-        "controller": "ContractDocumentController",
-        "handler": "listOfflineRevisions",
-        "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -4528,15 +4519,28 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "listContractOfflineRevisionHistory",
+          "method": "GET",
+          "path": "/contract-workbench/:param/offline-revisions",
+          "normalizedKey": "GET /contract-workbench/:param/offline-revisions",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-negotiation.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {

@@ -17,25 +17,25 @@
     "consumerSurfaceOverrideCount": 3,
     "classificationOverrideSha256": "35467b26e776951b3a22ae79973c9f3b45d4ac41170f1e7dc4bd96e6a7a2b190",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
-    "derivedProductionPageCount": 282,
-    "pageRouteCount": 285,
+    "derivedProductionPageCount": 283,
+    "pageRouteCount": 286,
     "externalTakeoverCount": 59,
     "exitCandidateCount": 23,
     "internalTaskCount": 2,
-    "unclassifiedCount": 26,
+    "unclassifiedCount": 25,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 332,
+      "web_api_wrapper": 333,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 55
+      "none": 54
     },
-    "blockerCount": 26
+    "blockerCount": 30
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 332,
+    "productionWrapperRouteCount": 333,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -1450,12 +1450,23 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
       "classificationReason": null,
-      "consumerSurface": "none",
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+            "wrapper": "listContractOfflineRevisionHistory",
+            "method": "GET",
+            "normalizedPath": "/contract-workbench/:param/offline-revisions",
+            "normalizedKey": "GET /contract-workbench/:param/offline-revisions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -2040,7 +2051,7 @@
             "wrapper": "openContractRevisionPreview",
             "method": "GET",
             "ticketField": "downloadPath",
-            "sourceLine": 143,
+            "sourceLine": 170,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
             ]
@@ -15899,7 +15910,33 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [],
+    "expectationMismatches": [
+      {
+        "field": "consumerSurfaceCounts.none",
+        "expected": 55,
+        "actual": 54
+      },
+      {
+        "field": "consumerSurfaceCounts.web_api_wrapper",
+        "expected": 332,
+        "actual": 333
+      },
+      {
+        "field": "derivedProductionPageCount",
+        "expected": 282,
+        "actual": 283
+      },
+      {
+        "field": "usageCounts.page",
+        "expected": 285,
+        "actual": 286
+      },
+      {
+        "field": "usageCounts.unclassified",
+        "expected": 26,
+        "actual": 25
+      }
+    ],
     "unclassifiedRoutes": [
       {
         "method": "DELETE",
@@ -15908,15 +15945,6 @@
         "controller": "BusinessPartyController",
         "handler": "removeContractParty",
         "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "GET",
-        "path": "/contract-workbench/:contractVersionId/offline-revisions",
-        "normalizedKey": "GET /contract-workbench/:param/offline-revisions",
-        "controller": "ContractDocumentController",
-        "handler": "listOfflineRevisions",
-        "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "consumerSurface": "none"
       },
       {
