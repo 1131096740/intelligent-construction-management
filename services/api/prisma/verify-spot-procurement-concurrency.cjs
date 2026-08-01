@@ -39,6 +39,9 @@ const {
 } = require("../dist/money/decimal-money");
 
 const DATABASE_NAME = "jiangkong_spot_procurement_concurrency_verify";
+const APPLICATION_REVIEW_APPROVE_SCOPE = "application-review-approve";
+const verificationScope =
+  process.env.SPOT_PROCUREMENT_CONCURRENCY_SCOPE?.trim() || "full";
 const PROJECT_ID = "concurrency-project";
 const EXECUTION_PROJECT_ID = "concurrency-execution-project";
 const CASH_SHORT_PROJECT_ID = "concurrency-cash-short-project";
@@ -47,10 +50,20 @@ const MATERIAL_DIRECTOR_USER_ID =
   "concurrency-material-director";
 const APPLICATION_REVIEWER_USER_ID =
   "concurrency-application-reviewer";
+const APPLICATION_NO_SIGNATURE_USER_ID =
+  "concurrency-application-reviewer-no-signature";
+const APPLICATION_BAD_SIGNATURE_USER_ID =
+  "concurrency-application-reviewer-bad-signature";
+const APPLICATION_AUDIT_ROLLBACK_USER_ID =
+  "concurrency-application-reviewer-audit-rollback";
 const FINANCE_USER_ID = "concurrency-finance-staff";
 const FINANCE_DIRECTOR_USER_ID =
   "concurrency-finance-director";
 const SUPPORT_FILE_ID = "spot-procurement-concurrency-support";
+const APPLICATION_SIGNATURE_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
+  "base64"
+);
 const ACTIVE_PAYMENT_STATUSES = new Set([
   "approval_pending",
   "approved",
@@ -183,6 +196,12 @@ function assertLocalRuntime() {
       (projectId) => pilotProjectIds.has(projectId)
     ),
     "零星采购并发验收未显式开放全部专用临时项目"
+  );
+  assert(
+    ["full", APPLICATION_REVIEW_APPROVE_SCOPE].includes(
+      verificationScope
+    ),
+    `零星采购并发验收不支持范围：${verificationScope}`
   );
 }
 
@@ -429,6 +448,79 @@ function servicesFor(prisma) {
   return { balances, payment, receipt, invoices };
 }
 
+function applicationReviewSignatureFixture(userId) {
+  return {
+    fileId: `${userId}-signature-file`,
+    versionId: `${userId}-signature-version`,
+    sha256: createHash("sha256")
+      .update(APPLICATION_SIGNATURE_BYTES)
+      .digest("hex"),
+    sizeBytes: APPLICATION_SIGNATURE_BYTES.length
+  };
+}
+
+async function seedApplicationReviewSignature(
+  prisma,
+  userId,
+  overrides = {}
+) {
+  const signature = applicationReviewSignatureFixture(userId);
+  await prisma.fileObject.create({
+    data: {
+      id: signature.fileId,
+      bucket: "local-private",
+      objectKey: `spot-procurement-concurrency/${signature.fileId}.png`,
+      originalName: `${userId}.png`,
+      mimeType: "image/png",
+      sizeBytes: signature.sizeBytes,
+      uploadedByUserId: userId,
+      contentSha256:
+        overrides.fileSha256 ?? signature.sha256,
+      storageStatus: "active"
+    }
+  });
+  await prisma.handwrittenSignatureVersion.create({
+    data: {
+      id: signature.versionId,
+      userId,
+      fileId: signature.fileId,
+      contentSha256:
+        overrides.versionSha256 ?? signature.sha256,
+      source: "canvas"
+    }
+  });
+  return signature;
+}
+
+async function seedApplicationReviewActor({
+  userId,
+  name,
+  signatureOverrides
+}) {
+  await clientA.user.create({
+    data: {
+      id: userId,
+      name,
+      isActive: true,
+      mustChangePassword: false
+    }
+  });
+  await clientA.projectMember.create({
+    data: {
+      projectId: PROJECT_ID,
+      userId,
+      positionKey: "material_director"
+    }
+  });
+  if (signatureOverrides !== null) {
+    await seedApplicationReviewSignature(
+      clientA,
+      userId,
+      signatureOverrides
+    );
+  }
+}
+
 async function seedVerificationFacts() {
   await clientA.project.createMany({
     data: [
@@ -479,6 +571,10 @@ async function seedVerificationFacts() {
       positionKey: "material_director"
     }
   });
+  await seedApplicationReviewSignature(
+    clientA,
+    MATERIAL_DIRECTOR_USER_ID
+  );
   await clientA.user.create({
     data: {
       id: FINANCE_USER_ID,
@@ -2455,6 +2551,8 @@ async function verifyApplicationReviewCoordinateConcurrency() {
   const procurementId = "spot-application-review-coordinate-race";
   const versionId = `${procurementId}-v1`;
   const approvalInstanceId = `${procurementId}-approval`;
+  const signature =
+    applicationReviewSignatureFixture(APPLICATION_REVIEWER_USER_ID);
   const submittedAt = new Date();
   await clientA.$transaction(async (tx) => {
     await tx.user.create({
@@ -2465,6 +2563,10 @@ async function verifyApplicationReviewCoordinateConcurrency() {
         mustChangePassword: false
       }
     });
+    await seedApplicationReviewSignature(
+      tx,
+      APPLICATION_REVIEWER_USER_ID
+    );
     await tx.projectMember.createMany({
       data: [
         {
@@ -2721,7 +2823,7 @@ async function verifyApplicationReviewCoordinateConcurrency() {
     approval,
     procurement,
     version,
-    actionCount,
+    actionLogs,
     auditCount,
     paymentCount,
     receiptCount
@@ -2737,12 +2839,13 @@ async function verifyApplicationReviewCoordinateConcurrency() {
       where: { id: versionId },
       select: { status: true }
     }),
-    clientA.approvalActionLog.count({
+    clientA.approvalActionLog.findMany({
       where: {
         approvalInstanceId,
         action: "approve",
         actorUserId: APPLICATION_REVIEWER_USER_ID
-      }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     }),
     clientA.auditLog.count({
       where: {
@@ -2770,15 +2873,288 @@ async function verifyApplicationReviewCoordinateConcurrency() {
     "非末节点审批后采购根与版本必须继续保持审批中"
   );
   assert(
-    actionCount === 1 && auditCount === 1,
-    `相同旧坐标并发审批只能保留一条 ActionLog/Audit，实际 ${actionCount}/${auditCount}`
+    actionLogs.length === 1 && auditCount === 1,
+    `相同旧坐标并发审批只能保留一条 ActionLog/Audit，实际 ${actionLogs.length}/${auditCount}`
+  );
+  const action = actionLogs[0];
+  assert(
+    action.approvedRoleKey === "material_director" &&
+      action.representedUserId === APPLICATION_REVIEWER_USER_ID &&
+      action.signatureFileIdSnapshot === signature.fileId &&
+      action.signatureSha256Snapshot === signature.sha256 &&
+      action.signatureVersionIdSnapshot === signature.versionId,
+    "并发审批 winner 必须冻结物资主管直接身份和精确手写签名版本"
   );
   assert(
     paymentCount === 0 && receiptCount === 0,
     `非末节点并发审批不得生成付款或收货草稿，实际 ${paymentCount}/${receiptCount}`
   );
   console.log(
-    "ok spot application review coordinates: direct backend block, node 0->1, stale replay strict 409, one action/audit, zero payment/receipt"
+    "ok spot application review coordinates: direct backend block, node 0->1, stale replay strict 409, exact role/identity/signature snapshot, one action/audit, zero payment/receipt"
+  );
+}
+
+async function verifyApplicationReviewSignatureFailures() {
+  const mismatchedVersionSha256 = createHash("sha256")
+    .update("spot-procurement-application-signature-mismatch")
+    .digest("hex");
+  const cases = [
+    {
+      label: "signature-missing",
+      actorUserId: APPLICATION_NO_SIGNATURE_USER_ID,
+      actorName: "并发验收缺失签名审批人",
+      signatureOverrides: null,
+      expectedMessage: "审批手写签名未配置"
+    },
+    {
+      label: "signature-sha-mismatch",
+      actorUserId: APPLICATION_BAD_SIGNATURE_USER_ID,
+      actorName: "并发验收签名摘要漂移审批人",
+      signatureOverrides: {
+        versionSha256: mismatchedVersionSha256
+      },
+      expectedMessage: "审批手写签名版本校验失败"
+    }
+  ];
+
+  for (const item of cases) {
+    await seedApplicationReviewActor({
+      userId: item.actorUserId,
+      name: item.actorName,
+      signatureOverrides: item.signatureOverrides
+    });
+    const fixture = await createPendingApplicationApprovalFixture({
+      procurementId: `spot-application-review-${item.label}`,
+      code: `LXCG-CONC-REVIEW-${item.label.toUpperCase()}`
+    });
+    const before = await snapshotApplicationApprovalState(fixture);
+    const applicationService = new SpotProcurementApplicationService(
+      clientA,
+      new AuditService(),
+      new SpotProcurementPilotService(),
+      {
+        tryRefreshLatestForBusiness: async () => undefined
+      }
+    );
+    const failure = await applicationService.review(
+      fixture.procurementId,
+      item.actorUserId,
+      {
+        decision: "approve",
+        expectedVersionId: fixture.versionId,
+        expectedApprovalInstanceId: fixture.approvalInstanceId,
+        expectedNodeIndex: 0
+      }
+    )
+      .then(
+        () => null,
+        (error) => error
+      );
+    assert(
+      typeof failure?.getStatus === "function" &&
+        failure.getStatus() === 400 &&
+        errorText(failure).includes(item.expectedMessage),
+      `${item.label} 必须由签名门失败关闭，实际 ${errorText(failure)}`
+    );
+
+    const after = await snapshotApplicationApprovalState(fixture);
+    assertUnchanged(before, after, `${item.label} 审批冻结事实`);
+    const root = after.root;
+    const version = after.versions[0];
+    const approval = after.approval;
+    const [
+      actionLogCount,
+      auditLogCount,
+      paymentCount,
+      receiptCount
+    ] = await Promise.all([
+      clientA.approvalActionLog.count({
+        where: { approvalInstanceId: fixture.approvalInstanceId }
+      }),
+      clientA.auditLog.count({
+        where: { actorUserId: item.actorUserId }
+      }),
+      clientA.spotProcurementPayment.count({
+        where: { procurementId: fixture.procurementId }
+      }),
+      clientA.spotProcurementReceipt.count({
+        where: { procurementId: fixture.procurementId }
+      })
+    ]);
+    assert(
+      root.status === "approval_pending" &&
+        root.currentVersionId === fixture.versionId &&
+        after.versions.length === 1 &&
+        version.status === "approval_pending" &&
+        approval.status === "approval_pending" &&
+        approval.currentNodeIndex === 0,
+      `${item.label} 不得改变根单、版本或审批节点`
+    );
+    assert(
+      actionLogCount === 0 &&
+        auditLogCount === 0 &&
+        paymentCount === 0 &&
+        receiptCount === 0,
+      `${item.label} 不得写入 ActionLog/Audit/付款/收货，实际 ${actionLogCount}/${auditLogCount}/${paymentCount}/${receiptCount}`
+    );
+  }
+  console.log(
+    "ok spot application approval signatures: missing and version/file SHA mismatch both fail before action/node/root/version/payment/receipt/audit writes"
+  );
+}
+
+async function verifyApplicationReviewAuditRollback() {
+  await seedApplicationReviewActor({
+    userId: APPLICATION_AUDIT_ROLLBACK_USER_ID,
+    name: "并发验收审批审计回滚人",
+    signatureOverrides: {}
+  });
+  const fixture = await createPendingApplicationApprovalFixture({
+    procurementId: "spot-application-review-audit-rollback",
+    code: "LXCG-CONC-REVIEW-AUDIT-ROLLBACK"
+  });
+  await clientA.approvalInstance.update({
+    where: { id: fixture.approvalInstanceId },
+    data: {
+      frozenNodes: [
+        {
+          name: "物资主管审批",
+          mode: "any",
+          roleKeys: ["material_director"]
+        }
+      ]
+    }
+  });
+  const before = await snapshotApplicationApprovalState(fixture);
+  const signature = applicationReviewSignatureFixture(
+    APPLICATION_AUDIT_ROLLBACK_USER_ID
+  );
+  const persistedAudit = new AuditService();
+  let observedCompletePreFailureState = false;
+  const audit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action === "spot_procurement.approval.approve"
+      ) {
+        const [
+          actionLogs,
+          approval,
+          root,
+          version,
+          paymentCount,
+          receiptCount,
+          auditCount
+        ] = await Promise.all([
+          tx.approvalActionLog.findMany({
+            where: {
+              approvalInstanceId: fixture.approvalInstanceId
+            }
+          }),
+          tx.approvalInstance.findUniqueOrThrow({
+            where: { id: fixture.approvalInstanceId }
+          }),
+          tx.spotProcurement.findUniqueOrThrow({
+            where: { id: fixture.procurementId }
+          }),
+          tx.spotProcurementVersion.findUniqueOrThrow({
+            where: { id: fixture.versionId }
+          }),
+          tx.spotProcurementPayment.count({
+            where: { procurementId: fixture.procurementId }
+          }),
+          tx.spotProcurementReceipt.count({
+            where: { procurementId: fixture.procurementId }
+          }),
+          tx.auditLog.count({
+            where: {
+              actorUserId: APPLICATION_AUDIT_ROLLBACK_USER_ID
+            }
+          })
+        ]);
+        const action = actionLogs[0];
+        observedCompletePreFailureState =
+          actionLogs.length === 1 &&
+          action.approvedRoleKey === "material_director" &&
+          action.representedUserId ===
+            APPLICATION_AUDIT_ROLLBACK_USER_ID &&
+          action.signatureFileIdSnapshot === signature.fileId &&
+          action.signatureSha256Snapshot === signature.sha256 &&
+          action.signatureVersionIdSnapshot === signature.versionId &&
+          approval.status === "approved" &&
+          root.status === "approved_in_progress" &&
+          version.status === "approved" &&
+          paymentCount === 1 &&
+          receiptCount === 1 &&
+          auditCount === 3;
+        throw new Error("injected application approval audit failure");
+      }
+    }
+  };
+  const applicationService = new SpotProcurementApplicationService(
+    clientA,
+    audit,
+    new SpotProcurementPilotService(),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
+  );
+  const failure = await applicationService.review(
+    fixture.procurementId,
+    APPLICATION_AUDIT_ROLLBACK_USER_ID,
+    {
+      decision: "approve",
+      expectedVersionId: fixture.versionId,
+      expectedApprovalInstanceId: fixture.approvalInstanceId,
+      expectedNodeIndex: 0
+    }
+  )
+    .then(
+      () => null,
+      (error) => error
+    );
+  assert(
+    errorText(failure) ===
+      "injected application approval audit failure",
+    `应用审批 Audit 中段故障必须原样返回，实际 ${errorText(failure)}`
+  );
+  assert(
+    observedCompletePreFailureState,
+    "Audit 故障必须注入在已签名 ActionLog、节点、根/版本、付款/收货和三条 Audit 全部写入之后"
+  );
+
+  const after = await snapshotApplicationApprovalState(fixture);
+  assertUnchanged(before, after, "应用审批 Audit 故障回滚");
+  const [
+    actionLogCount,
+    auditLogCount,
+    paymentCountAfter,
+    receiptCountAfter
+  ] = await Promise.all([
+    clientA.approvalActionLog.count({
+      where: { approvalInstanceId: fixture.approvalInstanceId }
+    }),
+    clientA.auditLog.count({
+      where: {
+        actorUserId: APPLICATION_AUDIT_ROLLBACK_USER_ID
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId: fixture.procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId: fixture.procurementId }
+    })
+  ]);
+  assert(
+    actionLogCount === 0 &&
+      auditLogCount === 0 &&
+      paymentCountAfter === 0 &&
+      receiptCountAfter === 0,
+    `Audit 故障后必须回滚签名 ActionLog/Audit/付款/收货，实际 ${actionLogCount}/${auditLogCount}/${paymentCountAfter}/${receiptCountAfter}`
+  );
+  console.log(
+    "ok spot application approval audit rollback: signed action, final node, root/version, payment/receipt, and three audits all roll back"
   );
 }
 
@@ -5625,10 +6001,22 @@ async function main() {
     observerClient.$connect()
   ]);
   await assertRealFormSchemaPrerequisites(clientA);
+  await seedVerificationFacts();
+  if (verificationScope === APPLICATION_REVIEW_APPROVE_SCOPE) {
+    await verifyApplicationReviewCoordinateConcurrency();
+    await verifyApplicationReviewSignatureFailures();
+    await verifyApplicationReviewAuditRollback();
+    console.log(
+      "零星采购申请审批签名 PostgreSQL 16 门禁通过：" +
+        "坐标并发、缺签/SHA 漂移零写、Audit 中段回滚"
+    );
+    return;
+  }
   const servicesA = servicesFor(clientA);
   const servicesB = servicesFor(clientB);
-  await seedVerificationFacts();
   await verifyApplicationReviewCoordinateConcurrency();
+  await verifyApplicationReviewSignatureFailures();
+  await verifyApplicationReviewAuditRollback();
   await verifyApplicationWithdrawalCoordinateConcurrency();
   await verifyApplicationWithdrawalMidTransactionRollback();
   await verifyApplicationReturnToApplicantTerminalState();

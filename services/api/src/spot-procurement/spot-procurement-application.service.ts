@@ -17,6 +17,7 @@ import {
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { assertOrdinaryApplicantCannotReview } from "../approval/approval-self-review";
+import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import {
@@ -554,12 +555,27 @@ export class SpotProcurementApplicationService {
             version,
             { requireNoDownstreamFacts: true }
           );
+        const signature =
+          input.decision === "approve"
+            ? await snapshotApprovalSignature(tx, actorUserId, {
+                required: true
+              })
+            : null;
         await tx.approvalActionLog.create({
           data: {
             approvalInstanceId: approval.id,
             action: input.decision,
             actorUserId,
             comment,
+            approvedRoleKey,
+            representedUserId: actorUserId,
+            ...(signature
+              ? {
+                  signatureFileIdSnapshot: signature.fileId,
+                  signatureSha256Snapshot: signature.sha256,
+                  signatureVersionIdSnapshot: signature.versionId
+                }
+              : {}),
             metadata: { reviewRoleKey: approvedRoleKey }
           }
         });

@@ -152,6 +152,8 @@ async function main() {
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
+  const verificationScope =
+    process.env.SPOT_PROCUREMENT_CONCURRENCY_SCOPE?.trim();
   const dockerEnv = createControlledDockerEnv(
     process.env,
     temporaryRoot
@@ -171,7 +173,10 @@ async function main() {
     DATABASE_URL: databaseUrl,
     FILE_STORAGE_DRIVER: "local",
     SPOT_PROCUREMENT_PILOT_PROJECT_IDS:
-      "concurrency-project,concurrency-execution-project,concurrency-cash-short-project"
+      "concurrency-project,concurrency-execution-project,concurrency-cash-short-project",
+    ...(verificationScope
+      ? { SPOT_PROCUREMENT_CONCURRENCY_SCOPE: verificationScope }
+      : {})
   };
   assertDedicatedLocalDatabase(databaseUrl);
 
@@ -341,7 +346,9 @@ async function main() {
         }
       );
       console.log(
-        "零星采购付款、供应商余额与实际付款 PostgreSQL 16 并发验收通过"
+        verificationScope === "application-review-approve"
+          ? "零星采购申请审批签名 PostgreSQL 16 限定门禁通过"
+          : "零星采购付款、供应商余额与实际付款 PostgreSQL 16 并发验收通过"
       );
     }, cleanup);
   } finally {

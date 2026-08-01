@@ -190,6 +190,28 @@ function context(roleKey = "material_staff") {
   };
 }
 
+function queueActiveSignature(
+  queryRaw: jest.Mock,
+  actorUserId = "manager-1"
+) {
+  queryRaw
+    .mockResolvedValueOnce([{ id: actorUserId, isActive: true }])
+    .mockResolvedValueOnce([
+      {
+        id: "signature-version-1",
+        fileId: "signature-file-1",
+        contentSha256: "a".repeat(64)
+      }
+    ])
+    .mockResolvedValueOnce([
+      {
+        id: "signature-file-1",
+        contentSha256: "a".repeat(64),
+        storageStatus: "active"
+      }
+    ]);
+}
+
 function mockAbandonmentLocks(
   tx: ReturnType<typeof context>["tx"],
   options: {
@@ -397,6 +419,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
           applicantUserId: "material-1"
         }
       ]);
+    queueActiveSignature(tx.$queryRaw);
 
     const result = await service.review("procurement-1", "manager-1", {
       decision: "approve",
@@ -435,7 +458,161 @@ describe("SpotProcurementApplicationService real-form application", () => {
         handlerUserId: "material-1"
       })
     });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approvalInstanceId: "approval-1",
+        action: "approve",
+        actorUserId: "manager-1",
+        approvedRoleKey: "project_manager",
+        representedUserId: "manager-1",
+        signatureFileIdSnapshot: "signature-file-1",
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "signature-version-1",
+        metadata: { reviewRoleKey: "project_manager" }
+      })
+    });
     expect(result).toMatchObject({ status: "approved_in_progress" });
+  });
+
+  it("fails an approval closed before any write when the reviewer has no canvas signature", async () => {
+    const { service, tx, audit, approvalForms } = context("project_manager");
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ])
+      .mockResolvedValueOnce([{ id: "manager-1", isActive: true }])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "approve",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      })
+    ).rejects.toThrow(
+      "审批手写签名未配置，请先在个人设置中完成手写签名后重试"
+    );
+
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).not.toHaveBeenCalled();
+  });
+
+  it("fails an approval closed before any write when the signature file digest has drifted", async () => {
+    const { service, tx, audit, approvalForms } = context("project_manager");
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ])
+      .mockResolvedValueOnce([{ id: "manager-1", isActive: true }])
+      .mockResolvedValueOnce([
+        {
+          id: "signature-version-1",
+          fileId: "signature-file-1",
+          contentSha256: "a".repeat(64)
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "signature-file-1",
+          contentSha256: "b".repeat(64),
+          storageStatus: "active"
+        }
+      ]);
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "approve",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      })
+    ).rejects.toThrow("审批手写签名版本校验失败，请重新签名后重试");
+
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(approvalForms.tryRefreshLatestForBusiness).not.toHaveBeenCalled();
+  });
+
+  it("rejects without reading or recording a handwritten approval signature", async () => {
+    const { service, tx } = context("project_manager");
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "项目经理审批", mode: "any", roleKeys: ["project_manager"] }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "reject",
+        comment: "资料不完整",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      })
+    ).resolves.toMatchObject({ status: "draft" });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "reject",
+        approvedRoleKey: "project_manager",
+        representedUserId: "manager-1"
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        signatureFileIdSnapshot: expect.anything(),
+        signatureSha256Snapshot: expect.anything(),
+        signatureVersionIdSnapshot: expect.anything()
+      })
+    });
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
   });
 
   it("returns the frozen approval to a new draft revision without creating payment or receipt facts", async () => {
@@ -493,13 +670,23 @@ describe("SpotProcurementApplicationService real-form application", () => {
       versionStatus: "draft"
     });
 
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         approvalInstanceId: "approval-1",
         action: "return_to_applicant",
         actorUserId: "manager-1",
         comment: "请补充报价依据",
+        approvedRoleKey: "project_manager",
+        representedUserId: "manager-1",
         metadata: { reviewRoleKey: "project_manager" }
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        signatureFileIdSnapshot: expect.anything(),
+        signatureSha256Snapshot: expect.anything(),
+        signatureVersionIdSnapshot: expect.anything()
       })
     });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
@@ -1175,7 +1362,9 @@ describe("SpotProcurementApplicationService real-form application", () => {
           frozenNodes,
           applicantUserId: "material-1"
         }
-      ])
+      ]);
+    queueActiveSignature(tx.$queryRaw, "dual-role-1");
+    tx.$queryRaw
       .mockResolvedValueOnce([procurement("approval_pending")])
       .mockResolvedValueOnce([version("approval_pending")])
       .mockResolvedValueOnce([
