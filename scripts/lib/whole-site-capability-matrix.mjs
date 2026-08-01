@@ -1602,9 +1602,16 @@ function selectedPageUncovered(pair) {
   };
 }
 
-function actionBindingReasons(action, binding) {
+function actionBindingReasons(
+  action,
+  binding,
+  { hasMutationBinding }
+) {
   const reasons = [];
-  if (!MUTATION_METHODS.has(binding.method)) {
+  if (
+    !MUTATION_METHODS.has(binding.method) &&
+    !hasMutationBinding
+  ) {
     reasons.push("binding_not_mutation");
   }
   if (!binding.causalVerified) reasons.push("causal_unverified");
@@ -1627,6 +1634,9 @@ function buildActionBindings({
 }) {
   const actionBindings = [];
   for (const action of pageManifest.actions) {
+    const hasMutationBinding = action.bindings.some((binding) =>
+      MUTATION_METHODS.has(binding.method)
+    );
     action.bindings.forEach((binding, index) => {
       const wrapper = wrappersByKey.get(
         wrapperKey(binding.apiFile, binding.wrapper)
@@ -1700,7 +1710,9 @@ function buildActionBindings({
         binding,
         index,
         identity: actionBindingKey(action.id, binding, index),
-        reasons: actionBindingReasons(action, binding)
+        reasons: actionBindingReasons(action, binding, {
+          hasMutationBinding
+        })
       });
     });
   }
@@ -2239,6 +2251,7 @@ export function buildWholeSiteCapabilityMatrix({
             binding.acceptedProductionConsumers,
           causalVerified: binding.causalVerified,
           accepted:
+            MUTATION_METHODS.has(binding.method) &&
             reasons.length === 0 &&
             binding.acceptedProductionConsumers.length > 0,
           blockerCodes: reasons
@@ -2301,6 +2314,7 @@ export function buildWholeSiteCapabilityMatrix({
     actionBindingCount: actionBindings.length,
     acceptedActionBindingCount: actionBindings.filter(
       ({ reasons, binding }) =>
+        MUTATION_METHODS.has(binding.method) &&
         reasons.length === 0 &&
         binding.acceptedProductionConsumers.length > 0
     ).length,

@@ -688,6 +688,69 @@ test("blocks an accepted write action bound only to GET", () => {
   assert.equal(matrix.routes[0].actions[0].accepted, false);
 });
 
+test("keeps a composite GET preflight as non-blocking causal evidence", () => {
+  const input = fixture();
+  const postRoute = route("POST", "/fixtures", "SaveFixture");
+  input.nestManifest.routes.push(postRoute);
+  const mixed = wrapper("GET", "/fixtures/:param", {
+    name: "mixedFixture"
+  });
+  mixed.requests.push({
+    kind: "main",
+    sourceLine: 11,
+    localCallChains: [["mixedFixture"]],
+    method: "POST",
+    path: "/fixtures",
+    normalizedPath: "/fixtures",
+    normalizedKey: "POST /fixtures",
+    bodyKind: "json"
+  });
+  input.webManifest = webManifest([mixed]);
+  const action = actionFor(input.nestManifest.routes[0], mixed, {
+    accepted: true
+  });
+  action.bindings.push(
+    actionFor(
+      postRoute,
+      { ...mixed, requests: [mixed.requests[1]] },
+      { accepted: true }
+    ).bindings[0]
+  );
+  input.pageManifest = pageManifest(input.webManifest, [action]);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  const matrix = build(input);
+  assert.equal(matrix.status, "ready");
+  assert.equal(matrix.summary.actionBindingCount, 2);
+  assert.equal(matrix.summary.acceptedActionBindingCount, 1);
+  assert.equal(matrix.summary.unresolvedActionBindingCount, 0);
+  assert.equal(
+    matrix.summary.coveredProductionMutationConsumerPairCount,
+    1
+  );
+
+  const getRoute = matrix.routes.find(
+    (entry) => entry.route.normalizedKey === "GET /fixtures/:param"
+  );
+  assert.equal(getRoute.actions.length, 1);
+  assert.equal(getRoute.actions[0].causalVerified, true);
+  assert.equal(getRoute.actions[0].accepted, false);
+  assert.deepEqual(getRoute.actions[0].blockerCodes, []);
+  assert.equal(getRoute.mutationCoverage, "not_applicable");
+  assert.deepEqual(getRoute.blockerCodes, []);
+
+  const mutationRoute = matrix.routes.find(
+    (entry) => entry.route.normalizedKey === "POST /fixtures"
+  );
+  assert.equal(mutationRoute.actions.length, 1);
+  assert.equal(mutationRoute.actions[0].accepted, true);
+  assert.equal(mutationRoute.mutationCoverage, "covered");
+  assert.deepEqual(mutationRoute.blockerCodes, []);
+});
+
 test("rejects GET action coverage for a mutation on the same wrapper", () => {
   const input = fixture();
   const postRoute = route("POST", "/fixtures", "SaveFixture");
