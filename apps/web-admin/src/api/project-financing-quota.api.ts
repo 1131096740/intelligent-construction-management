@@ -231,6 +231,88 @@ export interface ExecuteProjectFinancingQuotaReviewActionInput<TContext> {
   finish: (context: TContext) => void;
 }
 
+export interface ProjectFinancingQuotaTerminationReceipt {
+  kind: "applied" | "replayed";
+  actionId: string;
+  projectId: string;
+  quotaId: string;
+}
+
+export interface ProjectFinancingQuotaTerminationCapabilityReadModel {
+  projectId: string;
+  quotaId: string;
+  status: ProjectFinancingQuotaStatus;
+  lifecycleToken: string;
+  terminateAction: ProjectFinancingQuotaActionReadModel;
+}
+
+export interface ProjectFinancingQuotaTerminationResult {
+  receipt: ProjectFinancingQuotaTerminationReceipt;
+  workbench: ProjectFinancingQuotaWorkbenchReadModel;
+}
+
+export interface ProjectFinancingQuotaTerminationInput<TContext> {
+  reason: string;
+  confirmationPassword: string;
+  actionId: string;
+  lifecycleToken: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface ProjectFinancingQuotaTerminationSubmission {
+  projectId: string;
+  quotaId: string;
+  reason: string;
+  confirmationPassword: string;
+  actionId: string;
+  lifecycleToken: string;
+  isCurrent: () => boolean;
+}
+
+export interface ProjectFinancingQuotaTerminationAttemptState {
+  submission: ProjectFinancingQuotaTerminationSubmission | null;
+  terminationPromise: Promise<ProjectFinancingQuotaTerminationResult> | null;
+  preflightVerified: boolean;
+  businessReceipt: ProjectFinancingQuotaTerminationReceipt | null;
+}
+
+export interface ProjectFinancingQuotaTerminationExecutionSubmission<TContext> {
+  projectId: string;
+  quotaId: string;
+  reason: string;
+  confirmationPassword: string;
+  actionId: string;
+  lifecycleToken: string;
+  context: TContext;
+}
+
+export type ProjectFinancingQuotaTerminationExecutionResult<TContext> =
+  | { status: "not_started" }
+  | { status: "stale"; context: TContext }
+  | {
+      status: "completed";
+      context: TContext;
+      result: ProjectFinancingQuotaTerminationResult;
+    }
+  | { status: "failed"; context: TContext };
+
+export interface ProjectFinancingQuotaTerminationExecutionState<TContext> {
+  promise: Promise<ProjectFinancingQuotaTerminationExecutionResult<TContext>> | null;
+}
+
+export interface ExecuteProjectFinancingQuotaTerminationActionInput<TContext> {
+  attemptState: ProjectFinancingQuotaTerminationAttemptState;
+  capture: () => ProjectFinancingQuotaTerminationExecutionSubmission<TContext> | null;
+  current: (context: TContext) => boolean;
+  complete: (
+    context: TContext,
+    result: ProjectFinancingQuotaTerminationResult
+  ) => void | Promise<void>;
+  fail: (context: TContext, error: unknown) => void | Promise<void>;
+  finish: (context: TContext) => void;
+}
+
 interface ProjectFinancingQuotaAttachmentUploadReceipt {
   id: string;
 }
@@ -412,6 +494,14 @@ function invalidReviewResponse(): ProjectFinancingQuotaApiError {
   );
 }
 
+function invalidTerminationResponse(): ProjectFinancingQuotaApiError {
+  return new ProjectFinancingQuotaApiError(
+    "项目垫资额度终止回执与本次操作不一致，请刷新后核对",
+    502,
+    "PROJECT_FINANCING_QUOTA_INVALID_TERMINATION_RESPONSE"
+  );
+}
+
 async function responseError(
   response: Response,
   fallback: string
@@ -511,6 +601,19 @@ export function createProjectFinancingQuotaReviewAttemptState(): ProjectFinancin
 }
 
 export function createProjectFinancingQuotaReviewExecutionState<TContext>(): ProjectFinancingQuotaReviewExecutionState<TContext> {
+  return { promise: null };
+}
+
+export function createProjectFinancingQuotaTerminationAttemptState(): ProjectFinancingQuotaTerminationAttemptState {
+  return {
+    submission: null,
+    terminationPromise: null,
+    preflightVerified: false,
+    businessReceipt: null
+  };
+}
+
+export function createProjectFinancingQuotaTerminationExecutionState<TContext>(): ProjectFinancingQuotaTerminationExecutionState<TContext> {
   return { promise: null };
 }
 
@@ -876,6 +979,374 @@ function assertReviewCurrent(
 ) {
   if (!submission.isCurrent()) {
     throw new Error("项目垫资额度审批上下文已失效，请重新读取当前项目");
+  }
+}
+
+export async function fetchProjectFinancingQuotaTerminationCapability(
+  projectId: string,
+  quotaId: string
+): Promise<ProjectFinancingQuotaTerminationCapabilityReadModel> {
+  const normalizedProjectId = requiredText(projectId, "当前项目");
+  const normalizedQuotaId = requiredText(quotaId, "垫资额度");
+  const response = await apiFetch(
+    `/projects/${encodeURIComponent(normalizedProjectId)}/financing-quotas/${encodeURIComponent(normalizedQuotaId)}/termination-capability`
+  );
+  if (!response.ok) {
+    throw await responseError(response, "读取项目垫资额度终止资格失败");
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(await response.clone().text()) as unknown;
+  } catch {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度终止资格数据格式异常，请刷新后重试",
+      502,
+      "PROJECT_FINANCING_QUOTA_INVALID_TERMINATION_CAPABILITY_RESPONSE"
+    );
+  }
+  if (
+    !isTerminationCapabilityReadModel(
+      data,
+      normalizedProjectId,
+      normalizedQuotaId
+    )
+  ) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度终止资格数据格式异常，请刷新后重试",
+      502,
+      "PROJECT_FINANCING_QUOTA_INVALID_TERMINATION_CAPABILITY_RESPONSE"
+    );
+  }
+  return response.json() as Promise<ProjectFinancingQuotaTerminationCapabilityReadModel>;
+}
+
+function isTerminationCapabilityReadModel(
+  value: unknown,
+  expectedProjectId: string,
+  expectedQuotaId: string
+): value is ProjectFinancingQuotaTerminationCapabilityReadModel {
+  if (!isRecord(value)) return false;
+  const expectedKeys = [
+    "lifecycleToken",
+    "projectId",
+    "quotaId",
+    "status",
+    "terminateAction"
+  ];
+  return (
+    Object.keys(value).sort().join("|") === expectedKeys.join("|") &&
+    value.projectId === expectedProjectId &&
+    value.quotaId === expectedQuotaId &&
+    isQuotaStatus(value.status) &&
+    isLifecycleToken(value.lifecycleToken) &&
+    isTerminationActionReadModel(value.terminateAction)
+  );
+}
+
+function isTerminationActionReadModel(
+  value: unknown
+): value is ProjectFinancingQuotaActionReadModel {
+  if (!isRecord(value)) return false;
+  const expectedKeys = [
+    "disabledReason",
+    "enabled",
+    "key",
+    "kind",
+    "label",
+    "requiredAction",
+    "requiresPassword"
+  ];
+  return (
+    Object.keys(value).sort().join("|") === expectedKeys.join("|") &&
+    value.key === "terminate_financing_quota" &&
+    typeof value.label === "string" &&
+    value.label.trim().length > 0 &&
+    value.kind === "danger" &&
+    typeof value.enabled === "boolean" &&
+    (value.enabled
+      ? value.disabledReason === null
+      : typeof value.disabledReason === "string" &&
+        value.disabledReason.trim().length > 0) &&
+    value.requiredAction === "project.financing_quota.terminate" &&
+    value.requiresPassword === true
+  );
+}
+
+function projectFinancingQuotaTerminationRow(
+  workbench: ProjectFinancingQuotaWorkbenchReadModel,
+  quotaId: string
+): ProjectFinancingQuotaRowReadModel {
+  const rows = workbench.rows.filter((row) => row.id === quotaId);
+  if (rows.length !== 1) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度终止对象已变化，请刷新台账后重试",
+      409,
+      "PROJECT_FINANCING_QUOTA_TERMINATION_TARGET_CHANGED"
+    );
+  }
+  return rows[0]!;
+}
+
+function terminateProjectFinancingQuotaWithPreflight<TContext>(
+  projectId: string,
+  quotaId: string,
+  input: ProjectFinancingQuotaTerminationInput<TContext>,
+  state: ProjectFinancingQuotaTerminationAttemptState
+): Promise<ProjectFinancingQuotaTerminationResult> {
+  if (state.terminationPromise) return state.terminationPromise;
+
+  let submission: ProjectFinancingQuotaTerminationSubmission;
+  try {
+    submission =
+      state.submission ?? normalizeTerminationSubmission(projectId, quotaId, input);
+    if (submission.projectId !== projectId || submission.quotaId !== quotaId) {
+      throw new Error("项目垫资额度终止对象已变化，请重新打开确认窗口");
+    }
+    state.submission = submission;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const termination = executeProjectFinancingQuotaTermination(
+    submission,
+    state
+  );
+  state.terminationPromise = termination;
+  void termination.catch(() => {
+    if (state.terminationPromise === termination) {
+      state.terminationPromise = null;
+    }
+  });
+  return termination;
+}
+
+export function executeProjectFinancingQuotaTerminationAction<TContext>(
+  input: ExecuteProjectFinancingQuotaTerminationActionInput<TContext>,
+  state: ProjectFinancingQuotaTerminationExecutionState<TContext>
+): Promise<ProjectFinancingQuotaTerminationExecutionResult<TContext>> {
+  if (state.promise) return state.promise;
+  const submission = input.capture();
+  if (!submission) {
+    return Promise.resolve({ status: "not_started" });
+  }
+
+  const execution = executeCapturedProjectFinancingQuotaTermination(
+    input,
+    submission
+  ).finally(() => {
+    if (state.promise === execution) {
+      state.promise = null;
+    }
+  });
+  state.promise = execution;
+  return execution;
+}
+
+async function executeCapturedProjectFinancingQuotaTermination<TContext>(
+  input: ExecuteProjectFinancingQuotaTerminationActionInput<TContext>,
+  submission: ProjectFinancingQuotaTerminationExecutionSubmission<TContext>
+): Promise<ProjectFinancingQuotaTerminationExecutionResult<TContext>> {
+  const context = submission.context;
+  try {
+    const result = await terminateProjectFinancingQuotaWithPreflight(
+      submission.projectId,
+      submission.quotaId,
+      {
+        reason: submission.reason,
+        confirmationPassword: submission.confirmationPassword,
+        actionId: submission.actionId,
+        lifecycleToken: submission.lifecycleToken,
+        context,
+        isCurrent: input.current
+      },
+      input.attemptState
+    );
+    if (!input.current(context)) {
+      return { status: "stale", context };
+    }
+    await input.complete(context, result);
+    return { status: "completed", context, result };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function normalizeTerminationSubmission<TContext>(
+  projectId: string,
+  quotaId: string,
+  input: ProjectFinancingQuotaTerminationInput<TContext>
+): ProjectFinancingQuotaTerminationSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error("项目垫资额度终止上下文已失效，请重新读取当前项目");
+  }
+  const normalizedProjectId = requiredText(projectId, "当前项目");
+  const normalizedQuotaId = requiredText(quotaId, "垫资额度");
+  const actionId = requiredText(input.actionId, "终止操作键").toLowerCase();
+  if (!isUuidV4(actionId)) {
+    throw new Error("终止操作键格式异常，请重新打开确认窗口");
+  }
+  const lifecycleToken = requiredText(input.lifecycleToken, "终止生命周期标识");
+  if (!isLifecycleToken(lifecycleToken)) {
+    throw new Error("终止生命周期标识格式异常，请刷新台账后重试");
+  }
+  const reason = requiredText(input.reason, "终止原因");
+  if (Array.from(reason).length > 500) {
+    throw new Error("终止原因不能超过 500 个字符");
+  }
+  const confirmationPassword = input.confirmationPassword;
+  if (!confirmationPassword.trim()) {
+    throw new Error("请输入当前登录密码");
+  }
+
+  return {
+    projectId: normalizedProjectId,
+    quotaId: normalizedQuotaId,
+    reason,
+    confirmationPassword,
+    actionId,
+    lifecycleToken,
+    isCurrent: () => input.isCurrent(input.context)
+  };
+}
+
+async function executeProjectFinancingQuotaTermination(
+  submission: ProjectFinancingQuotaTerminationSubmission,
+  state: ProjectFinancingQuotaTerminationAttemptState
+): Promise<ProjectFinancingQuotaTerminationResult> {
+  if (state.businessReceipt) {
+    return refreshTerminatedQuota(submission, state.businessReceipt);
+  }
+
+  if (!state.preflightVerified) {
+    await verifyTerminationAction(submission);
+    state.preflightVerified = true;
+  }
+  assertTerminationCurrent(submission);
+  let receipt: ProjectFinancingQuotaTerminationReceipt;
+  try {
+    receipt = await postProjectFinancingQuotaTermination(submission);
+  } catch (error) {
+    if (error instanceof ProjectFinancingQuotaApiError && error.status < 500) {
+      state.submission = null;
+      state.preflightVerified = false;
+      state.businessReceipt = null;
+    }
+    throw error;
+  }
+  state.businessReceipt = receipt;
+  assertTerminationCurrent(submission);
+  return refreshTerminatedQuota(submission, receipt);
+}
+
+async function verifyTerminationAction(
+  submission: ProjectFinancingQuotaTerminationSubmission
+) {
+  assertTerminationCurrent(submission);
+  const capability = await fetchProjectFinancingQuotaTerminationCapability(
+    submission.projectId,
+    submission.quotaId
+  );
+  assertTerminationCurrent(submission);
+  if (
+    capability.status !== "approved" ||
+    capability.lifecycleToken !== submission.lifecycleToken ||
+    !terminateActionEnabled(capability.terminateAction)
+  ) {
+    throw new Error("项目垫资额度终止资格已变化，请刷新台账后重试");
+  }
+}
+
+async function postProjectFinancingQuotaTermination(
+  submission: ProjectFinancingQuotaTerminationSubmission
+): Promise<ProjectFinancingQuotaTerminationReceipt> {
+  const response = await apiFetch(
+    `/projects/${encodeURIComponent(submission.projectId)}/financing-quotas/${encodeURIComponent(submission.quotaId)}/termination`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        reason: submission.reason,
+        confirmationPassword: submission.confirmationPassword,
+        actionId: submission.actionId,
+        expectedLifecycleToken: submission.lifecycleToken
+      })
+    }
+  );
+  if (!response.ok) {
+    throw await responseError(response, "终止项目垫资额度失败");
+  }
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw invalidTerminationResponse();
+  }
+  if (!isTerminationReceipt(data, submission)) {
+    throw invalidTerminationResponse();
+  }
+  return data;
+}
+
+async function refreshTerminatedQuota(
+  submission: ProjectFinancingQuotaTerminationSubmission,
+  receipt: ProjectFinancingQuotaTerminationReceipt
+): Promise<ProjectFinancingQuotaTerminationResult> {
+  assertTerminationCurrent(submission);
+  const workbench = await fetchProjectFinancingQuotaWorkbench(
+    submission.projectId
+  );
+  const row = projectFinancingQuotaTerminationRow(
+    workbench,
+    submission.quotaId
+  );
+  assertTerminationCurrent(submission);
+  if (
+    row.status !== "terminated" ||
+    row.lifecycleToken === submission.lifecycleToken
+  ) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度权威台账尚未显示本次终止，请手动刷新后核对",
+      502,
+      "PROJECT_FINANCING_QUOTA_TERMINATION_NOT_AUTHORITATIVE"
+    );
+  }
+  return { receipt, workbench };
+}
+
+function isTerminationReceipt(
+  value: unknown,
+  submission: ProjectFinancingQuotaTerminationSubmission
+): value is ProjectFinancingQuotaTerminationReceipt {
+  if (!isRecord(value)) return false;
+  const expectedKeys = ["actionId", "kind", "projectId", "quotaId"];
+  return (
+    Object.keys(value).sort().join("|") === expectedKeys.join("|") &&
+    (value.kind === "applied" || value.kind === "replayed") &&
+    value.actionId === submission.actionId &&
+    value.projectId === submission.projectId &&
+    value.quotaId === submission.quotaId
+  );
+}
+
+export function terminateActionEnabled(
+  action: ProjectFinancingQuotaActionReadModel
+) {
+  return (
+    action.key === "terminate_financing_quota" &&
+    action.enabled &&
+    action.requiresPassword === true &&
+    action.requiredAction === "project.financing_quota.terminate"
+  );
+}
+
+function assertTerminationCurrent(
+  submission: ProjectFinancingQuotaTerminationSubmission
+) {
+  if (!submission.isCurrent()) {
+    throw new Error("项目垫资额度终止上下文已失效，请重新读取当前项目");
   }
 }
 

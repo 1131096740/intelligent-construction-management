@@ -21,7 +21,7 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_project_expense_receipt_concurrency";
-const EXPECTED_MIGRATION_COUNT = 115;
+const EXPECTED_MIGRATION_COUNT = 116;
 const LATEST_MIGRATION =
   "20260728160000_project_expense_receipt_confirmation";
 const PRE160_TEMPLATE_DATABASE =

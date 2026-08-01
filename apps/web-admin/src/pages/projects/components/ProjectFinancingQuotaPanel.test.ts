@@ -2,21 +2,27 @@ import { effectScope, nextTick, reactive } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ProjectFinancingQuotaPanel from "./ProjectFinancingQuotaPanel.vue";
 import type {
+  ExecuteProjectFinancingQuotaTerminationActionInput,
   ExecuteProjectFinancingQuotaReviewActionInput,
   ProjectFinancingQuotaReviewDecision,
   ProjectFinancingQuotaReviewExecutionState,
   ProjectFinancingQuotaReviewResult,
   ProjectFinancingQuotaRequestResult,
+  ProjectFinancingQuotaTerminationExecutionState,
+  ProjectFinancingQuotaTerminationResult,
   ProjectFinancingQuotaWorkbenchReadModel
 } from "../../../api/project-financing-quota.api";
 
 const quotaRuntime = vi.hoisted(() => ({
   beforeUnmount: vi.fn(),
+  executeTermination: vi.fn(),
   executeReview: vi.fn(),
+  fetchTermination: vi.fn(),
   fetchWorkbench: vi.fn(),
   fetchReview: vi.fn(),
   review: vi.fn(),
-  request: vi.fn()
+  request: vi.fn(),
+  terminate: vi.fn()
 }));
 
 vi.mock("vue", async (importOriginal) => {
@@ -34,7 +40,11 @@ vi.mock("../../../api/project-financing-quota.api", async (importOriginal) => {
   >();
   return {
     ...original,
+    executeProjectFinancingQuotaTerminationAction:
+      quotaRuntime.executeTermination,
     executeProjectFinancingQuotaReviewAction: quotaRuntime.executeReview,
+    fetchProjectFinancingQuotaTerminationCapability:
+      quotaRuntime.fetchTermination,
     fetchProjectFinancingQuotaRequestCapability: quotaRuntime.fetchWorkbench,
     fetchProjectFinancingQuotaReviewCapability: quotaRuntime.fetchReview,
     reviewProjectFinancingQuotaWithPreflight: quotaRuntime.review,
@@ -58,6 +68,16 @@ type ReviewContext = {
   requiresSelfReviewConfirmation: boolean;
 };
 type ReviewOperationContext = ReviewContext & { operationId: number };
+type TerminationContext = {
+  projectId: string;
+  quotaId: string;
+  projectGeneration: number;
+  actionId: string;
+  lifecycleToken: string;
+  netUsedAmountCents: string;
+  availableAmountCents: string;
+};
+type TerminationOperationContext = TerminationContext & { operationId: number };
 type PanelBindings = {
   openRequest: () => Promise<void>;
   requestBusy: MutableValue<boolean>;
@@ -87,10 +107,25 @@ type PanelBindings = {
   submitApproveReview: () => Promise<unknown>;
   submitRejectReview: () => Promise<unknown>;
   submitRequest: () => Promise<unknown>;
+  openTermination: (
+    row: ProjectFinancingQuotaWorkbenchReadModel["rows"][number]
+  ) => Promise<void>;
+  terminationContext: MutableValue<TerminationContext>;
+  terminationError: MutableValue<string>;
+  terminationForm: MutableValue<{
+    reason: string;
+    confirmationPassword: string;
+  }>;
+  terminationLaunchError: MutableValue<string>;
+  terminationVisible: MutableValue<boolean>;
+  cancelTermination: () => void;
+  submitTermination: () => Promise<unknown>;
 };
 
 const reviewLifecycleToken = "a".repeat(64);
 const nextReviewLifecycleToken = "b".repeat(64);
+const terminationLifecycleToken = "c".repeat(64);
+const nextTerminationLifecycleToken = "d".repeat(64);
 
 function action(enabled = true) {
   return {
@@ -143,32 +178,35 @@ function reviewAction(
 function quotaRow(
   options: {
     enabled?: boolean;
+    terminationEnabled?: boolean;
     lifecycleToken?: string;
     requiresSelfReviewConfirmation?: boolean;
+    status?: "approval_pending" | "approved" | "rejected" | "terminated";
   } = {}
 ): ProjectFinancingQuotaWorkbenchReadModel["rows"][number] {
+  const status = options.status ?? "approval_pending";
   return {
     id: "quota-1",
     amountCents: "5000000",
     reason: "阶段性垫资保障项目付款",
     validUntil: null,
-    status: "approval_pending",
-    statusLabel: "审批中",
+    status,
+    statusLabel: status === "approval_pending" ? "审批中" : status === "approved" ? "已批准" : "已终止",
     requestedByName: "财务主管甲",
-    approvedByName: null,
-    approvedAt: null,
+    approvedByName: status === "approved" || status === "terminated" ? "董事长甲" : null,
+    approvedAt: status === "approved" || status === "terminated" ? "2026-08-02T01:30:00.000Z" : null,
     terminatedAt: null,
     terminatedByName: null,
     terminationReason: null,
     createdAt: "2026-08-02T01:00:00.000Z",
     updatedAt: "2026-08-02T01:00:00.000Z",
     isExpired: false,
-    netUsedAmountCents: "0",
-    availableAmountCents: "0",
+    netUsedAmountCents: "1200000",
+    availableAmountCents: "3800000",
     currentApproval: {
-      status: "in_progress",
-      currentNodeIndex: 0,
-      currentNodeName: "财务主管"
+      status: status === "approval_pending" ? "in_progress" : "approved",
+      currentNodeIndex: status === "approval_pending" ? 0 : 2,
+      currentNodeName: status === "approval_pending" ? "财务主管" : null
     },
     lifecycleToken: options.lifecycleToken ?? reviewLifecycleToken,
     reviewAction: reviewAction(
@@ -179,8 +217,8 @@ function quotaRow(
       key: "terminate_financing_quota",
       label: "终止垫资额度",
       kind: "danger",
-      enabled: false,
-      disabledReason: "审批中不可终止",
+      enabled: options.terminationEnabled ?? false,
+      disabledReason: options.terminationEnabled ? null : "当前不可终止",
       requiredAction: "project.financing_quota.terminate",
       requiresPassword: true
     },
@@ -201,6 +239,24 @@ function reviewCapability(
   };
 }
 
+function terminationCapability(
+  projectId: string,
+  row = quotaRow({
+    enabled: false,
+    terminationEnabled: true,
+    lifecycleToken: terminationLifecycleToken,
+    status: "approved"
+  })
+) {
+  return {
+    projectId,
+    quotaId: row.id,
+    status: row.status,
+    lifecycleToken: row.lifecycleToken,
+    terminateAction: row.terminateAction
+  };
+}
+
 function reviewResult(projectId: string): ProjectFinancingQuotaReviewResult {
   return {
     receipt: {
@@ -213,6 +269,38 @@ function reviewResult(projectId: string): ProjectFinancingQuotaReviewResult {
       enabled: false,
       lifecycleToken: nextReviewLifecycleToken
     })])
+  };
+}
+
+function terminationResult(
+  projectId: string
+): ProjectFinancingQuotaTerminationResult {
+  const terminated = quotaRow({
+    enabled: false,
+    terminationEnabled: false,
+    lifecycleToken: nextTerminationLifecycleToken,
+    status: "terminated"
+  });
+  terminated.usageGroups = [{
+    executionType: "payment_reversal",
+    executionId: "reversal-1",
+    businessType: "payment_request",
+    businessId: "payment-1",
+    occurredAt: "2026-08-02T02:00:00.000Z",
+    projectCashNetAmountCents: "1000",
+    financingQuotaNetAmountCents: "-1000",
+    currentQuotaDebitAmountCents: "0",
+    currentQuotaCreditAmountCents: "1000",
+    currentQuotaNetAmountCents: "-1000"
+  }];
+  return {
+    receipt: {
+      kind: "applied",
+      actionId: "33333333-3333-4333-8333-333333333333",
+      projectId,
+      quotaId: "quota-1"
+    },
+    workbench: workbench(projectId, [terminated])
   };
 }
 
@@ -289,6 +377,47 @@ function installReviewExecutorMock() {
   });
 }
 
+function installTerminationExecutorMock() {
+  quotaRuntime.executeTermination.mockImplementation((
+    input: ExecuteProjectFinancingQuotaTerminationActionInput<TerminationOperationContext>,
+    state: ProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext>
+  ) => {
+    if (state.promise) return state.promise;
+    const submission = input.capture();
+    if (!submission) {
+      return Promise.resolve({ status: "not_started" as const });
+    }
+    const context = submission.context;
+    const execution = Promise.resolve(quotaRuntime.terminate(
+      submission.projectId,
+      submission.quotaId,
+      {
+        reason: submission.reason,
+        confirmationPassword: submission.confirmationPassword,
+        actionId: submission.actionId,
+        lifecycleToken: submission.lifecycleToken,
+        context,
+        isCurrent: input.current
+      },
+      input.attemptState
+    )).then(async (result: ProjectFinancingQuotaTerminationResult) => {
+      if (!input.current(context)) {
+        return { status: "stale" as const, context };
+      }
+      await input.complete(context, result);
+      return { status: "completed" as const, context, result };
+    }).catch(async (error: unknown) => {
+      await input.fail(context, error);
+      return { status: "failed" as const, context };
+    }).finally(() => {
+      input.finish(context);
+      if (state.promise === execution) state.promise = null;
+    });
+    state.promise = execution;
+    return execution;
+  });
+}
+
 function setupPanel(projectId = "project-a") {
   const props = reactive({
     projectId,
@@ -320,12 +449,16 @@ function setupPanel(projectId = "project-a") {
 describe("project financing quota F1 panel", () => {
   beforeEach(() => {
     quotaRuntime.beforeUnmount.mockReset();
+    quotaRuntime.executeTermination.mockReset();
     quotaRuntime.executeReview.mockReset();
+    quotaRuntime.fetchTermination.mockReset();
     quotaRuntime.fetchWorkbench.mockReset();
     quotaRuntime.fetchReview.mockReset();
     quotaRuntime.review.mockReset();
     quotaRuntime.request.mockReset();
+    quotaRuntime.terminate.mockReset();
     installReviewExecutorMock();
+    installTerminationExecutorMock();
   });
 
   it("freezes one dialog attempt and emits only the authoritative refreshed workbench", async () => {
@@ -424,12 +557,16 @@ describe("project financing quota F1 panel", () => {
 describe("project financing quota F2 review panel", () => {
   beforeEach(() => {
     quotaRuntime.beforeUnmount.mockReset();
+    quotaRuntime.executeTermination.mockReset();
     quotaRuntime.executeReview.mockReset();
+    quotaRuntime.fetchTermination.mockReset();
     quotaRuntime.fetchWorkbench.mockReset();
     quotaRuntime.fetchReview.mockReset();
     quotaRuntime.review.mockReset();
     quotaRuntime.request.mockReset();
+    quotaRuntime.terminate.mockReset();
     installReviewExecutorMock();
+    installTerminationExecutorMock();
   });
 
   it("opens from the exact fresh server action and emits only the authoritative review refresh", async () => {
@@ -647,6 +784,269 @@ describe("project financing quota F2 review panel", () => {
 
     expect(bindings.reviewVisible.value).toBe(false);
     expect(bindings.reviewLaunchError.value).toContain("审批资格已变化");
+    scope.stop();
+  });
+});
+
+describe("project financing quota F3 termination panel", () => {
+  beforeEach(() => {
+    quotaRuntime.beforeUnmount.mockReset();
+    quotaRuntime.executeTermination.mockReset();
+    quotaRuntime.executeReview.mockReset();
+    quotaRuntime.fetchTermination.mockReset();
+    quotaRuntime.fetchWorkbench.mockReset();
+    quotaRuntime.fetchReview.mockReset();
+    quotaRuntime.review.mockReset();
+    quotaRuntime.request.mockReset();
+    quotaRuntime.terminate.mockReset();
+    installReviewExecutorMock();
+    installTerminationExecutorMock();
+  });
+
+  it("opens from the exact fresh server action and emits the authoritative terminated workbench", async () => {
+    const row = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", row)
+    );
+    quotaRuntime.terminate.mockResolvedValueOnce(
+      terminationResult("project-a")
+    );
+    const { bindings, emit, scope } = setupPanel();
+
+    await bindings.openTermination(row);
+
+    expect(bindings.terminationVisible.value).toBe(true);
+    expect(bindings.terminationContext.value).toMatchObject({
+      projectId: "project-a",
+      quotaId: "quota-1",
+      lifecycleToken: terminationLifecycleToken,
+      netUsedAmountCents: "1200000",
+      availableAmountCents: "3800000"
+    });
+    expect(bindings.terminationContext.value.actionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
+    );
+    const actionId = bindings.terminationContext.value.actionId;
+    bindings.terminationForm.value = {
+      reason: "项目已具备自有资金",
+      confirmationPassword: " current-password "
+    };
+
+    await bindings.submitTermination();
+
+    expect(quotaRuntime.terminate).toHaveBeenCalledWith(
+      "project-a",
+      "quota-1",
+      expect.objectContaining({
+        reason: "项目已具备自有资金",
+        confirmationPassword: " current-password ",
+        actionId,
+        lifecycleToken: terminationLifecycleToken
+      }),
+      expect.any(Object)
+    );
+    expect(emit).toHaveBeenCalledWith("updated", expect.objectContaining({
+      project: expect.objectContaining({ id: "project-a" }),
+      rows: [expect.objectContaining({
+        status: "terminated",
+        usageGroups: [expect.objectContaining({
+          executionType: "payment_reversal"
+        })]
+      })]
+    }));
+    expect(bindings.terminationVisible.value).toBe(false);
+    scope.stop();
+  });
+
+  it("fails closed when the fresh termination token drifts from the displayed amounts", async () => {
+    const localRow = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", quotaRow({
+        enabled: false,
+        terminationEnabled: true,
+        lifecycleToken: nextTerminationLifecycleToken,
+        status: "approved"
+      }))
+    );
+    const { bindings, scope } = setupPanel();
+
+    await bindings.openTermination(localRow);
+
+    expect(bindings.terminationVisible.value).toBe(false);
+    expect(bindings.terminationLaunchError.value).toContain("终止资格已变化");
+    expect(quotaRuntime.terminate).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it("keeps review and termination dialogs mutually exclusive, including duplicate programmatic opens", async () => {
+    const terminationRow = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    const reviewRow = quotaRow();
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", terminationRow)
+    );
+    const terminationPanel = setupPanel();
+
+    await terminationPanel.bindings.openTermination(terminationRow);
+    await terminationPanel.bindings.openTermination(terminationRow);
+    await terminationPanel.bindings.openReview(reviewRow, "approve");
+
+    expect(quotaRuntime.fetchTermination).toHaveBeenCalledTimes(1);
+    expect(quotaRuntime.fetchReview).not.toHaveBeenCalled();
+    terminationPanel.scope.stop();
+
+    quotaRuntime.fetchTermination.mockClear();
+    quotaRuntime.fetchReview.mockResolvedValueOnce(
+      reviewCapability("project-a", reviewRow)
+    );
+    const reviewPanel = setupPanel();
+
+    await reviewPanel.bindings.openReview(reviewRow, "approve");
+    await reviewPanel.bindings.openReview(reviewRow, "approve");
+    await reviewPanel.bindings.openTermination(terminationRow);
+
+    expect(quotaRuntime.fetchReview).toHaveBeenCalledTimes(1);
+    expect(quotaRuntime.fetchTermination).not.toHaveBeenCalled();
+    reviewPanel.scope.stop();
+  });
+
+  it("validates termination reason by Unicode code point before the executor", async () => {
+    const row = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", row)
+    );
+    const { bindings, scope } = setupPanel();
+
+    await bindings.openTermination(row);
+    bindings.terminationForm.value = {
+      reason: "😀".repeat(501),
+      confirmationPassword: "current-password"
+    };
+    await bindings.submitTermination();
+
+    expect(quotaRuntime.terminate).not.toHaveBeenCalled();
+    expect(bindings.terminationError.value).toContain("500 个字符");
+    scope.stop();
+  });
+
+  it("delegates a double confirmation to one termination execution", async () => {
+    const row = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    const pending = deferred<ProjectFinancingQuotaTerminationResult>();
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", row)
+    );
+    quotaRuntime.terminate.mockReturnValueOnce(pending.promise);
+    const { bindings, scope } = setupPanel();
+
+    await bindings.openTermination(row);
+    bindings.terminationForm.value = {
+      reason: "资金安排已调整",
+      confirmationPassword: "current-password"
+    };
+    const first = bindings.submitTermination();
+    const second = bindings.submitTermination();
+
+    expect(quotaRuntime.executeTermination).toHaveBeenCalledTimes(2);
+    expect(quotaRuntime.executeTermination.mock.calls[1]?.[1]).toBe(
+      quotaRuntime.executeTermination.mock.calls[0]?.[1]
+    );
+    expect(quotaRuntime.executeTermination.mock.results[1]?.value).toBe(
+      quotaRuntime.executeTermination.mock.results[0]?.value
+    );
+    expect(quotaRuntime.terminate).toHaveBeenCalledTimes(1);
+    pending.resolve(terminationResult("project-a"));
+    await Promise.all([first, second]);
+    scope.stop();
+  });
+
+  it("keeps the frozen termination identity after an unknown result", async () => {
+    const row = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", row)
+    );
+    quotaRuntime.terminate
+      .mockRejectedValueOnce(new TypeError("network result unknown"))
+      .mockResolvedValueOnce(terminationResult("project-a"));
+    const { bindings, scope } = setupPanel();
+
+    await bindings.openTermination(row);
+    bindings.terminationForm.value = {
+      reason: "资金安排已调整",
+      confirmationPassword: "current-password"
+    };
+    await bindings.submitTermination();
+    await bindings.submitTermination();
+
+    const firstInput = quotaRuntime.terminate.mock.calls[0]?.[2];
+    const secondInput = quotaRuntime.terminate.mock.calls[1]?.[2];
+    expect(secondInput.actionId).toBe(firstInput.actionId);
+    expect(secondInput.lifecycleToken).toBe(firstInput.lifecycleToken);
+    scope.stop();
+  });
+
+  it("does not publish a late termination result after project switch, close, or unmount", async () => {
+    const row = quotaRow({
+      enabled: false,
+      terminationEnabled: true,
+      lifecycleToken: terminationLifecycleToken,
+      status: "approved"
+    });
+    const pending = deferred<ProjectFinancingQuotaTerminationResult>();
+    quotaRuntime.fetchTermination.mockResolvedValueOnce(
+      terminationCapability("project-a", row)
+    );
+    quotaRuntime.terminate.mockReturnValueOnce(pending.promise);
+    const { bindings, emit, invokeBeforeUnmount, props, scope } = setupPanel();
+
+    await bindings.openTermination(row);
+    bindings.terminationForm.value = {
+      reason: "资金安排已调整",
+      confirmationPassword: "current-password"
+    };
+    const submission = bindings.submitTermination();
+    const terminationInput = quotaRuntime.terminate.mock.calls[0]?.[2];
+    props.projectId = "project-b";
+    props.workbench = workbench("project-b");
+    await nextTick();
+    invokeBeforeUnmount();
+
+    expect(terminationInput.isCurrent(terminationInput.context)).toBe(false);
+    pending.resolve(terminationResult("project-a"));
+    await submission;
+    await flushPromises();
+
+    bindings.cancelTermination();
+    expect(emit).not.toHaveBeenCalledWith("updated", expect.anything());
+    expect(bindings.terminationVisible.value).toBe(false);
     scope.stop();
   });
 });

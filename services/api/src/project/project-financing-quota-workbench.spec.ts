@@ -301,6 +301,78 @@ describe("ProjectService project financing quota workbench", () => {
     });
   });
 
+  it("projects one quota into a strict top-level server termination capability", async () => {
+    const tx = buildTransaction();
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => unknown) => callback(tx)
+      )
+    };
+    const service = new ProjectService(prisma as never);
+
+    const result = await service.getProjectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-approved",
+      "finance-director-1"
+    );
+
+    expect(Object.keys(result).sort()).toEqual([
+      "lifecycleToken",
+      "projectId",
+      "quotaId",
+      "status",
+      "terminateAction"
+    ]);
+    expect(result).toMatchObject({
+      projectId: "project-1",
+      quotaId: "quota-approved",
+      status: "approved",
+      lifecycleToken: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      terminateAction: {
+        key: "terminate_financing_quota",
+        enabled: true,
+        requiredAction: "project.financing_quota.terminate",
+        requiresPassword: true
+      }
+    });
+  });
+
+  it("binds approved quota lifecycle tokens to the current net occupation", async () => {
+    const firstTx = buildTransaction();
+    const secondTx = buildTransaction();
+    const secondAllocations = await secondTx.projectFundingAllocation.findMany();
+    secondTx.projectFundingAllocation.findMany.mockResolvedValue(
+      secondAllocations.map((row: Record<string, unknown> & { id: string }) =>
+        row.id === "quota-debit"
+          ? { ...row, amountCents: 4_500n }
+          : row
+      )
+    );
+    const first = new ProjectService({
+      $transaction: jest.fn(
+        async (callback: (client: typeof firstTx) => unknown) => callback(firstTx)
+      )
+    } as never);
+    const second = new ProjectService({
+      $transaction: jest.fn(
+        async (callback: (client: typeof secondTx) => unknown) => callback(secondTx)
+      )
+    } as never);
+
+    const firstCapability = await first.getProjectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-approved",
+      "finance-director-1"
+    );
+    const secondCapability = await second.getProjectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-approved",
+      "finance-director-1"
+    );
+
+    expect(secondCapability.lifecycleToken).not.toBe(firstCapability.lifecycleToken);
+  });
+
   it("fails closed when the target review capability quota is absent", async () => {
     const tx = buildTransaction();
     const prisma = {
@@ -315,6 +387,41 @@ describe("ProjectService project financing quota workbench", () => {
       "quota-missing",
       "finance-director-1"
     )).rejects.toThrow("项目垫资额度不存在");
+  });
+
+  it("fails closed when the target termination capability quota is absent", async () => {
+    const tx = buildTransaction();
+    const service = new ProjectService({
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => unknown) => callback(tx)
+      )
+    } as never);
+
+    await expect(service.getProjectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-missing",
+      "finance-director-1"
+    )).rejects.toThrow("项目垫资额度不存在");
+  });
+
+  it("fails closed when the termination capability projection is duplicated", async () => {
+    const tx = buildTransaction();
+    const quotas = await tx.projectFinancingQuota.findMany();
+    tx.projectFinancingQuota.findMany.mockResolvedValue([
+      quotas[0]!,
+      { ...quotas[0]! }
+    ]);
+    const service = new ProjectService({
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => unknown) => callback(tx)
+      )
+    } as never);
+
+    await expect(service.getProjectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-approved",
+      "finance-director-1"
+    )).rejects.toThrow("项目垫资额度存在重复的只读终止能力");
   });
 
   it("keeps every mutation disabled for a read-only project manager", async () => {

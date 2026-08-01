@@ -779,6 +779,30 @@
       ]
     },
     {
+      "id": "project-financing-quota.terminate",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitTermination"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaTerminationAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "executeProjectFinancingQuotaTerminationAction"
+        }
+      ]
+    },
+    {
       "id": "contract-takeover.create-local-role",
       "usage": "page_action",
       "routePaths": [

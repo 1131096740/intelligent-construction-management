@@ -58,6 +58,19 @@
         :message="reviewLaunchError"
         class="request-alert"
       />
+      <t-alert
+        v-if="terminationNotice"
+        theme="success"
+        :message="terminationNotice"
+        class="request-alert"
+      />
+      <t-alert
+        v-if="terminationLaunchError"
+        theme="error"
+        title="终止资格校验失败"
+        :message="terminationLaunchError"
+        class="request-alert"
+      />
 
       <t-alert
         theme="info"
@@ -144,28 +157,44 @@
         </template>
         <template #operation="{ row }">
           <div
-            v-if="reviewActionEnabled(row.reviewAction)"
-            class="review-actions"
+            v-if="reviewActionEnabled(row.reviewAction) || terminateActionEnabled(row.terminateAction)"
+            class="quota-actions"
           >
-            <t-button
-              size="small"
-              theme="primary"
-              variant="text"
-              :loading="reviewOpeningQuotaId === row.id"
-              :disabled="reviewBusy"
-              @click="openReview(row, 'approve')"
+            <div
+              v-if="reviewActionEnabled(row.reviewAction)"
+              class="review-actions"
             >
-              通过
-            </t-button>
+              <t-button
+                size="small"
+                theme="primary"
+                variant="text"
+                :loading="reviewOpeningQuotaId === row.id"
+                :disabled="reviewBusy || terminationBusy"
+                @click="openReview(row, 'approve')"
+              >
+                通过
+              </t-button>
+              <t-button
+                size="small"
+                theme="danger"
+                variant="text"
+                :loading="reviewOpeningQuotaId === row.id"
+                :disabled="reviewBusy || terminationBusy"
+                @click="openReview(row, 'reject')"
+              >
+                驳回
+              </t-button>
+            </div>
             <t-button
+              v-if="terminateActionEnabled(row.terminateAction)"
               size="small"
               theme="danger"
               variant="text"
-              :loading="reviewOpeningQuotaId === row.id"
-              :disabled="reviewBusy"
-              @click="openReview(row, 'reject')"
+              :loading="terminationOpeningQuotaId === row.id"
+              :disabled="reviewBusy || terminationBusy"
+              @click="openTermination(row)"
             >
-              驳回
+              终止额度
             </t-button>
           </div>
           <span v-else>—</span>
@@ -370,6 +399,77 @@
         </t-space>
       </template>
     </t-dialog>
+
+    <t-dialog
+      v-if="terminationArmed && selectedFinancingQuotaTerminationAction && selectedFinancingQuotaTerminationAction.enabled"
+      :visible="terminationVisible"
+      header="确认终止垫资额度？"
+      width="min(560px, calc(100vw - 32px))"
+      :close-btn="!terminationBusy"
+      :close-on-esc-keydown="!terminationBusy"
+      :close-on-overlay-click="false"
+      @close="cancelTermination"
+      @update:visible="handleTerminationVisibleChange"
+    >
+      <div class="termination-form">
+        <t-alert
+          theme="error"
+          title="终止后立即阻止新占用"
+          message="本操作不删除、不释放、不重排既有资金使用和冲正历史；后续合法退款或冲正仍以服务端权威台账为准。"
+        />
+        <div class="termination-impact">
+          <span>当前已占用</span>
+          <strong>{{ formatMoney(terminationContext.netUsedAmountCents) }}</strong>
+          <span>当前剩余额度</span>
+          <strong>{{ formatMoney(terminationContext.availableAmountCents) }}</strong>
+        </div>
+        <label>
+          <span>终止原因 <b aria-hidden="true">*</b></span>
+          <t-textarea
+            v-model="terminationForm.reason"
+            :disabled="terminationAttempted"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="说明终止额度的业务原因"
+          />
+        </label>
+        <label>
+          <span>当前登录密码 <b aria-hidden="true">*</b></span>
+          <t-input
+            v-model="terminationForm.confirmationPassword"
+            type="password"
+            autocomplete="current-password"
+            :disabled="terminationAttempted"
+            placeholder="用于确认当前操作者身份"
+          />
+        </label>
+        <t-alert
+          v-if="terminationError"
+          theme="error"
+          title="暂时无法提交"
+          :message="terminationError"
+        />
+      </div>
+      <template #footer>
+        <t-space>
+          <t-button
+            variant="outline"
+            :disabled="terminationBusy"
+            @click="cancelTermination"
+          >
+            取消
+          </t-button>
+          <t-button
+            v-if="selectedFinancingQuotaTerminationAction && selectedFinancingQuotaTerminationAction.enabled"
+            theme="danger"
+            :loading="terminationBusy"
+            :disabled="terminationBusy"
+            @click="submitTermination"
+          >
+            确认终止
+          </t-button>
+        </t-space>
+      </template>
+    </t-dialog>
   </section>
 </template>
 
@@ -384,14 +484,19 @@ import {
 import type { UploadFile } from "tdesign-vue-next";
 import { centsTextToYuanText } from "../../../lib/money";
 import {
+  createProjectFinancingQuotaTerminationExecutionState,
+  createProjectFinancingQuotaTerminationAttemptState,
   createProjectFinancingQuotaReviewExecutionState,
   createProjectFinancingQuotaReviewAttemptState,
   createProjectFinancingQuotaRequestAttemptState,
   executeProjectFinancingQuotaReviewAction,
+  executeProjectFinancingQuotaTerminationAction,
+  fetchProjectFinancingQuotaTerminationCapability,
   fetchProjectFinancingQuotaReviewCapability,
   fetchProjectFinancingQuotaRequestCapability,
   reviewActionEnabled,
   requestProjectFinancingQuotaWithUpload,
+  terminateActionEnabled,
   type ProjectFinancingQuotaActionReadModel,
   type ProjectFinancingQuotaReviewAttemptState,
   type ProjectFinancingQuotaReviewDecision,
@@ -400,6 +505,9 @@ import {
   type ProjectFinancingQuotaRequestAttemptState,
   type ProjectFinancingQuotaRowReadModel,
   type ProjectFinancingQuotaStatus,
+  type ProjectFinancingQuotaTerminationAttemptState,
+  type ProjectFinancingQuotaTerminationExecutionState,
+  type ProjectFinancingQuotaTerminationExecutionSubmission,
   type ProjectFinancingQuotaWorkbenchReadModel
 } from "../../../api/project-financing-quota.api";
 
@@ -435,6 +543,20 @@ type ReviewOperationContext = ReviewContext & {
   operationId: number;
 };
 
+type TerminationContext = {
+  projectId: string;
+  quotaId: string;
+  projectGeneration: number;
+  actionId: string;
+  lifecycleToken: string;
+  netUsedAmountCents: string;
+  availableAmountCents: string;
+};
+
+type TerminationOperationContext = TerminationContext & {
+  operationId: number;
+};
+
 const EMPTY_REQUEST_CONTEXT: RequestContext = {
   projectId: "",
   projectGeneration: -1,
@@ -449,6 +571,16 @@ const EMPTY_REVIEW_CONTEXT: ReviewContext = {
   lifecycleToken: "",
   decision: "approve",
   requiresSelfReviewConfirmation: false
+};
+
+const EMPTY_TERMINATION_CONTEXT: TerminationContext = {
+  projectId: "",
+  quotaId: "",
+  projectGeneration: -1,
+  actionId: "",
+  lifecycleToken: "",
+  netUsedAmountCents: "0",
+  availableAmountCents: "0"
 };
 
 const requestVisible = ref(false);
@@ -478,6 +610,21 @@ const selectedFinancingQuotaReviewAction = shallowRef<
   ProjectFinancingQuotaActionReadModel | null
 >(null);
 const reviewArmed = ref(false);
+const terminationVisible = ref(false);
+const terminationBusy = ref(false);
+const terminationAttempted = ref(false);
+const terminationError = ref("");
+const terminationLaunchError = ref("");
+const terminationNotice = ref("");
+const terminationOpeningQuotaId = ref("");
+const terminationForm = ref(createTerminationForm());
+const terminationContext = ref<TerminationContext>({
+  ...EMPTY_TERMINATION_CONTEXT
+});
+const selectedFinancingQuotaTerminationAction = shallowRef<
+  ProjectFinancingQuotaActionReadModel | null
+>(null);
+const terminationArmed = ref(false);
 let componentAlive = true;
 let projectGeneration = 0;
 let requestOpenSequence = 0;
@@ -486,12 +633,19 @@ let activeRequestOperationId = 0;
 let reviewOpenSequence = 0;
 let reviewOperationSequence = 0;
 let activeReviewOperationId = 0;
+let terminationOpenSequence = 0;
+let terminationOperationSequence = 0;
+let activeTerminationOperationId = 0;
 let requestAttemptState: ProjectFinancingQuotaRequestAttemptState =
   createProjectFinancingQuotaRequestAttemptState();
 let reviewAttemptState: ProjectFinancingQuotaReviewAttemptState =
   createProjectFinancingQuotaReviewAttemptState();
 let reviewExecutionState: ProjectFinancingQuotaReviewExecutionState<ReviewOperationContext> =
   createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
+let terminationAttemptState: ProjectFinancingQuotaTerminationAttemptState =
+  createProjectFinancingQuotaTerminationAttemptState();
+let terminationExecutionState: ProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext> =
+  createProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext>();
 
 onBeforeUnmount(() => {
   componentAlive = false;
@@ -502,6 +656,10 @@ onBeforeUnmount(() => {
   activeReviewOperationId = 0;
   reviewExecutionState =
     createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
+  terminationOpenSequence += 1;
+  activeTerminationOperationId = 0;
+  terminationExecutionState =
+    createProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext>();
 });
 
 watch(
@@ -524,6 +682,15 @@ watch(
     clearReviewSelection();
     reviewLaunchError.value = "";
     reviewNotice.value = "";
+    terminationOpenSequence += 1;
+    activeTerminationOperationId = 0;
+    terminationExecutionState =
+      createProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext>();
+    terminationOpeningQuotaId.value = "";
+    terminationBusy.value = false;
+    clearTerminationSelection();
+    terminationLaunchError.value = "";
+    terminationNotice.value = "";
   }
 );
 
@@ -534,7 +701,7 @@ const quotaColumns = [
   { colKey: "availableAmountCents", title: "当前可用", width: 130 },
   { colKey: "status", title: "状态 / 当前节点", minWidth: 190 },
   { colKey: "validUntil", title: "有效期", width: 130 },
-  { colKey: "operation", title: "审批操作", width: 132, fixed: "right" }
+  { colKey: "operation", title: "审批 / 终止", width: 188, fixed: "right" }
 ];
 
 const usageColumns = [
@@ -776,6 +943,10 @@ async function openReview(
   if (
     reviewOpeningQuotaId.value ||
     reviewBusy.value ||
+    reviewVisible.value ||
+    terminationOpeningQuotaId.value ||
+    terminationBusy.value ||
+    terminationVisible.value ||
     props.workbench.project.id !== props.projectId ||
     !reviewActionEnabled(row.reviewAction)
   ) {
@@ -1047,6 +1218,251 @@ function clearReviewSelection() {
   reviewError.value = "";
 }
 
+async function openTermination(row: ProjectFinancingQuotaRowReadModel) {
+  if (
+    terminationOpeningQuotaId.value ||
+    terminationBusy.value ||
+    terminationVisible.value ||
+    reviewOpeningQuotaId.value ||
+    reviewBusy.value ||
+    reviewVisible.value ||
+    props.workbench.project.id !== props.projectId ||
+    !terminateActionEnabled(row.terminateAction)
+  ) {
+    return;
+  }
+
+  clearTerminationSelection();
+  const context: TerminationContext = {
+    projectId: props.projectId,
+    quotaId: row.id,
+    projectGeneration,
+    actionId: crypto.randomUUID(),
+    lifecycleToken: row.lifecycleToken,
+    netUsedAmountCents: row.netUsedAmountCents,
+    availableAmountCents: row.availableAmountCents
+  };
+  const openTerminationId = ++terminationOpenSequence;
+  terminationContext.value = context;
+  terminationOpeningQuotaId.value = row.id;
+  terminationLaunchError.value = "";
+  terminationNotice.value = "";
+  try {
+    const freshCapability =
+      await fetchProjectFinancingQuotaTerminationCapability(
+        context.projectId,
+        context.quotaId
+      );
+    if (!terminationOpenContextIsCurrent(context, openTerminationId)) return;
+    if (
+      freshCapability.projectId !== context.projectId ||
+      freshCapability.quotaId !== context.quotaId ||
+      freshCapability.status !== "approved" ||
+      freshCapability.lifecycleToken !== context.lifecycleToken ||
+      freshCapability.terminateAction.key !== "terminate_financing_quota" ||
+      freshCapability.terminateAction.kind !== "danger" ||
+      freshCapability.terminateAction.enabled !== true ||
+      freshCapability.terminateAction.disabledReason !== null ||
+      freshCapability.terminateAction.requiredAction !==
+        "project.financing_quota.terminate" ||
+      freshCapability.terminateAction.requiresPassword !== true
+    ) {
+      throw new Error("项目垫资额度终止资格已变化，请刷新台账后重试");
+    }
+    selectedFinancingQuotaTerminationAction.value =
+      freshCapability.terminateAction;
+    terminationAttemptState =
+      createProjectFinancingQuotaTerminationAttemptState();
+    terminationArmed.value = true;
+    terminationVisible.value = true;
+  } catch (error) {
+    if (terminationOpenOperationIsCurrent(context, openTerminationId)) {
+      terminationContext.value = { ...EMPTY_TERMINATION_CONTEXT };
+      terminationLaunchError.value = errorMessage(
+        error,
+        "项目垫资额度终止资格校验失败"
+      );
+    }
+  } finally {
+    if (terminationOpenOperationIsCurrent(context, openTerminationId)) {
+      terminationOpeningQuotaId.value = "";
+    }
+  }
+}
+
+function submitTermination(): Promise<unknown> {
+  return executeProjectFinancingQuotaTerminationAction(
+    {
+      attemptState: terminationAttemptState,
+      capture: captureTerminationSubmission,
+      current: terminationContextIsCurrent,
+      complete: (context, result) =>
+        completeTermination(result.workbench, context),
+      fail: (context, error) => failTermination(error, context),
+      finish: finishTermination
+    },
+    terminationExecutionState
+  );
+}
+
+function captureTerminationSubmission(): ProjectFinancingQuotaTerminationExecutionSubmission<TerminationOperationContext> | null {
+  const selected = terminationContext.value;
+  const reason = terminationForm.value.reason.trim();
+  const confirmationPassword = terminationForm.value.confirmationPassword;
+  if (!terminationContextIsCurrent(selected)) {
+    terminationError.value = "终止上下文已失效，请重新打开确认窗口。";
+    return null;
+  }
+  if (!reason) {
+    terminationError.value = "请填写终止原因";
+    return null;
+  }
+  if (Array.from(reason).length > 500) {
+    terminationError.value = "终止原因不能超过 500 个字符";
+    return null;
+  }
+  if (!confirmationPassword.trim()) {
+    terminationError.value = "请输入当前登录密码";
+    return null;
+  }
+
+  const context: TerminationOperationContext = {
+    ...selected,
+    operationId: ++terminationOperationSequence
+  };
+  activeTerminationOperationId = context.operationId;
+  terminationBusy.value = true;
+  terminationAttempted.value = true;
+  terminationError.value = "";
+  return {
+    projectId: context.projectId,
+    quotaId: context.quotaId,
+    reason,
+    confirmationPassword,
+    actionId: context.actionId,
+    lifecycleToken: context.lifecycleToken,
+    context
+  };
+}
+
+function terminationOpenContextIsCurrent(
+  context: TerminationContext,
+  openTerminationId: number
+) {
+  const selected = terminationContext.value;
+  return Boolean(
+    componentAlive &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration &&
+      terminationOpenSequence === openTerminationId &&
+      selected.projectId === context.projectId &&
+      selected.quotaId === context.quotaId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.actionId === context.actionId
+  );
+}
+
+function terminationOpenOperationIsCurrent(
+  context: TerminationContext,
+  openTerminationId: number
+) {
+  return (
+    componentAlive &&
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    terminationOpenSequence === openTerminationId
+  );
+}
+
+function terminationContextIsCurrent(context: TerminationContext) {
+  const selected = terminationContext.value;
+  return Boolean(
+    componentAlive &&
+      terminationArmed.value &&
+      terminationVisible.value &&
+      selected.projectId === context.projectId &&
+      selected.quotaId === context.quotaId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.actionId === context.actionId &&
+      selected.lifecycleToken === context.lifecycleToken &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration
+  );
+}
+
+function terminationOperationIsCurrent(
+  context: TerminationOperationContext
+) {
+  return (
+    terminationContextIsCurrent(context) &&
+    activeTerminationOperationId === context.operationId
+  );
+}
+
+function completeTermination(
+  nextWorkbench: ProjectFinancingQuotaWorkbenchReadModel,
+  context: TerminationOperationContext
+) {
+  if (!terminationOperationIsCurrent(context)) return;
+  clearTerminationSelection();
+  terminationNotice.value =
+    "垫资额度已终止新占用，既有使用与冲正历史已保留，权威台账已刷新。";
+  emit("updated", nextWorkbench);
+}
+
+function failTermination(
+  error: unknown,
+  context: TerminationOperationContext
+) {
+  if (!terminationOperationIsCurrent(context)) return;
+  terminationAttempted.value = terminationAttemptState.submission !== null;
+  terminationError.value = errorMessage(
+    error,
+    "项目垫资额度终止失败"
+  );
+}
+
+function finishTermination(context: TerminationOperationContext) {
+  if (
+    componentAlive &&
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    activeTerminationOperationId === context.operationId
+  ) {
+    terminationBusy.value = false;
+    activeTerminationOperationId = 0;
+  }
+}
+
+function cancelTermination() {
+  if (terminationBusy.value) return;
+  terminationOpenSequence += 1;
+  activeTerminationOperationId = 0;
+  terminationExecutionState =
+    createProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext>();
+  clearTerminationSelection();
+}
+
+function handleTerminationVisibleChange(visible: boolean) {
+  if (visible || terminationBusy.value) return;
+  cancelTermination();
+}
+
+function clearTerminationSelection() {
+  terminationVisible.value = false;
+  terminationArmed.value = false;
+  terminationContext.value = { ...EMPTY_TERMINATION_CONTEXT };
+  selectedFinancingQuotaTerminationAction.value = null;
+  terminationAttemptState = createProjectFinancingQuotaTerminationAttemptState();
+  terminationExecutionState =
+    createProjectFinancingQuotaTerminationExecutionState<TerminationOperationContext>();
+  terminationAttempted.value = false;
+  terminationBusy.value = false;
+  activeTerminationOperationId = 0;
+  terminationForm.value = createTerminationForm();
+  terminationError.value = "";
+}
+
 function createRequestForm() {
   return {
     amountYuan: "",
@@ -1060,6 +1476,13 @@ function createReviewForm() {
     comment: "",
     confirmationPassword: "",
     selfReviewReason: ""
+  };
+}
+
+function createTerminationForm() {
+  return {
+    reason: "",
+    confirmationPassword: ""
   };
 }
 
@@ -1189,29 +1612,57 @@ function statusTheme(status: ProjectFinancingQuotaStatus, isExpired: boolean) {
 }
 
 .review-form,
-.review-form label {
+.review-form label,
+.termination-form,
+.termination-form label {
   display: grid;
   gap: var(--jg-space-sm);
 }
 
-.review-form {
+.review-form,
+.termination-form {
   gap: var(--jg-space-md-plus);
 }
 
-.review-form label > span {
+.review-form label > span,
+.termination-form label > span {
   color: var(--jg-color-text-secondary);
   font-size: var(--jg-font-size-body);
   font-weight: var(--jg-font-weight-medium);
 }
 
-.review-form b {
+.review-form b,
+.termination-form b {
   color: var(--jg-color-danger);
 }
 
+.quota-actions,
 .review-actions {
   display: flex;
   align-items: center;
   gap: var(--jg-space-xs);
+}
+
+.quota-actions {
+  flex-wrap: wrap;
+}
+
+.termination-impact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--jg-space-sm);
+  border: 1px solid var(--jg-border);
+  border-radius: var(--jg-radius-md);
+  padding: var(--jg-space-md-plus);
+  background: var(--jg-bg-muted);
+}
+
+.termination-impact span {
+  color: var(--jg-color-text-secondary);
+}
+
+.termination-impact strong {
+  color: var(--jg-color-text-primary);
 }
 
 .request-file-field {

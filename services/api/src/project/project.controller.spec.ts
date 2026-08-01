@@ -143,6 +143,8 @@ describe("ProjectController authorization wiring", () => {
     selfReviewReason?: string;
   };
   type ProjectFinancingQuotaTerminationBody = {
+    actionId: string;
+    expectedLifecycleToken: string;
     reason: string;
     confirmationPassword: string;
   };
@@ -344,7 +346,12 @@ describe("ProjectController authorization wiring", () => {
     ],
     [
       "terminateProjectFinancingQuota",
-      { reason: "项目已具备自有资金，不再允许新占用", confirmationPassword: "current-password" }
+      {
+        actionId: "33333333-3333-4333-8333-333333333333",
+        expectedLifecycleToken: "a".repeat(64),
+        reason: "项目已具备自有资金，不再允许新占用",
+        confirmationPassword: "current-password"
+      }
     ]
   ] as const)("accepts a valid %s body through its controller runtime DTO", async (method, value) => {
     const result = await validateProjectMoneyBody(method, value);
@@ -1095,6 +1102,14 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
+        (ProjectController.prototype as never as {
+          projectFinancingQuotaTerminationCapability: object;
+        }).projectFinancingQuotaTerminationCapability
+      )
+    ).toBe("project.financing_quota.terminate");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
         (ProjectController.prototype as never as { terminateProjectFinancingQuota: object })
           .terminateProjectFinancingQuota
       )
@@ -1168,6 +1183,27 @@ describe("ProjectController authorization wiring", () => {
 
     expect(
       projects.getProjectFinancingQuotaReviewCapability
+    ).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "finance-director-1"
+    );
+  });
+
+  it("forwards immutable coordinates for the financing quota termination capability", async () => {
+    const projects = {
+      getProjectFinancingQuotaTerminationCapability: jest.fn()
+    };
+    const controller = new ProjectController(projects as never);
+
+    await controller.projectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-1",
+      { id: "finance-director-1" } as never
+    );
+
+    expect(
+      projects.getProjectFinancingQuotaTerminationCapability
     ).toHaveBeenCalledWith(
       "project-1",
       "quota-1",
@@ -1461,6 +1497,8 @@ describe("ProjectController authorization wiring", () => {
     const projects = { terminateProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
+      actionId: "33333333-3333-4333-8333-333333333333",
+      expectedLifecycleToken: "a".repeat(64),
       reason: "项目已具备自有资金，不再允许新占用",
       confirmationPassword: "current-password"
     };

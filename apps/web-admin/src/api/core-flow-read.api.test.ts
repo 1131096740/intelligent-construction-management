@@ -57,7 +57,6 @@ import {
   confirmProjectUpstreamSettlement,
   requestSettlementExceptionQuota,
   reviewSettlementExceptionQuota,
-  terminateProjectFinancingQuota,
   createProjectExpenseRequest,
   executeProjectExpenseApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
@@ -1287,29 +1286,6 @@ describe("core flow read API client", () => {
         decision: "approve",
         confirmationPassword: "current-password",
         comment: "同意"
-      })
-    );
-  });
-
-  it("terminates project financing quotas through the backend", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "quota-1" })
-    } as Response);
-
-    await terminateProjectFinancingQuota("project-1", "quota-1", {
-      reason: "项目已具备自有资金，不再允许新占用",
-      confirmationPassword: "current-password"
-    });
-
-    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/projects/project-1/financing-quotas/quota-1/termination"
-    ]);
-    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[0][1]?.body).toBe(
-      JSON.stringify({
-        reason: "项目已具备自有资金，不再允许新占用",
-        confirmationPassword: "current-password"
       })
     );
   });

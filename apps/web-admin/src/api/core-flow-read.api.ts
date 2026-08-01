@@ -1847,11 +1847,6 @@ export interface ReviewSettlementExceptionQuotaPayload {
   comment?: string;
 }
 
-export interface TerminateProjectFinancingQuotaPayload {
-  reason: string;
-  confirmationPassword: string;
-}
-
 export type ProjectExpenseType =
   | "sporadic_payment"
   | "loan_reserve"
@@ -2468,17 +2463,6 @@ export function reviewSettlementExceptionQuota(
 ) {
   return postJson<unknown>(
     `/projects/${projectId}/settlement-exception-quotas/${quotaId}/approval`,
-    body
-  );
-}
-
-export function terminateProjectFinancingQuota(
-  projectId: string,
-  quotaId: string,
-  body: TerminateProjectFinancingQuotaPayload
-) {
-  return postJson<unknown>(
-    `/projects/${projectId}/financing-quotas/${quotaId}/termination`,
     body
   );
 }

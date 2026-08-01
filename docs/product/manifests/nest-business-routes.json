@@ -1479,6 +1479,23 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/financing-quotas/:quotaId/termination-capability",
+      "normalizedKey": "GET /projects/:param/financing-quotas/:param/termination-capability",
+      "controller": "ProjectController",
+      "handler": "projectFinancingQuotaTerminationCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.financing_quota.terminate",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/operating-funds-overview",
       "normalizedKey": "GET /projects/:param/operating-funds-overview",
       "controller": "ProjectController",

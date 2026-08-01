@@ -229,4 +229,85 @@ describe("project financing quota F0/F1/F2 workbench", () => {
       "selectedFinancingQuotaReviewAction.value = null"
     );
   });
+
+  it("registers F3 manual termination through the dedicated canonical executor", () => {
+    const registration = pageActionRegistry.actions.find(
+      (action) => action.id === "project-financing-quota.terminate"
+    );
+
+    expect(registration?.trigger).toEqual({
+      element: "t-button",
+      event: "click",
+      handler: "submitTermination"
+    });
+    expect(registration?.capability).toEqual({
+      kind: "detail_action",
+      source: "selectedFinancingQuotaTerminationAction"
+    });
+    expect(registration?.wrappers).toEqual([{
+      apiFile: "apps/web-admin/src/api/project-financing-quota.api.ts",
+      name: "executeProjectFinancingQuotaTerminationAction"
+    }]);
+    expect(coreFlowApiSource).not.toContain("terminateProjectFinancingQuota");
+    expect(coreFlowApiSource).not.toContain(
+      "TerminateProjectFinancingQuotaPayload"
+    );
+  });
+
+  it("uses a strict fresh F3 termination capability and a password-confirmed danger dialog", () => {
+    expect(panelSource).toContain("row.terminateAction");
+    expect(panelSource).toContain("fetchProjectFinancingQuotaTerminationCapability");
+    expect(panelSource).toContain("executeProjectFinancingQuotaTerminationAction");
+    expect(panelSource).toContain("selectedFinancingQuotaTerminationAction");
+    expect(panelSource).toContain(
+      'freshCapability.terminateAction.key !== "terminate_financing_quota"'
+    );
+    expect(panelSource).toContain(
+      'freshCapability.terminateAction.kind !== "danger"'
+    );
+    expect(panelSource).toContain(
+      'freshCapability.terminateAction.requiredAction !==\n        "project.financing_quota.terminate"'
+    );
+    expect(panelSource).not.toContain(
+      "terminateActionEnabled(freshCapability.terminateAction)"
+    );
+    expect(panelSource).toContain("确认终止垫资额度");
+    expect(panelSource).toContain("当前已占用");
+    expect(panelSource).toContain("当前剩余额度");
+    expect(panelSource).toContain(
+      "不删除、不释放、不重排既有资金使用和冲正历史"
+    );
+    expect(panelSource).toContain("Array.from(reason).length > 500");
+    expect(panelSource).not.toContain("auth.user");
+    expect(panelSource).not.toContain("fetch(");
+
+    const capabilitySource = apiSource.slice(
+      apiSource.indexOf(
+        "export async function fetchProjectFinancingQuotaTerminationCapability"
+      ),
+      apiSource.indexOf(
+        "function terminateProjectFinancingQuotaWithPreflight"
+      )
+    );
+    expect(capabilitySource).toContain("/termination-capability`");
+    expect(capabilitySource).toContain("response.clone().text()");
+    expect(capabilitySource).toContain("isTerminationCapabilityReadModel");
+    expect(apiSource).not.toContain(
+      "export function terminateProjectFinancingQuotaWithPreflight"
+    );
+    expect(apiSource).toContain("expectedLifecycleToken");
+    expect(apiSource).toContain("terminationPromise");
+    expect(apiSource).toContain("businessReceipt");
+  });
+
+  it("isolates F3 late work and accepts the changed terminated authority row without clearing usage history", () => {
+    expect(panelSource).toContain("terminationContextIsCurrent");
+    expect(panelSource).toContain("terminationExecutionState");
+    expect(panelSource).toContain("projectGeneration");
+    expect(panelSource).toContain("onBeforeUnmount");
+    expect(apiSource).toContain('row.status !== "terminated"');
+    expect(panelSource).toContain("usageGroups");
+    expect(apiSource).not.toContain("row.usageGroups = []");
+    expect(apiSource).toContain("if (state.promise) return state.promise");
+  });
 });

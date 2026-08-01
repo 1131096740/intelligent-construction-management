@@ -129,6 +129,20 @@ export class ProjectController {
     );
   }
 
+  @Get(":projectId/financing-quotas/:quotaId/termination-capability")
+  @RequireProjectRole("project.financing_quota.terminate")
+  projectFinancingQuotaTerminationCapability(
+    @Param("projectId") projectId: string,
+    @Param("quotaId") quotaId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.projects.getProjectFinancingQuotaTerminationCapability(
+      projectId,
+      quotaId,
+      user.id
+    );
+  }
+
   @Get(":projectId/affiliate-business-facts")
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
   affiliateBusinessFacts(

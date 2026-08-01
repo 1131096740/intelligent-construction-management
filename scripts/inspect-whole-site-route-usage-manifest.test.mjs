@@ -997,7 +997,7 @@ test("renders deterministically without wall-clock evidence", () => {
   assert.doesNotMatch(rendered, /generatedAt|timestamp/i);
 });
 
-test("locks the repository baseline to 40 plus 19 external routes and exact blockers", async () => {
+test("locks the repository baseline to 40 plus 19 external routes and no blockers", async () => {
   const manifest = await inspectWholeSiteRouteUsageManifest({
     root: REPOSITORY_ROOT
   });
@@ -1023,7 +1023,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       ])
   );
 
-  assert.equal(manifest.status, "blocked");
+  assert.equal(manifest.status, "ready");
   assert.deepEqual(externalByController, {
     ContractTakeoverController: 40,
     ProjectController: 19
@@ -1123,7 +1123,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 397);
+  assert.equal(manifest.summary.routeCount, 398);
   assert.equal(manifest.summary.classificationOverrideCount, 107);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
@@ -1133,19 +1133,19 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     manifest.summary.consumerSurfaceOverrideSha256,
     "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 289);
-  assert.equal(manifest.summary.pageRouteCount, 292);
+  assert.equal(manifest.summary.derivedProductionPageCount, 291);
+  assert.equal(manifest.summary.pageRouteCount, 294);
   assert.equal(manifest.summary.externalTakeoverCount, 59);
   assert.equal(manifest.summary.exitCandidateCount, 43);
   assert.equal(manifest.summary.internalTaskCount, 2);
-  assert.equal(manifest.summary.unclassifiedCount, 1);
+  assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 339,
+    web_api_wrapper: 341,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 1,
     operator_endpoint: 1,
-    none: 50
+    none: 49
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>
@@ -1166,9 +1166,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       "apps/web-admin/src/api/settlement-template.api.ts#downloadSettlementTemplatePreview#GET#downloadUrl"
     ]
   );
-  assert.deepEqual(nonZeroBlockers, {
-    unclassifiedRoutes: 1
-  });
+  assert.deepEqual(nonZeroBlockers, {});
   assert.ok(
     manifest.routes
       .filter((entry) => entry.usage === "exit_candidate")
@@ -1178,12 +1176,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
           entry.deletionAuthorized === false
       )
   );
-  assert.deepEqual(
-    manifest.blockers.unclassifiedRoutes.map(
-      (entry) => entry.normalizedKey
-    ),
-    ["POST /projects/:param/financing-quotas/:param/termination"]
-  );
+  assert.deepEqual(manifest.blockers.unclassifiedRoutes, []);
 });
 
 test("writes and checks a blocked baseline while detecting drift", async () => {

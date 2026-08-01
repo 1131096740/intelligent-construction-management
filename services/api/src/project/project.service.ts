@@ -2639,7 +2639,11 @@ export class ProjectService {
             currentNodeName: currentNode?.name ?? null,
             updatedAt: currentApproval.updatedAt.toISOString()
           },
-          lifecycleToken: financingQuotaLifecycleToken(quota, currentApproval),
+          lifecycleToken: financingQuotaLifecycleToken(
+            quota,
+            currentApproval,
+            netUsedAmountCents
+          ),
           reviewAction: financingQuotaReadAction({
             key: "review_financing_quota",
             label: "审批垫资额度",
@@ -2740,6 +2744,32 @@ export class ProjectService {
       status: row.status,
       lifecycleToken: row.lifecycleToken,
       reviewAction: row.reviewAction
+    };
+  }
+
+  async getProjectFinancingQuotaTerminationCapability(
+    projectId: string,
+    quotaId: string,
+    actorUserId: string
+  ) {
+    const workbench = await this.getProjectFinancingQuotaWorkbench(
+      projectId,
+      actorUserId
+    );
+    const matchingRows = workbench.rows.filter((row) => row.id === quotaId);
+    if (matchingRows.length === 0) {
+      throw new NotFoundException("项目垫资额度不存在");
+    }
+    if (matchingRows.length !== 1) {
+      throw new ConflictException("项目垫资额度存在重复的只读终止能力");
+    }
+    const row = matchingRows[0]!;
+    return {
+      projectId: workbench.project.id,
+      quotaId: row.id,
+      status: row.status,
+      lifecycleToken: row.lifecycleToken,
+      terminateAction: row.terminateAction
     };
   }
 
@@ -3303,62 +3333,239 @@ export class ProjectService {
     actorUserId: string,
     input: TerminateProjectFinancingQuotaDto
   ) {
+    const actionId = normalizeUuidV4(
+      input.actionId,
+      "项目垫资额度终止 actionId 必须是 UUIDv4"
+    );
+    const expectedLifecycleToken = normalizeLowercaseSha256(
+      input.expectedLifecycleToken,
+      "项目垫资额度终止生命周期令牌无效"
+    );
     const reason = requiredTrimmed(
       input.reason,
       "请填写项目垫资额度终止原因"
     );
-    const confirmationPassword = requiredTrimmed(
-      input.confirmationPassword,
-      "项目垫资额度终止需要当前登录密码确认"
-    );
+    if (Array.from(reason).length > 500) {
+      throw new BadRequestException(
+        "项目垫资额度终止原因不能超过 500 个字符"
+      );
+    }
+    const confirmationPassword = input.confirmationPassword;
+    if (
+      typeof confirmationPassword !== "string" ||
+      confirmationPassword.trim().length === 0
+    ) {
+      throw new BadRequestException(
+        "项目垫资额度终止需要当前登录密码确认"
+      );
+    }
+    if (Array.from(confirmationPassword).length > 256) {
+      throw new BadRequestException("当前登录密码格式不正确");
+    }
     if (!this.auth) {
       throw new Error("项目垫资额度终止缺少身份确认服务");
     }
-    await this.auth.confirmPassword(actorUserId, confirmationPassword);
-
-    return this.prisma.$transaction(async (tx) => {
-      await this.funding.lockFundingContext(tx, projectId);
-      const quota = await tx.projectFinancingQuota.findFirst({
-        where: { id: quotaId, projectId }
-      });
-      if (!quota) {
-        throw new NotFoundException("项目垫资额度不存在");
-      }
-      if (quota.status !== "approved") {
-        throw new BadRequestException("只有已批准的项目垫资额度可以终止");
-      }
-
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: true
-      });
-      const terminatedAt = new Date();
-      const updated = await tx.projectFinancingQuota.update({
-        where: { id: quota.id },
-        data: {
-          status: "terminated",
-          terminatedAt,
-          terminatedByUserId: actorUserId,
-          terminationReason: reason,
-          terminationSignatureFileId: signature.fileId,
-          terminationSignatureSha256: signature.sha256,
-          terminationSignatureVersionId: signature.versionId
-        }
-      });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project.financing_quota.terminate",
-        businessType: "project_financing_quota",
-        businessId: quota.id,
-        metadata: {
-          projectId: quota.projectId,
-          fromStatus: quota.status,
-          toStatus: "terminated",
-          reason,
-          terminationSignatureVersionId: signature.versionId
-        }
-      });
-      return toProjectFinancingQuotaReadModel(updated);
+    const requestFingerprint = projectFinancingQuotaTerminationRequestFingerprint({
+      actionId,
+      projectId,
+      quotaId,
+      actorUserId,
+      expectedLifecycleToken,
+      reason
     });
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const project = await lockActiveProjectForFinancingQuotaMutation(
+          tx,
+          projectId
+        );
+        if (!project) {
+          throw new NotFoundException("项目不存在或已停用");
+        }
+        const quota = await lockProjectFinancingQuotaForReview(
+          tx,
+          projectId,
+          quotaId
+        );
+        if (!quota) {
+          throw new NotFoundException("项目垫资额度不存在");
+        }
+        const approvalInstances =
+          await lockProjectFinancingQuotaApprovalInstances(tx, quotaId);
+        const approvalByQuotaId = indexProjectFinancingQuotaApprovalInstances(
+          approvalInstances
+        );
+        const { instance: approval } =
+          assertProjectFinancingQuotaApprovalLifecycle(
+            quota,
+            approvalByQuotaId.get(quota.id)
+          );
+
+        const actorRoleKeys = await this.loadActorRoleKeys(
+          tx,
+          actorUserId,
+          projectId
+        );
+        if (!actorRoleKeys.includes("finance_director")) {
+          throw new ForbiddenException(
+            "只有财务主管可以终止项目垫资额度"
+          );
+        }
+        await this.auth!.confirmPassword(
+          actorUserId,
+          confirmationPassword,
+          tx
+        );
+
+        if (quota.terminationActionId) {
+          assertProjectFinancingQuotaTerminationReplay(quota, {
+            actionId,
+            projectId,
+            quotaId,
+            actorUserId,
+            requestFingerprint,
+            reason
+          });
+          return projectFinancingQuotaTerminationReceipt({
+            kind: "replayed",
+            actionId,
+            projectId,
+            quotaId
+          });
+        }
+        if (quota.status === "terminated") {
+          throw new ConflictException(
+            "历史项目垫资额度终止事实缺少耐久 actionId，不能自动重放"
+          );
+        }
+        if (quota.status !== "approved") {
+          throw new ConflictException(
+            "只有已批准的项目垫资额度可以终止"
+          );
+        }
+        if (approval.status !== "approved") {
+          throw new ConflictException(
+            "项目垫资额度审批生命周期不完整"
+          );
+        }
+        const { allocationSummary } =
+          await this.funding.assertPersistedProjectFundingLedgerCoverage(
+            tx,
+            projectId
+          );
+        const amountCents = dbMoneyToBigInt(
+          quota.amountCents,
+          "项目垫资额度"
+        );
+        const netUsedAmountCents =
+          allocationSummary.netUsedBySource.get(
+            `financing_quota:${quota.id}`
+          ) ?? 0n;
+        if (
+          netUsedAmountCents < 0n ||
+          netUsedAmountCents > amountCents
+        ) {
+          throw new ConflictException(
+            "项目垫资额度占用事实不完整，请先核对资金账本"
+          );
+        }
+        if (
+          financingQuotaLifecycleToken(
+            quota,
+            approval,
+            netUsedAmountCents
+          ) !== expectedLifecycleToken
+        ) {
+          throw new ConflictException(
+            "项目垫资额度终止事实已变化，请刷新后重试"
+          );
+        }
+        const signature = await snapshotApprovalSignature(tx, actorUserId, {
+          required: true
+        });
+        if (!isLowercaseSha256(signature.sha256)) {
+          throw new ConflictException(
+            "项目垫资额度终止签名 SHA-256 无效"
+          );
+        }
+        const remainingAmountCents = amountCents - netUsedAmountCents;
+        const terminatedAt = new Date();
+        const updated = await tx.projectFinancingQuota.updateMany({
+          where: {
+            id: quota.id,
+            projectId,
+            status: "approved",
+            updatedAt: quota.updatedAt,
+            terminatedAt: null,
+            terminatedByUserId: null,
+            terminationReason: null,
+            terminationSignatureFileId: null,
+            terminationSignatureSha256: null,
+            terminationSignatureVersionId: null,
+            terminationActionId: null,
+            terminationRequestFingerprint: null
+          },
+          data: {
+            status: "terminated",
+            terminatedAt,
+            terminatedByUserId: actorUserId,
+            terminationReason: reason,
+            terminationSignatureFileId: signature.fileId,
+            terminationSignatureSha256: signature.sha256,
+            terminationSignatureVersionId: signature.versionId,
+            terminationActionId: actionId,
+            terminationRequestFingerprint: requestFingerprint
+          }
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            "项目垫资额度终止事实已变化，请刷新后重试"
+          );
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.financing_quota.terminate",
+          businessType: "project_financing_quota",
+          businessId: quota.id,
+          metadata: {
+            actionId,
+            projectId,
+            quotaId,
+            approvalInstanceId: approval.id,
+            expectedLifecycleToken,
+            requestFingerprint,
+            fromStatus: quota.status,
+            toStatus: "terminated",
+            reason,
+            terminatedAt: terminatedAt.toISOString(),
+            netUsedAmountCents: moneyCentsToApi(netUsedAmountCents),
+            remainingAmountCents: moneyCentsToApi(remainingAmountCents),
+            terminationSignatureFileId: signature.fileId,
+            terminationSignatureSha256: signature.sha256,
+            terminationSignatureVersionId: signature.versionId
+          }
+        });
+        return projectFinancingQuotaTerminationReceipt({
+          kind: "applied",
+          actionId,
+          projectId,
+          quotaId
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (isProjectFinancingQuotaReviewConcurrencyConflict(error)) {
+        throw new ConflictException(
+          "项目垫资额度终止发生并发冲突，请刷新后重试"
+        );
+      }
+      if (isProjectFinancingQuotaTerminationActionIdConflict(error)) {
+        throw new ConflictException(
+          "项目垫资额度终止 actionId 已被其他额度使用"
+        );
+      }
+      throw error;
+    }
   }
 
   private async loadActorRoleKeys(
@@ -3527,8 +3734,19 @@ function financingQuotaLifecycleToken(
     requestedByRoleKey: string | null;
     updatedAt: Date;
   },
-  approval: FinancingQuotaApprovalInstanceSnapshot | null
+  approval: FinancingQuotaApprovalInstanceSnapshot | null,
+  netUsedAmountCents?: bigint
 ) {
+  const requiresFundingState =
+    quota.status === "approved" || quota.status === "terminated";
+  if (requiresFundingState && netUsedAmountCents === undefined) {
+    throw new ConflictException(
+      "项目垫资额度生命周期令牌缺少占用事实"
+    );
+  }
+  const terminalFundingState = requiresFundingState
+    ? { netUsedAmountCents: netUsedAmountCents!.toString() }
+    : {};
   return createHash("sha256").update(JSON.stringify({
     quota: {
       id: quota.id,
@@ -3541,7 +3759,8 @@ function financingQuotaLifecycleToken(
       attachmentFileSha256Snapshot: quota.attachmentFileSha256Snapshot,
       requestedByUserId: quota.requestedByUserId,
       requestedByRoleKey: quota.requestedByRoleKey,
-      updatedAt: quota.updatedAt.toISOString()
+      updatedAt: quota.updatedAt.toISOString(),
+      ...terminalFundingState
     },
     approval: approval
       ? {
@@ -3775,6 +3994,57 @@ function projectFinancingQuotaReviewReceipt(input: {
   return input;
 }
 
+function projectFinancingQuotaTerminationRequestFingerprint(value: {
+  actionId: string;
+  projectId: string;
+  quotaId: string;
+  actorUserId: string;
+  expectedLifecycleToken: string;
+  reason: string;
+}) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function projectFinancingQuotaTerminationReceipt(input: {
+  kind: "applied" | "replayed";
+  actionId: string;
+  projectId: string;
+  quotaId: string;
+}) {
+  return input;
+}
+
+function assertProjectFinancingQuotaTerminationReplay(
+  quota: ProjectFinancingQuota,
+  expected: {
+    actionId: string;
+    projectId: string;
+    quotaId: string;
+    actorUserId: string;
+    requestFingerprint: string;
+    reason: string;
+  }
+) {
+  if (
+    quota.id !== expected.quotaId ||
+    quota.projectId !== expected.projectId ||
+    quota.status !== "terminated" ||
+    quota.terminationActionId !== expected.actionId ||
+    quota.terminationRequestFingerprint !== expected.requestFingerprint ||
+    quota.terminatedByUserId !== expected.actorUserId ||
+    quota.terminationReason !== expected.reason ||
+    !(quota.terminatedAt instanceof Date) ||
+    Number.isNaN(quota.terminatedAt.getTime()) ||
+    !quota.terminationSignatureFileId ||
+    !quota.terminationSignatureVersionId ||
+    !isLowercaseSha256(quota.terminationSignatureSha256)
+  ) {
+    throw new ConflictException(
+      "项目垫资额度终止 actionId 与已有终止事实不一致"
+    );
+  }
+}
+
 function assertProjectFinancingQuotaReviewReplay(
   action: ApprovalActionLog,
   expected: {
@@ -3973,6 +4243,16 @@ function isProjectFinancingQuotaReviewActionIdConflict(error: unknown) {
     return target.length === 1 && target[0] === "id";
   }
   return target === "id" || target === "ApprovalActionLog_pkey";
+}
+
+function isProjectFinancingQuotaTerminationActionIdConflict(error: unknown) {
+  if (!isUniqueConstraintError(error)) return false;
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.length === 1 && target[0] === "terminationActionId";
+  }
+  return target === "terminationActionId" ||
+    target === "ProjectFinancingQuota_terminationActionId_key";
 }
 
 function normalizeUpstreamFundFactType(value: unknown): ProjectUpstreamFundFactType {
@@ -4457,48 +4737,6 @@ function toSettlementExceptionQuotaReadModel(quota: {
     approvedByUserId: quota.approvedByUserId ?? null,
     approvedAt: quota.approvedAt?.toISOString() ?? null,
     status: quota.status,
-    createdAt: quota.createdAt.toISOString(),
-    updatedAt: quota.updatedAt.toISOString()
-  };
-}
-
-function toProjectFinancingQuotaReadModel(quota: {
-  id: string;
-  projectId: string;
-  amountCents: bigint;
-  reason: string;
-  validUntil: Date | null;
-  attachmentFileId: string;
-  requestedByUserId: string;
-  approvedByUserId?: string | null;
-  approvedAt?: Date | null;
-  status: string;
-  terminatedAt?: Date | null;
-  terminatedByUserId?: string | null;
-  terminationReason?: string | null;
-  terminationSignatureFileId?: string | null;
-  terminationSignatureSha256?: string | null;
-  terminationSignatureVersionId?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return {
-    id: quota.id,
-    projectId: quota.projectId,
-    amountCents: projectMoneyToApi(quota.amountCents),
-    reason: quota.reason,
-    validUntil: quota.validUntil?.toISOString() ?? null,
-    attachmentFileId: quota.attachmentFileId,
-    requestedByUserId: quota.requestedByUserId,
-    approvedByUserId: quota.approvedByUserId ?? null,
-    approvedAt: quota.approvedAt?.toISOString() ?? null,
-    status: quota.status,
-    terminatedAt: quota.terminatedAt?.toISOString() ?? null,
-    terminatedByUserId: quota.terminatedByUserId ?? null,
-    terminationReason: quota.terminationReason ?? null,
-    terminationSignatureFileId: quota.terminationSignatureFileId ?? null,
-    terminationSignatureSha256: quota.terminationSignatureSha256 ?? null,
-    terminationSignatureVersionId: quota.terminationSignatureVersionId ?? null,
     createdAt: quota.createdAt.toISOString(),
     updatedAt: quota.updatedAt.toISOString()
   };

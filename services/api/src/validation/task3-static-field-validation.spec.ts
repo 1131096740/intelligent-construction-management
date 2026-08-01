@@ -23,6 +23,7 @@ import { RequestProjectFinancingQuotaDto } from "../project/dto/request-project-
 import { RequestSettlementExceptionQuotaDto } from "../project/dto/request-settlement-exception-quota.dto";
 import { ReviewProjectFinancingQuotaDto } from "../project/dto/review-project-financing-quota.dto";
 import { ReviewSettlementExceptionQuotaDto } from "../project/dto/review-settlement-exception-quota.dto";
+import { TerminateProjectFinancingQuotaDto } from "../project/dto/terminate-project-financing-quota.dto";
 
 type DtoConstructor = new () => object;
 type MetadataStorage = ReturnType<typeof getMetadataStorage>;
@@ -54,7 +55,8 @@ const task3DtoTypes: DtoConstructor[] = [
   RequestProjectFinancingQuotaDto,
   RequestSettlementExceptionQuotaDto,
   ReviewProjectFinancingQuotaDto,
-  ReviewSettlementExceptionQuotaDto
+  ReviewSettlementExceptionQuotaDto,
+  TerminateProjectFinancingQuotaDto
 ];
 
 type StaticFieldGroup = {
@@ -109,8 +111,8 @@ async function staticErrors(group: StaticFieldGroup, value: unknown) {
 }
 
 describe("Task 3 DTO static field validation coverage", () => {
-  it("scans all 24 Task 3 runtime DTO classes and only fixed safe messages", () => {
-    expect(task3DtoTypes).toHaveLength(24);
+  it("scans all 25 Task 3 runtime DTO classes and only fixed safe messages", () => {
+    expect(task3DtoTypes).toHaveLength(25);
     expect(staticFieldGroups.length).toBeGreaterThan(0);
     for (const group of staticFieldGroups) {
       for (const entry of group.metadata) {
@@ -138,7 +140,7 @@ describe("Task 3 DTO static field validation coverage", () => {
   it("keeps every required text failure mutually exclusive and preserves valid text", async () => {
     const groups = groupsWithRule("staticRequiredText");
     // Adding or removing a governed required field must update this explicit coverage contract.
-    expect(groups).toHaveLength(52);
+    expect(groups).toHaveLength(54);
     expect(
       groups
         .filter((group) => group.dtoType === ConfirmProjectExpenseReceiptDto)

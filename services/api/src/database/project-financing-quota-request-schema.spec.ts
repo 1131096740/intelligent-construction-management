@@ -16,8 +16,8 @@ describe("project financing quota request schema", () => {
     const names = readdirSync(migrationsPath)
       .filter((name) => /^\d/u.test(name))
       .sort();
-    expect(names).toHaveLength(115);
-    expect(names.at(-1)).toBe(migrationName);
+    expect(names).toHaveLength(116);
+    expect(names.at(-2)).toBe(migrationName);
 
     const migration = readFileSync(migrationPath, "utf8");
     expect(migration).toMatch(/\nBEGIN;\n/u);

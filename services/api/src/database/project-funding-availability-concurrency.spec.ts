@@ -242,6 +242,13 @@ describe("project funding PostgreSQL evidence", () => {
             name: "垫资额度终止并发夹具"
           }
         });
+        await clients[0]!.projectMember.create({
+          data: {
+            projectId: terminationProjectId,
+            userId: actorId,
+            positionKey: "finance_director"
+          }
+        });
         await clients[0]!.fileObject.createMany({
           data: [
             {
@@ -306,6 +313,30 @@ describe("project funding PostgreSQL evidence", () => {
             status: "approved"
           }
         });
+        await clients[0]!.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: terminationQuotaId,
+            status: "approved",
+            currentNodeIndex: 2,
+            applicantUserId: actorId,
+            frozenNodes: [
+              {
+                name: "财务主管",
+                mode: "any",
+                roleKeys: ["finance_director"],
+                approvedRoleKeys: ["finance_director"]
+              },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"],
+                approvedRoleKeys: ["chairman"]
+              }
+            ]
+          }
+        });
         const projectService = new ProjectService(
           clients[0]! as never,
           undefined,
@@ -313,12 +344,21 @@ describe("project funding PostgreSQL evidence", () => {
           service
         );
         const terminationExecutionId = executionId("terminated-quota-race");
+        const terminationCapability =
+          await projectService.getProjectFinancingQuotaTerminationCapability(
+            terminationProjectId,
+            terminationQuotaId,
+            actorId
+          );
+        const terminationActionId = randomUUID();
         const [terminationResult, concurrentQuotaPayment] = await Promise.allSettled([
           projectService.terminateProjectFinancingQuota(
             terminationProjectId,
             terminationQuotaId,
             actorId,
             {
+              actionId: terminationActionId,
+              expectedLifecycleToken: terminationCapability.lifecycleToken,
               reason: "实库并发终止门禁",
               confirmationPassword: "local-test-password"
             }
@@ -333,8 +373,30 @@ describe("project funding PostgreSQL evidence", () => {
             })
           )
         ]);
-        expect(terminationResult.status).toBe("fulfilled");
-        expect(["fulfilled", "rejected"]).toContain(concurrentQuotaPayment.status);
+        expect(
+          [terminationResult, concurrentQuotaPayment].filter(
+            (result) => result.status === "fulfilled"
+          )
+        ).toHaveLength(1);
+        if (terminationResult.status === "rejected") {
+          const refreshedCapability =
+            await projectService.getProjectFinancingQuotaTerminationCapability(
+              terminationProjectId,
+              terminationQuotaId,
+              actorId
+            );
+          await projectService.terminateProjectFinancingQuota(
+            terminationProjectId,
+            terminationQuotaId,
+            actorId,
+            {
+              actionId: randomUUID(),
+              expectedLifecycleToken: refreshedCapability.lifecycleToken,
+              reason: "实库并发终止门禁",
+              confirmationPassword: "local-test-password"
+            }
+          );
+        }
         expect(
           await clients[0]!.projectFinancingQuota.findUnique({
             where: { id: terminationQuotaId },
@@ -342,14 +404,18 @@ describe("project funding PostgreSQL evidence", () => {
               status: true,
               terminatedAt: true,
               terminatedByUserId: true,
-              terminationSignatureVersionId: true
+              terminationSignatureVersionId: true,
+              terminationActionId: true,
+              terminationRequestFingerprint: true
             }
           })
         ).toMatchObject({
           status: "terminated",
           terminatedAt: expect.any(Date),
           terminatedByUserId: actorId,
-          terminationSignatureVersionId: `pf-live-signature-version-${marker}`
+          terminationSignatureVersionId: `pf-live-signature-version-${marker}`,
+          terminationActionId: expect.any(String),
+          terminationRequestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
         });
         const terminationRaceAllocations =
           await clients[0]!.projectFundingAllocation.findMany({
@@ -386,6 +452,13 @@ describe("project funding PostgreSQL evidence", () => {
             name: "垫资额度终止保留流水夹具"
           }
         });
+        await clients[0]!.projectMember.create({
+          data: {
+            projectId: preservedProjectId,
+            userId: actorId,
+            positionKey: "finance_director"
+          }
+        });
         await clients[0]!.projectFinancingQuota.create({
           data: {
             id: preservedQuotaId,
@@ -404,6 +477,30 @@ describe("project funding PostgreSQL evidence", () => {
             status: "approved"
           }
         });
+        await clients[0]!.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: preservedQuotaId,
+            status: "approved",
+            currentNodeIndex: 2,
+            applicantUserId: actorId,
+            frozenNodes: [
+              {
+                name: "财务主管",
+                mode: "any",
+                roleKeys: ["finance_director"],
+                approvedRoleKeys: ["finance_director"]
+              },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"],
+                approvedRoleKeys: ["chairman"]
+              }
+            ]
+          }
+        });
         await clients[0]!.$transaction((tx) =>
           service.allocateExecution(tx, {
             ...retryInput,
@@ -413,11 +510,19 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 500n
           })
         );
+        const preservedCapability =
+          await projectService.getProjectFinancingQuotaTerminationCapability(
+            preservedProjectId,
+            preservedQuotaId,
+            actorId
+          );
         await projectService.terminateProjectFinancingQuota(
           preservedProjectId,
           preservedQuotaId,
           actorId,
           {
+            actionId: randomUUID(),
+            expectedLifecycleToken: preservedCapability.lifecycleToken,
             reason: "实库终止后保留既有资金流水",
             confirmationPassword: "local-test-password"
           }

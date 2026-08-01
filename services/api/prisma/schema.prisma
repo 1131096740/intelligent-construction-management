@@ -2636,6 +2636,8 @@ model ProjectFinancingQuota {
   terminationSignatureFileId    String?
   terminationSignatureSha256    String?
   terminationSignatureVersionId String?
+  terminationActionId            String?   @unique
+  terminationRequestFingerprint String?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 

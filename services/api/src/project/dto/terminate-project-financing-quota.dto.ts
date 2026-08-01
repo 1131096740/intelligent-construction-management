@@ -1,6 +1,13 @@
+import { IsUUID, Matches } from "class-validator";
 import { IsMaxUnicodeTextLength, IsRequiredText } from "../../validation/static-field-validation";
 
 export class TerminateProjectFinancingQuotaDto {
+  @IsUUID("4", { message: "终止 actionId 必须是 UUIDv4" })
+  actionId!: string;
+
+  @Matches(/^[a-f0-9]{64}$/u, { message: "终止生命周期令牌无效" })
+  expectedLifecycleToken!: string;
+
   @IsRequiredText({
     requiredMessage: "请填写项目垫资额度终止原因",
     typeMessage: "项目垫资额度终止原因必须是文字",

@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createProjectFinancingQuotaTerminationAttemptState,
+  createProjectFinancingQuotaTerminationExecutionState,
   createProjectFinancingQuotaReviewExecutionState,
   createProjectFinancingQuotaReviewAttemptState,
   createProjectFinancingQuotaRequestAttemptState,
   createProjectOverviewRequestOwner,
   executeProjectFinancingQuotaReviewAction,
+  executeProjectFinancingQuotaTerminationAction,
+  fetchProjectFinancingQuotaTerminationCapability,
   fetchProjectFinancingQuotaReviewCapability,
   fetchProjectFinancingQuotaWorkbench,
   requestProjectFinancingQuotaWithUpload,
@@ -12,6 +16,10 @@ import {
   type ProjectFinancingQuotaReviewExecutionState,
   type ProjectFinancingQuotaReviewInput,
   type ProjectFinancingQuotaReviewResult,
+  type ProjectFinancingQuotaTerminationAttemptState,
+  type ProjectFinancingQuotaTerminationExecutionState,
+  type ProjectFinancingQuotaTerminationInput,
+  type ProjectFinancingQuotaTerminationResult,
   type ProjectFinancingQuotaWorkbenchReadModel
 } from "./project-financing-quota.api";
 
@@ -22,8 +30,11 @@ import { apiFetch } from "./api-fetch";
 const mockApiFetch = vi.mocked(apiFetch);
 const requestIdempotencyKey = "11111111-1111-4111-8111-111111111111";
 const reviewActionId = "22222222-2222-4222-8222-222222222222";
+const terminationActionId = "33333333-3333-4333-8333-333333333333";
 const reviewLifecycleToken = "a".repeat(64);
 const nextReviewLifecycleToken = "b".repeat(64);
+const terminationLifecycleToken = "c".repeat(64);
+const nextTerminationLifecycleToken = "d".repeat(64);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -50,6 +61,7 @@ function quotaRow(
     "approval_pending",
   options: {
     reviewEnabled?: boolean;
+    terminationEnabled?: boolean;
     requiresSelfReviewConfirmation?: boolean;
     lifecycleToken?: string;
   } = {}
@@ -93,8 +105,8 @@ function quotaRow(
       key: "terminate_financing_quota",
       label: "终止垫资额度",
       kind: "danger",
-      enabled: false,
-      disabledReason: "当前不可终止",
+      enabled: options.terminationEnabled ?? false,
+      disabledReason: options.terminationEnabled ? null : "当前不可终止",
       requiredAction: "project.financing_quota.terminate",
       requiresPassword: true
     },
@@ -113,6 +125,23 @@ function reviewCapability(
     status: row.status,
     lifecycleToken: row.lifecycleToken,
     reviewAction: row.reviewAction
+  };
+}
+
+function terminationCapability(
+  projectId: string,
+  quotaId: string,
+  row = quotaRow(quotaId, "approved", {
+    terminationEnabled: true,
+    lifecycleToken: terminationLifecycleToken
+  })
+) {
+  return {
+    projectId,
+    quotaId,
+    status: row.status,
+    lifecycleToken: row.lifecycleToken,
+    terminateAction: row.terminateAction
   };
 }
 
@@ -140,6 +169,22 @@ function workbench(
       options.requiresFile ?? true
     ),
     rows: options.rows ?? []
+  };
+}
+
+function usageGroup(overrides: Record<string, string> = {}) {
+  return {
+    executionType: "payment_execution",
+    executionId: "execution-1",
+    businessType: "payment_request",
+    businessId: "payment-1",
+    occurredAt: "2026-08-02T02:00:00.000Z",
+    projectCashNetAmountCents: "1000",
+    financingQuotaNetAmountCents: "4000",
+    currentQuotaDebitAmountCents: "4000",
+    currentQuotaCreditAmountCents: "0",
+    currentQuotaNetAmountCents: "4000",
+    ...overrides
   };
 }
 
@@ -198,6 +243,20 @@ function reviewInput(
   };
 }
 
+function terminationInput(
+  context: { current: boolean },
+  options: { lifecycleToken?: string; reason?: string; password?: string } = {}
+) {
+  return {
+    reason: options.reason ?? " 项目已具备自有资金，不再允许新占用 ",
+    confirmationPassword: options.password ?? " current-password ",
+    actionId: terminationActionId,
+    lifecycleToken: options.lifecycleToken ?? terminationLifecycleToken,
+    context,
+    isCurrent: (candidate: { current: boolean }) => candidate.current
+  };
+}
+
 type ReviewTestContext = { current: boolean };
 
 const reviewExecutions = new WeakMap<
@@ -207,6 +266,66 @@ const reviewExecutions = new WeakMap<
     promise: Promise<ProjectFinancingQuotaReviewResult> | null;
   }
 >();
+
+type TerminationTestContext = { current: boolean };
+
+const terminationExecutions = new WeakMap<
+  ProjectFinancingQuotaTerminationAttemptState,
+  {
+    state: ProjectFinancingQuotaTerminationExecutionState<TerminationTestContext>;
+    promise: Promise<ProjectFinancingQuotaTerminationResult> | null;
+  }
+>();
+
+function terminateProjectFinancingQuotaWithPreflight(
+  projectId: string,
+  quotaId: string,
+  input: ProjectFinancingQuotaTerminationInput<TerminationTestContext>,
+  attemptState: ProjectFinancingQuotaTerminationAttemptState
+): Promise<ProjectFinancingQuotaTerminationResult> {
+  let execution = terminationExecutions.get(attemptState);
+  if (!execution) {
+    execution = {
+      state:
+        createProjectFinancingQuotaTerminationExecutionState<TerminationTestContext>(),
+      promise: null
+    };
+    terminationExecutions.set(attemptState, execution);
+  }
+  if (execution.promise) return execution.promise;
+
+  let failure: unknown = new Error("项目垫资额度终止执行失败");
+  const action = executeProjectFinancingQuotaTerminationAction(
+    {
+      attemptState,
+      capture: () => ({
+        projectId,
+        quotaId,
+        reason: input.reason,
+        confirmationPassword: input.confirmationPassword,
+        actionId: input.actionId,
+        lifecycleToken: input.lifecycleToken,
+        context: input.context
+      }),
+      current: input.isCurrent,
+      complete: () => undefined,
+      fail: (_context, error) => {
+        failure = error;
+      },
+      finish: () => undefined
+    },
+    execution.state
+  );
+  const promise = action.then((result) => {
+    if (result.status === "completed") return result.result;
+    if (result.status === "failed") throw failure;
+    throw new Error("项目垫资额度终止执行未完成");
+  }).finally(() => {
+    if (execution?.promise === promise) execution.promise = null;
+  });
+  execution.promise = promise;
+  return promise;
+}
 
 function reviewProjectFinancingQuotaWithPreflight(
   projectId: string,
@@ -1344,6 +1463,461 @@ describe("project financing quota API", () => {
 
     expect(mockApiFetch.mock.calls.filter((call) =>
       call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+    )).toHaveLength(1);
+  });
+
+  it("reads only the exact five-field single-target termination capability", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse(terminationCapability(
+      "project/1",
+      "quota/1"
+    )));
+
+    await expect(fetchProjectFinancingQuotaTerminationCapability(
+      "project/1",
+      "quota/1"
+    )).resolves.toMatchObject({
+      projectId: "project/1",
+      quotaId: "quota/1",
+      status: "approved",
+      lifecycleToken: terminationLifecycleToken
+    });
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/projects/project%2F1/financing-quotas/quota%2F1/termination-capability"
+    );
+
+    mockApiFetch.mockResolvedValueOnce(jsonResponse({
+      ...terminationCapability("project-1", "quota-1"),
+      roleKeys: ["finance_director"]
+    }));
+    await expect(fetchProjectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-1"
+    )).rejects.toMatchObject({
+      status: 502,
+      code: "PROJECT_FINANCING_QUOTA_INVALID_TERMINATION_CAPABILITY_RESPONSE"
+    });
+
+    const validCapability = terminationCapability("project-1", "quota-1");
+    for (const terminateAction of [
+      { ...validCapability.terminateAction, kind: "primary" },
+      { ...validCapability.terminateAction, requiresFile: true },
+      {
+        ...validCapability.terminateAction,
+        disabledReason: "服务端动作状态漂移"
+      }
+    ]) {
+      mockApiFetch.mockResolvedValueOnce(jsonResponse({
+        ...validCapability,
+        terminateAction
+      }));
+      await expect(fetchProjectFinancingQuotaTerminationCapability(
+        "project-1",
+        "quota-1"
+      )).rejects.toMatchObject({
+        status: 502,
+        code: "PROJECT_FINANCING_QUOTA_INVALID_TERMINATION_CAPABILITY_RESPONSE"
+      });
+    }
+  });
+
+  it("terminates only after the fresh exact action and accepts authoritative usage history including a new credit", async () => {
+    const context = { current: true };
+    const terminated = quotaRow("quota/1", "terminated", {
+      lifecycleToken: nextTerminationLifecycleToken
+    });
+    terminated.usageGroups = [usageGroup({
+      executionType: "payment_reversal",
+      executionId: "reversal-1",
+      currentQuotaDebitAmountCents: "0",
+      currentQuotaCreditAmountCents: "1000",
+      currentQuotaNetAmountCents: "-1000"
+    })];
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project/1",
+        "quota/1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: terminationActionId,
+        projectId: "project/1",
+        quotaId: "quota/1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project/1", {
+        rows: [terminated]
+      })));
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project/1",
+      "quota/1",
+      terminationInput(context),
+      createProjectFinancingQuotaTerminationAttemptState()
+    )).resolves.toMatchObject({
+      receipt: { kind: "applied", actionId: terminationActionId },
+      workbench: {
+        rows: [{
+          status: "terminated",
+          lifecycleToken: nextTerminationLifecycleToken,
+          usageGroups: [{ executionType: "payment_reversal" }]
+        }]
+      }
+    });
+
+    expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
+      "/projects/project%2F1/financing-quotas/quota%2F1/termination-capability",
+      "/projects/project%2F1/financing-quotas/quota%2F1/termination",
+      "/projects/project%2F1/financing-quotas"
+    ]);
+    expect(mockApiFetch.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        reason: "项目已具备自有资金，不再允许新占用",
+        confirmationPassword: " current-password ",
+        actionId: terminationActionId,
+        expectedLifecycleToken: terminationLifecycleToken
+      })
+    });
+  });
+
+  it("uses Unicode code-point length for the termination reason", async () => {
+    const context = { current: true };
+    const terminated = quotaRow("quota-1", "terminated", {
+      lifecycleToken: nextTerminationLifecycleToken
+    });
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: terminationActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [terminated]
+      })));
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      terminationInput(context, { reason: "😀".repeat(500) }),
+      createProjectFinancingQuotaTerminationAttemptState()
+    )).resolves.toMatchObject({ receipt: { kind: "applied" } });
+    expect(JSON.parse(String(mockApiFetch.mock.calls[1]?.[1]?.body)))
+      .toMatchObject({ reason: "😀".repeat(500) });
+
+    mockApiFetch.mockReset();
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      terminationInput(context, { reason: "😀".repeat(501) }),
+      createProjectFinancingQuotaTerminationAttemptState()
+    )).rejects.toThrow("终止原因不能超过 500 个字符");
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a termination receipt with undeclared fields", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: terminationActionId,
+        projectId: "project-1",
+        quotaId: "quota-1",
+        status: "terminated"
+      }));
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      terminationInput(context),
+      createProjectFinancingQuotaTerminationAttemptState()
+    )).rejects.toMatchObject({
+      status: 502,
+      code: "PROJECT_FINANCING_QUOTA_INVALID_TERMINATION_RESPONSE"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one termination promise across a double confirmation", async () => {
+    const context = { current: true };
+    const post = deferred<Response>();
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockReturnValueOnce(post.promise)
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "terminated", {
+          lifecycleToken: nextTerminationLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaTerminationAttemptState();
+    const input = terminationInput(context);
+
+    const first = terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    );
+    const second = terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    );
+
+    expect(second).toBe(first);
+    await vi.waitFor(() => {
+      expect(mockApiFetch.mock.calls.filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/termination"
+      )).toHaveLength(1);
+    });
+    post.resolve(jsonResponse({
+      kind: "applied",
+      actionId: terminationActionId,
+      projectId: "project-1",
+      quotaId: "quota-1"
+    }));
+    await expect(first).resolves.toMatchObject({
+      receipt: { actionId: terminationActionId }
+    });
+  });
+
+  it("retries an unknown termination POST with the same action id, token and body", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockRejectedValueOnce(new TypeError("network result unknown"))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "replayed",
+        actionId: terminationActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "terminated", {
+          lifecycleToken: nextTerminationLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaTerminationAttemptState();
+    const input = terminationInput(context);
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toThrow("network result unknown");
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      { ...input, reason: "不应替换冻结数据" },
+      state
+    )).resolves.toMatchObject({ receipt: { kind: "replayed" } });
+
+    const postBodies = mockApiFetch.mock.calls
+      .filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/termination"
+      )
+      .map((call) => call[1]?.body);
+    expect(postBodies).toHaveLength(2);
+    expect(new Set(postBodies)).toHaveProperty("size", 1);
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] ===
+        "/projects/project-1/financing-quotas/quota-1/termination-capability"
+    )).toHaveLength(1);
+  });
+
+  it("retries only the authoritative GET after a durable termination receipt", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: terminationActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockRejectedValueOnce(new TypeError("refresh failed"))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "terminated", {
+          lifecycleToken: nextTerminationLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaTerminationAttemptState();
+    const input = terminationInput(context);
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toThrow("refresh failed");
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).resolves.toMatchObject({ receipt: { kind: "applied" } });
+
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/termination"
+    )).toHaveLength(1);
+  });
+
+  it("resets deterministic failures, re-preflights, and accepts corrected raw password", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        code: "PASSWORD_CONFIRMATION_FAILED",
+        message: "当前密码不正确"
+      }, 400))
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: terminationActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "terminated", {
+          lifecycleToken: nextTerminationLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaTerminationAttemptState();
+    const input = terminationInput(context, { password: " wrong " });
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toMatchObject({ status: 400 });
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      { ...input, confirmationPassword: " corrected " },
+      state
+    )).resolves.toMatchObject({ receipt: { kind: "applied" } });
+
+    const bodies = mockApiFetch.mock.calls
+      .filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/termination"
+      )
+      .map((call) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>);
+    expect(bodies).toMatchObject([
+      { confirmationPassword: " wrong ", actionId: terminationActionId },
+      { confirmationPassword: " corrected ", actionId: terminationActionId }
+    ]);
+  });
+
+  it("fails closed before termination POST on capability drift or invalidated context", async () => {
+    const context = { current: true };
+    mockApiFetch.mockResolvedValueOnce(jsonResponse(terminationCapability(
+      "project-1",
+      "quota-1",
+      quotaRow("quota-1", "approved", {
+        terminationEnabled: true,
+        lifecycleToken: nextTerminationLifecycleToken
+      })
+    )));
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      terminationInput(context),
+      createProjectFinancingQuotaTerminationAttemptState()
+    )).rejects.toThrow("终止资格已变化");
+
+    const pending = deferred<Response>();
+    mockApiFetch.mockReset();
+    mockApiFetch.mockReturnValueOnce(pending.promise);
+    const invalidated = terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      terminationInput(context),
+      createProjectFinancingQuotaTerminationAttemptState()
+    );
+    context.current = false;
+    pending.resolve(jsonResponse(terminationCapability("project-1", "quota-1")));
+
+    await expect(invalidated).rejects.toThrow("终止上下文已失效");
+    expect(mockApiFetch.mock.calls.some((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/termination"
+    )).toBe(false);
+  });
+
+  it("requires a unique terminated row with a changed lifecycle token after the receipt", async () => {
+    const context = { current: true };
+    const state = createProjectFinancingQuotaTerminationAttemptState();
+    const input = terminationInput(context);
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(terminationCapability(
+        "project-1",
+        "quota-1"
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: terminationActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approved", {
+          lifecycleToken: nextTerminationLifecycleToken
+        })]
+      })))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [
+          quotaRow("quota-1", "terminated", {
+            lifecycleToken: nextTerminationLifecycleToken
+          }),
+          quotaRow("quota-1", "terminated", {
+            lifecycleToken: nextTerminationLifecycleToken
+          })
+        ]
+      })));
+
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toMatchObject({
+      code: "PROJECT_FINANCING_QUOTA_TERMINATION_NOT_AUTHORITATIVE"
+    });
+    await expect(terminateProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toMatchObject({
+      code: "PROJECT_FINANCING_QUOTA_TERMINATION_TARGET_CHANGED"
+    });
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/termination"
     )).toHaveLength(1);
   });
 });
