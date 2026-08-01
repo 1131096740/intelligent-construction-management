@@ -779,6 +779,15 @@ describe("SpotProcurementPaymentService real-form draft", () => {
         actorUserId: "finance-director"
       })
     });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        approvedRoleKey: expect.anything(),
+        representedUserId: expect.anything(),
+        signatureFileIdSnapshot: expect.anything(),
+        signatureSha256Snapshot: expect.anything(),
+        signatureVersionIdSnapshot: expect.anything()
+      })
+    });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
       where: { id: "approval-1" },
       data: expect.objectContaining({

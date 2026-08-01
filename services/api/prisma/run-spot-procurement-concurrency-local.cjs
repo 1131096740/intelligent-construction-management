@@ -348,7 +348,9 @@ async function main() {
       console.log(
         verificationScope === "application-review-approve"
           ? "零星采购申请审批签名 PostgreSQL 16 限定门禁通过"
-          : "零星采购付款、供应商余额与实际付款 PostgreSQL 16 并发验收通过"
+          : verificationScope === "payment-review-approve"
+            ? "零星采购付款审批签名 PostgreSQL 16 限定门禁通过"
+            : "零星采购付款、供应商余额与实际付款 PostgreSQL 16 并发验收通过"
       );
     }, cleanup);
   } finally {

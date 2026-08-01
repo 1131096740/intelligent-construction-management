@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { assertValidUnifiedSocialCreditCode } from "../company-entity/unified-social-credit-code";
 
 const localRequire = createRequire(__filename);
 const {
@@ -26,6 +27,13 @@ const {
       options: { recursive: true; force: true }
     ) => Promise<void>;
   }) => () => Promise<void>;
+};
+const {
+  deriveFixtureUnifiedSocialCreditCode
+} = localRequire(
+  "../../prisma/spot-procurement-concurrency-fixtures.cjs"
+) as {
+  deriveFixtureUnifiedSocialCreditCode: (seed: string) => string;
 };
 
 describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
@@ -89,7 +97,7 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
       "if (verificationScope === APPLICATION_REVIEW_APPROVE_SCOPE)"
     );
     const scopedEnd = verifier.indexOf(
-      "\n  const servicesA = servicesFor(clientA);",
+      "\n  if (verificationScope === PAYMENT_REVIEW_APPROVE_SCOPE)",
       scopedStart
     );
     const scopedBranch = verifier.slice(scopedStart, scopedEnd);
@@ -125,6 +133,73 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     expect(scopedBranch).not.toContain("Payment");
     expect(scopedBranch).not.toContain("Receipt");
     expect(scopedBranch).not.toContain("Invoice");
+  });
+
+  it("can restrict the live verifier to the approved payment review signature gate", () => {
+    const runner = readFileSync(
+      join(process.cwd(), "prisma/run-spot-procurement-concurrency-local.cjs"),
+      "utf8"
+    );
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const scopedStart = verifier.indexOf(
+      "if (verificationScope === PAYMENT_REVIEW_APPROVE_SCOPE)"
+    );
+    const scopedEnd = verifier.indexOf(
+      "\n  const servicesA = servicesFor(clientA);",
+      scopedStart
+    );
+    const scopedBranch = verifier.slice(scopedStart, scopedEnd);
+
+    expect(runner).toContain(
+      "SPOT_PROCUREMENT_CONCURRENCY_SCOPE"
+    );
+    expect(verifier).toContain(
+      'PAYMENT_REVIEW_APPROVE_SCOPE = "payment-review-approve"'
+    );
+    expect(verifier).toContain(
+      "verificationScope === PAYMENT_REVIEW_APPROVE_SCOPE"
+    );
+    expect(runner).toContain(
+      'verificationScope === "payment-review-approve"'
+    );
+    expect(runner).toContain(
+      "零星采购付款审批签名 PostgreSQL 16 限定门禁通过"
+    );
+    expect(scopedStart).toBeGreaterThanOrEqual(0);
+    expect(scopedEnd).toBeGreaterThan(scopedStart);
+    expect(scopedBranch).toContain(
+      "await verifyPaymentReviewRowLockOneWinner()"
+    );
+    expect(scopedBranch).toContain(
+      "await verifyPaymentReviewSignatureFailures()"
+    );
+    expect(scopedBranch).toContain(
+      "await verifyPaymentReviewAuditRollback()"
+    );
+    expect(scopedBranch.match(/await verify/gu) ?? []).toHaveLength(3);
+    expect(scopedBranch).not.toContain("Coordinate");
+    expect(scopedBranch).not.toContain("Application");
+    expect(scopedBranch).not.toContain("Withdrawal");
+    expect(scopedBranch).not.toContain("Receipt");
+    expect(scopedBranch).not.toContain("Invoice");
+  });
+
+  it("derives a unique payer identity for each payment approval fixture", () => {
+    const codes = [
+      "spot-payment-review-row-lock",
+      "spot-payment-review-signature-missing",
+      "spot-payment-review-signature-sha-mismatch",
+      "spot-payment-review-audit-rollback"
+    ].map(deriveFixtureUnifiedSocialCreditCode);
+
+    expect(new Set(codes).size).toBe(codes.length);
+    for (const code of codes) {
+      expect(code).toHaveLength(18);
+      expect(assertValidUnifiedSocialCreditCode(code)).toBe(code);
+    }
   });
 
   it("checks unified file-binding triggers by governed table instead of retired trigger names", () => {
@@ -316,6 +391,160 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     expect(proof).toContain("auditLogCount === 0");
     expect(proof).toContain("paymentCountAfter === 0");
     expect(proof).toContain("receiptCountAfter === 0");
+  });
+
+  it("proves one payment approval wins after a direct two-connection row-lock wait", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyPaymentReviewRowLockOneWinner"
+    );
+    const proofEnd = verifier.indexOf("\nasync function ", proofStart + 1);
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyPaymentReviewRowLockOneWinner()"
+    );
+    expect(verifier).toContain("pg_blocking_pids(pid)");
+    expect(proof).toContain("paymentServicesFor(");
+    expect(proof).toContain("firstReviewAuditEntered");
+    expect(proof).toContain("firstReviewBackendPid");
+    expect(proof).toContain("secondReviewBackendPid");
+    expect(proof).toContain("pg_backend_pid()");
+    expect(proof).toContain("waitForDirectBackendPidBlock");
+    expect(proof).not.toContain("expectedVersionId");
+    expect(proof).not.toContain("expectedApprovalInstanceId");
+    expect(proof).not.toContain("expectedNodeIndex");
+    expect(proof).not.toContain("Coordinate");
+    expect(proof).toContain('results[0].status === "fulfilled"');
+    expect(proof).toContain('results[1].status === "rejected"');
+    expect(proof).toContain("getStatus() === 409");
+    expect(proof).toContain(
+      'after.payment.status === "approved_pending_payment"'
+    );
+    expect(proof).toContain('after.approval.status === "approved"');
+    expect(proof).toContain("after.actionLogs.length === 1");
+    expect(proof).toContain(
+      'action.approvedRoleKey === "project_manager"'
+    );
+    expect(proof).toContain(
+      "action.representedUserId === PAYMENT_REVIEWER_USER_ID"
+    );
+    expect(proof).toContain(
+      "action.signatureFileIdSnapshot === signature.fileId"
+    );
+    expect(proof).toContain(
+      "action.signatureSha256Snapshot === signature.sha256"
+    );
+    expect(proof).toContain(
+      "action.signatureVersionIdSnapshot === signature.versionId"
+    );
+    expect(proof).toContain("after.auditLogs.length === 1");
+    expect(proof).toContain("before.balanceAccount");
+    expect(proof).toContain("before.balanceReservation");
+    expect(proof).toContain("before.balanceEntries");
+  });
+
+  it("fails missing and SHA-drifted payment approval signatures with zero durable changes", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyPaymentReviewSignatureFailures"
+    );
+    const proofEnd = verifier.indexOf("\nasync function ", proofStart + 1);
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyPaymentReviewSignatureFailures()"
+    );
+    expect(proof).toContain('label: "signature-missing"');
+    expect(proof).toContain('label: "signature-sha-mismatch"');
+    expect(proof).toContain("审批手写签名未配置");
+    expect(proof).toContain("审批手写签名版本校验失败");
+    expect(proof).toContain("failure.getStatus() === 400");
+    expect(proof).toContain("snapshotPaymentReviewState");
+    expect(proof).toContain("assertUnchanged(before, after");
+    expect(proof).toContain(
+      'after.payment.status === "approval_pending"'
+    );
+    expect(proof).toContain(
+      'after.approval.status === "approval_pending"'
+    );
+    expect(proof).toContain("after.actionLogs.length === 0");
+    expect(proof).toContain("after.auditLogs.length === 0");
+    expect(proof).toContain(
+      "after.balanceAccount.reservedAmountCents === 1_000n"
+    );
+    expect(proof).toContain(
+      'after.balanceReservation.status === "reserved"'
+    );
+    expect(proof).toContain("after.balanceEntries.length === 1");
+  });
+
+  it("rolls signed payment approval, final states, audit, and balance observation back on a mid-audit fault", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyPaymentReviewAuditRollback"
+    );
+    const proofEnd = verifier.indexOf("\nasync function ", proofStart + 1);
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyPaymentReviewAuditRollback()"
+    );
+    expect(proof).toContain(
+      '"spot_procurement.payment.approval.approve"'
+    );
+    expect(proof).toContain(
+      'throw new Error(\n          "injected payment approval audit failure"'
+    );
+    expect(proof).toContain("observedCompletePreFailureState");
+    expect(proof).toContain("approvalActionLog.findMany");
+    expect(proof).toContain(
+      "action.signatureFileIdSnapshot === signature.fileId"
+    );
+    expect(proof).toContain(
+      "action.signatureSha256Snapshot === signature.sha256"
+    );
+    expect(proof).toContain(
+      "action.signatureVersionIdSnapshot === signature.versionId"
+    );
+    expect(proof).toContain('approval.status === "approved"');
+    expect(proof).toContain(
+      'payment.status === "approved_pending_payment"'
+    );
+    expect(proof).toContain("auditLogs.length === 1");
+    expect(proof).toContain("comparable(balanceAccount)");
+    expect(proof).toContain("comparable(balanceReservation)");
+    expect(proof).toContain("comparable(balanceEntries)");
+    expect(proof).toContain("assertUnchanged(before, after");
+    expect(proof).toContain(
+      'after.payment.status === "approval_pending"'
+    );
+    expect(proof).toContain(
+      'after.approval.status === "approval_pending"'
+    );
+    expect(proof).toContain("after.actionLogs.length === 0");
+    expect(proof).toContain("after.auditLogs.length === 0");
   });
 
   it("proves one exact-coordinate procurement withdrawal wins after a direct backend PID wait", () => {

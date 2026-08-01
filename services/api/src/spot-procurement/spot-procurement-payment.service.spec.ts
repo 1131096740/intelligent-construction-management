@@ -422,6 +422,28 @@ function realPaymentReviewHarness() {
   return { ...current, submitted };
 }
 
+function queueActivePaymentApprovalSignature(
+  queryRaw: jest.Mock,
+  actorUserId: string
+) {
+  queryRaw
+    .mockResolvedValueOnce([{ id: actorUserId, isActive: true }])
+    .mockResolvedValueOnce([
+      {
+        id: "payment-signature-version-1",
+        fileId: "payment-signature-file-1",
+        contentSha256: "a".repeat(64)
+      }
+    ])
+    .mockResolvedValueOnce([
+      {
+        id: "payment-signature-file-1",
+        contentSha256: "a".repeat(64),
+        storageStatus: "active"
+      }
+    ]);
+}
+
 function validDraftInput(): UpdateSpotProcurementPaymentDraftDto {
   return {
     settlementAmountCents: "8000",
@@ -748,6 +770,10 @@ describe("Spot procurement payment DTOs", () => {
       { type: "body", metatype: ReviewSpotProcurementPaymentDto }
     );
     const approveHarness = realPaymentReviewHarness();
+    queueActivePaymentApprovalSignature(
+      approveHarness.tx.$queryRaw,
+      "project-manager-1"
+    );
 
     await approveHarness.service.review(
       "payment-1",
@@ -1820,6 +1846,7 @@ describe("SpotProcurementPaymentService", () => {
       ])
       .mockResolvedValueOnce([approval]);
     role(tx, "chairman");
+    queueActivePaymentApprovalSignature(tx.$queryRaw, "chairman-1");
     tx.spotProcurementPayment.update.mockResolvedValue({
       ...draftPayment,
       status: "approved_pending_payment"
@@ -1891,6 +1918,10 @@ describe("SpotProcurementPaymentService", () => {
 
   it("freezes a default approval comment for the real A5 form", async () => {
     const { service, tx } = realPaymentReviewHarness();
+    queueActivePaymentApprovalSignature(
+      tx.$queryRaw,
+      "project-manager-1"
+    );
 
     await service.review("payment-1", "project-manager-1", {
       decision: "approve"
@@ -1900,9 +1931,114 @@ describe("SpotProcurementPaymentService", () => {
       data: expect.objectContaining({
         action: "approve",
         actorUserId: "project-manager-1",
-        comment: "同意"
+        comment: "同意",
+        approvedRoleKey: "project_manager",
+        representedUserId: "project-manager-1",
+        signatureFileIdSnapshot: "payment-signature-file-1",
+        signatureSha256Snapshot: "a".repeat(64),
+        signatureVersionIdSnapshot: "payment-signature-version-1"
       })
     });
+  });
+
+  it("fails a real A5 approval before every write when the reviewer has no canvas signature", async () => {
+    const current = realPaymentReviewHarness();
+    current.tx.$queryRaw
+      .mockResolvedValueOnce([
+        { id: "project-manager-1", isActive: true }
+      ])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      current.service.review("payment-1", "project-manager-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow(
+      "审批手写签名未配置，请先在个人设置中完成手写签名后重试"
+    );
+
+    expectNoPaymentReviewWrites(current);
+    expect(
+      current.approvalForms.tryRefreshLatestForBusiness
+    ).not.toHaveBeenCalled();
+  });
+
+  it("fails a real A5 approval before every write when the signature file digest has drifted", async () => {
+    const current = realPaymentReviewHarness();
+    current.tx.$queryRaw
+      .mockResolvedValueOnce([
+        { id: "project-manager-1", isActive: true }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "payment-signature-version-1",
+          fileId: "payment-signature-file-1",
+          contentSha256: "a".repeat(64)
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "payment-signature-file-1",
+          contentSha256: "b".repeat(64),
+          storageStatus: "active"
+        }
+      ]);
+
+    await expect(
+      current.service.review("payment-1", "project-manager-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow(
+      "审批手写签名版本校验失败，请重新签名后重试"
+    );
+
+    expectNoPaymentReviewWrites(current);
+    expect(
+      current.approvalForms.tryRefreshLatestForBusiness
+    ).not.toHaveBeenCalled();
+  });
+
+  it("rejects a damaged approval-node snapshot before reading the reviewer signature or writing", async () => {
+    const current = harness();
+    current.tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          applicantUserId: "material-1",
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            },
+            null
+          ]
+        }
+      ]);
+    roles(current.tx, { project: ["project_manager"] });
+    queueActivePaymentApprovalSignature(
+      current.tx.$queryRaw,
+      "project-manager-1"
+    );
+
+    await expect(
+      current.service.review("payment-1", "project-manager-1", {
+        decision: "approve"
+      })
+    ).rejects.toThrow("付款审批节点快照损坏");
+
+    expect(current.tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expectNoPaymentReviewWrites(current);
   });
 
   it("requires a reason before returning the real A5 form to its applicant", async () => {
@@ -2026,7 +2162,17 @@ describe("SpotProcurementPaymentService", () => {
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: "return_to_applicant",
-        comment: "请补充付款依据"
+        comment: "请补充付款依据",
+        approvedRoleKey: "project_manager",
+        representedUserId: "project-manager-1"
+      })
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        signatureFileIdSnapshot: expect.anything(),
+        signatureSha256Snapshot: expect.anything(),
+        signatureVersionIdSnapshot: expect.anything()
       })
     });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
@@ -2262,6 +2408,10 @@ describe("SpotProcurementPaymentService", () => {
         }
       ]);
     roles(validProject.tx, { project: ["project_manager"] });
+    queueActivePaymentApprovalSignature(
+      validProject.tx.$queryRaw,
+      "project-manager-1"
+    );
 
     await expect(
       validProject.service.review(
@@ -2310,6 +2460,10 @@ describe("SpotProcurementPaymentService", () => {
         }
       ]);
     roles(validGlobal.tx, { global: ["finance_director"] });
+    queueActivePaymentApprovalSignature(
+      validGlobal.tx.$queryRaw,
+      "finance-director-1"
+    );
 
     await expect(
       validGlobal.service.review(
@@ -2486,6 +2640,7 @@ describe("SpotProcurementPaymentService", () => {
         }
       ]);
     roles(tx, { global: ["chairman"] });
+    queueActivePaymentApprovalSignature(tx.$queryRaw, "leader-1");
     tx.spotProcurementPayment.update.mockResolvedValue({
       ...draftPayment,
       status: "approved_pending_payment"
@@ -3541,6 +3696,18 @@ describe("SpotProcurementPaymentService", () => {
         sourcePaymentId: "payment-1"
       })
     });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "withdraw" })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        approvedRoleKey: expect.anything(),
+        representedUserId: expect.anything(),
+        signatureFileIdSnapshot: expect.anything(),
+        signatureSha256Snapshot: expect.anything(),
+        signatureVersionIdSnapshot: expect.anything()
+      })
+    });
     expect(approvalForms.tryRefreshLatestForBusiness).toHaveBeenCalledWith(
       "spot_procurement_payment",
       "payment-1",
@@ -3660,6 +3827,53 @@ describe("SpotProcurementPaymentService", () => {
         })
       })
     );
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+  });
+
+  it("voids an approval-pending payment without inventing an approval identity or signature", async () => {
+    const { service, tx } = harness();
+    tx.$queryRaw
+      .mockResolvedValueOnce([version])
+      .mockResolvedValueOnce([
+        {
+          ...draftPayment,
+          status: "approval_pending",
+          submittedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          applicantUserId: "material-1",
+          frozenNodes: []
+        }
+      ]);
+    role(tx, "finance_director");
+    tx.approvalInstance.updateMany.mockResolvedValue({ count: 1 });
+    tx.spotProcurementPayment.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.voidPayment("payment-1", "finance-1", "采购已取消")
+    ).resolves.toMatchObject({ status: "voided" });
+
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approvalInstanceId: "approval-1",
+        action: "void",
+        actorUserId: "finance-1"
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.not.objectContaining({
+        approvedRoleKey: expect.anything(),
+        representedUserId: expect.anything(),
+        signatureFileIdSnapshot: expect.anything(),
+        signatureSha256Snapshot: expect.anything(),
+        signatureVersionIdSnapshot: expect.anything()
+      })
+    });
   });
 
   it("aborts voiding before writing any terminal fact when balance release fails", async () => {

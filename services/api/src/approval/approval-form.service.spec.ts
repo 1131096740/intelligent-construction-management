@@ -728,7 +728,7 @@ describe("ApprovalFormService", () => {
 
     await service.generateForInstance("inst-1", "user-chair");
 
-    expect(files.getFileBuffer).not.toHaveBeenCalledWith("current-signature");
+    expect(files.getFileBuffer).not.toHaveBeenCalled();
   });
 
   it("renders a contract advance approval form without querying a null settlement", async () => {
@@ -1239,29 +1239,34 @@ describe("ApprovalFormService", () => {
   });
 
   it("付款主体变更后 A5 固定签字格只使用当前重审轮次", async () => {
+    const oldSignature = Buffer.from("old frozen signature");
+    const currentSignature = PNG_1X1;
     const allLogs = [
       {
         actionKey: "approve",
+        approvedRoleKey: "comprehensive_director",
         name: "旧综合部主管",
         position: "综合部主管",
         action: "通过",
         signedAt: "2026-07-18 09:00:00",
         comment: "",
         relationship: "",
-        signature: null
+        signature: oldSignature
       },
       {
         actionKey: "approve",
+        approvedRoleKey: "project_manager",
         name: "旧项目经理",
         position: "项目经理",
         action: "通过",
         signedAt: "2026-07-18 10:00:00",
         comment: "",
         relationship: "",
-        signature: null
+        signature: oldSignature
       },
       {
         actionKey: "payer_changed_reapproval",
+        approvedRoleKey: null,
         name: "财务主管",
         position: "财务主管",
         action: "变更付款主体并重审",
@@ -1271,14 +1276,37 @@ describe("ApprovalFormService", () => {
         signature: null
       },
       {
+        actionKey: "submit",
+        approvedRoleKey: null,
+        name: "杨帅",
+        position: "历史签名未冻结",
+        action: "提交",
+        signedAt: "2026-07-18 11:30:00",
+        comment: "",
+        relationship: "",
+        signature: currentSignature
+      },
+      {
         actionKey: "approve",
+        approvedRoleKey: null,
+        name: "历史项目经理",
+        position: "项目经理",
+        action: "通过",
+        signedAt: "2026-07-18 11:45:00",
+        comment: "历史记录未冻结审批岗位",
+        relationship: "",
+        signature: currentSignature
+      },
+      {
+        actionKey: "approve",
+        approvedRoleKey: "comprehensive_director",
         name: "新综合部主管",
         position: "综合部主管",
         action: "通过",
         signedAt: "2026-07-18 12:00:00",
         comment: "",
         relationship: "",
-        signature: null
+        signature: currentSignature
       }
     ];
     const prisma = {
@@ -1317,7 +1345,10 @@ describe("ApprovalFormService", () => {
         instance: object
       ): Promise<{
         kind: string;
-        signatures: Record<string, { name: string | null }>;
+        signatures: Record<
+          string,
+          { name: string | null; signature: Buffer | null }
+        >;
       }>;
     };
     internal.buildRenderInput = jest.fn().mockResolvedValue({
@@ -1339,8 +1370,10 @@ describe("ApprovalFormService", () => {
     });
 
     expect(result.signatures.comprehensiveDirector?.name).toBe("新综合部主管");
+    expect(result.signatures.comprehensiveDirector?.signature).toBe(currentSignature);
     expect(result.signatures.projectManager?.name).toBeNull();
-    expect(allLogs).toHaveLength(4);
+    expect(result.signatures.projectManager?.signature).toBeNull();
+    expect(allLogs).toHaveLength(6);
     expect(internal.buildRenderInput).toHaveBeenCalledTimes(1);
   });
 

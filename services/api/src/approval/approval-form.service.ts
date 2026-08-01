@@ -235,6 +235,7 @@ interface RenderInput {
   nodes: FrozenNode[];
   logs: Array<{
     actionKey?: string;
+    approvedRoleKey: string | null;
     name: string;
     position: string;
     action: string;
@@ -444,16 +445,18 @@ function spotProcurementApprovalBusinessCode(
 
 function approvalSignatureForRoles(
   logs: RenderInput["logs"],
-  roleLabels: string[]
+  roleKeys: string[]
 ): ApprovalSignature {
   const log = logs.find(
     (candidate) =>
-      candidate.action === "通过" &&
-      roleLabels.some((role) => candidate.position.includes(role))
+      candidate.actionKey === "approve" &&
+      typeof candidate.approvedRoleKey === "string" &&
+      roleKeys.includes(candidate.approvedRoleKey)
   );
   return {
     name: log?.name ?? null,
-    signedAt: log ? new Date(log.signedAt) : null
+    signedAt: log ? new Date(log.signedAt) : null,
+    signature: log?.signature ?? null
   };
 }
 
@@ -1145,6 +1148,7 @@ export class ApprovalFormService {
       }
       return {
         actionKey: log.action,
+        approvedRoleKey: log.approvedRoleKey ?? null,
         name: nameById.get(log.actorUserId) ?? "处理人未读取",
         position: log.approvedRoleKey
           ? roleLabel(log.approvedRoleKey as RoleKey)
@@ -1205,11 +1209,16 @@ export class ApprovalFormService {
       ? currentSpotPaymentApprovalRoundLogs(rendered.logs)
       : rendered.logs;
     const signatures = {
-      materialDirector: approvalSignatureForRoles(signatureLogs, ["物资主管"]),
-      projectManager: approvalSignatureForRoles(signatureLogs, ["项目经理"]),
-      comprehensiveDirector: approvalSignatureForRoles(signatureLogs, ["综合部主管"]),
-      financeDirector: approvalSignatureForRoles(signatureLogs, ["财务主管"]),
-      finalApprover: approvalSignatureForRoles(signatureLogs, ["董事长", "总经理"])
+      materialDirector: approvalSignatureForRoles(signatureLogs, ["material_director"]),
+      projectManager: approvalSignatureForRoles(signatureLogs, ["project_manager"]),
+      comprehensiveDirector: approvalSignatureForRoles(signatureLogs, [
+        "comprehensive_director"
+      ]),
+      financeDirector: approvalSignatureForRoles(signatureLogs, ["finance_director"]),
+      finalApprover: approvalSignatureForRoles(signatureLogs, [
+        "chairman",
+        "general_manager"
+      ])
     };
 
     if (instance.businessType === "spot_procurement_version") {
