@@ -206,7 +206,11 @@ describe("project funding PostgreSQL evidence", () => {
             reason: "实库失效额度门禁",
             validUntil: new Date("2020-01-01T00:00:00.000Z"),
             attachmentFileId: `pf-live-quota-file-${marker}`,
+            attachmentFileSha256Snapshot: "a".repeat(64),
             requestedByUserId: actorId,
+            requestedByRoleKey: "finance_staff",
+            requestIdempotencyKey: randomUUID(),
+            requestFingerprint: "b".repeat(64),
             approvedByUserId: actorId,
             approvedAt: new Date("2019-01-01T00:00:00.000Z"),
             status: "approved"
@@ -227,6 +231,10 @@ describe("project funding PostgreSQL evidence", () => {
         const terminationProjectId = projectId("terminated-quota");
         const terminationQuotaId = `pf-live-terminated-quota-${marker}`;
         const signatureFileId = `pf-live-signature-file-${marker}`;
+        const terminationAttachmentFileId =
+          `pf-live-termination-quota-file-${marker}`;
+        const preservedAttachmentFileId =
+          `pf-live-preserved-quota-file-${marker}`;
         await clients[0]!.project.create({
           data: {
             id: terminationProjectId,
@@ -234,18 +242,42 @@ describe("project funding PostgreSQL evidence", () => {
             name: "垫资额度终止并发夹具"
           }
         });
-        await clients[0]!.fileObject.create({
-          data: {
-            id: signatureFileId,
-            bucket: "local-test",
-            objectKey: `project-funding/${marker}/signature.png`,
-            originalName: "signature.png",
-            mimeType: "image/png",
-            sizeBytes: 128,
-            uploadedByUserId: actorId,
-            contentSha256: "a".repeat(64),
-            storageStatus: "active"
-          }
+        await clients[0]!.fileObject.createMany({
+          data: [
+            {
+              id: signatureFileId,
+              bucket: "local-test",
+              objectKey: `project-funding/${marker}/signature.png`,
+              originalName: "signature.png",
+              mimeType: "image/png",
+              sizeBytes: 128,
+              uploadedByUserId: actorId,
+              contentSha256: "a".repeat(64),
+              storageStatus: "active"
+            },
+            {
+              id: terminationAttachmentFileId,
+              bucket: "local-test",
+              objectKey: `project-funding/${marker}/termination-quota.pdf`,
+              originalName: "termination-quota.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 128,
+              uploadedByUserId: actorId,
+              contentSha256: "b".repeat(64),
+              storageStatus: "active"
+            },
+            {
+              id: preservedAttachmentFileId,
+              bucket: "local-test",
+              objectKey: `project-funding/${marker}/preserved-quota.pdf`,
+              originalName: "preserved-quota.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 128,
+              uploadedByUserId: actorId,
+              contentSha256: "c".repeat(64),
+              storageStatus: "active"
+            }
+          ]
         });
         await clients[0]!.handwrittenSignatureVersion.create({
           data: {
@@ -263,8 +295,12 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 2_000n,
             reason: "实库终止并发门禁",
             validUntil: null,
-            attachmentFileId: signatureFileId,
+            attachmentFileId: terminationAttachmentFileId,
+            attachmentFileSha256Snapshot: "b".repeat(64),
             requestedByUserId: actorId,
+            requestedByRoleKey: "finance_staff",
+            requestIdempotencyKey: randomUUID(),
+            requestFingerprint: "b".repeat(64),
             approvedByUserId: actorId,
             approvedAt: new Date(),
             status: "approved"
@@ -357,8 +393,12 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 2_000n,
             reason: "实库终止保留流水门禁",
             validUntil: null,
-            attachmentFileId: signatureFileId,
+            attachmentFileId: preservedAttachmentFileId,
+            attachmentFileSha256Snapshot: "c".repeat(64),
             requestedByUserId: actorId,
+            requestedByRoleKey: "finance_staff",
+            requestIdempotencyKey: randomUUID(),
+            requestFingerprint: "b".repeat(64),
             approvedByUserId: actorId,
             approvedAt: new Date(),
             status: "approved"

@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 51,
-    "pageActionCount": 45,
+    "registeredActionCount": 52,
+    "pageActionCount": 46,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
     "reachableProductionModuleCount": 232,
-    "templateEventDirectiveCount": 926,
+    "templateEventDirectiveCount": 932,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 24,
-    "candidateProductionMutationConsumerCount": 43,
-    "acceptedProductionMutationConsumerCount": 24,
-    "productionMutationConsumerPairCount": 274,
+    "coveredProductionMutationConsumerCount": 25,
+    "candidateProductionMutationConsumerCount": 44,
+    "acceptedProductionMutationConsumerCount": 25,
+    "productionMutationConsumerPairCount": 275,
     "blockerCount": 296
   },
   "evidence": {
@@ -1838,7 +1838,7 @@
         "event": "submit",
         "handler": "submitProjectExpense",
         "kind": "event",
-        "sourceLine": 487,
+        "sourceLine": 489,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -2412,6 +2412,154 @@
             "localCallChain": [
               "confirmProjectExpenseWithdrawal",
               "executeProjectExpenseWithdrawalAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-financing-quota.request",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRequest",
+        "kind": "event",
+        "sourceLine": 197,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaRequestAction",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "requestProjectFinancingQuotaWithUpload",
+          "method": "GET",
+          "path": "/projects/:param/financing-quotas",
+          "normalizedKey": "GET /projects/:param/financing-quotas",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/projects/:projectId/financing-quotas",
+            "normalizedKey": "GET /projects/:param/financing-quotas",
+            "controller": "ProjectController",
+            "handler": "projectFinancingQuotaWorkbench",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRequest",
+              "requestProjectFinancingQuotaWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "requestProjectFinancingQuotaWithUpload",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRequest",
+              "requestProjectFinancingQuotaWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "requestProjectFinancingQuotaWithUpload",
+          "method": "POST",
+          "path": "/projects/:param/financing-quotas",
+          "normalizedKey": "POST /projects/:param/financing-quotas",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/financing-quotas",
+            "normalizedKey": "POST /projects/:param/financing-quotas",
+            "controller": "ProjectController",
+            "handler": "requestProjectFinancingQuota",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.financing_quota.request"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitRequest",
+              "requestProjectFinancingQuotaWithUpload"
             ]
           },
           "ticketFollowups": []

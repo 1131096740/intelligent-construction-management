@@ -2440,14 +2440,30 @@ describe("ProjectService", () => {
 
   it("allows finance staff to request a project financing quota without an expiry date", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+    const attachmentFileSha256Snapshot = "a".repeat(64);
     const tx = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "project-1" }])
+        .mockResolvedValueOnce([{ lockResult: "" }])
+        .mockResolvedValueOnce([{
+          id: "file-1",
+          uploadedByUserId: "finance-staff-1",
+          storageStatus: "active",
+          contentSha256: attachmentFileSha256Snapshot
+        }])
+        .mockResolvedValueOnce([]),
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "finance-staff-1" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
       },
-      fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-staff-1" })
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue(null)
       },
       projectFinancingQuota: {
+        findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
           projectId: "project-1",
@@ -2455,7 +2471,11 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: null,
           attachmentFileId: "file-1",
+          attachmentFileSha256Snapshot,
           requestedByUserId: "finance-staff-1",
+          requestedByRoleKey: "finance_staff",
+          requestIdempotencyKey: idempotencyKey,
+          requestFingerprint: "b".repeat(64),
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2472,18 +2492,17 @@ describe("ProjectService", () => {
     const service = new ProjectService(prisma as never);
 
     const result = await service.requestProjectFinancingQuota("project-1", "finance-staff-1", {
+      idempotencyKey,
       amountCents: "5000000",
       reason: " 阶段性垫资保障项目付款 ",
       attachmentFileId: "file-1"
     });
 
-    expect(result).toMatchObject({
-      id: "financing-quota-1",
+    expect(result).toEqual({
+      kind: "created",
+      idempotencyKey,
       projectId: "project-1",
-      amountCents: "5000000",
-      status: "approval_pending",
-      approvedByUserId: null,
-      validUntil: null
+      quotaId: "financing-quota-1"
     });
     expect(tx.projectFinancingQuota.create).toHaveBeenCalledWith({
       data: {
@@ -2492,7 +2511,11 @@ describe("ProjectService", () => {
         reason: "阶段性垫资保障项目付款",
         validUntil: null,
         attachmentFileId: "file-1",
+        attachmentFileSha256Snapshot,
         requestedByUserId: "finance-staff-1",
+        requestedByRoleKey: "finance_staff",
+        requestIdempotencyKey: idempotencyKey,
+        requestFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/u),
         status: "approval_pending"
       }
     });

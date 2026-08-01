@@ -1847,13 +1847,6 @@ export interface ReviewSettlementExceptionQuotaPayload {
   comment?: string;
 }
 
-export interface RequestProjectFinancingQuotaPayload {
-  amountCents: string;
-  reason: string;
-  validUntil?: string;
-  attachmentFileId: string;
-}
-
 export interface ReviewProjectFinancingQuotaPayload {
   decision: "approve" | "reject";
   confirmationPassword: string;
@@ -2484,13 +2477,6 @@ export function reviewSettlementExceptionQuota(
     `/projects/${projectId}/settlement-exception-quotas/${quotaId}/approval`,
     body
   );
-}
-
-export function requestProjectFinancingQuota(
-  projectId: string,
-  body: RequestProjectFinancingQuotaPayload
-) {
-  return postJson<unknown>(`/projects/${projectId}/financing-quotas`, body);
 }
 
 export function reviewProjectFinancingQuota(

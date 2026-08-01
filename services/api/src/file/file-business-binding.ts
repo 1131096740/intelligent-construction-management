@@ -183,6 +183,24 @@ export async function hasNonReceiptBusinessFileBinding(
   return (await nonReceiptBusinessFileBindingIds(tx, fileIds, excludedBindings)).length > 0;
 }
 
+export async function hasAnyBusinessFileBinding(
+  tx: Prisma.TransactionClient,
+  fileIds: string[]
+): Promise<boolean> {
+  const uniqueIds = [...new Set(fileIds)].sort();
+  if (!uniqueIds.length) return false;
+  if (await hasNonReceiptBusinessFileBinding(tx, uniqueIds)) return true;
+  return Boolean(await tx.spotProcurementReceiptPhoto.findFirst({
+    where: {
+      OR: [
+        { originalFileId: { in: uniqueIds } },
+        { watermarkedFileId: { in: uniqueIds } }
+      ]
+    },
+    select: { id: true }
+  }));
+}
+
 export async function nonReceiptBusinessFileBindingIds(
   tx: Prisma.TransactionClient,
   fileIds: string[],

@@ -14,13 +14,37 @@
           </h2>
           <p>额度生命周期与实际付款分配记录以服务端台账为准。</p>
         </div>
-        <t-tag
-          theme="primary"
-          variant="light"
-        >
-          只读台账
-        </t-tag>
+        <div class="panel-heading-actions">
+          <t-button
+            v-if="requestActionEnabled(workbench.requestAction)"
+            theme="primary"
+            :loading="requestOpening"
+            @click="openRequest"
+          >
+            {{ workbench.requestAction.label }}
+          </t-button>
+          <t-tag
+            theme="primary"
+            variant="light"
+          >
+            权威台账
+          </t-tag>
+        </div>
       </div>
+
+      <t-alert
+        v-if="requestNotice"
+        theme="success"
+        :message="requestNotice"
+        class="request-alert"
+      />
+      <t-alert
+        v-if="requestLaunchError"
+        theme="error"
+        title="申请资格校验失败"
+        :message="requestLaunchError"
+        class="request-alert"
+      />
 
       <t-alert
         theme="info"
@@ -154,20 +178,161 @@
         </template>
       </t-table>
     </t-card>
+
+    <t-dialog
+      v-if="requestArmed && selectedFinancingQuotaRequestAction && selectedFinancingQuotaRequestAction.enabled"
+      :visible="requestVisible"
+      header="申请项目垫资额度"
+      width="min(620px, calc(100vw - 32px))"
+      :confirm-btn="{
+        content: '提交申请',
+        theme: 'primary',
+        loading: requestBusy,
+        disabled: requestBusy || !selectedFinancingQuotaRequestAction?.enabled
+      }"
+      :cancel-btn="{ content: '取消', disabled: requestBusy }"
+      :close-btn="!requestBusy"
+      :close-on-esc-keydown="!requestBusy"
+      :close-on-overlay-click="false"
+      @confirm="submitRequest"
+      @cancel="cancelRequest"
+      @close="cancelRequest"
+      @update:visible="handleRequestVisibleChange"
+    >
+      <div class="request-form">
+        <t-alert
+          theme="info"
+          message="提交后进入财务主管→董事长/总经理审批；审批通过不等于已发生实际付款。"
+        />
+        <t-input
+          v-model="requestForm.amountYuan"
+          label="申请金额（元）"
+          placeholder="例如 50000.00"
+          :disabled="requestAttempted"
+        />
+        <t-textarea
+          v-model="requestForm.reason"
+          label="申请事由"
+          placeholder="说明项目阶段、资金缺口与预计用途"
+          :autosize="{ minRows: 3, maxRows: 6 }"
+          maxlength="500"
+          :disabled="requestAttempted"
+        />
+        <t-date-picker
+          v-model="requestForm.validUntil"
+          label="有效期（选填）"
+          value-type="YYYY-MM-DD"
+          placeholder="不填则由审批结果约束"
+          :disabled="requestAttempted"
+        />
+        <div class="request-file-field">
+          <span>申请依据（必传 1 份）</span>
+          <t-upload
+            v-model="requestFiles"
+            theme="file"
+            :auto-upload="false"
+            :multiple="false"
+            :max="1"
+            :disabled="requestAttempted"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+          />
+        </div>
+        <t-alert
+          v-if="requestError"
+          theme="error"
+          :message="requestError"
+        />
+      </div>
+    </t-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  watch
+} from "vue";
+import type { UploadFile } from "tdesign-vue-next";
 import { centsTextToYuanText } from "../../../lib/money";
-import type {
-  ProjectFinancingQuotaStatus,
-  ProjectFinancingQuotaWorkbenchReadModel
+import {
+  createProjectFinancingQuotaRequestAttemptState,
+  fetchProjectFinancingQuotaRequestCapability,
+  requestProjectFinancingQuotaWithUpload,
+  type ProjectFinancingQuotaActionReadModel,
+  type ProjectFinancingQuotaRequestAttemptState,
+  type ProjectFinancingQuotaStatus,
+  type ProjectFinancingQuotaWorkbenchReadModel
 } from "../../../api/project-financing-quota.api";
 
 const props = defineProps<{
+  projectId: string;
   workbench: ProjectFinancingQuotaWorkbenchReadModel;
 }>();
+const emit = defineEmits<{
+  updated: [workbench: ProjectFinancingQuotaWorkbenchReadModel];
+}>();
+
+type RequestContext = {
+  projectId: string;
+  projectGeneration: number;
+  idempotencyKey: string;
+};
+
+type RequestOperationContext = RequestContext & {
+  operationId: number;
+};
+
+const EMPTY_REQUEST_CONTEXT: RequestContext = {
+  projectId: "",
+  projectGeneration: -1,
+  idempotencyKey: ""
+};
+
+const requestVisible = ref(false);
+const requestOpening = ref(false);
+const requestBusy = ref(false);
+const requestAttempted = ref(false);
+const requestError = ref("");
+const requestLaunchError = ref("");
+const requestNotice = ref("");
+const requestFiles = ref<UploadFile[]>([]);
+const requestForm = ref(createRequestForm());
+const requestContext = ref<RequestContext>({ ...EMPTY_REQUEST_CONTEXT });
+const selectedFinancingQuotaRequestAction = shallowRef<
+  ProjectFinancingQuotaActionReadModel | null
+>(null);
+const requestArmed = ref(false);
+let componentAlive = true;
+let projectGeneration = 0;
+let requestOpenSequence = 0;
+let requestOperationSequence = 0;
+let activeRequestOperationId = 0;
+let requestAttemptState: ProjectFinancingQuotaRequestAttemptState =
+  createProjectFinancingQuotaRequestAttemptState();
+
+onBeforeUnmount(() => {
+  componentAlive = false;
+  projectGeneration += 1;
+  requestOpenSequence += 1;
+  activeRequestOperationId = 0;
+});
+
+watch(
+  () => props.projectId,
+  () => {
+    projectGeneration += 1;
+    requestOpenSequence += 1;
+    activeRequestOperationId = 0;
+    requestOpening.value = false;
+    requestBusy.value = false;
+    clearRequestSelection();
+    requestLaunchError.value = "";
+    requestNotice.value = "";
+  }
+);
 
 const quotaColumns = [
   { colKey: "reason", title: "申请事由 / 申请人", minWidth: 240 },
@@ -197,6 +362,230 @@ const usageRows = computed(() =>
     }))
   )
 );
+
+async function openRequest() {
+  if (
+    requestOpening.value ||
+    requestBusy.value ||
+    props.workbench.project.id !== props.projectId ||
+    !requestActionEnabled(props.workbench.requestAction)
+  ) {
+    return;
+  }
+
+  clearRequestSelection();
+  const context: RequestContext = {
+    projectId: props.projectId,
+    projectGeneration,
+    idempotencyKey: crypto.randomUUID()
+  };
+  const openRequestId = ++requestOpenSequence;
+  requestContext.value = context;
+  requestOpening.value = true;
+  requestLaunchError.value = "";
+  requestNotice.value = "";
+  try {
+    const freshCapability =
+      await fetchProjectFinancingQuotaRequestCapability(context.projectId);
+    if (!requestOpenContextIsCurrent(context, openRequestId)) return;
+    if (
+      freshCapability?.project?.id !== context.projectId ||
+      freshCapability?.requestAction?.key !== "request_financing_quota" ||
+      typeof freshCapability?.requestAction?.enabled !== "boolean" ||
+      freshCapability?.requestAction?.requiresFile !== true ||
+      freshCapability?.requestAction?.requiredAction !==
+        "project.financing_quota.request"
+    ) {
+      throw new Error("项目垫资额度申请资格数据异常，请刷新后重试");
+    }
+    if (freshCapability.requestAction.enabled !== true) {
+      throw new Error("项目垫资额度申请资格已变化，请刷新后重试");
+    }
+    selectedFinancingQuotaRequestAction.value = freshCapability.requestAction;
+    requestAttemptState =
+      createProjectFinancingQuotaRequestAttemptState();
+    requestArmed.value = true;
+    requestVisible.value = true;
+  } catch (error) {
+    if (requestOpenOperationIsCurrent(context, openRequestId)) {
+      requestContext.value = { ...EMPTY_REQUEST_CONTEXT };
+      requestLaunchError.value = errorMessage(
+        error instanceof SyntaxError
+          ? new Error("项目垫资额度申请资格数据异常，请刷新后重试")
+          : error,
+        "项目垫资额度申请资格校验失败"
+      );
+    }
+  } finally {
+    if (requestOpenOperationIsCurrent(context, openRequestId)) {
+      requestOpening.value = false;
+    }
+  }
+}
+
+function submitRequest() {
+  const context = captureRequestOperation();
+  const request = requestProjectFinancingQuotaWithUpload(
+    context.projectId,
+    {
+      form: requestForm.value,
+      files: requestFiles.value,
+      idempotencyKey: context.idempotencyKey,
+      context,
+      isCurrent: requestContextIsCurrent
+    },
+    requestAttemptState
+  );
+  requestOperationSequence = context.operationId;
+  activeRequestOperationId = context.operationId;
+  requestAttempted.value = requestAttemptState.submission !== null;
+  requestBusy.value = true;
+  requestError.value = "";
+  return request
+    .then((result) => completeRequest(result.workbench, context))
+    .catch((error) => failRequest(error, context))
+    .finally(() => finishRequest(context));
+}
+
+function requestActionEnabled(
+  action: unknown
+): action is ProjectFinancingQuotaActionReadModel & {
+  key: "request_financing_quota";
+  enabled: true;
+  requiresFile: true;
+} {
+  return (
+    typeof action === "object" &&
+    action !== null &&
+    "key" in action &&
+    "enabled" in action &&
+    "requiresFile" in action &&
+    action.key === "request_financing_quota" &&
+    action.enabled === true &&
+    action.requiresFile === true
+  );
+}
+
+function requestOpenContextIsCurrent(
+  context: RequestContext,
+  openRequestId: number
+) {
+  const selected = requestContext.value;
+  return Boolean(
+    componentAlive &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration &&
+      requestOpenSequence === openRequestId &&
+      selected.projectId === context.projectId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.idempotencyKey === context.idempotencyKey
+  );
+}
+
+function requestOpenOperationIsCurrent(
+  context: RequestContext,
+  openRequestId: number
+) {
+  return (
+    componentAlive &&
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    requestOpenSequence === openRequestId
+  );
+}
+
+function requestContextIsCurrent(context: RequestContext) {
+  const selected = requestContext.value;
+  return Boolean(
+    componentAlive &&
+      requestArmed.value &&
+      requestVisible.value &&
+      selected.projectId === context.projectId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.idempotencyKey === context.idempotencyKey &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration
+  );
+}
+
+function captureRequestOperation(): RequestOperationContext {
+  return {
+    ...requestContext.value,
+    operationId: requestOperationSequence + 1
+  };
+}
+
+function requestOperationIsCurrent(context: RequestOperationContext) {
+  return (
+    componentAlive &&
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    activeRequestOperationId === context.operationId
+  );
+}
+
+function requestResultCanWrite(context: RequestOperationContext) {
+  return (
+    requestOperationIsCurrent(context) &&
+    requestContextIsCurrent(context)
+  );
+}
+
+function completeRequest(
+  nextWorkbench: ProjectFinancingQuotaWorkbenchReadModel,
+  context: RequestOperationContext
+) {
+  if (!requestResultCanWrite(context)) return;
+  clearRequestSelection();
+  requestNotice.value = "垫资额度申请已提交审批，权威台账已刷新。";
+  emit("updated", nextWorkbench);
+}
+
+function failRequest(error: unknown, context: RequestOperationContext) {
+  if (!requestResultCanWrite(context)) return;
+  requestError.value = errorMessage(error, "项目垫资额度申请失败");
+}
+
+function finishRequest(context: RequestOperationContext) {
+  if (!requestOperationIsCurrent(context)) return;
+  requestBusy.value = false;
+}
+
+function cancelRequest() {
+  if (requestBusy.value) return;
+  activeRequestOperationId = 0;
+  clearRequestSelection();
+}
+
+function handleRequestVisibleChange(visible: boolean) {
+  if (visible || requestBusy.value) return;
+  cancelRequest();
+}
+
+function clearRequestSelection() {
+  requestVisible.value = false;
+  requestArmed.value = false;
+  requestContext.value = { ...EMPTY_REQUEST_CONTEXT };
+  selectedFinancingQuotaRequestAction.value = null;
+  requestAttemptState =
+    createProjectFinancingQuotaRequestAttemptState();
+  requestAttempted.value = false;
+  requestFiles.value = [];
+  requestForm.value = createRequestForm();
+  requestError.value = "";
+}
+
+function createRequestForm() {
+  return {
+    amountYuan: "",
+    reason: "",
+    validUntil: ""
+  };
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function formatMoney(value: string): string {
   return `¥${centsTextToYuanText(value)}`;
@@ -302,6 +691,29 @@ function statusTheme(status: ProjectFinancingQuotaStatus, isExpired: boolean) {
   margin-top: var(--jg-space-xs);
 }
 
+.panel-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--jg-space-sm);
+}
+
+.request-alert {
+  margin-bottom: var(--jg-space-md-plus);
+}
+
+.request-form {
+  display: grid;
+  gap: var(--jg-space-md-plus);
+}
+
+.request-file-field {
+  display: grid;
+  gap: var(--jg-space-xs);
+  color: var(--jg-color-text-primary);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -352,6 +764,10 @@ function statusTheme(status: ProjectFinancingQuotaStatus, isExpired: boolean) {
 @container jg-page (max-width: 620px) {
   .panel-heading {
     display: grid;
+  }
+
+  .panel-heading-actions {
+    justify-content: flex-start;
   }
 
   .summary-grid {

@@ -2621,8 +2621,12 @@ model ProjectFinancingQuota {
   amountCents                   BigInt
   reason                        String
   validUntil                    DateTime?
-  attachmentFileId              String
+  attachmentFileId              String    @unique
+  attachmentFileSha256Snapshot  String?
   requestedByUserId             String
+  requestedByRoleKey            String?
+  requestIdempotencyKey         String?   @unique
+  requestFingerprint            String?
   approvedByUserId              String?
   approvedAt                    DateTime?
   status                        String    @default("approval_pending")

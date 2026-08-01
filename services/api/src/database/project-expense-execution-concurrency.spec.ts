@@ -325,7 +325,11 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
       amountCents: 700n,
       reason: "项目支出现金加垫资拆分验收",
       attachmentFileId: fixture.splitQuotaAttachmentId,
+      attachmentFileSha256Snapshot: "a".repeat(64),
       requestedByUserId: fixture.actorUserId,
+      requestedByRoleKey: "finance_staff",
+      requestIdempotencyKey: randomUUID(),
+      requestFingerprint: "b".repeat(64),
       approvedByUserId: fixture.actorUserId,
       approvedAt: new Date("2026-07-29T00:00:00.000Z"),
       status: "approved"

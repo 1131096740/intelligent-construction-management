@@ -203,7 +203,8 @@ describe("ProjectService project financing quota workbench", () => {
     expect(result.requestAction).toMatchObject({
       key: "request_financing_quota",
       enabled: true,
-      requiredAction: "project.financing_quota.request"
+      requiredAction: "project.financing_quota.request",
+      requiresFile: true
     });
     expect(result.summary).toMatchObject({
       quotaAmountCents: "13000",

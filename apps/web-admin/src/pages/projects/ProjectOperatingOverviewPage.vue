@@ -275,7 +275,9 @@
         <template v-if="overview || selectedProjectId">
           <ProjectFinancingQuotaPanel
             v-if="financingQuotaWorkbench"
+            :project-id="selectedProjectId"
             :workbench="financingQuotaWorkbench"
+            @updated="handleFinancingQuotaUpdated"
           />
           <t-alert
             v-else-if="financingQuotaError"
@@ -1407,6 +1409,14 @@ async function loadOverview() {
       loadingOverview.value = false;
     }
   }
+}
+
+function handleFinancingQuotaUpdated(
+  nextWorkbench: ProjectFinancingQuotaWorkbenchReadModel
+) {
+  if (nextWorkbench.project.id !== selectedProjectId.value) return;
+  financingQuotaWorkbench.value = nextWorkbench;
+  financingQuotaError.value = "";
 }
 
 async function submitProjectExpense() {

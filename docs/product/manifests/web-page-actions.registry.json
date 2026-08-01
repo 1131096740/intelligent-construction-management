@@ -705,6 +705,30 @@
       ]
     },
     {
+      "id": "project-financing-quota.request",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRequest"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaRequestAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "requestProjectFinancingQuotaWithUpload"
+        }
+      ]
+    },
+    {
       "id": "contract-takeover.create-local-role",
       "usage": "page_action",
       "routePaths": [

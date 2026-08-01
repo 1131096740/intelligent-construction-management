@@ -98,6 +98,8 @@ const validProjectReceiptBody = {
   voucherFileId: "file-1",
   confirmationPassword: "current-password"
 };
+const validFinancingQuotaIdempotencyKey =
+  "11111111-1111-4111-8111-111111111111";
 
 describe("ProjectController authorization wiring", () => {
   type OwnerContractRecordBody = {
@@ -126,6 +128,7 @@ describe("ProjectController authorization wiring", () => {
     comment?: string;
   };
   type ProjectFinancingQuotaRequestBody = {
+    idempotencyKey: string;
     amountCents: string;
     reason: string;
     validUntil: string;
@@ -319,6 +322,7 @@ describe("ProjectController authorization wiring", () => {
     [
       "requestProjectFinancingQuota",
       {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
         amountCents: "10000",
         reason: "项目垫资",
         validUntil: "2099-07-11T10:00:00.000Z",
@@ -519,8 +523,11 @@ describe("ProjectController authorization wiring", () => {
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
   });
 
-  it.each(["not-a-date", "2026-13-40"])("rejects invalid quota date %s", async (validUntil) => {
+  it.each(["not-a-date", "2026-13-40", "2099-07-11T10:00:00"])(
+    "rejects invalid quota date %s",
+    async (validUntil) => {
     const response = await getProjectMoneyValidationResponse("requestProjectFinancingQuota", {
+      idempotencyKey: validFinancingQuotaIdempotencyKey,
       amountCents: "10000",
       reason: "项目垫资",
       validUntil,
@@ -528,7 +535,8 @@ describe("ProjectController authorization wiring", () => {
     });
 
     expect(response.errors).toContain("额度有效期格式不正确");
-  });
+    }
+  );
 
   it.each([
     ["recordReceipt", { ...validProjectReceiptBody, receivedAt: "2026-02-30" }, "到账日期格式不正确"],
@@ -580,7 +588,13 @@ describe("ProjectController authorization wiring", () => {
     ],
     [
       "requestProjectFinancingQuota",
-      { amountCents: "100", reason: "垫资", validUntil: "2026-02-30", attachmentFileId: "file-1" },
+      {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
+        amountCents: "100",
+        reason: "垫资",
+        validUntil: "2026-02-30",
+        attachmentFileId: "file-1"
+      },
       "额度有效期格式不正确"
     ]
   ] as const)("rejects a non-existent calendar date for %s", async (method, value, message) => {
@@ -594,6 +608,7 @@ describe("ProjectController authorization wiring", () => {
     async (validUntil) => {
       await expect(
         validateProjectMoneyBody("requestProjectFinancingQuota", {
+          idempotencyKey: validFinancingQuotaIdempotencyKey,
           amountCents: "10000",
           reason: "项目垫资",
           validUntil,
@@ -603,15 +618,55 @@ describe("ProjectController authorization wiring", () => {
     }
   );
 
+  it("enforces the project financing quota reason Unicode boundary in the API", async () => {
+    await expect(
+      validateProjectMoneyBody("requestProjectFinancingQuota", {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
+        amountCents: "10000",
+        reason: "🚀".repeat(500),
+        attachmentFileId: "file-1"
+      })
+    ).resolves.toBeDefined();
+
+    const response = await getProjectMoneyValidationResponse(
+      "requestProjectFinancingQuota",
+      {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
+        amountCents: "10000",
+        reason: "🚀".repeat(501),
+        attachmentFileId: "file-1"
+      }
+    );
+    expect(response.errors).toContain("融资额度申请原因不能超过 500 个字符");
+  });
+
   it("accepts a project financing quota without an expiry date", async () => {
     await expect(
       validateProjectMoneyBody("requestProjectFinancingQuota", {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
         amountCents: "10000",
         reason: "项目垫资",
         attachmentFileId: "file-1"
       })
     ).resolves.toBeDefined();
   });
+
+  it.each([undefined, "", "not-a-uuid", "11111111-1111-3111-8111-111111111111"])(
+    "rejects an invalid project financing quota idempotency key %p",
+    async (idempotencyKey) => {
+      const response = await getProjectMoneyValidationResponse(
+        "requestProjectFinancingQuota",
+        {
+          amountCents: "10000",
+          reason: "项目垫资",
+          attachmentFileId: "file-1",
+          ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+        }
+      );
+
+      expect(response.errors).toContain("项目垫资申请幂等键必须是 UUID");
+    }
+  );
 
   it("rejects empty required project money fields and unknown fields", async () => {
     const requiredResponse = await getProjectMoneyValidationResponse("recordReceipt", {
@@ -1280,6 +1335,7 @@ describe("ProjectController authorization wiring", () => {
     const projects = { requestProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
+      idempotencyKey: validFinancingQuotaIdempotencyKey,
       amountCents: "1000000",
       reason: "阶段性垫资保障项目付款",
       validUntil: "2099-07-02T00:00:00.000Z",

@@ -5,23 +5,23 @@
   "expectations": {
     "routeCount": 396,
     "classificationOverrideCount": 107,
-    "derivedProductionPageCount": 284,
+    "derivedProductionPageCount": 285,
     "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
     "usageCounts": {
-      "page": 287,
+      "page": 288,
       "external_takeover": 59,
       "exit_candidate": 43,
       "internal_task": 2,
-      "unclassified": 5
+      "unclassified": 4
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 334,
+      "web_api_wrapper": 335,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 1,
       "operator_endpoint": 1,
-      "none": 54
+      "none": 53
     }
   },
   "overrides": [

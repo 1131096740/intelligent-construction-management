@@ -8,7 +8,7 @@ import {
   NotFoundException,
   Optional
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ProjectFinancingQuota } from "@prisma/client";
 import { canPerform, resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash } from "node:crypto";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
@@ -16,6 +16,10 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { PrismaService } from "../database/prisma.service";
+import {
+  acquireFileBusinessBindingTransactionLock,
+  hasAnyBusinessFileBinding
+} from "../file/file-business-binding";
 import {
   dbMoneyToBigInt,
   findProjectSpotProcurementRefundAmounts,
@@ -2700,7 +2704,8 @@ export class ProjectService {
           enabled: canPerform("project.financing_quota.request", actorRoleKeys),
           disabledReason: canPerform("project.financing_quota.request", actorRoleKeys)
             ? null
-            : "当前账号无项目垫资额度申请权限"
+            : "当前账号无项目垫资额度申请权限",
+          requiresFile: true
         }),
         rows
       };
@@ -2719,77 +2724,260 @@ export class ProjectService {
     const reason = requiredTrimmed(input.reason, "项目垫资额度申请原因必填");
     const validUntil = input.validUntil === undefined
       ? null
-      : parseFutureDate(
+      : parseProjectFinancingQuotaValidUntil(
           input.validUntil,
-          "项目垫资额度有效期无效",
-          "项目垫资额度有效期必须晚于当前时间"
+          "项目垫资额度有效期无效"
         );
     const attachmentFileId = requiredTrimmed(
       input.attachmentFileId,
       "项目垫资额度附件必填"
     );
+    const idempotencyKey = normalizeUuidV4(
+      input.idempotencyKey,
+      "项目垫资申请幂等键必须是 UUID"
+    );
+    const normalizedRequest = {
+      projectId,
+      actorUserId,
+      amountCents,
+      reason,
+      validUntil,
+      attachmentFileId,
+      idempotencyKey
+    };
 
-    return this.prisma.$transaction(async (tx) => {
-      const [project, file] = await Promise.all([
-        tx.project.findFirst({
-          where: { id: projectId, isActive: true },
-          select: { id: true }
-        }),
-        tx.fileObject.findUnique({
-          where: { id: attachmentFileId },
-          select: { id: true, uploadedByUserId: true }
-        })
-      ]);
-
-      if (!project) {
-        throw new NotFoundException("项目不存在或已停用");
-      }
-      if (!file) {
-        throw new NotFoundException("项目垫资额度附件不存在");
-      }
-      if (file.uploadedByUserId !== actorUserId) {
-        throw new BadRequestException("项目垫资额度附件必须由申请人本人上传");
-      }
-
-      const quota = await tx.projectFinancingQuota.create({
-        data: {
-          projectId: project.id,
-          amountCents,
-          reason,
-          validUntil,
-          attachmentFileId,
-          requestedByUserId: actorUserId,
-          status: "approval_pending"
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const requestedByRoleKey = await this.requireProjectFinancingQuotaRequester(
+          tx,
+          projectId,
+          actorUserId
+        );
+        const replay = await tx.projectFinancingQuota.findUnique({
+          where: { requestIdempotencyKey: idempotencyKey }
+        });
+        if (replay) {
+          return this.toProjectFinancingQuotaRequestReplay(
+            tx,
+            replay,
+            normalizedRequest
+          );
         }
-      });
 
-      await tx.approvalInstance.create({
-        data: {
-          flowType: "project_financing_quota.approve",
+        await acquireFileBusinessBindingTransactionLock(tx);
+        const replayAfterFileBindingLock =
+          await tx.projectFinancingQuota.findUnique({
+            where: { requestIdempotencyKey: idempotencyKey }
+          });
+        if (replayAfterFileBindingLock) {
+          return this.toProjectFinancingQuotaRequestReplay(
+            tx,
+            replayAfterFileBindingLock,
+            normalizedRequest
+          );
+        }
+
+        if (validUntil && validUntil.getTime() <= Date.now()) {
+          throw new BadRequestException(
+            "项目垫资额度有效期必须晚于当前时间"
+          );
+        }
+
+        const file = await lockProjectFinancingQuotaAttachment(
+          tx,
+          attachmentFileId
+        );
+        if (!file) {
+          throw new NotFoundException("项目垫资额度附件不存在");
+        }
+        if (file.uploadedByUserId !== actorUserId) {
+          throw new BadRequestException(
+            "项目垫资额度附件必须由申请人本人上传"
+          );
+        }
+        if (file.storageStatus !== "active") {
+          throw new BadRequestException("项目垫资额度附件尚未完成存储");
+        }
+        if (!isLowercaseSha256(file.contentSha256)) {
+          throw new BadRequestException(
+            "项目垫资额度附件缺少有效 SHA-256"
+          );
+        }
+        if (await hasAnyBusinessFileBinding(tx, [attachmentFileId])) {
+          throw new ConflictException("项目垫资额度附件已绑定其他业务事实");
+        }
+
+        const attachmentFileSha256Snapshot = file.contentSha256;
+        const requestFingerprint = projectFinancingQuotaRequestFingerprint({
+          projectId,
+          actorUserId,
+          requestedByRoleKey,
+          amountCents: moneyCentsToApi(amountCents),
+          reason,
+          validUntil: validUntil?.toISOString() ?? null,
+          attachmentFileId,
+          attachmentFileSha256Snapshot
+        });
+        const quota = await tx.projectFinancingQuota.create({
+          data: {
+            projectId,
+            amountCents,
+            reason,
+            validUntil,
+            attachmentFileId,
+            attachmentFileSha256Snapshot,
+            requestedByUserId: actorUserId,
+            requestedByRoleKey,
+            requestIdempotencyKey: idempotencyKey,
+            requestFingerprint,
+            status: "approval_pending"
+          }
+        });
+
+        await tx.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: quota.id,
+            status: "in_progress",
+            currentNodeIndex: 0,
+            frozenNodes:
+              PROJECT_FINANCING_QUOTA_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+            applicantUserId: actorUserId
+          }
+        });
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.financing_quota.request",
           businessType: "project_financing_quota",
           businessId: quota.id,
-          status: "in_progress",
-          currentNodeIndex: 0,
-          frozenNodes: PROJECT_FINANCING_QUOTA_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
-          applicantUserId: actorUserId
-        }
-      });
+          metadata: {
+            projectId,
+            amountCents: moneyCentsToApi(amountCents),
+            validUntil: validUntil?.toISOString() ?? null,
+            attachmentFileId,
+            attachmentFileSha256Snapshot,
+            requestedByRoleKey,
+            requestIdempotencyKey: idempotencyKey,
+            requestFingerprint
+          }
+        });
 
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project.financing_quota.request",
-        businessType: "project_financing_quota",
-        businessId: quota.id,
-        metadata: {
-          projectId: project.id,
-          amountCents: moneyCentsToApi(amountCents),
-          validUntil: validUntil?.toISOString() ?? null,
-          attachmentFileId
-        }
+        return projectFinancingQuotaRequestReceipt(quota, "created");
       });
+    } catch (error) {
+      if (!isProjectFinancingQuotaRequestIdempotencyConflict(error)) throw error;
+      return this.prisma.$transaction(async (tx) => {
+        await this.requireProjectFinancingQuotaRequester(
+          tx,
+          projectId,
+          actorUserId
+        );
+        const replay = await tx.projectFinancingQuota.findUnique({
+          where: { requestIdempotencyKey: idempotencyKey }
+        });
+        if (!replay) {
+          throw new ConflictException(
+            "项目垫资额度申请发生并发冲突，请刷新后重试"
+          );
+        }
+        return this.toProjectFinancingQuotaRequestReplay(
+          tx,
+          replay,
+          normalizedRequest
+        );
+      });
+    }
+  }
 
-      return toProjectFinancingQuotaReadModel(quota);
+  private async requireProjectFinancingQuotaRequester(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    actorUserId: string
+  ): Promise<"finance_director" | "finance_staff"> {
+    const project = await lockActiveProjectForFinancingQuotaRequest(tx, projectId);
+    if (!project) {
+      throw new NotFoundException("项目不存在或已停用");
+    }
+    const activeUser = await tx.user.findFirst({
+      where: { id: actorUserId, isActive: true },
+      select: { id: true }
     });
+    if (!activeUser) {
+      throw new ForbiddenException("当前账号已停用或不存在");
+    }
+    const actorRoleKeys = await this.loadActorRoleKeys(
+      tx,
+      actorUserId,
+      projectId
+    );
+    if (!canPerform("project.financing_quota.request", actorRoleKeys)) {
+      throw new ForbiddenException(
+        "只有财务人员或财务主管可以申请项目垫资额度"
+      );
+    }
+    return actorRoleKeys.includes("finance_director")
+      ? "finance_director"
+      : "finance_staff";
+  }
+
+  private async toProjectFinancingQuotaRequestReplay(
+    tx: Prisma.TransactionClient,
+    quota: ProjectFinancingQuota,
+    request: {
+      projectId: string;
+      actorUserId: string;
+      amountCents: bigint;
+      reason: string;
+      validUntil: Date | null;
+      attachmentFileId: string;
+      idempotencyKey: string;
+    }
+  ) {
+    if (
+      quota.projectId !== request.projectId ||
+      quota.requestedByUserId !== request.actorUserId ||
+      quota.requestIdempotencyKey !== request.idempotencyKey ||
+      quota.amountCents !== request.amountCents ||
+      quota.reason !== request.reason ||
+      quota.validUntil?.toISOString() !== request.validUntil?.toISOString() ||
+      quota.attachmentFileId !== request.attachmentFileId ||
+      (quota.requestedByRoleKey !== "finance_staff" &&
+        quota.requestedByRoleKey !== "finance_director") ||
+      !isLowercaseSha256(quota.attachmentFileSha256Snapshot)
+    ) {
+      throw new ConflictException("项目垫资额度申请幂等键与已有事实不一致");
+    }
+    const expectedFingerprint = projectFinancingQuotaRequestFingerprint({
+      projectId: request.projectId,
+      actorUserId: request.actorUserId,
+      requestedByRoleKey: quota.requestedByRoleKey,
+      amountCents: moneyCentsToApi(request.amountCents),
+      reason: request.reason,
+      validUntil: request.validUntil?.toISOString() ?? null,
+      attachmentFileId: request.attachmentFileId,
+      attachmentFileSha256Snapshot: quota.attachmentFileSha256Snapshot
+    });
+    if (quota.requestFingerprint !== expectedFingerprint) {
+      throw new ConflictException("项目垫资额度申请幂等键与已有事实不一致");
+    }
+    const approvalInstances = await tx.approvalInstance.findMany({
+      where: {
+        businessType: "project_financing_quota",
+        flowType: "project_financing_quota.approve",
+        businessId: quota.id
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }]
+    });
+    const approvalByQuotaId = indexProjectFinancingQuotaApprovalInstances(
+      approvalInstances
+    );
+    assertProjectFinancingQuotaApprovalLifecycle(
+      quota,
+      approvalByQuotaId.get(quota.id)
+    );
+    return projectFinancingQuotaRequestReceipt(quota, "replayed");
   }
 
   async reviewProjectFinancingQuota(
@@ -3120,6 +3308,7 @@ function financingQuotaReadAction(input: {
   disabledReason: string | null;
   requiresPassword?: boolean;
   requiresSelfReviewConfirmation?: boolean;
+  requiresFile?: boolean;
 }) {
   return {
     key: input.key,
@@ -3129,6 +3318,7 @@ function financingQuotaReadAction(input: {
     disabledReason: input.enabled ? null : input.disabledReason,
     requiredAction: input.requiredAction,
     ...(input.requiresPassword ? { requiresPassword: true } : {}),
+    ...(input.requiresFile ? { requiresFile: true } : {}),
     ...(input.requiresSelfReviewConfirmation
       ? { requiresSelfReviewConfirmation: true }
       : {})
@@ -3284,6 +3474,87 @@ function normalizePositiveMoneyCents(value: unknown, message: string): bigint {
   return cents;
 }
 
+async function lockActiveProjectForFinancingQuotaRequest(
+  tx: Prisma.TransactionClient,
+  projectId: string
+): Promise<{ id: string } | null> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT "id"
+    FROM "Project"
+    WHERE "id" = ${projectId}
+      AND "isActive" = TRUE
+    FOR UPDATE
+  `);
+  return rows[0] ?? null;
+}
+
+async function lockProjectFinancingQuotaAttachment(
+  tx: Prisma.TransactionClient,
+  attachmentFileId: string
+): Promise<{
+  id: string;
+  uploadedByUserId: string;
+  storageStatus: string;
+  contentSha256: string | null;
+} | null> {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    uploadedByUserId: string;
+    storageStatus: string;
+    contentSha256: string | null;
+  }>>(Prisma.sql`
+    SELECT "id", "uploadedByUserId", "storageStatus", "contentSha256"
+    FROM "FileObject"
+    WHERE "id" = ${attachmentFileId}
+    FOR UPDATE
+  `);
+  return rows[0] ?? null;
+}
+
+function normalizeUuidV4(value: unknown, message: string): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      normalized
+    )
+  ) {
+    throw new BadRequestException(message);
+  }
+  return normalized;
+}
+
+function isLowercaseSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function projectFinancingQuotaRequestFingerprint(value: {
+  projectId: string;
+  actorUserId: string;
+  requestedByRoleKey: "finance_staff" | "finance_director";
+  amountCents: string;
+  reason: string;
+  validUntil: string | null;
+  attachmentFileId: string;
+  attachmentFileSha256Snapshot: string;
+}) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function projectFinancingQuotaRequestReceipt(
+  quota: Pick<ProjectFinancingQuota, "id" | "projectId" | "requestIdempotencyKey">,
+  kind: "created" | "replayed"
+) {
+  if (!quota.requestIdempotencyKey) {
+    throw new ConflictException("项目垫资额度申请回执缺少幂等键");
+  }
+  return {
+    kind,
+    idempotencyKey: quota.requestIdempotencyKey,
+    projectId: quota.projectId,
+    quotaId: quota.id
+  };
+}
+
 function parseUpstreamFundDate(value: unknown): Date {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new BadRequestException("请填写上游资金发生日期");
@@ -3329,6 +3600,14 @@ function parseOwnerContractDate(value: unknown): Date {
 }
 
 function parseFutureDate(value: unknown, invalidMessage: string, pastMessage: string): Date {
+  const parsed = parseDateInput(value, invalidMessage);
+  if (parsed.getTime() <= Date.now()) {
+    throw new BadRequestException(pastMessage);
+  }
+  return parsed;
+}
+
+function parseDateInput(value: unknown, invalidMessage: string): Date {
   if (typeof value !== "string") {
     throw new BadRequestException(invalidMessage);
   }
@@ -3336,10 +3615,32 @@ function parseFutureDate(value: unknown, invalidMessage: string, pastMessage: st
   if (Number.isNaN(parsed.getTime())) {
     throw new BadRequestException(invalidMessage);
   }
-  if (parsed.getTime() <= Date.now()) {
-    throw new BadRequestException(pastMessage);
-  }
   return parsed;
+}
+
+function parseProjectFinancingQuotaValidUntil(
+  value: unknown,
+  invalidMessage: string
+): Date {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/u.test(value)) {
+    const selectedDate = new Date(`${value}T00:00:00.000Z`);
+    if (
+      Number.isNaN(selectedDate.getTime()) ||
+      selectedDate.toISOString().slice(0, 10) !== value
+    ) {
+      throw new BadRequestException(invalidMessage);
+    }
+    return new Date(
+      selectedDate.getTime() + 16 * 60 * 60 * 1000 - 1
+    );
+  }
+  if (
+    typeof value !== "string" ||
+    !/(?:Z|[+-]\d{2}:\d{2})$/u.test(value)
+  ) {
+    throw new BadRequestException(invalidMessage);
+  }
+  return parseDateInput(value, invalidMessage);
 }
 
 function requiredTrimmed(value: unknown, message: string): string {
@@ -3361,8 +3662,22 @@ function normalizeRequiredBps(value: unknown, message: string): number {
   return value;
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
+function isUniqueConstraintError(
+  error: unknown
+): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function isProjectFinancingQuotaRequestIdempotencyConflict(
+  error: unknown
+): boolean {
+  if (!isUniqueConstraintError(error)) return false;
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.length === 1 && target[0] === "requestIdempotencyKey";
+  }
+  return target === "requestIdempotencyKey" ||
+    target === "ProjectFinancingQuota_requestIdempotencyKey_key";
 }
 
 function normalizeUpstreamFundFactType(value: unknown): ProjectUpstreamFundFactType {

@@ -21,7 +21,7 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_project_expense_execution_concurrency";
-const EXPECTED_MIGRATION_COUNT = 114;
+const EXPECTED_MIGRATION_COUNT = 115;
 const LATEST_MIGRATION =
   "20260728140000_project_expense_execution_idempotency";
 const PRE140_TEMPLATE_DATABASE =
@@ -358,11 +358,14 @@ function retainedFixtureSql(
       );
       INSERT INTO "ProjectFinancingQuota" (
         "id", "projectId", "amountCents", "reason", "attachmentFileId",
+        "attachmentFileSha256Snapshot", "requestedByRoleKey",
+        "requestIdempotencyKey", "requestFingerprint",
         "requestedByUserId", "approvedByUserId", "approvedAt", "status",
         "updatedAt"
       ) VALUES (
         '${prefix}_other_quota', '${prefix}_other_project', 1000,
         '跨项目垫资负向迁移夹具', '${prefix}_quota_attachment',
+        '${"c".repeat(64)}', 'finance_staff', '${randomUUID()}', '${"d".repeat(64)}',
         '${prefix}_executor', '${prefix}_executor', CURRENT_TIMESTAMP,
         'approved', CURRENT_TIMESTAMP
       );
