@@ -951,12 +951,6 @@ export interface ReviewContractApprovalPayload {
   ownerContractRiskConfirmed?: boolean;
 }
 
-export interface SubmitContractApprovalPayload {
-  numberRuleId: string;
-  formalCodeOverride?: string;
-  overrideReason?: string;
-}
-
 export interface ContractNumberRuleReadModel {
   id: string;
   name: string;
@@ -5013,13 +5007,6 @@ export function fetchActiveContractNumberRules() {
   return readJson<ContractNumberRuleReadModel[]>("/contract-number-rules");
 }
 
-export function submitContractApproval(
-  contractVersionId: string,
-  body: SubmitContractApprovalPayload
-) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`, body);
-}
-
 export function reviewContractApproval(
   contractVersionId: string,
   body: ReviewContractApprovalPayload
@@ -5478,13 +5465,6 @@ export async function downloadSettlementLatestApprovalPdf(
   const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
   const fileName = match ? decodeURIComponent(match[1]) : `${settlementId}-结算审批最新.pdf`;
   saveBlob(blob, fileName);
-}
-
-// 个人签名图：预上传后审批单渲染时复用。
-export function uploadSignature(file: Blob, fileName: string) {
-  const form = new FormData();
-  form.append("file", file, fileName);
-  return postForm<{ signatureFileId: string }>("/me/signature", form);
 }
 
 export function uploadCanvasSignature(file: Blob) {

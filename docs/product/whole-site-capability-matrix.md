@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
-| webApiWrappers | blocked | `dd2b87fcf11185f03d815fc37fa2fd75ec1af181f63d9473bb80d0688529c261` |
+| webApiWrappers | blocked | `a6b2b6d93afbd47ed84e2e386f287ab51d27743f8d01d788f30ae498c2f0b3eb` |
 | webPageActions | blocked | `adb43ba4e08a03063d0c4157a2f2f196d308a95f9a872cdfc5b6d6dc83265afd` |
-| routeUsage | blocked | `e38fab0e018ba592c6fd6d73c8ffa25eeb64864d16cc2abf7cb8334bb2cd82c1` |
+| routeUsage | blocked | `6ff96c6e3e4871fe063d3d5efddba7ad1abab62a412338ed09a66803165a5d42` |
 
 ## 汇总
 
@@ -18,14 +18,14 @@
 | routeCount | 395 |
 | pageRouteCount | 286 |
 | externalTakeoverRouteCount | 59 |
-| exitCandidateRouteCount | 32 |
+| exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 16 |
-| mainRequestBindingCount | 398 |
+| unclassifiedRouteCount | 5 |
+| mainRequestBindingCount | 391 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 47 |
-| duplicateMutationRouteCount | 4 |
+| orphanWrapperCount | 40 |
+| duplicateMutationRouteCount | 3 |
 | registeredActionCount | 49 |
 | actionBindingCount | 64 |
 | acceptedActionBindingCount | 34 |
@@ -33,7 +33,7 @@
 | productionMutationConsumerPairCount | 272 |
 | coveredProductionMutationConsumerPairCount | 22 |
 | uncoveredProductionMutationConsumerPairCount | 250 |
-| blockerCount | 341 |
+| blockerCount | 322 |
 
 ## 路由矩阵
 
@@ -44,7 +44,7 @@
 | DELETE | /contract-drafts/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft | — | not_applicable | ORPHAN_WRAPPER |
 | DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | DELETE | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardContractBillTransitions | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#deleteSpotProcurementReceiptPhoto | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | GET | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listApprovalDelegations | — | not_applicable | — |
 | GET | /approval-delegations/user-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationUserOptions | — | not_applicable | — |
@@ -75,7 +75,7 @@
 | GET | /contract-workbench/:contractVersionId/negotiation-rounds | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractNegotiationRounds | — | not_applicable | — |
 | GET | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractOfflineRevisionHistory | — | not_applicable | — |
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | ORPHAN_WRAPPER |
-| GET | /contracts/:contractVersionId/authorizations/readiness | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
 | GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail | — | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
@@ -157,7 +157,7 @@
 | PATCH | /contract-scenario-template-mappings/:mappingId | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#updateContractScenarioMapping | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /contract-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /contract-workbench/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft | — | not_applicable | ORPHAN_WRAPPER |
-| PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /organization/departments/:departmentId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /organization/users/:userId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update-local-role-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
@@ -182,8 +182,8 @@
 | POST | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /company-entities/:id/status | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-bill-imports/:importId/apply | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#applyBillExcelImport | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
-| POST | /contract-bills/:billId/excel-imports | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#previewBillExcelImport | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |
+| POST | /contract-bills/:billId/excel-imports | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/rows/:rowKey/remainder-cancellation | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /contract-bills/:billId/rows | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#addBillRow | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contract-bills/:billId/rows/reorder | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#reorderBillRows | — | not_applicable | ORPHAN_WRAPPER |
@@ -224,7 +224,7 @@
 | POST | /contract-workbench/:contractVersionId/documents | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDocument | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-workbench/:contractVersionId/negotiation-rounds | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#openContractNegotiationRound | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#uploadContractNegotiationRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-workbench/:contractVersionId/parties | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#addContractParty | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contract-workbench/:contractVersionId/parties | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-workbench/:contractId/restore | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#restoreContractDraft | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contract-workbench/:contractVersionId/settlement-mode/confirm | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmContractSettlementMode | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-workbench/:contractId/transfer | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#transferContractDraft | contract-draft.transfer-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
@@ -234,7 +234,7 @@
 | POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction | contract-draft.abandon-application<br>contract-draft.delete-pristine | covered | ORPHAN_WRAPPER |
 | POST | /contracts/:contractVersionId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contracts/:contractVersionId/approval-submission | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#submitContractFromWorkbench<br>apps/web-admin/src/api/core-flow-read.api.ts#submitContractApproval | — | not_applicable | DUPLICATE_MUTATION_ROUTE<br>ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /contracts/:contractVersionId/approval-submission | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -275,7 +275,7 @@
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /me/signature | unclassified | none | apps/web-admin/src/api/core-flow-read.api.ts#uploadSignature | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
 | POST | /organization/departments | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /organization/role-additions/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /organization/role-additions/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -393,7 +393,7 @@
 | POST | /spot-procurement-payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementPaymentDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementPaymentReviewAction | spot-procurement-payment.legacy-review-approve<br>spot-procurement-payment.legacy-review-return-to-applicant<br>spot-procurement-payment.review-approve<br>spot-procurement-payment.review-return-to-applicant | covered | — |
-| POST | /spot-procurement-payments/:paymentId/balance-execution | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /spot-procurement-payments/:paymentId/balance-execution | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurement-payments/:paymentId/executions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementPaymentExecution | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/invoices/:invoiceId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#invalidateSpotProcurementPaymentInvoice | spot-procurement.invoice-invalidate | covered | — |
 | POST | /spot-procurement-payments/:paymentId/invoices | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend | spot-procurement.invoice-append | covered | — |
@@ -420,7 +420,7 @@
 | POST | /spot-procurements/:procurementId/receipt/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementReceipt | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/refunds | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefund | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurement | spot-procurement.submit | covered | — |
-| POST | /spot-procurements/:procurementId/supplier-balance-credit | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
+| POST | /spot-procurements/:procurementId/supplier-balance-credit | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/versions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/voiding | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#voidSpotProcurement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -429,7 +429,7 @@
 | POST | /standard-clause-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitStandardClauseVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
-| PUT | /contract-bills/:billId/rows | unclassified | none | apps/web-admin/src/api/contract-workbench.api.ts#replaceContractBillRows | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| PUT | /contract-bills/:billId/rows | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PUT | /projects/:projectId/contract-takeovers/:takeoverId/contract-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverContractSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -449,22 +449,17 @@
 
 - apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#addBillRow（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#addContractParty（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#applyBillExcelImport（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#createDraftCheckpoint（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#fetchContractWorkbench（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#previewBillExcelImport（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#reorderBillRows（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#replaceContractBillRows（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#restoreContractDraft（unreferenced）
 - apps/web-admin/src/api/contract-workbench.api.ts#restoreDraftCheckpoint（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#revokeContractTemplateVersion（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#revokeLayoutTemplateVersion（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft（test_only）
-- apps/web-admin/src/api/contract-workbench.api.ts#submitContractFromWorkbench（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#voidContractDraft（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#assignProjectAffiliate（test_only）
@@ -489,9 +484,7 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewProjectFinancingQuota（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota（test_only）
-- apps/web-admin/src/api/core-flow-read.api.ts#submitContractApproval（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#terminateProjectFinancingQuota（test_only）
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadSignature（unreferenced）
 - apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord（test_only）
 - apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementPaymentDraft（test_only）
 

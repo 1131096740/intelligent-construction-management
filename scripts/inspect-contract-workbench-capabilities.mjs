@@ -99,6 +99,20 @@ function failLegacyHits() {
   );
 }
 
+function failExitCandidates() {
+  throw capabilityInputError(
+    "CAPABILITY_EXIT_CANDIDATES_INVALID",
+    "Exit candidate evidence failed validation"
+  );
+}
+
+function failRouteUsage() {
+  throw capabilityInputError(
+    "CAPABILITY_ROUTE_USAGE_INVALID",
+    "Route usage manifest failed validation"
+  );
+}
+
 function normalizeEvidenceRouteKey(value) {
   if (typeof value !== "string") return null;
   const match = value.trim().match(/^([A-Za-z]+)\s+(\/\S*)$/);
@@ -133,6 +147,33 @@ function normalizeUniqueLegacyRoutes(routes) {
     const key = normalizeEvidenceRouteKey(route);
     if (!key || normalized.has(key)) failLegacyRoutes();
     normalized.add(key);
+  }
+  return normalized;
+}
+
+function normalizeUniqueExitCandidates(candidates) {
+  if (!Array.isArray(candidates)) failExitCandidates();
+  const normalized = new Map();
+  for (const candidate of candidates) {
+    if (
+      !plainRecord(candidate) ||
+      candidate.usage !== "exit_candidate" ||
+      candidate.consumerSurface !== "none" ||
+      !Array.isArray(candidate.productionConsumers) ||
+      candidate.productionConsumers.length !== 0 ||
+      candidate.deletionAuthorized !== false
+    ) {
+      failExitCandidates();
+    }
+    const key = normalizeEvidenceRouteKey(candidate.normalizedKey);
+    if (!key || normalized.has(key)) failExitCandidates();
+    normalized.set(key, {
+      normalizedKey: key,
+      usage: "exit_candidate",
+      consumerSurface: "none",
+      productionConsumers: [],
+      deletionAuthorized: false
+    });
   }
   return normalized;
 }
@@ -521,6 +562,63 @@ function isContractCapability(route) {
   );
 }
 
+export function extractContractExitCandidates(routeUsage) {
+  if (
+    !plainRecord(routeUsage) ||
+    routeUsage.schemaVersion !== 1 ||
+    !plainRecord(routeUsage.scope) ||
+    routeUsage.scope.authorizationScope !== "route_usage_classification_only" ||
+    routeUsage.scope.deletionAuthorized !== false ||
+    routeUsage.scope.exitCandidateSemantics !==
+      "candidate_only_no_deletion_authorization" ||
+    !Array.isArray(routeUsage.routes)
+  ) {
+    failRouteUsage();
+  }
+  const candidates = [];
+  for (const route of routeUsage.routes) {
+    if (!plainRecord(route) || route.deletionAuthorized !== false) {
+      failRouteUsage();
+    }
+    if (route.usage !== "exit_candidate") continue;
+    const key = normalizeEvidenceRouteKey(route.normalizedKey);
+    const derivedKey = normalizeRouteKey(`${route.method} ${route.path}`);
+    const consumerEvidence = route.consumerEvidence;
+    const wrapperConsumers = Array.isArray(consumerEvidence?.webApiWrappers)
+      ? consumerEvidence.webApiWrappers.flatMap((wrapper) =>
+          Array.isArray(wrapper?.productionConsumers)
+            ? wrapper.productionConsumers
+            : ["invalid"]
+        )
+      : ["invalid"];
+    const otherConsumers = [
+      consumerEvidence?.authStore,
+      consumerEvidence?.ticketFollowups
+    ].flatMap((value) => (Array.isArray(value) ? value : ["invalid"]));
+    if (
+      !key ||
+      derivedKey !== key ||
+      route.consumerSurface !== "none" ||
+      wrapperConsumers.length !== 0 ||
+      otherConsumers.length !== 0 ||
+      consumerEvidence?.manualSurfaceReason !== null ||
+      route.exitCandidateSemantics !==
+        "candidate_only_no_deletion_authorization"
+    ) {
+      failRouteUsage();
+    }
+    if (!isContractCapability(route.path)) continue;
+    candidates.push({
+      normalizedKey: key,
+      usage: "exit_candidate",
+      consumerSurface: "none",
+      productionConsumers: [],
+      deletionAuthorized: false
+    });
+  }
+  return [...normalizeUniqueExitCandidates(candidates).values()];
+}
+
 function importedApiModule(specifier) {
   return /(?:^|\/)(?:contract-workbench|core-flow-read)\.api(?:\.[cm]?[jt]s)?$/.test(
     specifier
@@ -617,6 +715,7 @@ function evidenceForLegacy(key, runtimeRoutes, legacyHits) {
   } else if (legacyHits.counts[key] !== 0) {
     missingEvidence.push("production_legacy_route_nonzero");
   }
+  missingEvidence.push("independent_deletion_authorization");
   return missingEvidence;
 }
 
@@ -678,6 +777,7 @@ export async function inspectCapabilityProject({
   root,
   internalRoutes = DEFAULT_INTERNAL_ROUTES,
   legacyRoutes = DEFAULT_LEGACY_ROUTES,
+  exitCandidates = [],
   runtimeRoutes,
   legacyHits
 }) {
@@ -685,6 +785,7 @@ export async function inspectCapabilityProject({
     internalRoutes.map(normalizeRouteKey).filter(Boolean)
   );
   const normalizedLegacy = normalizeUniqueLegacyRoutes(legacyRoutes);
+  const normalizedExitCandidates = normalizeUniqueExitCandidates(exitCandidates);
   const normalizedRuntime =
     runtimeRoutes === undefined
       ? undefined
@@ -766,6 +867,11 @@ export async function inspectCapabilityProject({
   );
 
   const backendByKey = new Map(backendRoutes.map((route) => [route.key, route]));
+  if (
+    [...normalizedExitCandidates.keys()].some((key) => !backendByKey.has(key))
+  ) {
+    failExitCandidates();
+  }
   const wrapperRequests = wrappers.flatMap((wrapper) =>
     wrapper.requests.map((request) => ({
       ...request,
@@ -783,15 +889,32 @@ export async function inspectCapabilityProject({
     const backend = backendByKey.get(request.key);
     let classification;
     if (!backend) classification = "frontend_without_backend";
-    else if (normalizedLegacy.has(request.key)) classification = "legacy_candidate";
-    else if (normalizedInternal.has(request.key) && routeConsumers.length === 0) {
+    else if (normalizedExitCandidates.has(request.key)) {
+      if (routeConsumers.length !== 0) {
+        throw capabilityInputError(
+          "CAPABILITY_EXIT_CANDIDATE_CONSUMER_PRESENT",
+          "Exit candidate regained a production consumer"
+        );
+      }
+      classification = "exit_candidate";
+    } else if (normalizedLegacy.has(request.key)) {
+      classification = "legacy_candidate";
+    } else if (
+      normalizedInternal.has(request.key) &&
+      routeConsumers.length === 0
+    ) {
       classification = "backend_internal_only";
     } else if (routeConsumers.length === 0) classification = "backend_without_frontend";
     else classification = "matched";
     const missingEvidence =
-      classification === "legacy_candidate"
-        ? evidenceForLegacy(request.key, normalizedRuntime, normalizedHits)
-        : [];
+      classification === "exit_candidate"
+        ? [
+            "production_exit_candidate_zero_calls",
+            "independent_deletion_authorization"
+          ]
+        : classification === "legacy_candidate"
+          ? evidenceForLegacy(request.key, normalizedRuntime, normalizedHits)
+          : [];
     capabilities.push({
       method: request.method,
       route: request.route,
@@ -799,15 +922,20 @@ export async function inspectCapabilityProject({
       consumers: routeConsumers,
       backend: backend?.controller ?? null,
       classification,
+      deletionAuthorized: false,
       decision:
         classification === "backend_internal_only"
           ? "转内部"
-          : classification === "frontend_without_backend"
+          : classification === "exit_candidate"
+            ? "候选退出"
+            : classification === "frontend_without_backend"
             ? "补入口"
             : classification === "backend_without_frontend"
               ? "补入口"
-              : classification === "legacy_candidate" && missingEvidence.length === 0
-                ? "删除"
+              : classification === "legacy_candidate" &&
+                  missingEvidence.length === 1 &&
+                  missingEvidence[0] === "independent_deletion_authorization"
+                ? "候选退出"
                 : "保留",
       missingEvidence
     });
@@ -817,13 +945,23 @@ export async function inspectCapabilityProject({
   for (const backend of backendRoutes) {
     if (wrapperKeys.has(backend.key)) continue;
     let classification;
-    if (normalizedLegacy.has(backend.key)) classification = "legacy_candidate";
-    else if (normalizedInternal.has(backend.key)) classification = "backend_internal_only";
+    if (normalizedExitCandidates.has(backend.key)) {
+      classification = "exit_candidate";
+    } else if (normalizedLegacy.has(backend.key)) {
+      classification = "legacy_candidate";
+    } else if (normalizedInternal.has(backend.key)) {
+      classification = "backend_internal_only";
+    }
     else classification = "backend_without_frontend";
     const missingEvidence =
-      classification === "legacy_candidate"
-        ? evidenceForLegacy(backend.key, normalizedRuntime, normalizedHits)
-        : [];
+      classification === "exit_candidate"
+        ? [
+            "production_exit_candidate_zero_calls",
+            "independent_deletion_authorization"
+          ]
+        : classification === "legacy_candidate"
+          ? evidenceForLegacy(backend.key, normalizedRuntime, normalizedHits)
+          : [];
     capabilities.push({
       method: backend.method,
       route: backend.route,
@@ -831,11 +969,16 @@ export async function inspectCapabilityProject({
       consumers: [],
       backend: backend.controller,
       classification,
+      deletionAuthorized: false,
       decision:
         classification === "backend_internal_only"
           ? "转内部"
-          : classification === "legacy_candidate" && missingEvidence.length === 0
-            ? "删除"
+          : classification === "exit_candidate"
+            ? "候选退出"
+          : classification === "legacy_candidate" &&
+              missingEvidence.length === 1 &&
+              missingEvidence[0] === "independent_deletion_authorization"
+            ? "候选退出"
             : classification === "legacy_candidate"
               ? "保留"
               : "补入口",
@@ -876,7 +1019,9 @@ export async function inspectCapabilityProject({
           ? null
           : [...runtimeContractRouteKeys].filter((key) => !staticRouteKeys.has(key)).length,
       productionLegacyHitsProvided: normalizedHits !== undefined,
-      observationWindow: normalizedHits?.observationWindow ?? null
+      observationWindow: normalizedHits?.observationWindow ?? null,
+      exitCandidateCount: normalizedExitCandidates.size,
+      exitCandidateDeletionAuthorized: false
     }
   };
 }
@@ -900,7 +1045,7 @@ function renderMatrix(report) {
     .map((item) => {
       const missing =
         item.missingEvidence.length > 0 ? item.missingEvidence.join(", ") : "—";
-      return `| ${item.method} | \`${escapeCell(item.route)}\` | ${escapeCell(item.wrapper)} | ${escapeCell(item.consumers.join("<br>"))} | ${item.classification} | ${item.decision} | ${missing} |`;
+      return `| ${item.method} | \`${escapeCell(item.route)}\` | ${escapeCell(item.wrapper)} | ${escapeCell(item.consumers.join("<br>"))} | ${item.classification} | ${item.decision} | ${item.deletionAuthorized ? "是" : "否"} | ${missing} |`;
     })
     .join("\n");
   const missingWrapperRows =
@@ -925,6 +1070,7 @@ function renderMatrix(report) {
 | Web API 请求 | 已扫描 ${evidence.staticApiRequests} 条 |
 | 实际 Nest route manifest | ${evidence.runtimeRouteManifestProvided ? `已通过 \`app.init()\` 读取，共 ${evidence.runtimeRouteCount} 条；源码缺运行时 ${evidence.staticRoutesMissingAtRuntime} 条，运行时缺源码 ${evidence.runtimeRoutesMissingInSource} 条` : "缺失；所有旧路由删除决定保持阻断"} |
 | 生产或生产等价旧路由命中 | ${evidence.productionLegacyHitsProvided ? `已提供；观察窗口 ${escapeCell(evidence.observationWindow)}` : "缺失；不得据静态矩阵执行删除"} |
+| route-usage 候选退出 | 已读取 ${evidence.exitCandidateCount} 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
@@ -935,6 +1081,7 @@ function renderMatrix(report) {
 | backend_without_frontend | ${counts.get("backend_without_frontend") ?? 0} |
 | backend_internal_only | ${counts.get("backend_internal_only") ?? 0} |
 | legacy_candidate | ${counts.get("legacy_candidate") ?? 0} |
+| exit_candidate | ${counts.get("exit_candidate") ?? 0} |
 
 ## 不存在的页面 API wrapper
 
@@ -942,14 +1089,15 @@ ${missingWrapperRows}
 
 ## 能力与决策
 
-| Method | Route | API wrapper | 生产消费者 | 分类 | 决策 | 删除缺失证据 |
-| --- | --- | --- | --- | --- | --- | --- |
+| Method | Route | API wrapper | 生产消费者 | 分类 | 决策 | 物理删除授权 | 退出/删除缺失证据 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 ${rows}
 
 ## 复核结论
 
-- 主体角色更新/删除、清单余量取消、授权 readiness 和签署材料变更等后端能力，如无生产消费者，保持“补入口”或经业务确认后“转内部”，不能仅因页面缺入口删除。
-- \`listContractDrafts\`、void/restore、单行 add/update/delete/reorder 和 checkpoint 创建/恢复以实际消费者分类；只有 route manifest、调用图及生产零命中同时成立，才可由“保留”转为“删除”。
+- 清单余量取消、签署材料变更等尚未被 route-usage 审计为 \`exit_candidate\` 的后端能力，如无生产消费者，保持“补入口”或经业务确认后“转内部”，不能仅因页面缺入口删除。
+- route-usage 已审计的 \`exit_candidate\` 只能显示“候选退出”；仍缺生产观察窗口零调用证据和独立物理删除授权，不得升级为“删除”。候选一旦重新出现生产消费者，检查器失败关闭。
+- \`listContractDrafts\`、void/restore、单行 add/update/delete/reorder 和 checkpoint 创建/恢复以实际消费者分类；route manifest、调用图及生产零命中同时成立时最多由“保留”转为“候选退出”，仍须独立物理删除授权才能删除。
 - 台账“删除草稿”当前委托 \`abandonContractDraft\` 调用 \`POST /contracts/:contractVersionId/abandonment\`，并提交 \`delete_pristine_draft\` 领域动作；旧 \`deletePristineContractDraft\` wrapper 无生产消费者。本矩阵不把受控物理 purge 暴露为日常页面能力。
 - 当前矩阵没有授权物理删除。Release C1 只允许在证据齐备后退出旧调用代码；checkpoint 表物理删除仍属于需独立授权的 Release C2。
 `;
@@ -1010,8 +1158,12 @@ async function main() {
   const legacyHits = args.legacy_hits
     ? await readJson(resolve(root, args.legacy_hits))
     : undefined;
+  const routeUsage = await readJson(
+    resolve(root, "docs/product/manifests/route-usage.json")
+  );
   const report = await inspectCapabilityProject({
     root,
+    exitCandidates: extractContractExitCandidates(routeUsage),
     runtimeRoutes:
       runtimeManifest === undefined
         ? undefined

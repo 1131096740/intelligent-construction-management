@@ -22,21 +22,21 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "dd2b87fcf11185f03d815fc37fa2fd75ec1af181f63d9473bb80d0688529c261",
+      "sha256": "a6b2b6d93afbd47ed84e2e386f287ab51d27743f8d01d788f30ae498c2f0b3eb",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 398,
-        "transportWrapperCount": 386,
-        "pureExportCount": 12,
-        "mainRequestBindingCount": 398,
+        "exportedFunctionCount": 390,
+        "transportWrapperCount": 379,
+        "pureExportCount": 11,
+        "mainRequestBindingCount": 391,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 397,
+        "requestEdgeCount": 390,
         "productionConsumerCount": 339,
-        "orphanWrapperCount": 47,
-        "testOnlyWrapperCount": 45,
-        "unreferencedWrapperCount": 2,
-        "duplicateNormalizedRouteGroupCount": 10,
+        "orphanWrapperCount": 40,
+        "testOnlyWrapperCount": 39,
+        "unreferencedWrapperCount": 1,
+        "duplicateNormalizedRouteGroupCount": 9,
         "authTransportExceptionCount": 5
       }
     },
@@ -64,22 +64,22 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "e38fab0e018ba592c6fd6d73c8ffa25eeb64864d16cc2abf7cb8334bb2cd82c1",
+      "sha256": "6ff96c6e3e4871fe063d3d5efddba7ad1abab62a412338ed09a66803165a5d42",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
         "exactRouteCount": 395,
         "normalizedRouteCount": 395,
-        "classificationOverrideCount": 96,
+        "classificationOverrideCount": 107,
         "consumerSurfaceOverrideCount": 3,
-        "classificationOverrideSha256": "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad",
+        "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
         "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
         "derivedProductionPageCount": 283,
         "pageRouteCount": 286,
         "externalTakeoverCount": 59,
-        "exitCandidateCount": 32,
+        "exitCandidateCount": 43,
         "internalTaskCount": 2,
-        "unclassifiedCount": 16,
+        "unclassifiedCount": 5,
         "consumerSurfaceCounts": {
           "web_api_wrapper": 333,
           "auth_store": 5,
@@ -88,7 +88,7 @@
           "operator_endpoint": 1,
           "none": 54
         },
-        "blockerCount": 16
+        "blockerCount": 5
       }
     }
   },
@@ -96,14 +96,14 @@
     "routeCount": 395,
     "pageRouteCount": 286,
     "externalTakeoverRouteCount": 59,
-    "exitCandidateRouteCount": 32,
+    "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 2,
-    "unclassifiedRouteCount": 16,
-    "mainRequestBindingCount": 398,
+    "unclassifiedRouteCount": 5,
+    "mainRequestBindingCount": 391,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 47,
-    "duplicateMutationRouteCount": 4,
+    "orphanWrapperCount": 40,
+    "duplicateMutationRouteCount": 3,
     "registeredActionCount": 49,
     "actionBindingCount": 64,
     "acceptedActionBindingCount": 34,
@@ -111,7 +111,7 @@
     "productionMutationConsumerPairCount": 272,
     "coveredProductionMutationConsumerPairCount": 22,
     "uncoveredProductionMutationConsumerPairCount": 250,
-    "blockerCount": 341
+    "blockerCount": 322
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -151,16 +151,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "addContractParty",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "applyBillExcelImport",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "createDraftCheckpoint",
         "classification": "test_only"
       },
@@ -186,17 +176,7 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "previewBillExcelImport",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "reorderBillRows",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "replaceContractBillRows",
         "classification": "test_only"
       },
       {
@@ -222,11 +202,6 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "saveContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractFromWorkbench",
         "classification": "test_only"
       },
       {
@@ -351,18 +326,8 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractApproval",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "terminateProjectFinancingQuota",
         "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadSignature",
-        "classification": "unreferenced"
       },
       {
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -386,19 +351,6 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "createContractDraft"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /contracts/:param/approval-submission",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "submitContractFromWorkbench"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "submitContractApproval"
           }
         ]
       },
@@ -439,51 +391,6 @@
     ],
     "unclassifiedRoutes": [
       {
-        "method": "DELETE",
-        "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
-        "normalizedKey": "DELETE /contract-workbench/:param/parties/:param",
-        "controller": "BusinessPartyController",
-        "handler": "removeContractParty",
-        "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "GET",
-        "path": "/contracts/:contractVersionId/authorizations/readiness",
-        "normalizedKey": "GET /contracts/:param/authorizations/readiness",
-        "controller": "ContractController",
-        "handler": "authorizationReadiness",
-        "sourceFile": "services/api/src/contract/contract.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PATCH",
-        "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
-        "normalizedKey": "PATCH /contract-workbench/:param/parties/:param",
-        "controller": "BusinessPartyController",
-        "handler": "updateContractPartyRole",
-        "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contract-bill-imports/:importId/apply",
-        "normalizedKey": "POST /contract-bill-imports/:param/apply",
-        "controller": "ContractBillExcelController",
-        "handler": "applyImport",
-        "sourceFile": "services/api/src/contract-bill/contract-bill-excel.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contract-bills/:billId/excel-imports",
-        "normalizedKey": "POST /contract-bills/:param/excel-imports",
-        "controller": "ContractBillExcelController",
-        "handler": "previewImport",
-        "sourceFile": "services/api/src/contract-bill/contract-bill-excel.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
         "method": "POST",
         "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
         "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
@@ -494,38 +401,11 @@
       },
       {
         "method": "POST",
-        "path": "/contract-workbench/:contractVersionId/parties",
-        "normalizedKey": "POST /contract-workbench/:param/parties",
-        "controller": "BusinessPartyController",
-        "handler": "addContractParty",
-        "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contracts/:contractVersionId/approval-submission",
-        "normalizedKey": "POST /contracts/:param/approval-submission",
-        "controller": "ContractController",
-        "handler": "submitApproval",
-        "sourceFile": "services/api/src/contract/contract.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/contracts/:contractVersionId/signing/material-change",
         "normalizedKey": "POST /contracts/:param/signing/material-change",
         "controller": "ContractController",
         "handler": "invalidateSigningForMaterialChange",
         "sourceFile": "services/api/src/contract/contract.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/me/signature",
-        "normalizedKey": "POST /me/signature",
-        "controller": "MeController",
-        "handler": "uploadSignature",
-        "sourceFile": "services/api/src/me/me.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -553,33 +433,6 @@
         "controller": "ProjectController",
         "handler": "terminateProjectFinancingQuota",
         "sourceFile": "services/api/src/project/project.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurement-payments/:paymentId/balance-execution",
-        "normalizedKey": "POST /spot-procurement-payments/:param/balance-execution",
-        "controller": "SpotProcurementPaymentController",
-        "handler": "executeSupplierBalance",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/supplier-balance-credit",
-        "normalizedKey": "POST /spot-procurements/:param/supplier-balance-credit",
-        "controller": "SpotProcurementController",
-        "handler": "creditSupplierBalance",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PUT",
-        "path": "/contract-bills/:billId/rows",
-        "normalizedKey": "PUT /contract-bills/:param/rows",
-        "controller": "ContractBillController",
-        "handler": "replaceRows",
-        "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
         "consumerSurface": "none"
       }
     ],
@@ -3130,15 +2983,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -4507,15 +4358,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8487,15 +8336,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9556,29 +9403,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "applyBillExcelImport",
-          "method": "POST",
-          "path": "/contract-bill-imports/:param/apply",
-          "normalizedKey": "POST /contract-bill-imports/:param/apply",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/contract-workbench.api.test.ts"
-          ]
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9598,29 +9429,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "previewBillExcelImport",
-          "method": "POST",
-          "path": "/contract-bills/:param/excel-imports",
-          "normalizedKey": "POST /contract-bills/:param/excel-imports",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/contract-workbench.api.test.ts"
-          ]
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11556,29 +11371,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "addContractParty",
-          "method": "POST",
-          "path": "/contract-workbench/:param/parties",
-          "normalizedKey": "POST /contract-workbench/:param/parties",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/contract-workbench.api.test.ts"
-          ]
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12074,42 +11873,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "submitContractFromWorkbench",
-          "method": "POST",
-          "path": "/contracts/:param/approval-submission",
-          "normalizedKey": "POST /contracts/:param/approval-submission",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/contract-workbench.api.test.ts"
-          ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "submitContractApproval",
-          "method": "POST",
-          "path": "/contracts/:param/approval-submission",
-          "normalizedKey": "POST /contracts/:param/approval-submission",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "DUPLICATE_MUTATION_ROUTE",
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14026,27 +13796,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "uploadSignature",
-          "method": "POST",
-          "path": "/me/signature",
-          "normalizedKey": "POST /me/signature",
-          "bodyKind": "form_data",
-          "productionConsumers": [],
-          "testConsumers": []
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -19893,15 +19649,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21198,15 +20952,13 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21566,29 +21318,13 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "unclassified",
+      "usage": "exit_candidate",
       "consumerSurface": "none",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "replaceContractBillRows",
-          "method": "PUT",
-          "path": "/contract-bills/:param/rows",
-          "normalizedKey": "PUT /contract-bills/:param/rows",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/contract-workbench.api.test.ts"
-          ]
-        }
-      ],
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER",
-        "ROUTE_USAGE_UNCLASSIFIED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {

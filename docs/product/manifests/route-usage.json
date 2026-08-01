@@ -13,16 +13,16 @@
     "routeCount": 395,
     "exactRouteCount": 395,
     "normalizedRouteCount": 395,
-    "classificationOverrideCount": 96,
+    "classificationOverrideCount": 107,
     "consumerSurfaceOverrideCount": 3,
-    "classificationOverrideSha256": "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad",
+    "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
     "derivedProductionPageCount": 283,
     "pageRouteCount": 286,
     "externalTakeoverCount": 59,
-    "exitCandidateCount": 32,
+    "exitCandidateCount": 43,
     "internalTaskCount": 2,
-    "unclassifiedCount": 16,
+    "unclassifiedCount": 5,
     "consumerSurfaceCounts": {
       "web_api_wrapper": 333,
       "auth_store": 5,
@@ -31,7 +31,7 @@
       "operator_endpoint": 1,
       "none": 54
     },
-    "blockerCount": 16
+    "blockerCount": 5
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
@@ -234,9 +234,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -245,7 +245,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "DELETE",
@@ -1584,9 +1584,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_readiness_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -1595,7 +1595,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -5087,9 +5087,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -5098,7 +5098,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -6065,9 +6065,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -6076,7 +6076,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -6094,9 +6094,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -6105,7 +6105,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7792,9 +7792,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -7803,7 +7803,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8141,9 +8141,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_submission_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -8152,7 +8152,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -9602,9 +9602,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_uploaded_signature_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -9613,7 +9613,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14381,9 +14381,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_spot_procurement_supplier_balance_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -14392,7 +14392,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15435,9 +15435,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "legacy_spot_procurement_supplier_balance_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -15446,7 +15446,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15746,9 +15746,9 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -15757,7 +15757,7 @@
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PUT",
@@ -15933,51 +15933,6 @@
     "expectationMismatches": [],
     "unclassifiedRoutes": [
       {
-        "method": "DELETE",
-        "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
-        "normalizedKey": "DELETE /contract-workbench/:param/parties/:param",
-        "controller": "BusinessPartyController",
-        "handler": "removeContractParty",
-        "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "GET",
-        "path": "/contracts/:contractVersionId/authorizations/readiness",
-        "normalizedKey": "GET /contracts/:param/authorizations/readiness",
-        "controller": "ContractController",
-        "handler": "authorizationReadiness",
-        "sourceFile": "services/api/src/contract/contract.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PATCH",
-        "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
-        "normalizedKey": "PATCH /contract-workbench/:param/parties/:param",
-        "controller": "BusinessPartyController",
-        "handler": "updateContractPartyRole",
-        "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contract-bill-imports/:importId/apply",
-        "normalizedKey": "POST /contract-bill-imports/:param/apply",
-        "controller": "ContractBillExcelController",
-        "handler": "applyImport",
-        "sourceFile": "services/api/src/contract-bill/contract-bill-excel.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contract-bills/:billId/excel-imports",
-        "normalizedKey": "POST /contract-bills/:param/excel-imports",
-        "controller": "ContractBillExcelController",
-        "handler": "previewImport",
-        "sourceFile": "services/api/src/contract-bill/contract-bill-excel.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
         "method": "POST",
         "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
         "normalizedKey": "POST /contract-bills/:param/rows/:param/remainder-cancellation",
@@ -15988,38 +15943,11 @@
       },
       {
         "method": "POST",
-        "path": "/contract-workbench/:contractVersionId/parties",
-        "normalizedKey": "POST /contract-workbench/:param/parties",
-        "controller": "BusinessPartyController",
-        "handler": "addContractParty",
-        "sourceFile": "services/api/src/business-party/business-party.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/contracts/:contractVersionId/approval-submission",
-        "normalizedKey": "POST /contracts/:param/approval-submission",
-        "controller": "ContractController",
-        "handler": "submitApproval",
-        "sourceFile": "services/api/src/contract/contract.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
         "path": "/contracts/:contractVersionId/signing/material-change",
         "normalizedKey": "POST /contracts/:param/signing/material-change",
         "controller": "ContractController",
         "handler": "invalidateSigningForMaterialChange",
         "sourceFile": "services/api/src/contract/contract.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/me/signature",
-        "normalizedKey": "POST /me/signature",
-        "controller": "MeController",
-        "handler": "uploadSignature",
-        "sourceFile": "services/api/src/me/me.controller.ts",
         "consumerSurface": "none"
       },
       {
@@ -16047,33 +15975,6 @@
         "controller": "ProjectController",
         "handler": "terminateProjectFinancingQuota",
         "sourceFile": "services/api/src/project/project.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurement-payments/:paymentId/balance-execution",
-        "normalizedKey": "POST /spot-procurement-payments/:param/balance-execution",
-        "controller": "SpotProcurementPaymentController",
-        "handler": "executeSupplierBalance",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/spot-procurements/:procurementId/supplier-balance-credit",
-        "normalizedKey": "POST /spot-procurements/:param/supplier-balance-credit",
-        "controller": "SpotProcurementController",
-        "handler": "creditSupplierBalance",
-        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PUT",
-        "path": "/contract-bills/:billId/rows",
-        "normalizedKey": "PUT /contract-bills/:param/rows",
-        "controller": "ContractBillController",
-        "handler": "replaceRows",
-        "sourceFile": "services/api/src/contract-bill/contract-bill.controller.ts",
         "consumerSurface": "none"
       }
     ]

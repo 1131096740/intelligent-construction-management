@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { inspectCapabilityProject } from "./inspect-contract-workbench-capabilities.mjs";
+import {
+  extractContractExitCandidates,
+  inspectCapabilityProject
+} from "./inspect-contract-workbench-capabilities.mjs";
 import { inspectProductionRouteHits } from "./ops/inspect-production-route-hits.mjs";
 
 const SCRIPT_PATH = fileURLToPath(
@@ -227,7 +230,182 @@ test("classifies controller routes with no consumer and registered internal rout
   );
 });
 
-test("requires runtime manifest and legacy hit evidence before a delete decision", async () => {
+test("classifies an audited route with no production consumer as exit candidate only", async () => {
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contracts")
+        export class ExampleController {
+          @Post(":contractVersionId/approval-submission")
+          submitLegacy() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": "",
+      "apps/web-admin/src/api/core-flow-read.api.ts": ""
+    },
+    async (root) => {
+      const report = await inspectCapabilityProject({
+        root,
+        exitCandidates: [
+          {
+            normalizedKey: "POST /contracts/:param/approval-submission",
+            usage: "exit_candidate",
+            consumerSurface: "none",
+            productionConsumers: [],
+            deletionAuthorized: false
+          }
+        ]
+      });
+      const candidate = report.capabilities.find(
+        (item) => item.route === "/contracts/:param/approval-submission"
+      );
+      assert.equal(candidate?.classification, "exit_candidate");
+      assert.equal(candidate?.decision, "候选退出");
+      assert.equal(candidate?.deletionAuthorized, false);
+      assert.deepEqual(candidate?.missingEvidence, [
+        "production_exit_candidate_zero_calls",
+        "independent_deletion_authorization"
+      ]);
+      assert.equal(report.evidence.exitCandidateCount, 1);
+    }
+  );
+});
+
+test("fails closed when an exit candidate regains a production consumer", async () => {
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contracts")
+        export class ExampleController {
+          @Post(":contractVersionId/approval-submission")
+          submitLegacy() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": `
+        export function submitLegacy(id) {
+          return postJson(\`/contracts/\${id}/approval-submission\`, {});
+        }
+      `,
+      "apps/web-admin/src/api/core-flow-read.api.ts": "",
+      "apps/web-admin/src/pages/contracts/Page.vue": `
+        <script setup>
+        import { submitLegacy } from "../../api/contract-workbench.api";
+        const submit = () => submitLegacy("c-1");
+        </script>
+      `
+    },
+    async (root) => {
+      await assert.rejects(
+        () =>
+          inspectCapabilityProject({
+            root,
+            exitCandidates: [
+              {
+                normalizedKey: "POST /contracts/:param/approval-submission",
+                usage: "exit_candidate",
+                consumerSurface: "none",
+                productionConsumers: [],
+                deletionAuthorized: false
+              }
+            ]
+          }),
+        (error) => error.code === "CAPABILITY_EXIT_CANDIDATE_CONSUMER_PRESENT"
+      );
+    }
+  );
+});
+
+test("rejects invalid or deletion-authorized exit candidate input", async () => {
+  await withFixture({}, async (root) => {
+    for (const exitCandidates of [
+      [
+        {
+          normalizedKey: "POST /contracts/:param/approval-submission",
+          usage: "exit_candidate",
+          consumerSurface: "none",
+          productionConsumers: [],
+          deletionAuthorized: true
+        }
+      ],
+      [
+        {
+          normalizedKey: "not-a-route",
+          usage: "exit_candidate",
+          consumerSurface: "none",
+          productionConsumers: [],
+          deletionAuthorized: false
+        }
+      ],
+      [
+        {
+          normalizedKey: "POST /contracts/:param/approval-submission",
+          usage: "exit_candidate",
+          consumerSurface: "web_api_wrapper",
+          productionConsumers: ["apps/web-admin/src/pages/contracts/Page.vue"],
+          deletionAuthorized: false
+        }
+      ]
+    ]) {
+      await assert.rejects(
+        () => inspectCapabilityProject({ root, exitCandidates }),
+        (error) => error.code === "CAPABILITY_EXIT_CANDIDATES_INVALID"
+      );
+    }
+  });
+});
+
+test("extracts only contract-scoped candidates from a deletion-safe route usage manifest", () => {
+  const route = (normalizedKey, usage = "exit_candidate") => ({
+    method: normalizedKey.split(" ")[0],
+    path: normalizedKey.slice(normalizedKey.indexOf(" ") + 1),
+    normalizedKey,
+    usage,
+    consumerSurface: usage === "exit_candidate" ? "none" : "web_api_wrapper",
+    consumerEvidence: {
+      webApiWrappers: [],
+      authStore: [],
+      ticketFollowups: [],
+      manualSurfaceReason: null
+    },
+    deletionAuthorized: false,
+    exitCandidateSemantics:
+      usage === "exit_candidate"
+        ? "candidate_only_no_deletion_authorization"
+        : null
+  });
+  const routeUsage = {
+    schemaVersion: 1,
+    scope: {
+      authorizationScope: "route_usage_classification_only",
+      deletionAuthorized: false,
+      exitCandidateSemantics: "candidate_only_no_deletion_authorization"
+    },
+    routes: [
+      route("POST /contracts/:param/approval-submission"),
+      route("POST /spot-procurements/:param/invoices"),
+      route("GET /contracts/:param", "page")
+    ]
+  };
+  assert.deepEqual(extractContractExitCandidates(routeUsage), [
+    {
+      normalizedKey: "POST /contracts/:param/approval-submission",
+      usage: "exit_candidate",
+      consumerSurface: "none",
+      productionConsumers: [],
+      deletionAuthorized: false
+    }
+  ]);
+  assert.throws(
+    () =>
+      extractContractExitCandidates({
+        ...routeUsage,
+        scope: { ...routeUsage.scope, deletionAuthorized: true }
+      }),
+    (error) => error.code === "CAPABILITY_ROUTE_USAGE_INVALID"
+  );
+});
+
+test("requires runtime manifest and legacy hit evidence before a candidate-exit decision", async () => {
   await withFixture(
     {
       "services/api/src/example.controller.ts": `
@@ -252,7 +430,8 @@ test("requires runtime manifest and legacy hit evidence before a delete decision
       assert.equal(blocked?.decision, "保留");
       assert.deepEqual(blocked?.missingEvidence, [
         "runtime_route_manifest",
-        "production_legacy_route_hits"
+        "production_legacy_route_hits",
+        "independent_deletion_authorization"
       ]);
 
       const withEvidence = await inspectCapabilityProject({
@@ -264,8 +443,10 @@ test("requires runtime manifest and legacy hit evidence before a delete decision
       const candidate = withEvidence.capabilities.find(
         (item) => item.route === "/contract-workbench/:param"
       );
-      assert.equal(candidate?.decision, "删除");
-      assert.deepEqual(candidate?.missingEvidence, []);
+      assert.equal(candidate?.decision, "候选退出");
+      assert.deepEqual(candidate?.missingEvidence, [
+        "independent_deletion_authorization"
+      ]);
     }
   );
 });
@@ -502,8 +683,10 @@ test("accepts the production route observer report without schema translation", 
       const candidate = report.capabilities.find(
         (item) => item.route === "/contract-workbench/:param"
       );
-      assert.equal(candidate?.decision, "删除");
-      assert.deepEqual(candidate?.missingEvidence, []);
+      assert.equal(candidate?.decision, "候选退出");
+      assert.deepEqual(candidate?.missingEvidence, [
+        "independent_deletion_authorization"
+      ]);
     }
   );
 });
@@ -563,6 +746,34 @@ test("CLI fails safely for invalid or damaged legacy hit JSON", async () => {
       code: "CAPABILITY_INSPECTION_FAILED",
       message: "Capability inspection failed"
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI reads route usage and renders candidate-only exit decisions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "contract-capability-cli-exit-"));
+  try {
+    const outputPath = join(root, "matrix.md");
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT_PATH,
+        "--write",
+        outputPath,
+        "--no-runtime-manifest"
+      ],
+      { encoding: "utf8" }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const receipt = JSON.parse(result.stdout);
+    assert.ok(receipt.exitCandidateCount > 0);
+    assert.equal(receipt.exitCandidateDeletionAuthorized, false);
+    const markdown = await readFile(outputPath, "utf8");
+    assert.match(markdown, /\| exit_candidate \| \d+ \|/);
+    assert.match(markdown, /\| exit_candidate \| 候选退出 \| 否 \|/);
+    assert.match(markdown, /production_exit_candidate_zero_calls/);
+    assert.match(markdown, /independent_deletion_authorization/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1064,8 +1064,14 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       [
         ["GET", "/projects/affiliate-mapping-report"],
         ["GET", "/contract-workbench/:contractVersionId/offline-revisions"],
+        ["GET", "/contracts/:contractVersionId/authorizations/readiness"],
         ["GET", "/vat-rate-options"],
+        ["DELETE", "/contract-workbench/:contractVersionId/parties/:partySnapshotId"],
+        ["PATCH", "/contract-workbench/:contractVersionId/parties/:partySnapshotId"],
         ["PATCH", "/vat-rate-options/:optionId"],
+        ["POST", "/contract-workbench/:contractVersionId/parties"],
+        ["POST", "/contracts/:contractVersionId/approval-submission"],
+        ["POST", "/me/signature"],
         ["POST", "/projects/:projectId/affiliate-assignment"],
         ["POST", "/projects/:projectId/receipts"],
         ["POST", "/projects/:projectId/proxy-payments"],
@@ -1077,7 +1083,10 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
         ["POST", "/spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review"],
         ["POST", "/vat-rate-options"],
         ["POST", "/contract-bill-imports/:importId/apply"],
-        ["POST", "/contract-bills/:billId/excel-imports"]
+        ["POST", "/contract-bills/:billId/excel-imports"],
+        ["POST", "/spot-procurement-payments/:paymentId/balance-execution"],
+        ["POST", "/spot-procurements/:procurementId/supplier-balance-credit"],
+        ["PUT", "/contract-bills/:billId/rows"]
       ].map(([method, path]) => {
         const route = manifest.routes.find(
           (entry) => entry.method === method && entry.path === path
@@ -1089,8 +1098,14 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     {
       "GET /projects/affiliate-mapping-report": "external_takeover",
       "GET /contract-workbench/:contractVersionId/offline-revisions": "page",
+      "GET /contracts/:contractVersionId/authorizations/readiness": "exit_candidate",
       "GET /vat-rate-options": "exit_candidate",
+      "DELETE /contract-workbench/:contractVersionId/parties/:partySnapshotId": "exit_candidate",
+      "PATCH /contract-workbench/:contractVersionId/parties/:partySnapshotId": "exit_candidate",
       "PATCH /vat-rate-options/:optionId": "exit_candidate",
+      "POST /contract-workbench/:contractVersionId/parties": "exit_candidate",
+      "POST /contracts/:contractVersionId/approval-submission": "exit_candidate",
+      "POST /me/signature": "exit_candidate",
       "POST /projects/:projectId/affiliate-assignment": "external_takeover",
       "POST /projects/:projectId/receipts": "exit_candidate",
       "POST /projects/:projectId/proxy-payments": "exit_candidate",
@@ -1101,15 +1116,18 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       "POST /spot-procurements/:procurementId/invoice-exceptions": "exit_candidate",
       "POST /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review": "exit_candidate",
       "POST /vat-rate-options": "exit_candidate",
-      "POST /contract-bill-imports/:importId/apply": "unclassified",
-      "POST /contract-bills/:billId/excel-imports": "unclassified"
+      "POST /contract-bill-imports/:importId/apply": "exit_candidate",
+      "POST /contract-bills/:billId/excel-imports": "exit_candidate",
+      "POST /spot-procurement-payments/:paymentId/balance-execution": "exit_candidate",
+      "POST /spot-procurements/:procurementId/supplier-balance-credit": "exit_candidate",
+      "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
   assert.equal(manifest.summary.routeCount, 395);
-  assert.equal(manifest.summary.classificationOverrideCount, 96);
+  assert.equal(manifest.summary.classificationOverrideCount, 107);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad"
+    "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
@@ -1118,9 +1136,9 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
   assert.equal(manifest.summary.derivedProductionPageCount, 283);
   assert.equal(manifest.summary.pageRouteCount, 286);
   assert.equal(manifest.summary.externalTakeoverCount, 59);
-  assert.equal(manifest.summary.exitCandidateCount, 32);
+  assert.equal(manifest.summary.exitCandidateCount, 43);
   assert.equal(manifest.summary.internalTaskCount, 2);
-  assert.equal(manifest.summary.unclassifiedCount, 16);
+  assert.equal(manifest.summary.unclassifiedCount, 5);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
     web_api_wrapper: 333,
     auth_store: 5,
@@ -1149,7 +1167,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     ]
   );
   assert.deepEqual(nonZeroBlockers, {
-    unclassifiedRoutes: 16
+    unclassifiedRoutes: 5
   });
   assert.ok(
     manifest.routes
@@ -1165,22 +1183,11 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       (entry) => entry.normalizedKey
     ),
     [
-      "DELETE /contract-workbench/:param/parties/:param",
-      "GET /contracts/:param/authorizations/readiness",
-      "PATCH /contract-workbench/:param/parties/:param",
-      "POST /contract-bill-imports/:param/apply",
-      "POST /contract-bills/:param/excel-imports",
       "POST /contract-bills/:param/rows/:param/remainder-cancellation",
-      "POST /contract-workbench/:param/parties",
-      "POST /contracts/:param/approval-submission",
       "POST /contracts/:param/signing/material-change",
-      "POST /me/signature",
       "POST /projects/:param/financing-quotas",
       "POST /projects/:param/financing-quotas/:param/approval",
-      "POST /projects/:param/financing-quotas/:param/termination",
-      "POST /spot-procurement-payments/:param/balance-execution",
-      "POST /spot-procurements/:param/supplier-balance-credit",
-      "PUT /contract-bills/:param/rows"
+      "POST /projects/:param/financing-quotas/:param/termination"
     ]
   );
 });

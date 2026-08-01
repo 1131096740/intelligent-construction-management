@@ -4,16 +4,16 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 395,
-    "classificationOverrideCount": 96,
+    "classificationOverrideCount": 107,
     "derivedProductionPageCount": 283,
-    "classificationOverrideSha256": "8f909d5585cd2a584bc15abba61ed994b39a75a4f06f81d138c7022e10fc4bad",
+    "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
     "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
     "usageCounts": {
       "page": 286,
       "external_takeover": 59,
-      "exit_candidate": 32,
+      "exit_candidate": 43,
       "internal_task": 2,
-      "unclassified": 16
+      "unclassified": 5
     },
     "consumerSurfaceCounts": {
       "web_api_wrapper": 333,
@@ -38,6 +38,12 @@
       "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
     },
     {
+      "method": "DELETE",
+      "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization"
+    },
+    {
       "method": "GET",
       "path": "/contract-workbench",
       "usage": "exit_candidate",
@@ -48,6 +54,12 @@
       "path": "/contract-workbench/:contractId",
       "usage": "exit_candidate",
       "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/authorizations/readiness",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_readiness_candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -165,6 +177,12 @@
     },
     {
       "method": "PATCH",
+      "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
       "path": "/projects/:projectId/contract-takeovers/:takeoverId",
       "usage": "external_takeover",
       "reason": "historical_contract_takeover_external_workbench"
@@ -192,6 +210,18 @@
       "path": "/auth/wx-login",
       "usage": "exit_candidate",
       "reason": "native_miniprogram_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bill-imports/:importId/apply",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/excel-imports",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -255,6 +285,18 @@
     },
     {
       "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/parties",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_party_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/approval-submission",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_submission_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
       "path": "/draft-retention/controlled-entry",
       "usage": "internal_task",
       "reason": "super_admin_operator_preview_only"
@@ -264,6 +306,12 @@
       "path": "/invoice-allocations/:allocationId/reversal",
       "usage": "exit_candidate",
       "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/me/signature",
+      "usage": "exit_candidate",
+      "reason": "legacy_uploaded_signature_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -555,6 +603,18 @@
     },
     {
       "method": "POST",
+      "path": "/spot-procurement-payments/:paymentId/balance-execution",
+      "usage": "exit_candidate",
+      "reason": "legacy_spot_procurement_supplier_balance_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/supplier-balance-credit",
+      "usage": "exit_candidate",
+      "reason": "legacy_spot_procurement_supplier_balance_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
       "path": "/spot-procurements/:procurementId/invoice-exceptions",
       "usage": "exit_candidate",
       "reason": "legacy_structured_invoice_write_candidate_only_no_deletion_authorization"
@@ -588,6 +648,12 @@
       "path": "/vat-rate-options",
       "usage": "exit_candidate",
       "reason": "legacy_spot_procurement_vat_rate_dictionary_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PUT",
+      "path": "/contract-bills/:billId/rows",
+      "usage": "exit_candidate",
+      "reason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization"
     },
     {
       "method": "PUT",

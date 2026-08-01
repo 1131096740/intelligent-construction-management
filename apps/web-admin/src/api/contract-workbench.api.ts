@@ -108,21 +108,13 @@ async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResp
   return response.json() as Promise<TResponse>;
 }
 
-async function putJson<TResponse>(
-  path: string,
-  body?: unknown,
-  parseError?: (response: Response) => Promise<Error | null>
-): Promise<TResponse> {
+async function putJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {})
   });
-  if (!response.ok) {
-    const parsedError = parseError ? await parseError(response) : null;
-    if (parsedError) throw parsedError;
-    await ensureOk(response, "保存失败");
-  }
+  await ensureOk(response, "保存失败");
   return response.json() as Promise<TResponse>;
 }
 
@@ -778,13 +770,6 @@ export function checkContractSubmissionReadiness(contractVersionId: string) {
   return postJson<unknown>(`/contracts/${contractVersionId}/readiness`);
 }
 
-export function submitContractFromWorkbench(
-  contractVersionId: string,
-  body: Record<string, unknown> = {}
-) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`, body);
-}
-
 export function listContractDrafts(scope: "my" | "voided") {
   return readJson<unknown[]>(`/contract-workbench?scope=${scope}`);
 }
@@ -949,7 +934,7 @@ export function restoreContractDraft(contractId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Business parties (GET/POST /business-parties, POST /contract-workbench/:versionId/parties)
+// Business parties (GET/POST /business-parties)
 // ---------------------------------------------------------------------------
 
 export function listBusinessParties(query?: string) {
@@ -974,16 +959,6 @@ export function getBusinessParty(partyId: string) {
 
 export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload) {
   return postJson<unknown>(`/business-parties/${partyId}/versions`, body);
-}
-
-export interface AddContractPartyPayload {
-  roleKey: string;
-  businessPartyVersionId?: string;
-  snapshot?: Record<string, unknown>;
-}
-
-export function addContractParty(contractVersionId: string, body: AddContractPartyPayload) {
-  return postJson<unknown>(`/contract-workbench/${contractVersionId}/parties`, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -1437,11 +1412,6 @@ export interface ContractBillRowValidationError {
   message: string;
 }
 
-export type ContractBillValidationError = Error & {
-  code: "CONTRACT_BILL_VALIDATION_FAILED";
-  rowErrors: ContractBillRowValidationError[];
-};
-
 export interface ContractBillCandidateRowInput {
   clientRowKey: string;
   rowKey?: string;
@@ -1517,73 +1487,8 @@ export interface ReplaceContractBillRowsReadModel {
   rows: ContractBillBatchSaveRowReadModel[];
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-export function parseContractBillValidationError(
-  data: unknown
-): ContractBillValidationError | null {
-  if (
-    !isPlainRecord(data) ||
-    data.code !== "CONTRACT_BILL_VALIDATION_FAILED" ||
-    !isNonEmptyString(data.message) ||
-    !Array.isArray(data.rowErrors)
-  ) {
-    return null;
-  }
-
-  const rowErrors: ContractBillRowValidationError[] = [];
-  for (const rowError of data.rowErrors) {
-    if (
-      !isPlainRecord(rowError) ||
-      !isNonEmptyString(rowError.clientRowKey) ||
-      !isNonEmptyString(rowError.field) ||
-      !isNonEmptyString(rowError.message)
-    ) {
-      return null;
-    }
-    rowErrors.push({
-      clientRowKey: rowError.clientRowKey,
-      field: rowError.field,
-      message: rowError.message
-    });
-  }
-
-  const error = new Error(data.message) as ContractBillValidationError;
-  error.code = "CONTRACT_BILL_VALIDATION_FAILED";
-  error.rowErrors = rowErrors;
-  return error;
-}
-
-async function parseContractBillValidationResponse(response: Response): Promise<Error | null> {
-  if (response.status !== 400) return null;
-  try {
-    return parseContractBillValidationError(await response.clone().json());
-  } catch {
-    return null;
-  }
-}
-
-export function replaceContractBillRows(
-  billId: string,
-  input: ReplaceContractBillRowsInput
-) {
-  return putJson<ReplaceContractBillRowsReadModel>(
-    `/contract-bills/${encodeURIComponent(billId)}/rows`,
-    input,
-    parseContractBillValidationResponse
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Contract bill Excel (GET blob, POST JSON preview, POST apply)
+// Contract bill Excel templates and draft import preview
 // ---------------------------------------------------------------------------
 
 // Excel template download: backend responds with a streaming .xlsx file.
@@ -1619,57 +1524,6 @@ async function downloadBillExcelTemplateFromPath(
   saveBlob(blob, fileName);
 }
 
-export interface PreviewBillExcelImportPayload {
-  /** Already-uploaded private file id — send as JSON, NOT FormData. */
-  fileId: string;
-  mode?: "replace" | "update" | "append" | "version_replace";
-}
-
-export type ContractBillImportDiffKind =
-  | "unchanged"
-  | "added"
-  | "removed"
-  | "one_to_one"
-  | "manual_review";
-
-export interface ContractBillImportDiffRow {
-  rowKey: string;
-  itemCode: string | null;
-  itemName: string;
-  specification: string | null;
-  unit: string;
-}
-
-export interface ContractBillImportDiff {
-  kind: ContractBillImportDiffKind;
-  rowKey: string;
-  source?: ContractBillImportDiffRow;
-  incoming?: ContractBillImportDiffRow;
-}
-
-export interface VersionBillExcelImportPreview {
-  importId: string;
-  added: number;
-  updated: number;
-  removed: number;
-  skipped: number;
-  beforeAmountCents: string;
-  afterAmountCents: string;
-  errors: Array<{ message: string }>;
-  diffs: ContractBillImportDiff[];
-}
-
-// Preview: file is already uploaded via /files; we only pass its id as JSON.
-export function previewBillExcelImport(
-  billId: string,
-  body: PreviewBillExcelImportPayload
-) {
-  return postJson<VersionBillExcelImportPreview>(
-    `/contract-bills/${billId}/excel-imports`,
-    body
-  );
-}
-
 export interface ContractDraftBillExcelImportPreview {
   billKey: string;
   targetBillRevision: number;
@@ -1695,10 +1549,6 @@ export function previewContractDraftBillExcelImport(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/import-preview`,
     body
   );
-}
-
-export function applyBillExcelImport(importId: string): Promise<unknown> {
-  return postJson<unknown>(`/contract-bill-imports/${importId}/apply`);
 }
 
 // ---------------------------------------------------------------------------

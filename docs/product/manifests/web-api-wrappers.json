@@ -8,17 +8,17 @@
   },
   "summary": {
     "apiModuleCount": 14,
-    "exportedFunctionCount": 398,
-    "transportWrapperCount": 386,
-    "pureExportCount": 12,
-    "mainRequestBindingCount": 398,
+    "exportedFunctionCount": 390,
+    "transportWrapperCount": 379,
+    "pureExportCount": 11,
+    "mainRequestBindingCount": 391,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 397,
+    "requestEdgeCount": 390,
     "productionConsumerCount": 339,
-    "orphanWrapperCount": 47,
-    "testOnlyWrapperCount": 45,
-    "unreferencedWrapperCount": 2,
-    "duplicateNormalizedRouteGroupCount": 10,
+    "orphanWrapperCount": 40,
+    "testOnlyWrapperCount": 39,
+    "unreferencedWrapperCount": 1,
+    "duplicateNormalizedRouteGroupCount": 9,
     "authTransportExceptionCount": 5
   },
   "evidence": {
@@ -970,62 +970,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "addContractParty",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 78,
-          "method": "POST",
-          "path": "/contract-workbench/:param/parties",
-          "normalizedPath": "/contract-workbench/:param/parties",
-          "normalizedKey": "POST /contract-workbench/:param/parties",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "addContractParty",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "applyBillExcelImport",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 78,
-          "method": "POST",
-          "path": "/contract-bill-imports/:param/apply",
-          "normalizedPath": "/contract-bill-imports/:param/apply",
-          "normalizedKey": "POST /contract-bill-imports/:param/apply",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "applyBillExcelImport",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "applyContractTypeChange",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -1452,7 +1396,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 144,
+          "sourceLine": 136,
           "method": "DELETE",
           "path": "/contract-bills/:param/rows/:param",
           "normalizedPath": "/contract-bills/:param/rows/:param",
@@ -1480,7 +1424,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 144,
+          "sourceLine": 136,
           "method": "DELETE",
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
@@ -1508,7 +1452,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 144,
+          "sourceLine": 136,
           "method": "DELETE",
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
@@ -1628,7 +1572,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1611,
+          "sourceLine": 1516,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1658,7 +1602,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1611,
+          "sourceLine": 1516,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -2273,44 +2217,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "parseContractBillValidationError",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "pure",
-      "returnProvenance": "unverified",
-      "requests": [],
-      "productionConsumers": [],
-      "testConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "previewBillExcelImport",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 78,
-          "method": "POST",
-          "path": "/contract-bills/:param/excel-imports",
-          "normalizedPath": "/contract-bills/:param/excel-imports",
-          "normalizedKey": "POST /contract-bills/:param/excel-imports",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "previewBillExcelImport",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "previewContractDraftBillExcelImport",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -2559,7 +2465,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 158,
+          "sourceLine": 150,
           "method": "DELETE",
           "path": "/contract-drafts/:param/edit-lease",
           "normalizedPath": "/contract-drafts/:param/edit-lease",
@@ -2600,34 +2506,6 @@
             [
               "reorderBillRows",
               "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "replaceContractBillRows",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 116,
-          "method": "PUT",
-          "path": "/contract-bills/:param/rows",
-          "normalizedPath": "/contract-bills/:param/rows",
-          "normalizedKey": "PUT /contract-bills/:param/rows",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "replaceContractBillRows",
-              "putJson"
             ]
           ]
         }
@@ -2782,11 +2660,11 @@
       "name": "saveContractBillTransitions",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 116,
+          "sourceLine": 112,
           "method": "PUT",
           "path": "/contract-versions/:param/bill-transitions",
           "normalizedPath": "/contract-versions/:param/bill-transitions",
@@ -2844,7 +2722,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 134,
+          "sourceLine": 126,
           "method": "PUT",
           "path": "/contract-drafts/:param",
           "normalizedPath": "/contract-drafts/:param",
@@ -3016,34 +2894,6 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "submitContractFromWorkbench",
-      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 78,
-          "method": "POST",
-          "path": "/contracts/:param/approval-submission",
-          "normalizedPath": "/contracts/:param/approval-submission",
-          "normalizedKey": "POST /contracts/:param/approval-submission",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "submitContractFromWorkbench",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
-      ],
-      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -4723,7 +4573,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5428,
+          "sourceLine": 5415,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4753,7 +4603,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5412,
+          "sourceLine": 5399,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4783,7 +4633,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5412,
+          "sourceLine": 5399,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4813,7 +4663,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4596,
+          "sourceLine": 4590,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4842,7 +4692,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5412,
+          "sourceLine": 5399,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4932,7 +4782,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5455,
+          "sourceLine": 5442,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4961,7 +4811,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5442,
+          "sourceLine": 5429,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4990,7 +4840,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5470,
+          "sourceLine": 5457,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5019,7 +4869,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5412,
+          "sourceLine": 5399,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7853,34 +7703,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "submitContractApproval",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 73,
-          "method": "POST",
-          "path": "/contracts/:param/approval-submission",
-          "normalizedPath": "/contracts/:param/approval-submission",
-          "normalizedKey": "POST /contracts/:param/approval-submission",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "submitContractApproval",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "submitContractTakeoverCompanyEntityCorrection",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -8347,32 +8169,6 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
       ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "uploadSignature",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 103,
-          "method": "POST",
-          "path": "/me/signature",
-          "normalizedPath": "/me/signature",
-          "normalizedKey": "POST /me/signature",
-          "bodyKind": "form_data",
-          "localCallChains": [
-            [
-              "uploadSignature",
-              "postForm"
-            ]
-          ]
-        }
-      ],
-      "productionConsumers": [],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -12107,19 +11903,6 @@
       ]
     },
     {
-      "normalizedKey": "POST /contracts/:param/approval-submission",
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "submitContractFromWorkbench"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "submitContractApproval"
-        }
-      ]
-    },
-    {
       "normalizedKey": "POST /files",
       "wrappers": [
         {
@@ -12168,16 +11951,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "addContractParty",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "applyBillExcelImport",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "createDraftCheckpoint",
         "classification": "test_only"
       },
@@ -12203,17 +11976,7 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "previewBillExcelImport",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "reorderBillRows",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "replaceContractBillRows",
         "classification": "test_only"
       },
       {
@@ -12239,11 +12002,6 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "saveContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractFromWorkbench",
         "classification": "test_only"
       },
       {
@@ -12368,18 +12126,8 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractApproval",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "terminateProjectFinancingQuota",
         "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadSignature",
-        "classification": "unreferenced"
       },
       {
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -12403,19 +12151,6 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "createContractDraft"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /contracts/:param/approval-submission",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "submitContractFromWorkbench"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "submitContractApproval"
           }
         ]
       },

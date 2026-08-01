@@ -120,7 +120,6 @@ import {
   remindSettlementApproval,
   reviewContractApproval,
   reviewSettlementApproval,
-  submitContractApproval,
   uploadContractArchiveFile,
   uploadPrivateFile,
   uploadSettlementArchiveFile,
@@ -2395,9 +2394,6 @@ describe("core flow read API client", () => {
     } as Response);
 
     await fetchActiveContractNumberRules();
-    await submitContractApproval("contract-version-1", {
-      numberRuleId: "rule-1"
-    });
     await reviewContractApproval("contract-version-1", {
       decision: "approve",
       selfReviewReason: "合同紧急",
@@ -2429,7 +2425,6 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
-      "/api/contracts/contract-version-1/approval-submission",
       "/api/contracts/contract-version-1/approval",
       "/api/contracts/contract-version-1/approval-withdrawal",
       "/api/contracts/contract-version-1/approval-reminder",
@@ -2446,18 +2441,13 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       JSON.stringify({
-        numberRuleId: "rule-1"
-      })
-    );
-    expect(fetchMock.mock.calls[2][1]?.body).toBe(
-      JSON.stringify({
         decision: "approve",
         selfReviewReason: "合同紧急",
         confirmationPassword: " contract-password ",
         ownerContractRiskConfirmed: true
       })
     );
-    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+    expect(fetchMock.mock.calls[7][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
         selfReviewReason: "不会在非自审页面生成",

@@ -4,8 +4,6 @@ import {
   addBillRow,
   abandonContractDraft,
   acquireContractDraftEditLease,
-  addContractParty,
-  applyBillExcelImport,
   applyContractTypeChange,
   cloneContractTemplateVersion,
   cloneLayoutTemplateVersion,
@@ -35,7 +33,6 @@ import {
   fetchContractWorkbench,
   heartbeatContractDraftEditLease,
   setContractAuthorization,
-  submitContractFromWorkbench,
   uploadContractFormalApprovalFile,
   getBusinessParty,
   getContractTemplate,
@@ -51,7 +48,6 @@ import {
   listPublishedStandardClauses,
   listStandardClauseHistory,
   type PublishedStandardClause,
-  previewBillExcelImport,
   previewContractDraftBillExcelImport,
   previewContractTypeChange,
   publishContractTemplateVersion,
@@ -62,7 +58,6 @@ import {
   queueContractDocument,
   releaseContractDraftEditLease,
   reorderBillRows,
-  replaceContractBillRows,
   revokeContractTemplateVersion,
   revokeLayoutTemplateVersion,
   restoreDraftCheckpoint,
@@ -719,7 +714,7 @@ describe("contract workbench API client", () => {
     expect(mockApiFetch).toHaveBeenCalledTimes(4);
   });
 
-  it("connects the governed signing facts and unique workbench submission routes", async () => {
+  it("connects the governed signing facts and submission readiness routes", async () => {
     mockApiFetch.mockImplementation(() => makeOkJson({ ready: true }));
 
     await setContractAuthorization("version-1", {
@@ -737,7 +732,6 @@ describe("contract workbench API client", () => {
       authorizationsBeforeSignaturePageConfirmed: true
     });
     await checkContractSubmissionReadiness("version-1");
-    await submitContractFromWorkbench("version-1", { numberRuleId: "rule-1" });
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/contracts/version-1/authorizations", expect.objectContaining({
       method: "POST"
@@ -746,9 +740,6 @@ describe("contract workbench API client", () => {
       method: "POST"
     }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/contracts/version-1/readiness", expect.objectContaining({
-      method: "POST"
-    }));
-    expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/contracts/version-1/approval-submission", expect.objectContaining({
       method: "POST"
     }));
   });
@@ -1058,51 +1049,6 @@ describe("contract workbench API client", () => {
         name: "云南示例供应商有限公司",
         unifiedSocialCreditCode: "91530000EXAMPLE01",
         attachments: []
-      })
-    });
-  });
-
-  it("addContractParty – POST /contract-workbench/:contractVersionId/parties", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({}));
-
-    await addContractParty("version-1", {
-      roleKey: "party_b",
-      businessPartyVersionId: "party-version-1"
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/parties", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roleKey: "party_b", businessPartyVersionId: "party-version-1" })
-    });
-  });
-
-  it("addContractParty – POST inline snapshot for temporary party data", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({}));
-
-    await addContractParty("version-1", {
-      roleKey: "party_b",
-      snapshot: {
-        name: "云南示例供应商有限公司",
-        unifiedSocialCreditCode: "91530000EXAMPLE01",
-        openingBank: "建设银行昆明支行",
-        bankAccount: "530000000000000000",
-        attachments: []
-      }
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/parties", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        roleKey: "party_b",
-        snapshot: {
-          name: "云南示例供应商有限公司",
-          unifiedSocialCreditCode: "91530000EXAMPLE01",
-          openingBank: "建设银行昆明支行",
-          bankAccount: "530000000000000000",
-          attachments: []
-        }
       })
     });
   });
@@ -1475,198 +1421,6 @@ describe("contract workbench API client", () => {
     });
   });
 
-  it("replaceContractBillRows – PUTs the complete candidate rows and preserves row validation errors", async () => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({
-        code: "CONTRACT_BILL_VALIDATION_FAILED",
-        message: "清单有 1 处需要修改",
-        rowErrors: [{
-          clientRowKey: "local-2",
-          field: "brand",
-          message: "必填自定义字段未填写：brand"
-        }]
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-    const input = {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-001",
-      rows: [{
-        clientRowKey: "local-2",
-        sortOrder: 0,
-        itemName: "螺纹钢",
-        unit: "吨",
-        quantity: "12.3456789",
-        unitPrice: "3500.00",
-        taxRatePercent: "13",
-        taxRateSource: "version_default" as const,
-        isProvisional: false,
-        settlementBasis: "按实际验收数量结算",
-        customData: { brand: "建龙" }
-      }]
-    };
-
-    await expect(replaceContractBillRows("bill-1", input)).rejects.toMatchObject({
-      code: "CONTRACT_BILL_VALIDATION_FAILED",
-      rowErrors: [{
-        clientRowKey: "local-2",
-        field: "brand",
-        message: "必填自定义字段未填写：brand"
-      }]
-    });
-    expect(mockApiFetch).toHaveBeenCalledTimes(1);
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill-1/rows", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input)
-    });
-  });
-
-  it("replaceContractBillRows – returns the authoritative bill and row read model without dropping fields", async () => {
-    const response = {
-      bill: {
-        id: "bill-1",
-        contractVersionId: "version-1",
-        billKey: "material_list",
-        name: "材料清单",
-        amountRole: "included",
-        pricingMode: "tax_inclusive",
-        quantityScale: 6,
-        unitPriceScale: 2,
-        schemaSnapshot: { columns: [{ key: "brand", label: "品牌", type: "text" }] },
-        sourceExcelFileId: null,
-        revision: 8,
-        taxInclusiveAmountCents: "3955000",
-        taxExclusiveAmountCents: "3500000",
-        taxAmountCents: "455000",
-        createdAt: "2026-07-24T01:00:00.000Z",
-        updatedAt: "2026-07-24T01:01:00.000Z"
-      },
-      rows: [{
-        id: "row-id-1",
-        contractBillId: "bill-1",
-        rowKey: "row-1",
-        sortOrder: 0,
-        itemCode: "GC-001",
-        itemName: "螺纹钢",
-        specification: "HRB400E",
-        unit: "吨",
-        quantity: "10.000000",
-        unitPrice: "3500.00",
-        taxRate: "13",
-        taxRateSource: "version_default",
-        pricingFactStatus: "confirmed",
-        precisionPolicy: "two_decimal",
-        taxInclusiveAmountCents: "3955000",
-        taxExclusiveAmountCents: "3500000",
-        taxAmountCents: "455000",
-        isProvisional: false,
-        settlementBasis: "按实际验收数量结算",
-        customData: { brand: "建龙" },
-        createdAt: "2026-07-24T01:00:00.000Z",
-        updatedAt: "2026-07-24T01:01:00.000Z"
-      }]
-    };
-    mockApiFetch.mockReturnValue(makeOkJson(response));
-
-    await expect(replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-002",
-      rows: []
-    })).resolves.toEqual(response);
-  });
-
-  it.each([
-    [404, "Contract bill not found", "未找到对应业务单据，请确认单据是否存在或你是否有权查看。"],
-    [500, "Internal server error", "系统暂时无法完成操作，请稍后重试或联系管理员。"]
-  ])("replaceContractBillRows – keeps ordinary %i errors on the existing Chinese path", async (status, message, expected) => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({ message }), {
-        status,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-
-    await expect(replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-003",
-      rows: []
-    })).rejects.toThrow(expected);
-  });
-
-  it.each([
-    [404, "Contract bill not found", "未找到对应业务单据，请确认单据是否存在或你是否有权查看。"],
-    [500, "Internal server error", "系统暂时无法完成操作，请稍后重试或联系管理员。"]
-  ])("replaceContractBillRows – only permits 400 to expose a valid cell-error payload (%i)", async (status, message, expected) => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({
-        code: "CONTRACT_BILL_VALIDATION_FAILED",
-        message,
-        rowErrors: [{
-          clientRowKey: "local-1",
-          field: "quantity",
-          message: "数量最多保留 6 位小数"
-        }]
-      }), {
-        status,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-
-    const error = await replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-status-boundary",
-      rows: []
-    }).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(Error);
-    expect(error).toHaveProperty("message", expected);
-    expect(error).not.toHaveProperty("code");
-    expect(error).not.toHaveProperty("rowErrors");
-  });
-
-  it.each([
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: {} },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ field: "quantity", message: "数量错误" }] },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ clientRowKey: "local-1", field: "quantity", message: 123 }] },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ clientRowKey: "local-1", field: " ", message: "数量错误" }] },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: 123, rowErrors: [{ clientRowKey: "local-1", field: "quantity", message: "数量错误" }] }
-  ])("replaceContractBillRows – never exposes malformed validation payloads as cell errors", async (payload) => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify(payload), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-
-    const error = await replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-004",
-      rows: []
-    }).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(Error);
-    expect(error).not.toHaveProperty("code");
-    expect(error).not.toHaveProperty("rowErrors");
-  });
-
-  it("replaceContractBillRows – encodes the bill id and calls the API once", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ bill: {}, rows: [] }));
-
-    await replaceContractBillRows("bill / 1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-005",
-      rows: []
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledTimes(1);
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill%20%2F%201/rows", expect.objectContaining({
-      method: "PUT"
-    }));
-  });
-
   it("downloadBillExcelTemplate – GET blob from /contract-bills/:billId/excel-template", async () => {
     // Minimal DOM stubs for a Node environment (no jsdom).
     const anchor = { href: "", download: "", click: vi.fn(), remove: vi.fn() };
@@ -1719,23 +1473,6 @@ describe("contract workbench API client", () => {
     );
   });
 
-  it("previewBillExcelImport – POST JSON body (NOT FormData) to /contract-bills/:billId/excel-imports", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ importId: "import-1", rows: [] }));
-
-    await previewBillExcelImport("bill-1", { fileId: "file-1", mode: "update" });
-
-    const [path, options] = mockApiFetch.mock.calls[0];
-    expect(path).toBe("/contract-bills/bill-1/excel-imports");
-    expect((options as RequestInit).method).toBe("POST");
-    // Must NOT use FormData
-    expect((options as RequestInit).body).not.toBeInstanceOf(FormData);
-    expect((options as RequestInit).headers).toMatchObject({ "Content-Type": "application/json" });
-    expect(JSON.parse((options as RequestInit).body as string)).toEqual({
-      fileId: "file-1",
-      mode: "update"
-    });
-  });
-
   it("previewContractDraftBillExcelImport – returns candidates without an apply id", async () => {
     mockApiFetch.mockReturnValue(
       makeOkJson({
@@ -1759,18 +1496,6 @@ describe("contract workbench API client", () => {
     expect((options as RequestInit).method).toBe("POST");
     expect(JSON.parse((options as RequestInit).body as string)).toEqual({
       fileId: "file-1"
-    });
-  });
-
-  it("applyBillExcelImport – POST /contract-bill-imports/:importId/apply", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({}));
-
-    await applyBillExcelImport("import-1");
-
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bill-imports/import-1/apply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
     });
   });
 
