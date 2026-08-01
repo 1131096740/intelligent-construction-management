@@ -45,6 +45,19 @@
         :message="requestLaunchError"
         class="request-alert"
       />
+      <t-alert
+        v-if="reviewNotice"
+        theme="success"
+        :message="reviewNotice"
+        class="request-alert"
+      />
+      <t-alert
+        v-if="reviewLaunchError"
+        theme="error"
+        title="审批资格校验失败"
+        :message="reviewLaunchError"
+        class="request-alert"
+      />
 
       <t-alert
         theme="info"
@@ -128,6 +141,34 @@
         </template>
         <template #validUntil="{ row }">
           {{ row.validUntil ? formatDate(row.validUntil) : "长期有效" }}
+        </template>
+        <template #operation="{ row }">
+          <div
+            v-if="reviewActionEnabled(row.reviewAction)"
+            class="review-actions"
+          >
+            <t-button
+              size="small"
+              theme="primary"
+              variant="text"
+              :loading="reviewOpeningQuotaId === row.id"
+              :disabled="reviewBusy"
+              @click="openReview(row, 'approve')"
+            >
+              通过
+            </t-button>
+            <t-button
+              size="small"
+              theme="danger"
+              variant="text"
+              :loading="reviewOpeningQuotaId === row.id"
+              :disabled="reviewBusy"
+              @click="openReview(row, 'reject')"
+            >
+              驳回
+            </t-button>
+          </div>
+          <span v-else>—</span>
         </template>
       </t-table>
     </t-card>
@@ -244,6 +285,91 @@
         />
       </div>
     </t-dialog>
+
+    <t-dialog
+      v-if="reviewArmed && selectedFinancingQuotaReviewAction && selectedFinancingQuotaReviewAction.enabled"
+      :visible="reviewVisible"
+      :header="reviewContext.decision === 'approve' ? '确认通过垫资额度审批？' : '确认驳回垫资额度审批？'"
+      width="min(560px, calc(100vw - 32px))"
+      :close-btn="!reviewBusy"
+      :close-on-esc-keydown="!reviewBusy"
+      :close-on-overlay-click="false"
+      @close="cancelReview"
+      @update:visible="handleReviewVisibleChange"
+    >
+      <div class="review-form">
+        <t-alert
+          theme="warning"
+          title="请确认审批影响"
+          :message="reviewContext.decision === 'approve'
+            ? '通过后将推进当前节点；只有董事长或总经理终审通过后额度才生效，本操作不会占用额度。'
+            : '驳回后本轮额度审批结束，审批意见和签名将保留在审计历史中。'"
+        />
+        <label>
+          <span>审批意见（选填）</span>
+          <t-textarea
+            v-model="reviewForm.comment"
+            :disabled="reviewAttempted"
+            :autosize="{ minRows: 2, maxRows: 5 }"
+            placeholder="填写审批意见"
+          />
+        </label>
+        <label v-if="reviewContext.requiresSelfReviewConfirmation">
+          <span>本人独立复核说明 <b aria-hidden="true">*</b></span>
+          <t-textarea
+            v-model="reviewForm.selfReviewReason"
+            :disabled="reviewAttempted"
+            :autosize="{ minRows: 3, maxRows: 5 }"
+            placeholder="说明本人发起后如何完成独立复核"
+          />
+        </label>
+        <label>
+          <span>当前登录密码 <b aria-hidden="true">*</b></span>
+          <t-input
+            v-model="reviewForm.confirmationPassword"
+            type="password"
+            autocomplete="current-password"
+            :disabled="reviewAttempted"
+            placeholder="用于确认当前操作者身份"
+          />
+        </label>
+        <t-alert
+          v-if="reviewError"
+          theme="error"
+          title="暂时无法提交"
+          :message="reviewError"
+        />
+      </div>
+      <template #footer>
+        <t-space>
+          <t-button
+            variant="outline"
+            :disabled="reviewBusy"
+            @click="cancelReview"
+          >
+            取消
+          </t-button>
+          <t-button
+            v-if="reviewContext.decision === 'approve' && selectedFinancingQuotaReviewAction && selectedFinancingQuotaReviewAction.enabled"
+            theme="primary"
+            :loading="reviewBusy"
+            :disabled="reviewBusy"
+            @click="submitApproveReview"
+          >
+            确认通过
+          </t-button>
+          <t-button
+            v-if="reviewContext.decision === 'reject' && selectedFinancingQuotaReviewAction && selectedFinancingQuotaReviewAction.enabled"
+            theme="danger"
+            :loading="reviewBusy"
+            :disabled="reviewBusy"
+            @click="submitRejectReview"
+          >
+            确认驳回
+          </t-button>
+        </t-space>
+      </template>
+    </t-dialog>
   </section>
 </template>
 
@@ -258,11 +384,21 @@ import {
 import type { UploadFile } from "tdesign-vue-next";
 import { centsTextToYuanText } from "../../../lib/money";
 import {
+  createProjectFinancingQuotaReviewExecutionState,
+  createProjectFinancingQuotaReviewAttemptState,
   createProjectFinancingQuotaRequestAttemptState,
+  executeProjectFinancingQuotaReviewAction,
+  fetchProjectFinancingQuotaReviewCapability,
   fetchProjectFinancingQuotaRequestCapability,
+  reviewActionEnabled,
   requestProjectFinancingQuotaWithUpload,
   type ProjectFinancingQuotaActionReadModel,
+  type ProjectFinancingQuotaReviewAttemptState,
+  type ProjectFinancingQuotaReviewDecision,
+  type ProjectFinancingQuotaReviewExecutionState,
+  type ProjectFinancingQuotaReviewExecutionSubmission,
   type ProjectFinancingQuotaRequestAttemptState,
+  type ProjectFinancingQuotaRowReadModel,
   type ProjectFinancingQuotaStatus,
   type ProjectFinancingQuotaWorkbenchReadModel
 } from "../../../api/project-financing-quota.api";
@@ -285,10 +421,34 @@ type RequestOperationContext = RequestContext & {
   operationId: number;
 };
 
+type ReviewContext = {
+  projectId: string;
+  quotaId: string;
+  projectGeneration: number;
+  actionId: string;
+  lifecycleToken: string;
+  decision: ProjectFinancingQuotaReviewDecision;
+  requiresSelfReviewConfirmation: boolean;
+};
+
+type ReviewOperationContext = ReviewContext & {
+  operationId: number;
+};
+
 const EMPTY_REQUEST_CONTEXT: RequestContext = {
   projectId: "",
   projectGeneration: -1,
   idempotencyKey: ""
+};
+
+const EMPTY_REVIEW_CONTEXT: ReviewContext = {
+  projectId: "",
+  quotaId: "",
+  projectGeneration: -1,
+  actionId: "",
+  lifecycleToken: "",
+  decision: "approve",
+  requiresSelfReviewConfirmation: false
 };
 
 const requestVisible = ref(false);
@@ -305,19 +465,43 @@ const selectedFinancingQuotaRequestAction = shallowRef<
   ProjectFinancingQuotaActionReadModel | null
 >(null);
 const requestArmed = ref(false);
+const reviewVisible = ref(false);
+const reviewBusy = ref(false);
+const reviewAttempted = ref(false);
+const reviewError = ref("");
+const reviewLaunchError = ref("");
+const reviewNotice = ref("");
+const reviewOpeningQuotaId = ref("");
+const reviewForm = ref(createReviewForm());
+const reviewContext = ref<ReviewContext>({ ...EMPTY_REVIEW_CONTEXT });
+const selectedFinancingQuotaReviewAction = shallowRef<
+  ProjectFinancingQuotaActionReadModel | null
+>(null);
+const reviewArmed = ref(false);
 let componentAlive = true;
 let projectGeneration = 0;
 let requestOpenSequence = 0;
 let requestOperationSequence = 0;
 let activeRequestOperationId = 0;
+let reviewOpenSequence = 0;
+let reviewOperationSequence = 0;
+let activeReviewOperationId = 0;
 let requestAttemptState: ProjectFinancingQuotaRequestAttemptState =
   createProjectFinancingQuotaRequestAttemptState();
+let reviewAttemptState: ProjectFinancingQuotaReviewAttemptState =
+  createProjectFinancingQuotaReviewAttemptState();
+let reviewExecutionState: ProjectFinancingQuotaReviewExecutionState<ReviewOperationContext> =
+  createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
 
 onBeforeUnmount(() => {
   componentAlive = false;
   projectGeneration += 1;
   requestOpenSequence += 1;
   activeRequestOperationId = 0;
+  reviewOpenSequence += 1;
+  activeReviewOperationId = 0;
+  reviewExecutionState =
+    createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
 });
 
 watch(
@@ -331,6 +515,15 @@ watch(
     clearRequestSelection();
     requestLaunchError.value = "";
     requestNotice.value = "";
+    reviewOpenSequence += 1;
+    activeReviewOperationId = 0;
+    reviewExecutionState =
+      createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
+    reviewOpeningQuotaId.value = "";
+    reviewBusy.value = false;
+    clearReviewSelection();
+    reviewLaunchError.value = "";
+    reviewNotice.value = "";
   }
 );
 
@@ -340,7 +533,8 @@ const quotaColumns = [
   { colKey: "netUsedAmountCents", title: "已使用净额", width: 130 },
   { colKey: "availableAmountCents", title: "当前可用", width: 130 },
   { colKey: "status", title: "状态 / 当前节点", minWidth: 190 },
-  { colKey: "validUntil", title: "有效期", width: 130 }
+  { colKey: "validUntil", title: "有效期", width: 130 },
+  { colKey: "operation", title: "审批操作", width: 132, fixed: "right" }
 ];
 
 const usageColumns = [
@@ -575,11 +769,297 @@ function clearRequestSelection() {
   requestError.value = "";
 }
 
+async function openReview(
+  row: ProjectFinancingQuotaRowReadModel,
+  decision: ProjectFinancingQuotaReviewDecision
+) {
+  if (
+    reviewOpeningQuotaId.value ||
+    reviewBusy.value ||
+    props.workbench.project.id !== props.projectId ||
+    !reviewActionEnabled(row.reviewAction)
+  ) {
+    return;
+  }
+
+  clearReviewSelection();
+  const context: ReviewContext = {
+    projectId: props.projectId,
+    quotaId: row.id,
+    projectGeneration,
+    actionId: crypto.randomUUID(),
+    lifecycleToken: row.lifecycleToken,
+    decision,
+    requiresSelfReviewConfirmation:
+      row.reviewAction.requiresSelfReviewConfirmation === true
+  };
+  const openReviewId = ++reviewOpenSequence;
+  reviewContext.value = context;
+  reviewOpeningQuotaId.value = row.id;
+  reviewLaunchError.value = "";
+  reviewNotice.value = "";
+  try {
+    const freshCapability = await fetchProjectFinancingQuotaReviewCapability(
+      context.projectId,
+      context.quotaId
+    );
+    if (!reviewOpenContextIsCurrent(context, openReviewId)) return;
+    const requiresSelfReviewConfirmation =
+      freshCapability.reviewAction.requiresSelfReviewConfirmation === true;
+    if (
+      freshCapability.projectId !== context.projectId ||
+      freshCapability.quotaId !== context.quotaId ||
+      freshCapability.status !== "approval_pending" ||
+      freshCapability.reviewAction.key !== "review_financing_quota" ||
+      freshCapability.reviewAction.enabled !== true ||
+      freshCapability.reviewAction.requiredAction !==
+        "project.financing_quota.approve" ||
+      freshCapability.reviewAction.requiresPassword !== true ||
+      (freshCapability.reviewAction.requiresSelfReviewConfirmation === true) !==
+        requiresSelfReviewConfirmation
+    ) {
+      throw new Error("项目垫资额度审批资格已变化，请刷新台账后重试");
+    }
+    reviewContext.value = {
+      ...context,
+      lifecycleToken: freshCapability.lifecycleToken,
+      requiresSelfReviewConfirmation
+    };
+    selectedFinancingQuotaReviewAction.value =
+      freshCapability.reviewAction;
+    reviewAttemptState = createProjectFinancingQuotaReviewAttemptState();
+    reviewArmed.value = true;
+    reviewVisible.value = true;
+  } catch (error) {
+    if (reviewOpenOperationIsCurrent(context, openReviewId)) {
+      reviewContext.value = { ...EMPTY_REVIEW_CONTEXT };
+      reviewLaunchError.value = errorMessage(
+        error,
+        "项目垫资额度审批资格校验失败"
+      );
+    }
+  } finally {
+    if (reviewOpenOperationIsCurrent(context, openReviewId)) {
+      reviewOpeningQuotaId.value = "";
+    }
+  }
+}
+
+function submitApproveReview(): Promise<unknown> {
+  return executeProjectFinancingQuotaReviewAction(
+    {
+      decision: "approve",
+      attemptState: reviewAttemptState,
+      capture: captureReviewSubmission,
+      current: reviewContextIsCurrent,
+      complete: (context, result) =>
+        completeReview(result.workbench, context),
+      fail: (context, error) => failReview(error, context),
+      finish: finishReview
+    },
+    reviewExecutionState
+  );
+}
+
+function submitRejectReview(): Promise<unknown> {
+  return executeProjectFinancingQuotaReviewAction(
+    {
+      decision: "reject",
+      attemptState: reviewAttemptState,
+      capture: captureReviewSubmission,
+      current: reviewContextIsCurrent,
+      complete: (context, result) =>
+        completeReview(result.workbench, context),
+      fail: (context, error) => failReview(error, context),
+      finish: finishReview
+    },
+    reviewExecutionState
+  );
+}
+
+function captureReviewSubmission(
+  decision: ProjectFinancingQuotaReviewDecision
+): ProjectFinancingQuotaReviewExecutionSubmission<ReviewOperationContext> | null {
+  const selected = reviewContext.value;
+  const confirmationPassword = reviewForm.value.confirmationPassword;
+  const comment = reviewForm.value.comment.trim();
+  const selfReviewReason = reviewForm.value.selfReviewReason.trim();
+  if (
+    selected.decision !== decision ||
+    !reviewContextIsCurrent(selected)
+  ) {
+    reviewError.value = "审批上下文已失效，请重新打开确认窗口。";
+    return null;
+  }
+  if (!confirmationPassword.trim()) {
+    reviewError.value = "请输入当前登录密码";
+    return null;
+  }
+  if (Array.from(comment).length > 500) {
+    reviewError.value = "审批意见不能超过 500 个字符";
+    return null;
+  }
+  if (Array.from(selfReviewReason).length > 500) {
+    reviewError.value = "本人独立复核说明不能超过 500 个字符";
+    return null;
+  }
+  if (selected.requiresSelfReviewConfirmation && !selfReviewReason) {
+    reviewError.value = "请填写财务主管本人独立复核说明";
+    return null;
+  }
+
+  const context: ReviewOperationContext = {
+    ...selected,
+    operationId: ++reviewOperationSequence
+  };
+  activeReviewOperationId = context.operationId;
+  reviewBusy.value = true;
+  reviewAttempted.value = true;
+  reviewError.value = "";
+  return {
+    projectId: context.projectId,
+    quotaId: context.quotaId,
+    confirmationPassword,
+    ...(comment ? { comment } : {}),
+    ...(context.requiresSelfReviewConfirmation
+      ? { selfReviewReason }
+      : {}),
+    requiresSelfReviewConfirmation:
+      context.requiresSelfReviewConfirmation,
+    actionId: context.actionId,
+    lifecycleToken: context.lifecycleToken,
+    context
+  };
+}
+
+function reviewOpenContextIsCurrent(
+  context: ReviewContext,
+  openReviewId: number
+) {
+  const selected = reviewContext.value;
+  return Boolean(
+    componentAlive &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration &&
+      reviewOpenSequence === openReviewId &&
+      selected.projectId === context.projectId &&
+      selected.quotaId === context.quotaId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.actionId === context.actionId
+  );
+}
+
+function reviewOpenOperationIsCurrent(
+  context: ReviewContext,
+  openReviewId: number
+) {
+  return (
+    componentAlive &&
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    reviewOpenSequence === openReviewId
+  );
+}
+
+function reviewContextIsCurrent(context: ReviewContext) {
+  const selected = reviewContext.value;
+  return Boolean(
+    componentAlive &&
+      reviewArmed.value &&
+      reviewVisible.value &&
+      selected.projectId === context.projectId &&
+      selected.quotaId === context.quotaId &&
+      selected.projectGeneration === context.projectGeneration &&
+      selected.actionId === context.actionId &&
+      selected.lifecycleToken === context.lifecycleToken &&
+      selected.decision === context.decision &&
+      selected.requiresSelfReviewConfirmation ===
+        context.requiresSelfReviewConfirmation &&
+      props.projectId === context.projectId &&
+      projectGeneration === context.projectGeneration
+  );
+}
+
+function reviewOperationIsCurrent(context: ReviewOperationContext) {
+  return (
+    reviewContextIsCurrent(context) &&
+    activeReviewOperationId === context.operationId
+  );
+}
+
+function completeReview(
+  nextWorkbench: ProjectFinancingQuotaWorkbenchReadModel,
+  context: ReviewOperationContext
+) {
+  if (!reviewOperationIsCurrent(context)) return;
+  const decision = context.decision;
+  clearReviewSelection();
+  reviewNotice.value = decision === "approve"
+    ? "垫资额度审批已通过当前节点，权威台账已刷新。"
+    : "垫资额度审批已驳回，权威台账已刷新。";
+  emit("updated", nextWorkbench);
+}
+
+function failReview(error: unknown, context: ReviewOperationContext) {
+  if (!reviewOperationIsCurrent(context)) return;
+  reviewAttempted.value = reviewAttemptState.submission !== null;
+  reviewError.value = errorMessage(error, "项目垫资额度审批失败");
+}
+
+function finishReview(context: ReviewOperationContext) {
+  if (
+    componentAlive &&
+    props.projectId === context.projectId &&
+    projectGeneration === context.projectGeneration &&
+    activeReviewOperationId === context.operationId
+  ) {
+    reviewBusy.value = false;
+    activeReviewOperationId = 0;
+  }
+}
+
+function cancelReview() {
+  if (reviewBusy.value) return;
+  reviewOpenSequence += 1;
+  activeReviewOperationId = 0;
+  reviewExecutionState =
+    createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
+  clearReviewSelection();
+}
+
+function handleReviewVisibleChange(visible: boolean) {
+  if (visible || reviewBusy.value) return;
+  cancelReview();
+}
+
+function clearReviewSelection() {
+  reviewVisible.value = false;
+  reviewArmed.value = false;
+  reviewContext.value = { ...EMPTY_REVIEW_CONTEXT };
+  selectedFinancingQuotaReviewAction.value = null;
+  reviewAttemptState = createProjectFinancingQuotaReviewAttemptState();
+  reviewExecutionState =
+    createProjectFinancingQuotaReviewExecutionState<ReviewOperationContext>();
+  reviewAttempted.value = false;
+  reviewBusy.value = false;
+  activeReviewOperationId = 0;
+  reviewForm.value = createReviewForm();
+  reviewError.value = "";
+}
+
 function createRequestForm() {
   return {
     amountYuan: "",
     reason: "",
     validUntil: ""
+  };
+}
+
+function createReviewForm() {
+  return {
+    comment: "",
+    confirmationPassword: "",
+    selfReviewReason: ""
   };
 }
 
@@ -706,6 +1186,32 @@ function statusTheme(status: ProjectFinancingQuotaStatus, isExpired: boolean) {
 .request-form {
   display: grid;
   gap: var(--jg-space-md-plus);
+}
+
+.review-form,
+.review-form label {
+  display: grid;
+  gap: var(--jg-space-sm);
+}
+
+.review-form {
+  gap: var(--jg-space-md-plus);
+}
+
+.review-form label > span {
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
+  font-weight: var(--jg-font-weight-medium);
+}
+
+.review-form b {
+  color: var(--jg-color-danger);
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--jg-space-xs);
 }
 
 .request-file-field {

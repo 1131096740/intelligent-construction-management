@@ -1123,7 +1123,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 395);
+  assert.equal(manifest.summary.routeCount, 397);
   assert.equal(manifest.summary.classificationOverrideCount, 107);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
@@ -1133,19 +1133,19 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     manifest.summary.consumerSurfaceOverrideSha256,
     "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 283);
-  assert.equal(manifest.summary.pageRouteCount, 286);
+  assert.equal(manifest.summary.derivedProductionPageCount, 289);
+  assert.equal(manifest.summary.pageRouteCount, 292);
   assert.equal(manifest.summary.externalTakeoverCount, 59);
   assert.equal(manifest.summary.exitCandidateCount, 43);
   assert.equal(manifest.summary.internalTaskCount, 2);
-  assert.equal(manifest.summary.unclassifiedCount, 5);
+  assert.equal(manifest.summary.unclassifiedCount, 1);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 333,
+    web_api_wrapper: 339,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 1,
     operator_endpoint: 1,
-    none: 54
+    none: 50
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>
@@ -1167,7 +1167,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     ]
   );
   assert.deepEqual(nonZeroBlockers, {
-    unclassifiedRoutes: 5
+    unclassifiedRoutes: 1
   });
   assert.ok(
     manifest.routes
@@ -1182,13 +1182,7 @@ test("locks the repository baseline to 40 plus 19 external routes and exact bloc
     manifest.blockers.unclassifiedRoutes.map(
       (entry) => entry.normalizedKey
     ),
-    [
-      "POST /contract-bills/:param/rows/:param/remainder-cancellation",
-      "POST /contracts/:param/signing/material-change",
-      "POST /projects/:param/financing-quotas",
-      "POST /projects/:param/financing-quotas/:param/approval",
-      "POST /projects/:param/financing-quotas/:param/termination"
-    ]
+    ["POST /projects/:param/financing-quotas/:param/termination"]
   );
 });
 

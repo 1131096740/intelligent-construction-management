@@ -135,9 +135,12 @@ describe("ProjectController authorization wiring", () => {
     attachmentFileId: string;
   };
   type ProjectFinancingQuotaReviewBody = {
+    actionId: string;
+    expectedLifecycleToken: string;
     decision: "approve" | "reject";
     confirmationPassword: string;
     comment?: string;
+    selfReviewReason?: string;
   };
   type ProjectFinancingQuotaTerminationBody = {
     reason: string;
@@ -331,7 +334,13 @@ describe("ProjectController authorization wiring", () => {
     ],
     [
       "reviewProjectFinancingQuota",
-      { decision: "reject", confirmationPassword: "current-password", comment: "资料不足" }
+      {
+        actionId: "22222222-2222-4222-8222-222222222222",
+        expectedLifecycleToken: "a".repeat(64),
+        decision: "reject",
+        confirmationPassword: "current-password",
+        comment: "资料不足"
+      }
     ],
     [
       "terminateProjectFinancingQuota",
@@ -734,11 +743,45 @@ describe("ProjectController authorization wiring", () => {
         description: null
       }
     ],
-    ["reviewProjectFinancingQuota", { decision: "approve", confirmationPassword: "pwd", comment: null }]
+    ["reviewProjectFinancingQuota", {
+      actionId: "22222222-2222-4222-8222-222222222222",
+      expectedLifecycleToken: "a".repeat(64),
+      decision: "approve",
+      confirmationPassword: "pwd",
+      comment: null
+    }]
   ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
     const response = await getProjectMoneyValidationResponse(method, value);
 
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    [
+      {
+        actionId: "not-a-uuid",
+        expectedLifecycleToken: "a".repeat(64),
+        decision: "approve",
+        confirmationPassword: "pwd"
+      },
+      "审批 actionId 必须是 UUIDv4"
+    ],
+    [
+      {
+        actionId: "22222222-2222-4222-8222-222222222222",
+        expectedLifecycleToken: "A".repeat(64),
+        decision: "approve",
+        confirmationPassword: "pwd"
+      },
+      "审批生命周期令牌无效"
+    ]
+  ])("rejects invalid project financing review coordinates", async (value, message) => {
+    const response = await getProjectMoneyValidationResponse(
+      "reviewProjectFinancingQuota",
+      value
+    );
+
+    expect(response.errors).toEqual([message]);
   });
 
   it.each([
@@ -1037,6 +1080,14 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
+        (ProjectController.prototype as never as {
+          projectFinancingQuotaReviewCapability: object;
+        }).projectFinancingQuotaReviewCapability
+      )
+    ).toBe("project.financing_quota.approve");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
         (ProjectController.prototype as never as { reviewProjectFinancingQuota: object })
           .reviewProjectFinancingQuota
       )
@@ -1100,6 +1151,27 @@ describe("ProjectController authorization wiring", () => {
     expect(projects.getProjectFinancingQuotaWorkbench).toHaveBeenCalledWith(
       "project-1",
       "finance-1"
+    );
+  });
+
+  it("forwards immutable coordinates for the financing quota review capability", async () => {
+    const projects = {
+      getProjectFinancingQuotaReviewCapability: jest.fn()
+    };
+    const controller = new ProjectController(projects as never);
+
+    await controller.projectFinancingQuotaReviewCapability(
+      "project-1",
+      "quota-1",
+      { id: "finance-director-1" } as never
+    );
+
+    expect(
+      projects.getProjectFinancingQuotaReviewCapability
+    ).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "finance-director-1"
     );
   });
 
@@ -1361,6 +1433,8 @@ describe("ProjectController authorization wiring", () => {
     const projects = { reviewProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
+      actionId: "22222222-2222-4222-8222-222222222222",
+      expectedLifecycleToken: "a".repeat(64),
       decision: "approve" as const,
       confirmationPassword: "current-password",
       comment: "同意"

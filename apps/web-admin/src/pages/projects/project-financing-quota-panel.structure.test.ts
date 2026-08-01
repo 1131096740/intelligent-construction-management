@@ -14,6 +14,10 @@ const apiSource = readFileSync(
   new URL("../../api/project-financing-quota.api.ts", import.meta.url),
   "utf8"
 );
+const coreFlowApiSource = readFileSync(
+  new URL("../../api/core-flow-read.api.ts", import.meta.url),
+  "utf8"
+);
 const pageActionRegistry = JSON.parse(
   readFileSync(
     resolve(
@@ -31,7 +35,7 @@ const pageActionRegistry = JSON.parse(
   }>;
 };
 
-describe("project financing quota F0/F1 workbench", () => {
+describe("project financing quota F0/F1/F2 workbench", () => {
   it("loads the project-scoped read model and mounts the dedicated panel", () => {
     expect(pageSource).toContain("fetchProjectFinancingQuotaWorkbench");
     expect(pageSource).toContain("<ProjectFinancingQuotaPanel");
@@ -130,5 +134,99 @@ describe("project financing quota F0/F1 workbench", () => {
     expect(apiSource).toContain('apiFetch("/files"');
     expect(apiSource).not.toContain('from "./core-flow-read.api"');
     expect(apiSource).not.toContain("globalRoleKeys");
+  });
+
+  it("shows F2 review controls only from the exact server-derived approval action", () => {
+    expect(panelSource).toContain("row.reviewAction");
+    expect(apiSource).toContain('action.key === "review_financing_quota"');
+    expect(apiSource).toContain('action.requiredAction === "project.financing_quota.approve"');
+    expect(apiSource).toContain("action.requiresPassword === true");
+    expect(panelSource).toContain("selectedFinancingQuotaReviewAction");
+    expect(panelSource).toContain(
+      "freshCapability.reviewAction"
+    );
+    expect(panelSource).not.toContain("auth.user");
+    expect(panelSource).not.toContain("globalRoleKeys");
+  });
+
+  it("uses a password-confirmed TDesign review dialog with an explicit independent self-review explanation", () => {
+    const reviewDialogStart = panelSource.indexOf('v-if="reviewArmed');
+    const reviewDialogSource = panelSource.slice(
+      reviewDialogStart,
+      panelSource.indexOf("</t-dialog>", reviewDialogStart)
+    );
+
+    expect(panelSource).toContain("确认通过垫资额度审批");
+    expect(panelSource).toContain("确认驳回垫资额度审批");
+    expect(panelSource).toContain("当前登录密码");
+    expect(panelSource).toContain("本人独立复核说明");
+    expect(panelSource).toContain("reviewContext.requiresSelfReviewConfirmation");
+    expect(panelSource).toContain('@click="submitApproveReview"');
+    expect(panelSource).toContain('@click="submitRejectReview"');
+    expect(panelSource).toContain('decision: "approve"');
+    expect(panelSource).toContain('decision: "reject"');
+    expect(panelSource).not.toContain("fetch(");
+    expect(reviewDialogSource).not.toContain('maxlength="500"');
+    expect(panelSource).toContain("Array.from(comment).length > 500");
+    expect(panelSource).toContain("Array.from(selfReviewReason).length > 500");
+  });
+
+  it("uses the dedicated fresh-preflight wrapper and removes the orphan core-flow review transport", () => {
+    expect(panelSource).toContain("fetchProjectFinancingQuotaReviewCapability");
+    expect(panelSource).toContain("executeProjectFinancingQuotaReviewAction");
+    expect(apiSource).toContain("reviewProjectFinancingQuotaWithPreflight");
+    expect(apiSource).not.toContain(
+      "export function reviewProjectFinancingQuotaWithPreflight"
+    );
+    expect(apiSource).toContain("preflightVerified");
+    expect(apiSource).toContain("expectedLifecycleToken");
+    expect(apiSource).toContain("businessReceipt");
+    expect(apiSource).toContain("reviewPromise");
+    expect(coreFlowApiSource).not.toContain("reviewProjectFinancingQuota");
+    expect(coreFlowApiSource).not.toContain("ReviewProjectFinancingQuotaPayload");
+  });
+
+  it("reads the F2 review capability from a direct strict single-target server request", () => {
+    const reviewCapabilitySource = apiSource.slice(
+      apiSource.indexOf(
+        "export async function fetchProjectFinancingQuotaReviewCapability"
+      ),
+      apiSource.indexOf(
+        "function reviewProjectFinancingQuotaWithPreflight"
+      )
+    );
+
+    expect(reviewCapabilitySource).toContain("await apiFetch(");
+    expect(reviewCapabilitySource).toContain("normalizedQuotaId");
+    expect(reviewCapabilitySource).toContain(
+      "/review-capability`"
+    );
+    expect(reviewCapabilitySource).toContain("response.clone().text()");
+    expect(reviewCapabilitySource).toContain("isReviewCapabilityReadModel");
+    expect(reviewCapabilitySource).not.toContain(
+      "fetchProjectFinancingQuotaWorkbench(projectId)"
+    );
+  });
+
+  it("freezes one F2 UUID attempt and isolates review callbacks on project switch or unmount", () => {
+    expect(panelSource).toContain("actionId: crypto.randomUUID()");
+    expect(panelSource).toContain("reviewContextIsCurrent");
+    expect(panelSource).toContain("reviewExecutionState");
+    expect(apiSource).toContain("if (state.promise) return state.promise");
+    expect(panelSource).toContain("projectGeneration");
+    expect(panelSource).toContain("onBeforeUnmount");
+  });
+
+  it("keeps the selected F2 capability readonly and out of escaping callbacks", () => {
+    const scriptSource = panelSource.slice(panelSource.indexOf("<script setup"));
+    expect(
+      scriptSource.match(/selectedFinancingQuotaReviewAction\.value/gu)
+    ).toHaveLength(2);
+    expect(scriptSource).toContain(
+      "selectedFinancingQuotaReviewAction.value =\n      freshCapability.reviewAction"
+    );
+    expect(scriptSource).toContain(
+      "selectedFinancingQuotaReviewAction.value = null"
+    );
   });
 });

@@ -136,6 +136,101 @@ export interface ProjectFinancingQuotaRequestAttemptState {
   businessReceipt: ProjectFinancingQuotaRequestReceipt | null;
 }
 
+export type ProjectFinancingQuotaReviewDecision = "approve" | "reject";
+
+export interface ProjectFinancingQuotaReviewReceipt {
+  kind: "applied" | "replayed";
+  actionId: string;
+  projectId: string;
+  quotaId: string;
+}
+
+export interface ProjectFinancingQuotaReviewCapabilityReadModel {
+  projectId: string;
+  quotaId: string;
+  status: ProjectFinancingQuotaStatus;
+  lifecycleToken: string;
+  reviewAction: ProjectFinancingQuotaActionReadModel;
+}
+
+export interface ProjectFinancingQuotaReviewResult {
+  receipt: ProjectFinancingQuotaReviewReceipt;
+  workbench: ProjectFinancingQuotaWorkbenchReadModel;
+}
+
+export interface ProjectFinancingQuotaReviewInput<TContext> {
+  decision: ProjectFinancingQuotaReviewDecision;
+  confirmationPassword: string;
+  comment?: string;
+  selfReviewReason?: string;
+  requiresSelfReviewConfirmation: boolean;
+  actionId: string;
+  lifecycleToken: string;
+  context: TContext;
+  isCurrent: (context: TContext) => boolean;
+}
+
+export interface ProjectFinancingQuotaReviewSubmission {
+  projectId: string;
+  quotaId: string;
+  decision: ProjectFinancingQuotaReviewDecision;
+  confirmationPassword: string;
+  comment?: string;
+  selfReviewReason?: string;
+  requiresSelfReviewConfirmation: boolean;
+  actionId: string;
+  lifecycleToken: string;
+  isCurrent: () => boolean;
+}
+
+export interface ProjectFinancingQuotaReviewAttemptState {
+  submission: ProjectFinancingQuotaReviewSubmission | null;
+  reviewPromise: Promise<ProjectFinancingQuotaReviewResult> | null;
+  preflightVerified: boolean;
+  businessReceipt: ProjectFinancingQuotaReviewReceipt | null;
+}
+
+export interface ProjectFinancingQuotaReviewExecutionSubmission<TContext> {
+  projectId: string;
+  quotaId: string;
+  confirmationPassword: string;
+  comment?: string;
+  selfReviewReason?: string;
+  requiresSelfReviewConfirmation: boolean;
+  actionId: string;
+  lifecycleToken: string;
+  context: TContext;
+}
+
+export type ProjectFinancingQuotaReviewExecutionResult<TContext> =
+  | { status: "not_started" }
+  | { status: "stale"; context: TContext }
+  | {
+      status: "completed";
+      context: TContext;
+      result: ProjectFinancingQuotaReviewResult;
+    }
+  | { status: "failed"; context: TContext };
+
+export interface ProjectFinancingQuotaReviewExecutionState<TContext> {
+  promise: Promise<ProjectFinancingQuotaReviewExecutionResult<TContext>> | null;
+}
+
+export interface ExecuteProjectFinancingQuotaReviewActionInput<TContext> {
+  decision: ProjectFinancingQuotaReviewDecision;
+  attemptState: ProjectFinancingQuotaReviewAttemptState;
+  capture: (
+    decision: ProjectFinancingQuotaReviewDecision
+  ) => ProjectFinancingQuotaReviewExecutionSubmission<TContext> | null;
+  current: (context: TContext) => boolean;
+  complete: (
+    context: TContext,
+    result: ProjectFinancingQuotaReviewResult
+  ) => void | Promise<void>;
+  fail: (context: TContext, error: unknown) => void | Promise<void>;
+  finish: (context: TContext) => void;
+}
+
 interface ProjectFinancingQuotaAttachmentUploadReceipt {
   id: string;
 }
@@ -266,7 +361,7 @@ function isQuotaRowReadModel(
     isMoneyText(value.netUsedAmountCents) &&
     isMoneyText(value.availableAmountCents) &&
     (value.currentApproval === null || isApprovalReadModel(value.currentApproval)) &&
-    typeof value.lifecycleToken === "string" &&
+    isLifecycleToken(value.lifecycleToken) &&
     isActionReadModel(value.reviewAction) &&
     isActionReadModel(value.terminateAction) &&
     Array.isArray(value.usageGroups) &&
@@ -301,19 +396,19 @@ function isWorkbenchReadModel(
   );
 }
 
-function invalidWorkbenchResponse(): ProjectFinancingQuotaApiError {
-  return new ProjectFinancingQuotaApiError(
-    "项目垫资额度数据格式异常，请刷新后重试",
-    502,
-    "PROJECT_FINANCING_QUOTA_INVALID_RESPONSE"
-  );
-}
-
 function invalidRequestResponse(): ProjectFinancingQuotaApiError {
   return new ProjectFinancingQuotaApiError(
     "项目垫资额度申请回执与本次请求不一致，请刷新后核对",
     502,
     "PROJECT_FINANCING_QUOTA_INVALID_REQUEST_RESPONSE"
+  );
+}
+
+function invalidReviewResponse(): ProjectFinancingQuotaApiError {
+  return new ProjectFinancingQuotaApiError(
+    "项目垫资额度审批回执与本次操作不一致，请刷新后核对",
+    502,
+    "PROJECT_FINANCING_QUOTA_INVALID_REVIEW_RESPONSE"
   );
 }
 
@@ -349,19 +444,39 @@ export async function fetchProjectFinancingQuotaWorkbench(
   const response = await apiFetch(
     `/projects/${encodeURIComponent(projectId)}/financing-quotas`
   );
-  if (response.ok) {
-    let data: unknown;
-    try {
-      data = await response.json();
-    } catch {
-      throw invalidWorkbenchResponse();
-    }
-    if (!isWorkbenchReadModel(data, projectId)) {
-      throw invalidWorkbenchResponse();
-    }
-    return data;
+  return parseProjectFinancingQuotaWorkbenchResponse(
+    response,
+    projectId,
+    "读取项目垫资额度失败"
+  );
+}
+
+async function parseProjectFinancingQuotaWorkbenchResponse(
+  response: Response,
+  projectId: string,
+  errorFallback: string
+): Promise<ProjectFinancingQuotaWorkbenchReadModel> {
+  if (!response.ok) {
+    throw await responseError(response, errorFallback);
   }
-  throw await responseError(response, "读取项目垫资额度失败");
+  let data: unknown;
+  try {
+    data = JSON.parse(await response.clone().text()) as unknown;
+  } catch {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度数据格式异常，请刷新后重试",
+      502,
+      "PROJECT_FINANCING_QUOTA_INVALID_RESPONSE"
+    );
+  }
+  if (!isWorkbenchReadModel(data, projectId)) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度数据格式异常，请刷新后重试",
+      502,
+      "PROJECT_FINANCING_QUOTA_INVALID_RESPONSE"
+    );
+  }
+  return response.json() as Promise<ProjectFinancingQuotaWorkbenchReadModel>;
 }
 
 export async function fetchProjectFinancingQuotaRequestCapability(
@@ -384,6 +499,384 @@ export function createProjectFinancingQuotaRequestAttemptState(): ProjectFinanci
     requestPromise: null,
     businessReceipt: null
   };
+}
+
+export function createProjectFinancingQuotaReviewAttemptState(): ProjectFinancingQuotaReviewAttemptState {
+  return {
+    submission: null,
+    reviewPromise: null,
+    preflightVerified: false,
+    businessReceipt: null
+  };
+}
+
+export function createProjectFinancingQuotaReviewExecutionState<TContext>(): ProjectFinancingQuotaReviewExecutionState<TContext> {
+  return { promise: null };
+}
+
+export async function fetchProjectFinancingQuotaReviewCapability(
+  projectId: string,
+  quotaId: string
+): Promise<ProjectFinancingQuotaReviewCapabilityReadModel> {
+  const normalizedProjectId = requiredText(projectId, "当前项目");
+  const normalizedQuotaId = requiredText(quotaId, "垫资额度");
+  const response = await apiFetch(
+    `/projects/${encodeURIComponent(normalizedProjectId)}/financing-quotas/${encodeURIComponent(normalizedQuotaId)}/review-capability`
+  );
+  if (!response.ok) {
+    throw await responseError(response, "读取项目垫资额度审批资格失败");
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(await response.clone().text()) as unknown;
+  } catch {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度审批资格数据格式异常，请刷新后重试",
+      502,
+      "PROJECT_FINANCING_QUOTA_INVALID_REVIEW_CAPABILITY_RESPONSE"
+    );
+  }
+  if (
+    !isReviewCapabilityReadModel(
+      data,
+      normalizedProjectId,
+      normalizedQuotaId
+    )
+  ) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度审批资格数据格式异常，请刷新后重试",
+      502,
+      "PROJECT_FINANCING_QUOTA_INVALID_REVIEW_CAPABILITY_RESPONSE"
+    );
+  }
+  return response.json() as Promise<ProjectFinancingQuotaReviewCapabilityReadModel>;
+}
+
+function isReviewCapabilityReadModel(
+  value: unknown,
+  expectedProjectId: string,
+  expectedQuotaId: string
+): value is ProjectFinancingQuotaReviewCapabilityReadModel {
+  if (!isRecord(value)) return false;
+  const expectedKeys = [
+    "lifecycleToken",
+    "projectId",
+    "quotaId",
+    "reviewAction",
+    "status"
+  ];
+  return (
+    Object.keys(value).sort().join("|") === expectedKeys.join("|") &&
+    value.projectId === expectedProjectId &&
+    value.quotaId === expectedQuotaId &&
+    isQuotaStatus(value.status) &&
+    isLifecycleToken(value.lifecycleToken) &&
+    isActionReadModel(value.reviewAction)
+  );
+}
+
+function projectFinancingQuotaReviewRow(
+  workbench: ProjectFinancingQuotaWorkbenchReadModel,
+  quotaId: string
+): ProjectFinancingQuotaRowReadModel {
+  const rows = workbench.rows.filter((row) => row.id === quotaId);
+  if (rows.length !== 1) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度审批对象已变化，请刷新台账后重试",
+      409,
+      "PROJECT_FINANCING_QUOTA_REVIEW_TARGET_CHANGED"
+    );
+  }
+  return rows[0]!;
+}
+
+function reviewProjectFinancingQuotaWithPreflight<TContext>(
+  projectId: string,
+  quotaId: string,
+  input: ProjectFinancingQuotaReviewInput<TContext>,
+  state: ProjectFinancingQuotaReviewAttemptState
+): Promise<ProjectFinancingQuotaReviewResult> {
+  if (state.reviewPromise) return state.reviewPromise;
+
+  let submission: ProjectFinancingQuotaReviewSubmission;
+  try {
+    submission =
+      state.submission ?? normalizeReviewSubmission(projectId, quotaId, input);
+    if (submission.projectId !== projectId || submission.quotaId !== quotaId) {
+      throw new Error("项目垫资额度审批对象已变化，请重新打开确认窗口");
+    }
+    state.submission = submission;
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  const review = executeProjectFinancingQuotaReview(submission, state);
+  state.reviewPromise = review;
+  void review.catch(() => {
+    if (state.reviewPromise === review) {
+      state.reviewPromise = null;
+    }
+  });
+  return review;
+}
+
+export function executeProjectFinancingQuotaReviewAction<TContext>(
+  input: ExecuteProjectFinancingQuotaReviewActionInput<TContext>,
+  state: ProjectFinancingQuotaReviewExecutionState<TContext>
+): Promise<ProjectFinancingQuotaReviewExecutionResult<TContext>> {
+  if (state.promise) return state.promise;
+  const submission = input.capture(input.decision);
+  if (!submission) {
+    return Promise.resolve({ status: "not_started" });
+  }
+
+  const execution = executeCapturedProjectFinancingQuotaReview(
+    input,
+    submission
+  ).finally(() => {
+    if (state.promise === execution) {
+      state.promise = null;
+    }
+  });
+  state.promise = execution;
+  return execution;
+}
+
+async function executeCapturedProjectFinancingQuotaReview<TContext>(
+  input: ExecuteProjectFinancingQuotaReviewActionInput<TContext>,
+  submission: ProjectFinancingQuotaReviewExecutionSubmission<TContext>
+): Promise<ProjectFinancingQuotaReviewExecutionResult<TContext>> {
+  const context = submission.context;
+  try {
+    const result = await reviewProjectFinancingQuotaWithPreflight(
+      submission.projectId,
+      submission.quotaId,
+      {
+        decision: input.decision,
+        confirmationPassword: submission.confirmationPassword,
+        ...(submission.comment ? { comment: submission.comment } : {}),
+        ...(submission.selfReviewReason
+          ? { selfReviewReason: submission.selfReviewReason }
+          : {}),
+        requiresSelfReviewConfirmation:
+          submission.requiresSelfReviewConfirmation,
+        actionId: submission.actionId,
+        lifecycleToken: submission.lifecycleToken,
+        context,
+        isCurrent: input.current
+      },
+      input.attemptState
+    );
+    if (!input.current(context)) {
+      return { status: "stale", context };
+    }
+    await input.complete(context, result);
+    return { status: "completed", context, result };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function normalizeReviewSubmission<TContext>(
+  projectId: string,
+  quotaId: string,
+  input: ProjectFinancingQuotaReviewInput<TContext>
+): ProjectFinancingQuotaReviewSubmission {
+  if (!input.isCurrent(input.context)) {
+    throw new Error("项目垫资额度审批上下文已失效，请重新读取当前项目");
+  }
+  const normalizedProjectId = requiredText(projectId, "当前项目");
+  const normalizedQuotaId = requiredText(quotaId, "垫资额度");
+  const actionId = requiredText(input.actionId, "审批操作键").toLowerCase();
+  if (!isUuidV4(actionId)) {
+    throw new Error("审批操作键格式异常，请重新打开确认窗口");
+  }
+  const lifecycleToken = requiredText(input.lifecycleToken, "审批生命周期标识");
+  if (!isLifecycleToken(lifecycleToken)) {
+    throw new Error("审批生命周期标识格式异常，请刷新台账后重试");
+  }
+  if (input.decision !== "approve" && input.decision !== "reject") {
+    throw new Error("项目垫资额度审批决定无效");
+  }
+  if (typeof input.requiresSelfReviewConfirmation !== "boolean") {
+    throw new Error("项目垫资额度自审确认标识异常");
+  }
+  const confirmationPassword = input.confirmationPassword;
+  if (!confirmationPassword.trim()) {
+    throw new Error("请输入当前登录密码");
+  }
+  const comment = input.comment?.trim() || undefined;
+  const selfReviewReason = input.selfReviewReason?.trim() || undefined;
+  if (comment && Array.from(comment).length > 500) {
+    throw new Error("审批意见不能超过 500 个字符");
+  }
+  if (selfReviewReason && Array.from(selfReviewReason).length > 500) {
+    throw new Error("本人独立复核说明不能超过 500 个字符");
+  }
+  if (input.requiresSelfReviewConfirmation && !selfReviewReason) {
+    throw new Error("请填写财务主管本人独立复核说明");
+  }
+
+  return {
+    projectId: normalizedProjectId,
+    quotaId: normalizedQuotaId,
+    decision: input.decision,
+    confirmationPassword,
+    ...(comment ? { comment } : {}),
+    ...(input.requiresSelfReviewConfirmation && selfReviewReason
+      ? { selfReviewReason }
+      : {}),
+    requiresSelfReviewConfirmation: input.requiresSelfReviewConfirmation,
+    actionId,
+    lifecycleToken,
+    isCurrent: () => input.isCurrent(input.context)
+  };
+}
+
+async function executeProjectFinancingQuotaReview(
+  submission: ProjectFinancingQuotaReviewSubmission,
+  state: ProjectFinancingQuotaReviewAttemptState
+): Promise<ProjectFinancingQuotaReviewResult> {
+  if (state.businessReceipt) {
+    return refreshReviewedQuota(submission, state.businessReceipt);
+  }
+
+  if (!state.preflightVerified) {
+    await verifyReviewAction(submission);
+    state.preflightVerified = true;
+  }
+  assertReviewCurrent(submission);
+  let receipt: ProjectFinancingQuotaReviewReceipt;
+  try {
+    receipt = await postProjectFinancingQuotaReview(submission);
+  } catch (error) {
+    if (error instanceof ProjectFinancingQuotaApiError && error.status < 500) {
+      state.submission = null;
+      state.preflightVerified = false;
+      state.businessReceipt = null;
+    }
+    throw error;
+  }
+  state.businessReceipt = receipt;
+  assertReviewCurrent(submission);
+  return refreshReviewedQuota(submission, receipt);
+}
+
+async function verifyReviewAction(
+  submission: ProjectFinancingQuotaReviewSubmission
+) {
+  assertReviewCurrent(submission);
+  const capability = await fetchProjectFinancingQuotaReviewCapability(
+    submission.projectId,
+    submission.quotaId
+  );
+  assertReviewCurrent(submission);
+  if (
+    capability.status !== "approval_pending" ||
+    capability.lifecycleToken !== submission.lifecycleToken ||
+    !reviewActionEnabled(
+      capability.reviewAction,
+      submission.requiresSelfReviewConfirmation
+    )
+  ) {
+    throw new Error("项目垫资额度审批资格已变化，请刷新台账后重试");
+  }
+}
+
+async function postProjectFinancingQuotaReview(
+  submission: ProjectFinancingQuotaReviewSubmission
+): Promise<ProjectFinancingQuotaReviewReceipt> {
+  const response = await apiFetch(
+    `/projects/${encodeURIComponent(submission.projectId)}/financing-quotas/${encodeURIComponent(submission.quotaId)}/approval`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        decision: submission.decision,
+        confirmationPassword: submission.confirmationPassword,
+        ...(submission.comment ? { comment: submission.comment } : {}),
+        ...(submission.selfReviewReason
+          ? { selfReviewReason: submission.selfReviewReason }
+          : {}),
+        actionId: submission.actionId,
+        expectedLifecycleToken: submission.lifecycleToken
+      })
+    }
+  );
+  if (!response.ok) {
+    throw await responseError(response, "审批项目垫资额度失败");
+  }
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw invalidReviewResponse();
+  }
+  if (!isReviewReceipt(data, submission)) {
+    throw invalidReviewResponse();
+  }
+  return data;
+}
+
+async function refreshReviewedQuota(
+  submission: ProjectFinancingQuotaReviewSubmission,
+  receipt: ProjectFinancingQuotaReviewReceipt
+): Promise<ProjectFinancingQuotaReviewResult> {
+  assertReviewCurrent(submission);
+  const workbench = await fetchProjectFinancingQuotaWorkbench(
+    submission.projectId
+  );
+  const row = projectFinancingQuotaReviewRow(workbench, submission.quotaId);
+  assertReviewCurrent(submission);
+  if (row.lifecycleToken === submission.lifecycleToken) {
+    throw new ProjectFinancingQuotaApiError(
+      "项目垫资额度权威台账尚未显示本次审批，请手动刷新后核对",
+      502,
+      "PROJECT_FINANCING_QUOTA_REVIEW_NOT_AUTHORITATIVE"
+    );
+  }
+  return { receipt, workbench };
+}
+
+function isReviewReceipt(
+  value: unknown,
+  submission: ProjectFinancingQuotaReviewSubmission
+): value is ProjectFinancingQuotaReviewReceipt {
+  if (!isRecord(value)) return false;
+  const expectedKeys = ["actionId", "kind", "projectId", "quotaId"];
+  return (
+    Object.keys(value).sort().join("|") === expectedKeys.join("|") &&
+    (value.kind === "applied" || value.kind === "replayed") &&
+    value.actionId === submission.actionId &&
+    value.projectId === submission.projectId &&
+    value.quotaId === submission.quotaId
+  );
+}
+
+export function reviewActionEnabled(
+  action: ProjectFinancingQuotaActionReadModel,
+  requiresSelfReviewConfirmation =
+    action.requiresSelfReviewConfirmation === true
+) {
+  return (
+    action.key === "review_financing_quota" &&
+    action.enabled &&
+    action.requiresPassword === true &&
+    action.requiredAction === "project.financing_quota.approve" &&
+    (action.requiresSelfReviewConfirmation === true) ===
+      requiresSelfReviewConfirmation
+  );
+}
+
+function assertReviewCurrent(
+  submission: ProjectFinancingQuotaReviewSubmission
+) {
+  if (!submission.isCurrent()) {
+    throw new Error("项目垫资额度审批上下文已失效，请重新读取当前项目");
+  }
 }
 
 export function requestProjectFinancingQuotaWithUpload<TContext>(
@@ -640,6 +1133,10 @@ function requiredText(value: string, label: string) {
 
 function isUuidV4(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function isLifecycleToken(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
 }
 
 function financingQuotaYuanToCents(value: string) {

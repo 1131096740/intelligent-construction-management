@@ -729,6 +729,56 @@
       ]
     },
     {
+      "id": "project-financing-quota.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitApproveReview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaReviewAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "executeProjectFinancingQuotaReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "project-financing-quota.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitRejectReview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaReviewAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "executeProjectFinancingQuotaReviewAction",
+          "variant": "reject"
+        }
+      ]
+    },
+    {
       "id": "contract-takeover.create-local-role",
       "usage": "page_action",
       "routePaths": [

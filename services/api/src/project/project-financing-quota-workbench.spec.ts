@@ -22,7 +22,9 @@ describe("ProjectService project financing quota workbench", () => {
             reason: "保障现场付款",
             validUntil: null,
             attachmentFileId: "file-approved",
+            attachmentFileSha256Snapshot: "a".repeat(64),
             requestedByUserId: "finance-staff-1",
+            requestedByRoleKey: "finance_staff",
             approvedByUserId: "chairman-1",
             approvedAt: updatedAt,
             status: "approved",
@@ -42,7 +44,9 @@ describe("ProjectService project financing quota workbench", () => {
             reason: "补充流动资金",
             validUntil: new Date("2099-08-01T00:00:00.000Z"),
             attachmentFileId: "file-pending",
+            attachmentFileSha256Snapshot: "b".repeat(64),
             requestedByUserId: "finance-director-1",
+            requestedByRoleKey: "finance_director",
             approvedByUserId: null,
             approvedAt: null,
             status: "approval_pending",
@@ -260,6 +264,59 @@ describe("ProjectService project financing quota workbench", () => {
     expect(pending?.lifecycleToken).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it("projects one quota into a top-level server review capability", async () => {
+    const tx = buildTransaction();
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => unknown) => callback(tx)
+      )
+    };
+    const service = new ProjectService(prisma as never);
+
+    const result = await service.getProjectFinancingQuotaReviewCapability(
+      "project-1",
+      "quota-pending",
+      "finance-director-1"
+    );
+
+    expect(Object.keys(result).sort()).toEqual([
+      "lifecycleToken",
+      "projectId",
+      "quotaId",
+      "reviewAction",
+      "status"
+    ]);
+    expect(result).toMatchObject({
+      projectId: "project-1",
+      quotaId: "quota-pending",
+      status: "approval_pending",
+      lifecycleToken: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      reviewAction: {
+        key: "review_financing_quota",
+        enabled: true,
+        requiredAction: "project.financing_quota.approve",
+        requiresPassword: true,
+        requiresSelfReviewConfirmation: true
+      }
+    });
+  });
+
+  it("fails closed when the target review capability quota is absent", async () => {
+    const tx = buildTransaction();
+    const prisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof tx) => unknown) => callback(tx)
+      )
+    };
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.getProjectFinancingQuotaReviewCapability(
+      "project-1",
+      "quota-missing",
+      "finance-director-1"
+    )).rejects.toThrow("项目垫资额度不存在");
+  });
+
   it("keeps every mutation disabled for a read-only project manager", async () => {
     const tx = buildTransaction("project_manager");
     const prisma = {
@@ -275,6 +332,78 @@ describe("ProjectService project financing quota workbench", () => {
     expect(result.requestAction.enabled).toBe(false);
     expect(result.rows.every((row) => !row.reviewAction.enabled)).toBe(true);
     expect(result.rows.every((row) => !row.terminateAction.enabled)).toBe(true);
+  });
+
+  it.each(["finance_staff", null])(
+    "fails closed when the applicant later becomes director but the frozen requester role is %p",
+    async (requestedByRoleKey) => {
+      const tx = buildTransaction("finance_director");
+      const quotas = await tx.projectFinancingQuota.findMany();
+      tx.projectFinancingQuota.findMany.mockResolvedValue(
+        quotas.map((quota: { id: string }) =>
+          quota.id === "quota-pending"
+            ? { ...quota, requestedByRoleKey }
+            : quota
+        )
+      );
+      const prisma = {
+        $transaction: jest.fn(
+          async (callback: (client: typeof tx) => unknown) => callback(tx)
+        )
+      };
+
+      const result = await new ProjectService(prisma as never)
+        .getProjectFinancingQuotaWorkbench(
+          "project-1",
+          "finance-director-1"
+        );
+      const pending = result.rows.find((row) => row.id === "quota-pending");
+
+      expect(pending?.reviewAction.enabled).toBe(false);
+      expect(pending?.reviewAction.disabledReason).toContain(
+        "只能独立审批财务主管节点"
+      );
+      expect(pending?.reviewAction).not.toHaveProperty(
+        "requiresSelfReviewConfirmation"
+      );
+    }
+  );
+
+  it("binds lifecycle tokens to the immutable requester role", async () => {
+    const directorTx = buildTransaction("finance_director");
+    const directorPrisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof directorTx) => unknown) =>
+          callback(directorTx)
+      )
+    };
+    const directorResult = await new ProjectService(directorPrisma as never)
+      .getProjectFinancingQuotaWorkbench("project-1", "finance-director-1");
+
+    const staffTx = buildTransaction("finance_director");
+    const staffQuotas = await staffTx.projectFinancingQuota.findMany();
+    staffTx.projectFinancingQuota.findMany.mockResolvedValue(
+      staffQuotas.map((quota: { id: string }) =>
+        quota.id === "quota-pending"
+          ? { ...quota, requestedByRoleKey: "finance_staff" }
+          : quota
+      )
+    );
+    const staffPrisma = {
+      $transaction: jest.fn(
+        async (callback: (client: typeof staffTx) => unknown) => callback(staffTx)
+      )
+    };
+    const staffResult = await new ProjectService(staffPrisma as never)
+      .getProjectFinancingQuotaWorkbench("project-1", "finance-director-1");
+
+    expect(
+      directorResult.rows.find((row) => row.id === "quota-pending")
+        ?.lifecycleToken
+    ).not.toBe(
+      staffResult.rows.find((row) => row.id === "quota-pending")
+        ?.lifecycleToken
+    );
   });
 
   it("enables only the frozen chairman or general-manager final node", async () => {

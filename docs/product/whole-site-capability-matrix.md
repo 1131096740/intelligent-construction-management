@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `2a6acaf251e3c35cde511305ab285c955e42632c3018014ae530224f8822eab7` |
-| webApiWrappers | blocked | `93d70a764caaff9b7fe4d2502021172bc22ca87e2e6c6374018466c367ba22bc` |
-| webPageActions | blocked | `fc3e696cf00d8bc5f61933de875ba43d893e63053008cad99515de45dd019561` |
-| routeUsage | blocked | `2029c3ca51f02bd7bc7b7234f33e749c6a8f9f552e842c151ff7c7c142a290cf` |
+| nestRoutes | ready | `27ff46470590d78c877fe192b07a8c0cde5d42f1545661239c3044ee2a1d7e71` |
+| webApiWrappers | blocked | `fd8f09c88c4acee80a8df81c0c6da566e60b31041a27f926268c93e060749577` |
+| webPageActions | blocked | `c1447d5db879043622a194c6309dfe91dd4040856e22641d5f510e0a06cd63de` |
+| routeUsage | blocked | `1c25f20b1ccd8af8a21990dbd4854fa5e1dcfe9a05744215f0451645fba3b973` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 396 |
-| pageRouteCount | 290 |
+| routeCount | 397 |
+| pageRouteCount | 292 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
-| unclassifiedRouteCount | 2 |
-| mainRequestBindingCount | 399 |
+| unclassifiedRouteCount | 1 |
+| mainRequestBindingCount | 402 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 39 |
+| orphanWrapperCount | 38 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 52 |
-| actionBindingCount | 71 |
-| acceptedActionBindingCount | 38 |
+| registeredActionCount | 54 |
+| actionBindingCount | 77 |
+| acceptedActionBindingCount | 40 |
 | unresolvedActionBindingCount | 20 |
-| productionMutationConsumerPairCount | 275 |
-| coveredProductionMutationConsumerPairCount | 25 |
+| productionMutationConsumerPairCount | 276 |
+| coveredProductionMutationConsumerPairCount | 26 |
 | uncoveredProductionMutationConsumerPairCount | 250 |
-| blockerCount | 318 |
+| blockerCount | 316 |
 
 ## 路由矩阵
 
@@ -112,7 +112,8 @@
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | — |
 | GET | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseRequests | — | not_applicable | — |
-| GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | not_applicable | — |
+| GET | /projects/:projectId/financing-quotas/:quotaId/review-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaReviewCapability | project-financing-quota.review-approve<br>project-financing-quota.review-reject | not_applicable | — |
+| GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request<br>project-financing-quota.review-approve<br>project-financing-quota.review-reject | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
@@ -342,7 +343,7 @@
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight | project-expense.receipt-confirm-local-status | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/voiding | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#voidProjectExpenseRequest | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProjectExpenseRequest | project-expense.create-local-role | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/financing-quotas/:quotaId/approval | unclassified | none | apps/web-admin/src/api/core-flow-read.api.ts#reviewProjectFinancingQuota | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
+| POST | /projects/:projectId/financing-quotas/:quotaId/approval | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction | project-financing-quota.review-approve<br>project-financing-quota.review-reject | covered | — |
 | POST | /projects/:projectId/financing-quotas/:quotaId/termination | unclassified | none | apps/web-admin/src/api/core-flow-read.api.ts#terminateProjectFinancingQuota | — | not_applicable | ORPHAN_WRAPPER<br>ROUTE_USAGE_UNCLASSIFIED |
 | POST | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
 | POST | /projects/:projectId/owner-contracts/:ownerContractId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectOwnerContract | — | not_applicable | ORPHAN_WRAPPER |
@@ -482,7 +483,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota（test_only）
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewProjectFinancingQuota（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#terminateProjectFinancingQuota（test_only）
 - apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord（test_only）

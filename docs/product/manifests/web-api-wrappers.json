@@ -8,15 +8,15 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 397,
-    "transportWrapperCount": 383,
-    "pureExportCount": 14,
-    "mainRequestBindingCount": 399,
+    "exportedFunctionCount": 401,
+    "transportWrapperCount": 384,
+    "pureExportCount": 17,
+    "mainRequestBindingCount": 402,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 398,
-    "productionConsumerCount": 344,
-    "orphanWrapperCount": 39,
-    "testOnlyWrapperCount": 38,
+    "requestEdgeCount": 401,
+    "productionConsumerCount": 346,
+    "orphanWrapperCount": 38,
+    "testOnlyWrapperCount": 37,
     "unreferencedWrapperCount": 1,
     "duplicateNormalizedRouteGroupCount": 11,
     "authTransportExceptionCount": 5
@@ -4619,7 +4619,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5558,
+          "sourceLine": 5543,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4649,7 +4649,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5542,
+          "sourceLine": 5527,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4679,7 +4679,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5542,
+          "sourceLine": 5527,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4709,7 +4709,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4733,
+          "sourceLine": 4718,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4738,7 +4738,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5542,
+          "sourceLine": 5527,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4828,7 +4828,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5585,
+          "sourceLine": 5570,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4857,7 +4857,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5572,
+          "sourceLine": 5557,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4886,7 +4886,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5600,
+          "sourceLine": 5585,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4915,7 +4915,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5542,
+          "sourceLine": 5527,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7591,34 +7591,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "reviewProjectFinancingQuota",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 75,
-          "method": "POST",
-          "path": "/projects/:param/financing-quotas/:param/approval",
-          "normalizedPath": "/projects/:param/financing-quotas/:param/approval",
-          "normalizedKey": "POST /projects/:param/financing-quotas/:param/approval",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "reviewProjectFinancingQuota",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "reviewSettlementApproval",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -9294,6 +9266,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "createProjectFinancingQuotaReviewAttemptState",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createProjectFinancingQuotaReviewExecutionState",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createProjectOverviewRequestOwner",
       "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
       "kind": "pure",
@@ -9308,6 +9308,77 @@
       "unreachableConsumers": []
     },
     {
+      "name": "executeProjectFinancingQuotaReviewAction",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 444,
+          "method": "GET",
+          "path": "/projects/:param/financing-quotas",
+          "normalizedPath": "/projects/:param/financing-quotas",
+          "normalizedKey": "GET /projects/:param/financing-quotas",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "executeProjectFinancingQuotaReviewAction",
+              "executeCapturedProjectFinancingQuotaReview",
+              "reviewProjectFinancingQuotaWithPreflight",
+              "executeProjectFinancingQuotaReview",
+              "refreshReviewedQuota",
+              "fetchProjectFinancingQuotaWorkbench"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 523,
+          "method": "GET",
+          "path": "/projects/:param/financing-quotas/:param/review-capability",
+          "normalizedPath": "/projects/:param/financing-quotas/:param/review-capability",
+          "normalizedKey": "GET /projects/:param/financing-quotas/:param/review-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "executeProjectFinancingQuotaReviewAction",
+              "executeCapturedProjectFinancingQuotaReview",
+              "reviewProjectFinancingQuotaWithPreflight",
+              "executeProjectFinancingQuotaReview",
+              "verifyReviewAction",
+              "fetchProjectFinancingQuotaReviewCapability"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 792,
+          "method": "POST",
+          "path": "/projects/:param/financing-quotas/:param/approval",
+          "normalizedPath": "/projects/:param/financing-quotas/:param/approval",
+          "normalizedKey": "POST /projects/:param/financing-quotas/:param/approval",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeProjectFinancingQuotaReviewAction",
+              "executeCapturedProjectFinancingQuotaReview",
+              "reviewProjectFinancingQuotaWithPreflight",
+              "executeProjectFinancingQuotaReview",
+              "postProjectFinancingQuotaReview"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchProjectFinancingQuotaRequestCapability",
       "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
       "kind": "transport",
@@ -9315,7 +9386,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 370,
+          "sourceLine": 485,
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -9335,14 +9406,43 @@
       "unreachableConsumers": []
     },
     {
-      "name": "fetchProjectFinancingQuotaWorkbench",
+      "name": "fetchProjectFinancingQuotaReviewCapability",
       "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 349,
+          "sourceLine": 523,
+          "method": "GET",
+          "path": "/projects/:param/financing-quotas/:param/review-capability",
+          "normalizedPath": "/projects/:param/financing-quotas/:param/review-capability",
+          "normalizedKey": "GET /projects/:param/financing-quotas/:param/review-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectFinancingQuotaReviewCapability"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectFinancingQuotaWorkbench",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 444,
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -9381,7 +9481,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 349,
+          "sourceLine": 444,
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -9404,7 +9504,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 558,
+          "sourceLine": 1051,
           "method": "POST",
           "path": "/files",
           "normalizedPath": "/files",
@@ -9420,7 +9520,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 520,
+          "sourceLine": 1013,
           "method": "POST",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -9441,6 +9541,18 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "reviewActionEnabled",
+      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+      "kind": "pure",
+      "returnProvenance": "unverified",
+      "requests": [],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -12105,11 +12217,19 @@
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "executeProjectFinancingQuotaReviewAction"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
           "wrapper": "fetchProjectFinancingQuotaRequestCapability"
         },
         {
           "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
           "wrapper": "fetchProjectFinancingQuotaWorkbench"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "requestProjectFinancingQuotaWithUpload"
         }
       ]
     },
@@ -12369,11 +12489,6 @@
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "requestSettlementExceptionQuota",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewProjectFinancingQuota",
         "classification": "test_only"
       },
       {

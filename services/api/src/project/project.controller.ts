@@ -115,6 +115,20 @@ export class ProjectController {
     return this.projects.getProjectFinancingQuotaWorkbench(projectId, user.id);
   }
 
+  @Get(":projectId/financing-quotas/:quotaId/review-capability")
+  @RequireProjectRole("project.financing_quota.approve")
+  projectFinancingQuotaReviewCapability(
+    @Param("projectId") projectId: string,
+    @Param("quotaId") quotaId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.projects.getProjectFinancingQuotaReviewCapability(
+      projectId,
+      quotaId,
+      user.id
+    );
+  }
+
   @Get(":projectId/affiliate-business-facts")
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS)
   affiliateBusinessFacts(

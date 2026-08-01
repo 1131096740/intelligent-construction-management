@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createProjectFinancingQuotaReviewExecutionState,
+  createProjectFinancingQuotaReviewAttemptState,
   createProjectFinancingQuotaRequestAttemptState,
   createProjectOverviewRequestOwner,
+  executeProjectFinancingQuotaReviewAction,
+  fetchProjectFinancingQuotaReviewCapability,
   fetchProjectFinancingQuotaWorkbench,
   requestProjectFinancingQuotaWithUpload,
+  type ProjectFinancingQuotaReviewAttemptState,
+  type ProjectFinancingQuotaReviewExecutionState,
+  type ProjectFinancingQuotaReviewInput,
+  type ProjectFinancingQuotaReviewResult,
   type ProjectFinancingQuotaWorkbenchReadModel
 } from "./project-financing-quota.api";
 
@@ -13,6 +21,9 @@ import { apiFetch } from "./api-fetch";
 
 const mockApiFetch = vi.mocked(apiFetch);
 const requestIdempotencyKey = "11111111-1111-4111-8111-111111111111";
+const reviewActionId = "22222222-2222-4222-8222-222222222222";
+const reviewLifecycleToken = "a".repeat(64);
+const nextReviewLifecycleToken = "b".repeat(64);
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -36,7 +47,12 @@ function requestAction(enabled = true, requiresFile = true) {
 function quotaRow(
   id: string,
   status: "approval_pending" | "approved" | "rejected" | "terminated" =
-    "approval_pending"
+    "approval_pending",
+  options: {
+    reviewEnabled?: boolean;
+    requiresSelfReviewConfirmation?: boolean;
+    lifecycleToken?: string;
+  } = {}
 ): ProjectFinancingQuotaWorkbenchReadModel["rows"][number] {
   return {
     id,
@@ -61,15 +77,17 @@ function quotaRow(
       currentNodeIndex: status === "approval_pending" ? 0 : 2,
       currentNodeName: status === "approval_pending" ? "财务主管" : null
     },
-    lifecycleToken: "lifecycle-token",
+    lifecycleToken: options.lifecycleToken ?? reviewLifecycleToken,
     reviewAction: {
       key: "review_financing_quota",
       label: "审批垫资额度",
       kind: "primary",
-      enabled: false,
-      disabledReason: "当前不可审批",
+      enabled: options.reviewEnabled ?? false,
+      disabledReason: options.reviewEnabled ? null : "当前不可审批",
       requiredAction: "project.financing_quota.approve",
-      requiresPassword: true
+      requiresPassword: true,
+      requiresSelfReviewConfirmation:
+        options.requiresSelfReviewConfirmation ?? false
     },
     terminateAction: {
       key: "terminate_financing_quota",
@@ -81,6 +99,20 @@ function quotaRow(
       requiresPassword: true
     },
     usageGroups: []
+  };
+}
+
+function reviewCapability(
+  projectId: string,
+  quotaId: string,
+  row = quotaRow(quotaId)
+) {
+  return {
+    projectId,
+    quotaId,
+    status: row.status,
+    lifecycleToken: row.lifecycleToken,
+    reviewAction: row.reviewAction
   };
 }
 
@@ -142,6 +174,95 @@ function requestInput(context: { current: boolean }) {
   };
 }
 
+function reviewInput(
+  context: { current: boolean },
+  options: {
+    lifecycleToken?: string;
+    requiresSelfReviewConfirmation?: boolean;
+  } = {}
+) {
+  const requiresSelfReviewConfirmation =
+    options.requiresSelfReviewConfirmation ?? false;
+  return {
+    decision: "approve" as const,
+    confirmationPassword: "current-password",
+    comment: " 同意按审批节点推进 ",
+    ...(requiresSelfReviewConfirmation
+      ? { selfReviewReason: " 财务主管对本人发起额度独立复核 " }
+      : {}),
+    requiresSelfReviewConfirmation,
+    actionId: reviewActionId,
+    lifecycleToken: options.lifecycleToken ?? reviewLifecycleToken,
+    context,
+    isCurrent: (candidate: { current: boolean }) => candidate.current
+  };
+}
+
+type ReviewTestContext = { current: boolean };
+
+const reviewExecutions = new WeakMap<
+  ProjectFinancingQuotaReviewAttemptState,
+  {
+    state: ProjectFinancingQuotaReviewExecutionState<ReviewTestContext>;
+    promise: Promise<ProjectFinancingQuotaReviewResult> | null;
+  }
+>();
+
+function reviewProjectFinancingQuotaWithPreflight(
+  projectId: string,
+  quotaId: string,
+  input: ProjectFinancingQuotaReviewInput<ReviewTestContext>,
+  attemptState: ProjectFinancingQuotaReviewAttemptState
+): Promise<ProjectFinancingQuotaReviewResult> {
+  let execution = reviewExecutions.get(attemptState);
+  if (!execution) {
+    execution = {
+      state: createProjectFinancingQuotaReviewExecutionState<ReviewTestContext>(),
+      promise: null
+    };
+    reviewExecutions.set(attemptState, execution);
+  }
+  if (execution.promise) return execution.promise;
+
+  let failure: unknown = new Error("项目垫资额度审批执行失败");
+  const action = executeProjectFinancingQuotaReviewAction(
+    {
+      decision: input.decision,
+      attemptState,
+      capture: () => ({
+        projectId,
+        quotaId,
+        confirmationPassword: input.confirmationPassword,
+        ...(input.comment !== undefined ? { comment: input.comment } : {}),
+        ...(input.selfReviewReason !== undefined
+          ? { selfReviewReason: input.selfReviewReason }
+          : {}),
+        requiresSelfReviewConfirmation:
+          input.requiresSelfReviewConfirmation,
+        actionId: input.actionId,
+        lifecycleToken: input.lifecycleToken,
+        context: input.context
+      }),
+      current: input.isCurrent,
+      complete: () => undefined,
+      fail: (_context, error) => {
+        failure = error;
+      },
+      finish: () => undefined
+    },
+    execution.state
+  );
+  const promise = action.then((result) => {
+    if (result.status === "completed") return result.result;
+    if (result.status === "failed") throw failure;
+    throw new Error("项目垫资额度审批执行未完成");
+  }).finally(() => {
+    if (execution?.promise === promise) execution.promise = null;
+  });
+  execution.promise = promise;
+  return promise;
+}
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -200,7 +321,7 @@ describe("project financing quota API", () => {
           currentNodeIndex: 2,
           currentNodeName: null
         },
-        lifecycleToken: "lifecycle-token",
+        lifecycleToken: reviewLifecycleToken,
         reviewAction: {
           key: "review_financing_quota",
           label: "审批垫资额度",
@@ -314,6 +435,28 @@ describe("project financing quota API", () => {
         status: 502,
         code: "PROJECT_FINANCING_QUOTA_INVALID_RESPONSE"
       });
+  });
+
+  it("strictly parses the direct single-target review capability response", async () => {
+    mockApiFetch.mockResolvedValueOnce(jsonResponse(reviewCapability(
+      "project/1",
+      "quota/1",
+      quotaRow("quota/1", "approval_pending", {
+        reviewEnabled: true,
+        lifecycleToken: "A".repeat(64)
+      })
+    )));
+
+    await expect(fetchProjectFinancingQuotaReviewCapability(
+      "project/1",
+      "quota/1"
+    )).rejects.toMatchObject({
+      status: 502,
+      code: "PROJECT_FINANCING_QUOTA_INVALID_REVIEW_CAPABILITY_RESPONSE"
+    });
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/projects/project%2F1/financing-quotas/quota%2F1/review-capability"
+    );
   });
 
   it("rejects a valid-shaped payload belonging to another project", async () => {
@@ -646,5 +789,561 @@ describe("project financing quota API", () => {
       requestInput(context),
       createProjectFinancingQuotaRequestAttemptState()
     )).rejects.toThrow("权威台账未包含本次申请");
+  });
+
+  it("reviews only after an exact fresh action and token check, then accepts the authoritative refresh", async () => {
+    const context = { current: true };
+    const reviewable = quotaRow("quota/1", "approval_pending", {
+      reviewEnabled: true,
+      lifecycleToken: reviewLifecycleToken
+    });
+    const advanced = quotaRow("quota/1", "approval_pending", {
+      reviewEnabled: false,
+      lifecycleToken: nextReviewLifecycleToken
+    });
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project/1",
+        "quota/1",
+        reviewable
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: reviewActionId,
+        projectId: "project/1",
+        quotaId: "quota/1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project/1", {
+        rows: [advanced]
+      })));
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project/1",
+      "quota/1",
+      reviewInput(context),
+      createProjectFinancingQuotaReviewAttemptState()
+    )).resolves.toMatchObject({
+      receipt: { kind: "applied", actionId: reviewActionId },
+      workbench: { rows: [{ lifecycleToken: nextReviewLifecycleToken }] }
+    });
+
+    expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
+      "/projects/project%2F1/financing-quotas/quota%2F1/review-capability",
+      "/projects/project%2F1/financing-quotas/quota%2F1/approval",
+      "/projects/project%2F1/financing-quotas"
+    ]);
+    expect(mockApiFetch.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        decision: "approve",
+        confirmationPassword: "current-password",
+        comment: "同意按审批节点推进",
+        actionId: reviewActionId,
+        expectedLifecycleToken: reviewLifecycleToken
+      })
+    });
+  });
+
+  it("accepts exactly 500 supplementary-plane characters in a review comment", async () => {
+    const context = { current: true };
+    const comment = "😀".repeat(500);
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", { reviewEnabled: true })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: reviewActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approval_pending", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      { ...reviewInput(context), comment },
+      createProjectFinancingQuotaReviewAttemptState()
+    )).resolves.toMatchObject({ receipt: { kind: "applied" } });
+
+    expect(JSON.parse(String(mockApiFetch.mock.calls[1]?.[1]?.body)))
+      .toMatchObject({ comment });
+  });
+
+  it("rejects review text over 500 Unicode code points before any request", async () => {
+    const context = { current: true };
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      { ...reviewInput(context), comment: "😀".repeat(501) },
+      createProjectFinancingQuotaReviewAttemptState()
+    )).rejects.toThrow("审批意见不能超过 500 个字符");
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      {
+        ...reviewInput(context, { requiresSelfReviewConfirmation: true }),
+        selfReviewReason: "😀".repeat(501)
+      },
+      createProjectFinancingQuotaReviewAttemptState()
+    )).rejects.toThrow("本人独立复核说明不能超过 500 个字符");
+
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a review receipt with undeclared fields", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", { reviewEnabled: true })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: reviewActionId,
+        projectId: "project-1",
+        quotaId: "quota-1",
+        status: "approved"
+      }));
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      reviewInput(context),
+      createProjectFinancingQuotaReviewAttemptState()
+    )).rejects.toMatchObject({
+      status: 502,
+      code: "PROJECT_FINANCING_QUOTA_INVALID_REVIEW_RESPONSE"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one review promise across a double submit", async () => {
+    const context = { current: true };
+    const post = deferred<Response>();
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockReturnValueOnce(post.promise)
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approval_pending", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaReviewAttemptState();
+    const input = reviewInput(context);
+
+    const first = reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    );
+    const second = reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    );
+
+    expect(second).toBe(first);
+    await vi.waitFor(() => {
+      expect(mockApiFetch.mock.calls.filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+      )).toHaveLength(1);
+    });
+    post.resolve(jsonResponse({
+      kind: "applied",
+      actionId: reviewActionId,
+      projectId: "project-1",
+      quotaId: "quota-1"
+    }));
+    await expect(first).resolves.toMatchObject({
+      receipt: { actionId: reviewActionId }
+    });
+  });
+
+  it("shares one canonical review execution across a double UI confirmation", async () => {
+    const context = { current: true };
+    const post = deferred<Response>();
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockReturnValueOnce(post.promise)
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approval_pending", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+    const complete = vi.fn(async () => undefined);
+    const fail = vi.fn(async () => undefined);
+    const finish = vi.fn();
+    const capture = vi.fn(() => ({
+      projectId: "project-1",
+      quotaId: "quota-1",
+      confirmationPassword: "current-password",
+      requiresSelfReviewConfirmation: false,
+      actionId: reviewActionId,
+      lifecycleToken: reviewLifecycleToken,
+      context
+    }));
+    const input = {
+      decision: "approve" as const,
+      attemptState: createProjectFinancingQuotaReviewAttemptState(),
+      capture,
+      current: (candidate: typeof context) => candidate.current,
+      complete,
+      fail,
+      finish
+    };
+    const state = createProjectFinancingQuotaReviewExecutionState<typeof context>();
+
+    const first = executeProjectFinancingQuotaReviewAction(input, state);
+    const second = executeProjectFinancingQuotaReviewAction(input, state);
+
+    expect(second).toBe(first);
+    expect(capture).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(mockApiFetch.mock.calls.filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+      )).toHaveLength(1);
+    });
+    post.resolve(jsonResponse({
+      kind: "applied",
+      actionId: reviewActionId,
+      projectId: "project-1",
+      quotaId: "quota-1"
+    }));
+
+    await expect(first).resolves.toMatchObject({ status: "completed", context });
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledTimes(1);
+    expect(state.promise).toBeNull();
+  });
+
+  it("retries an unknown review POST with the same action id and frozen token", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockRejectedValueOnce(new TypeError("network result unknown"))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "replayed",
+        actionId: reviewActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approved", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaReviewAttemptState();
+    const input = reviewInput(context);
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toThrow("network result unknown");
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).resolves.toMatchObject({ receipt: { kind: "replayed" } });
+
+    const postBodies = mockApiFetch.mock.calls
+      .filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+      )
+      .map((call) => call[1]?.body);
+    expect(postBodies).toEqual([
+      expect.stringContaining(reviewActionId),
+      expect.stringContaining(reviewActionId)
+    ]);
+    expect(new Set(postBodies)).toHaveProperty("size", 1);
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] === "/projects/project-1/financing-quotas" && !call[1]
+    )).toHaveLength(1);
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] ===
+        "/projects/project-1/financing-quotas/quota-1/review-capability"
+    )).toHaveLength(1);
+  });
+
+  it("retries only the authoritative GET after a durable receipt", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: reviewActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockRejectedValueOnce(new TypeError("refresh failed"))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approval_pending", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaReviewAttemptState();
+    const input = reviewInput(context);
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toThrow("refresh failed");
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).resolves.toMatchObject({ receipt: { kind: "applied" } });
+
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+    )).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "lifecycle token drift",
+      row: quotaRow("quota-1", "approval_pending", {
+        reviewEnabled: true,
+        lifecycleToken: nextReviewLifecycleToken
+      })
+    },
+    {
+      name: "disabled server action",
+      row: quotaRow("quota-1", "approval_pending")
+    },
+    {
+      name: "self-review requirement drift",
+      row: quotaRow("quota-1", "approval_pending", {
+        reviewEnabled: true,
+        requiresSelfReviewConfirmation: true
+      })
+    }
+  ])("fails closed before review POST on $name", async ({ row }) => {
+    const context = { current: true };
+    mockApiFetch.mockResolvedValueOnce(jsonResponse(reviewCapability(
+      "project-1",
+      "quota-1",
+      row
+    )));
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      reviewInput(context),
+      createProjectFinancingQuotaReviewAttemptState()
+    )).rejects.toThrow("审批资格已变化");
+
+    expect(mockApiFetch.mock.calls.some((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+    )).toBe(false);
+  });
+
+  it("does not review after the frozen context is invalidated during fresh preflight", async () => {
+    const context = { current: true };
+    const preflight = deferred<Response>();
+    mockApiFetch.mockReturnValueOnce(preflight.promise);
+    const review = reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      reviewInput(context),
+      createProjectFinancingQuotaReviewAttemptState()
+    );
+
+    context.current = false;
+    preflight.resolve(jsonResponse(reviewCapability(
+      "project-1",
+      "quota-1",
+      quotaRow("quota-1", "approval_pending", {
+        reviewEnabled: true
+      })
+    )));
+
+    await expect(review).rejects.toThrow("审批上下文已失效");
+    expect(mockApiFetch.mock.calls.some((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+    )).toBe(false);
+  });
+
+  it("includes the frozen self-review reason only when the fresh action requires it", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true,
+          requiresSelfReviewConfirmation: true
+        })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: reviewActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approval_pending", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+
+    await reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      reviewInput(context, { requiresSelfReviewConfirmation: true }),
+      createProjectFinancingQuotaReviewAttemptState()
+    );
+
+    expect(mockApiFetch.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({
+      decision: "approve",
+      confirmationPassword: "current-password",
+      comment: "同意按审批节点推进",
+      selfReviewReason: "财务主管对本人发起额度独立复核",
+      actionId: reviewActionId,
+      expectedLifecycleToken: reviewLifecycleToken
+    }));
+  });
+
+  it("re-preflights and accepts a corrected password after a deterministic 400", async () => {
+    const context = { current: true };
+    const initialInput = reviewInput(context);
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        code: "PASSWORD_CONFIRMATION_FAILED",
+        message: "当前密码不正确"
+      }, 400))
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        kind: "applied",
+        actionId: reviewActionId,
+        projectId: "project-1",
+        quotaId: "quota-1"
+      }))
+      .mockResolvedValueOnce(jsonResponse(workbench("project-1", {
+        rows: [quotaRow("quota-1", "approval_pending", {
+          lifecycleToken: nextReviewLifecycleToken
+        })]
+      })));
+    const state = createProjectFinancingQuotaReviewAttemptState();
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      initialInput,
+      state
+    )).rejects.toMatchObject({ status: 400 });
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      { ...initialInput, confirmationPassword: "corrected-password" },
+      state
+    )).resolves.toMatchObject({ receipt: { kind: "applied" } });
+
+    const bodies = mockApiFetch.mock.calls
+      .filter((call) =>
+        call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+      )
+      .map((call) => JSON.parse(String(call[1]?.body)) as Record<string, unknown>);
+    expect(bodies).toMatchObject([
+      { confirmationPassword: "current-password", actionId: reviewActionId },
+      { confirmationPassword: "corrected-password", actionId: reviewActionId }
+    ]);
+  });
+
+  it("re-preflights a deterministic 409 and performs no second POST after token drift", async () => {
+    const context = { current: true };
+    mockApiFetch
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true
+        })
+      )))
+      .mockResolvedValueOnce(jsonResponse({
+        code: "PROJECT_FINANCING_QUOTA_REVIEW_CONFLICT",
+        message: "额度状态已变化"
+      }, 409))
+      .mockResolvedValueOnce(jsonResponse(reviewCapability(
+        "project-1",
+        "quota-1",
+        quotaRow("quota-1", "approval_pending", {
+          reviewEnabled: true,
+          lifecycleToken: nextReviewLifecycleToken
+        })
+      )));
+    const state = createProjectFinancingQuotaReviewAttemptState();
+    const input = reviewInput(context);
+
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toMatchObject({ status: 409 });
+    await expect(reviewProjectFinancingQuotaWithPreflight(
+      "project-1",
+      "quota-1",
+      input,
+      state
+    )).rejects.toThrow("审批资格已变化");
+
+    expect(mockApiFetch.mock.calls.filter((call) =>
+      call[0] === "/projects/project-1/financing-quotas/quota-1/approval"
+    )).toHaveLength(1);
   });
 });

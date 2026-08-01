@@ -25,6 +25,7 @@ function isRoleKey(value: string): value is RoleKey {
 }
 
 type RefreshTokenPersistence = Pick<PrismaService, "refreshToken">;
+type PasswordConfirmationPersistence = Pick<PrismaService, "user">;
 
 @Injectable()
 export class AuthService {
@@ -307,8 +308,12 @@ export class AuthService {
     };
   }
 
-  async confirmPassword(userId: string, password: string) {
-    const user = await this.prisma.user.findUnique({
+  async confirmPassword(
+    userId: string,
+    password: string,
+    persistence: PasswordConfirmationPersistence = this.prisma
+  ) {
+    const user = await persistence.user.findUnique({
       where: { id: userId }
     });
 

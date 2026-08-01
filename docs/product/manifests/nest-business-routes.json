@@ -1462,6 +1462,23 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/financing-quotas/:quotaId/review-capability",
+      "normalizedKey": "GET /projects/:param/financing-quotas/:param/review-capability",
+      "controller": "ProjectController",
+      "handler": "projectFinancingQuotaReviewCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.financing_quota.approve",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/operating-funds-overview",
       "normalizedKey": "GET /projects/:param/operating-funds-overview",
       "controller": "ProjectController",
