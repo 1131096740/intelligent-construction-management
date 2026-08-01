@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "159b19c1737a577a2def4147ca101cd20901195e12d0560d64d7e19eb59c27d2",
+      "sha256": "90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661",
       "status": "ready",
       "summary": {
         "routeCount": 395
@@ -22,49 +22,49 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "23a0f2e35cd7d87bff41f116d5a140615f295f71e01e1d3ba8201a51860cc84f",
+      "sha256": "bcce22ff93b433272b1b2ed4d8d06249958cbfee96f31a0f94aaf69531ade971",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 14,
-        "exportedFunctionCount": 397,
-        "transportWrapperCount": 385,
+        "exportedFunctionCount": 398,
+        "transportWrapperCount": 386,
         "pureExportCount": 12,
-        "mainRequestBindingCount": 395,
+        "mainRequestBindingCount": 396,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 395,
-        "productionConsumerCount": 337,
+        "requestEdgeCount": 396,
+        "productionConsumerCount": 338,
         "orphanWrapperCount": 48,
         "testOnlyWrapperCount": 46,
         "unreferencedWrapperCount": 2,
-        "duplicateNormalizedRouteGroupCount": 9,
+        "duplicateNormalizedRouteGroupCount": 10,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "9255d7a587184687f4b105377bab017a728b3663659a36a5d9c6af087b40c186",
+      "sha256": "167eb805197ef58c654dfa133904387ff10622f09850b646116b902e60ce1358",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 43,
-        "pageActionCount": 37,
+        "registeredActionCount": 44,
+        "pageActionCount": 38,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
         "totalVueFileCount": 134,
         "parsedVueFileCount": 134,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 919,
+        "templateEventDirectiveCount": 918,
         "propCallbackDirectiveCount": 10,
-        "coveredProductionMutationConsumerCount": 19,
-        "candidateProductionMutationConsumerCount": 38,
-        "acceptedProductionMutationConsumerCount": 19,
+        "coveredProductionMutationConsumerCount": 20,
+        "candidateProductionMutationConsumerCount": 39,
+        "acceptedProductionMutationConsumerCount": 20,
         "productionMutationConsumerPairCount": 273,
-        "blockerCount": 300
+        "blockerCount": 299
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "7d516954f3f0b5701f31924d1f4379d46fc28fced77f5f0af24c336849661e0c",
+      "sha256": "f7d401bc648d3dceb343867be280f712353f17882e440595486fd6c456aba429",
       "status": "blocked",
       "summary": {
         "routeCount": 395,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 23,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 26,
-    "mainRequestBindingCount": 395,
+    "mainRequestBindingCount": 396,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 48,
     "duplicateMutationRouteCount": 5,
-    "registeredActionCount": 43,
-    "actionBindingCount": 56,
-    "acceptedActionBindingCount": 28,
+    "registeredActionCount": 44,
+    "actionBindingCount": 57,
+    "acceptedActionBindingCount": 29,
     "unresolvedActionBindingCount": 28,
     "productionMutationConsumerPairCount": 273,
-    "coveredProductionMutationConsumerPairCount": 19,
-    "uncoveredProductionMutationConsumerPairCount": 254,
-    "blockerCount": 365
+    "coveredProductionMutationConsumerPairCount": 20,
+    "uncoveredProductionMutationConsumerPairCount": 253,
+    "blockerCount": 364
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -2707,14 +2707,6 @@
         "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /spot-procurement-payments/:param/voiding"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "withdrawSpotProcurement",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/approval-withdrawal"
         ]
       },
       {
@@ -7925,6 +7917,20 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "prepareSpotProcurementWithdrawalAction",
+          "method": "GET",
+          "path": "/spot-procurements/:param",
+          "normalizedKey": "GET /spot-procurements/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/spot-procurement-withdrawal-action.test.ts"
           ]
         }
       ],
@@ -20406,7 +20412,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "withdrawSpotProcurement",
+          "wrapper": "executeSpotProcurementWithdrawalAction",
           "method": "POST",
           "path": "/spot-procurements/:param/approval-withdrawal",
           "normalizedKey": "POST /spot-procurements/:param/approval-withdrawal",
@@ -20415,16 +20421,41 @@
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/spot-procurement.api.test.ts"
+            "apps/web-admin/src/api/spot-procurement-withdrawal-action.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.withdraw",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.withdraw\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000executeSpotProcurementWithdrawalAction\u0000POST\u0000POST /spot-procurements/:param/approval-withdrawal\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "spotProcurementCapability.availableActions",
+            "key": "withdraw_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementWithdrawalAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21623,10 +21654,10 @@
         "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false

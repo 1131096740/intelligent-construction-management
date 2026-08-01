@@ -5,7 +5,11 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import {
+  Prisma,
+  type SpotProcurementAttachment,
+  type SpotProcurementLine
+} from "@prisma/client";
 import {
   resolveEffectiveRoleKeys,
   type RoleKey
@@ -30,6 +34,7 @@ import type { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurem
 import type { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import type { RequestAbnormalTerminationDto } from "./dto/request-abnormal-termination.dto";
 import type { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
+import type { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import {
   procurementApprovalNodes,
   type SpotProcurementApprovalNode
@@ -60,7 +65,11 @@ type ProcurementLockRow = {
   currentVersionId: string | null;
   status: string;
   closedAt: Date | null;
+  supplierPartyId: string | null;
   supplierKey: string | null;
+  supplierNameSnapshot: string | null;
+  approvedAmountCents: bigint | null;
+  actualCostCents: bigint | null;
   abandonedAt: Date | null;
   abandonedByUserId: string | null;
   abandonReason: string | null;
@@ -116,6 +125,9 @@ type VersionLockRow = {
   status: string;
   reason: string;
   note: string | null;
+  supplierPartyId: string | null;
+  supplierKey: string | null;
+  supplierNameSnapshot: string | null;
   handlerUserId: string;
   applicationDepartmentSnapshot: string;
   applicationNameSnapshot: string;
@@ -123,11 +135,17 @@ type VersionLockRow = {
   purchaserDepartmentId: string | null;
   purchaserDepartmentNameSnapshot: string;
   requestedArrivalAt: Date;
+  totalAmountCents: bigint | null;
   changeReason: string | null;
   changeSummary: Prisma.JsonValue | null;
   submittedAt: Date | null;
   approvedAt: Date | null;
   createdByUserId: string;
+};
+
+type FrozenVersionFacts = {
+  lines: SpotProcurementLine[];
+  attachments: SpotProcurementAttachment[];
 };
 
 type ApprovalLockRow = {
@@ -264,6 +282,13 @@ export class SpotProcurementApplicationService {
         const version = await this.requireLockedCurrentVersion(tx, procurement);
         this.assertEditableDraft(procurement, version);
         const actorRoles = await this.requireDraftOwnerRole(tx, procurement, actorUserId);
+        const currentFacts =
+          await this.requireCanonicalRealApplicationFacts(
+            tx,
+            procurement,
+            version,
+            { requireNoDownstreamFacts: true }
+          );
         const purchaser = await this.requireFrozenPurchaser(
           tx,
           version,
@@ -271,7 +296,11 @@ export class SpotProcurementApplicationService {
           procurement.projectId,
           actorRoles
         );
-        const current = await this.storedDraft(tx, version);
+        const current = await this.storedDraft(
+          tx,
+          version,
+          currentFacts
+        );
         const merged: SpotProcurementDraftDto = {
           ...current,
           ...input,
@@ -315,12 +344,12 @@ export class SpotProcurementApplicationService {
         approvalBusinessId = version.id;
         this.assertEditableDraft(procurement, version);
         const actorRoles = await this.requireDraftOwnerRole(tx, procurement, actorUserId);
-        const lineCount = await tx.spotProcurementLine.count({
-          where: { versionId: version.id }
-        });
-        if (lineCount < 1) {
-          throw new BadRequestException("请至少填写一条采购明细后再提交审批");
-        }
+        await this.requireCanonicalRealApplicationFacts(
+          tx,
+          procurement,
+          version,
+          { requireNoDownstreamFacts: true }
+        );
         const now = new Date();
         const frozenNodes = procurementApprovalNodes(actorRoles);
         const approval = await tx.approvalInstance.create({
@@ -385,20 +414,48 @@ export class SpotProcurementApplicationService {
     });
   }
 
-  withdrawApproval(procurementId: string, actorUserId: string) {
+  withdrawApproval(
+    procurementId: string,
+    actorUserId: string,
+    input: WithdrawSpotProcurementApprovalDto
+  ) {
     return this.runWrite(async () => {
       let approvalBusinessId: string | null = null;
       const result = await this.prisma.$transaction(async (tx) => {
         const procurement = await this.requireLockedProcurement(tx, procurementId);
+        if (actorUserId !== procurement.applicantUserId) {
+          throw new ForbiddenException("只有采购申请人可以撤回审批");
+        }
+        this.pilot.assertEnabled(procurement.projectId);
         const version = await this.requireLockedCurrentVersion(tx, procurement);
         approvalBusinessId = version.id;
         if (procurement.status !== "approval_pending" || version.status !== "approval_pending") {
           throw new ConflictException("当前采购申请不在审批中，不能撤回");
         }
-        if (actorUserId !== procurement.applicantUserId) {
-          throw new ForbiddenException("只有采购申请人可以撤回审批");
-        }
         const approval = await this.requireLockedApprovalInstance(tx, version.id, "approval_pending");
+        if (
+          approval.applicantUserId !== procurement.applicantUserId
+        ) {
+          throw new ConflictException(
+            "采购审批申请人与采购申请人不一致，请联系管理员处理"
+          );
+        }
+        if (
+          input.expectedVersionId !== version.id ||
+          input.expectedApprovalInstanceId !== approval.id ||
+          input.expectedNodeIndex !== approval.currentNodeIndex
+        ) {
+          throw new ConflictException(
+            "采购审批坐标已变化，请刷新页面后重试"
+          );
+        }
+        const revisionFacts =
+          await this.requireCanonicalRealApplicationFacts(
+            tx,
+            procurement,
+            version,
+            { requireNoDownstreamFacts: true }
+          );
         await tx.approvalInstance.update({ where: { id: approval.id }, data: { status: "withdrawn" } });
         await tx.approvalActionLog.create({
           data: { approvalInstanceId: approval.id, action: "withdraw", actorUserId, comment: "申请人撤回采购审批" }
@@ -409,14 +466,23 @@ export class SpotProcurementApplicationService {
           version,
           actorUserId,
           "withdrawn",
-          "申请人撤回采购审批"
+          "申请人撤回采购审批",
+          revisionFacts
         );
         await this.audit.record(tx, {
           actorUserId,
           action: "spot_procurement.approval.withdraw",
           businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.application,
           businessId: version.id,
-          metadata: { procurementId, sourceVersionId: version.id, newVersionId: draft.id }
+          metadata: {
+            procurementId,
+            sourceVersionId: version.id,
+            newVersionId: draft.id,
+            expectedVersionId: input.expectedVersionId,
+            expectedApprovalInstanceId:
+              input.expectedApprovalInstanceId,
+            expectedNodeIndex: input.expectedNodeIndex
+          }
         });
         return this.applicationReadModel({ ...procurement, status: "draft" }, draft);
       });
@@ -464,6 +530,13 @@ export class SpotProcurementApplicationService {
           approvedRoleKey
         });
         if (
+          approval.applicantUserId !== procurement.applicantUserId
+        ) {
+          throw new ConflictException(
+            "采购审批申请人与采购申请人不一致，请联系管理员处理"
+          );
+        }
+        if (
           input.expectedVersionId !== version.id ||
           input.expectedApprovalInstanceId !== approval.id ||
           input.expectedNodeIndex !== approval.currentNodeIndex
@@ -474,6 +547,13 @@ export class SpotProcurementApplicationService {
         if (input.decision !== "approve" && !comment) {
           throw new BadRequestException("驳回或退回采购申请时必须填写审批意见");
         }
+        const revisionFacts =
+          await this.requireCanonicalRealApplicationFacts(
+            tx,
+            procurement,
+            version,
+            { requireNoDownstreamFacts: true }
+          );
         await tx.approvalActionLog.create({
           data: {
             approvalInstanceId: approval.id,
@@ -498,7 +578,8 @@ export class SpotProcurementApplicationService {
             version,
             actorUserId,
             "returned",
-            comment as string
+            comment as string,
+            revisionFacts
           );
           await this.recordReviewAudit(tx, actorUserId, version.id, procurement.id, input.decision, approvedRoleKey, {
             sourceVersionId: version.id,
@@ -641,7 +722,17 @@ export class SpotProcurementApplicationService {
         const actorRoles = await this.requireDraftOwnerRole(tx, procurement, actorUserId);
         const purchaser = await this.requireFrozenPurchaser(tx, previous, actorUserId, procurement.projectId, actorRoles);
         const changeReason = requiredText(input.changeReason, "请填写采购版本变更原因");
-        const previousDraft = await this.storedDraft(tx, previous);
+        const previousFacts =
+          await this.requireCanonicalRealApplicationFacts(
+            tx,
+            procurement,
+            previous
+          );
+        const previousDraft = await this.storedDraft(
+          tx,
+          previous,
+          previousFacts
+        );
         const prepared = await this.prepareDraft(
           tx,
           { ...previousDraft, ...input, attachments: input.attachments ?? previousDraft.attachments },
@@ -1156,8 +1247,13 @@ export class SpotProcurementApplicationService {
     };
   }
 
-  private async storedDraft(tx: Prisma.TransactionClient, version: VersionLockRow): Promise<SpotProcurementDraftDto> {
-    const { lines, attachments } = await this.loadFrozenVersionFacts(tx, version.id);
+  private async storedDraft(
+    tx: Prisma.TransactionClient,
+    version: VersionLockRow,
+    frozenFacts?: FrozenVersionFacts
+  ): Promise<SpotProcurementDraftDto> {
+    const { lines, attachments } =
+      frozenFacts ?? (await this.loadFrozenVersionFacts(tx, version.id));
     return {
       applicationDepartment: version.applicationDepartmentSnapshot,
       applicationName: version.applicationNameSnapshot,
@@ -1184,9 +1280,10 @@ export class SpotProcurementApplicationService {
     source: VersionLockRow,
     actorUserId: string,
     sourceStatus: "returned" | "withdrawn",
-    changeReason: string
+    changeReason: string,
+    frozenFacts: FrozenVersionFacts
   ): Promise<VersionLockRow> {
-    const { lines, attachments } = await this.loadFrozenVersionFacts(tx, source.id);
+    const { lines, attachments } = frozenFacts;
     await tx.spotProcurementVersion.update({ where: { id: source.id }, data: { status: sourceStatus } });
     const version = await tx.spotProcurementVersion.create({
       data: {
@@ -1273,12 +1370,85 @@ export class SpotProcurementApplicationService {
     }
   }
 
-  private async loadFrozenVersionFacts(tx: Prisma.TransactionClient, versionId: string) {
+  private async loadFrozenVersionFacts(
+    tx: Prisma.TransactionClient,
+    versionId: string
+  ): Promise<FrozenVersionFacts> {
     const [lines, attachments] = await Promise.all([
       tx.spotProcurementLine.findMany({ where: { versionId }, orderBy: { sortOrder: "asc" } }),
       tx.spotProcurementAttachment.findMany({ where: { versionId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })
     ]);
     return { lines, attachments };
+  }
+
+  private async requireCanonicalRealApplicationFacts(
+    tx: Prisma.TransactionClient,
+    procurement: ProcurementLockRow,
+    version: VersionLockRow,
+    options: { requireNoDownstreamFacts?: boolean } = {}
+  ): Promise<FrozenVersionFacts> {
+    const facts = await this.loadFrozenVersionFacts(tx, version.id);
+    const hasLegacyRootFacts = [
+      procurement.supplierPartyId,
+      procurement.supplierKey,
+      procurement.supplierNameSnapshot,
+      procurement.approvedAmountCents,
+      procurement.actualCostCents
+    ].some((value) => value !== null);
+    const hasLegacyVersionFacts = [
+      version.supplierPartyId,
+      version.supplierKey,
+      version.supplierNameSnapshot,
+      version.totalAmountCents
+    ].some((value) => value !== null);
+    const hasLegacyLineFacts = facts.lines.some((line) =>
+      [
+        line.invoiceMode,
+        line.invoiceType,
+        line.vatRateOptionId,
+        line.vatRateValueSnapshot,
+        line.vatRateLabelSnapshot,
+        line.unitPrice,
+        line.amountCents,
+        line.usageLocation
+      ].some((value) => value !== null)
+    );
+    if (
+      hasLegacyRootFacts ||
+      hasLegacyVersionFacts ||
+      hasLegacyLineFacts
+    ) {
+      throw new ConflictException(
+        "当前采购申请包含旧版供应商、金额或票税字段，新版流程仅支持只读，请联系管理员处理"
+      );
+    }
+    if (
+      facts.lines.length < 1 ||
+      procurement.handlerUserId !== version.handlerUserId
+    ) {
+      throw new ConflictException(
+        "当前采购申请的新版表单事实不完整，暂不支持办理，请联系管理员处理"
+      );
+    }
+    if (options.requireNoDownstreamFacts) {
+      const [payments, receipt] = await Promise.all([
+        tx.spotProcurementPayment.findMany({
+          where: { procurementId: procurement.id },
+          select: { id: true },
+          take: 1
+        }),
+        tx.spotProcurementReceipt.findUnique({
+          where: { procurementId: procurement.id },
+          select: { id: true }
+        })
+      ]);
+      if (payments.length > 0 || receipt) {
+        throw new ConflictException(
+          "当前采购申请已存在付款或收货事实，不能继续修改当前申请"
+        );
+      }
+    }
+    return facts;
   }
 
   private async requireActiveFiles(
@@ -1666,7 +1836,8 @@ export class SpotProcurementApplicationService {
   private async requireLockedProcurement(tx: Prisma.TransactionClient, procurementId: string) {
     const rows = await tx.$queryRaw<Array<ProcurementLockRow>>(Prisma.sql`
       SELECT "id", "projectId", "code", "applicantUserId", "handlerUserId", "currentVersionId", "status", "closedAt",
-        "supplierKey", "abandonedAt", "abandonedByUserId", "abandonReason"
+        "supplierPartyId", "supplierKey", "supplierNameSnapshot", "approvedAmountCents", "actualCostCents",
+        "abandonedAt", "abandonedByUserId", "abandonReason"
       FROM "SpotProcurement" WHERE "id" = ${procurementId} LIMIT 1 FOR UPDATE
     `);
     if (!rows[0]) throw new NotFoundException("零星采购不存在");
@@ -1732,10 +1903,11 @@ export class SpotProcurementApplicationService {
     if (!procurement.currentVersionId) throw new ConflictException("零星采购缺少当前版本");
     const rows = await tx.$queryRaw<Array<VersionLockRow>>(Prisma.sql`
       SELECT
-        "id", "procurementId", "versionNo", "status", "reason", "note", "handlerUserId",
+        "id", "procurementId", "versionNo", "status", "reason", "note",
+        "supplierPartyId", "supplierKey", "supplierNameSnapshot", "handlerUserId",
         "applicationDepartmentSnapshot", "applicationNameSnapshot", "purchaserNameSnapshot",
         "purchaserDepartmentId", "purchaserDepartmentNameSnapshot", "requestedArrivalAt",
-        "changeReason", "changeSummary", "submittedAt", "approvedAt", "createdByUserId"
+        "totalAmountCents", "changeReason", "changeSummary", "submittedAt", "approvedAt", "createdByUserId"
       FROM "SpotProcurementVersion"
       WHERE "id" = ${procurement.currentVersionId} AND "procurementId" = ${procurement.id}
       LIMIT 1 FOR UPDATE

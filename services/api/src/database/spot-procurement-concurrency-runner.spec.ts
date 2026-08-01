@@ -4,18 +4,21 @@ import { join } from "node:path";
 
 const localRequire = createRequire(__filename);
 const {
+  createControlledDockerEnv,
   createSpotProcurementRunnerCleanup
 } = localRequire(
   "../../prisma/run-spot-procurement-concurrency-local.cjs"
 ) as {
+  createControlledDockerEnv: (
+    sourceEnv: Record<string, string | undefined>,
+    fallbackHome: string
+  ) => Record<string, string>;
   createSpotProcurementRunnerCleanup: (options: {
     commandRuntime: { stopAll: () => Promise<void> };
-    command: (
-      commandName: string,
+    dockerCommand: (
       args: string[],
       options?: Record<string, unknown>
     ) => Promise<unknown>;
-    docker: string;
     containerName: string;
     temporaryRoot: string;
     removeTemporaryRoot: (
@@ -26,6 +29,53 @@ const {
 };
 
 describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
+  it("pins inspect, run, exec, wait, and cleanup to one controlled local Docker context", () => {
+    expect(
+      createControlledDockerEnv(
+        {
+          PATH: "/usr/bin",
+          HOME: "/tmp/home",
+          DOCKER_HOST: "unix:///tmp/docker.sock",
+          DOCKER_CONTEXT: "local-test",
+          POSTGRES_PASSWORD: "must-not-leak"
+        },
+        "/tmp/fallback"
+      )
+    ).toEqual({
+      PATH: "/usr/bin",
+      HOME: "/tmp/home",
+      DOCKER_HOST: "unix:///tmp/docker.sock",
+      DOCKER_CONTEXT: "local-test"
+    });
+
+    const runner = readFileSync(
+      join(process.cwd(), "prisma/run-spot-procurement-concurrency-local.cjs"),
+      "utf8"
+    );
+    expect(runner.match(/command\(\s*docker,/gu) ?? []).toHaveLength(1);
+    expect(runner).toContain("await waitForPostgres(containerName, dockerCommand)");
+    expect(runner).toContain("dockerCommand,");
+    expect(runner).toContain("extraEnv: { POSTGRES_PASSWORD: databasePassword }");
+  });
+
+  it("runs an idempotent second deploy and proves all 114 migrations finished", () => {
+    const runner = readFileSync(
+      join(process.cwd(), "prisma/run-spot-procurement-concurrency-local.cjs"),
+      "utf8"
+    );
+
+    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 114");
+    expect(
+      runner.match(/"migrate",\s*"deploy"/gu) ?? []
+    ).toHaveLength(2);
+    expect(runner).toContain("_prisma_migrations");
+    expect(runner).toContain(
+      "20260728161000_spot_procurement_application_revision_status"
+    );
+    expect(runner).toContain("appliedMigrationCount");
+    expect(runner).toContain("terminalMigrationCount");
+  });
+
   it("checks unified file-binding triggers by governed table instead of retired trigger names", () => {
     const verifier = readFileSync(
       join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
@@ -88,13 +138,318 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     expect(proof).toContain("spotProcurementReceipt.count");
   });
 
+  it("proves one exact-coordinate procurement withdrawal wins after a direct backend PID wait", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyApplicationWithdrawalCoordinateConcurrency"
+    );
+    const proofEnd = verifier.indexOf(
+      "\nasync function ",
+      proofStart + 1
+    );
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyApplicationWithdrawalCoordinateConcurrency()"
+    );
+    expect(verifier).toContain(
+      "async function waitForDirectBackendPidBlock"
+    );
+    expect(verifier).toContain("pg_blocking_pids(pid)");
+    expect(proof).toContain("firstWithdrawalAuditEntered");
+    expect(proof).toContain("firstWithdrawalBackendPid");
+    expect(proof).toContain("secondWithdrawalBackendPid");
+    expect(proof).toContain("await Promise.race([");
+    expect(proof).toContain(
+      "releaseFirstWithdrawalAudit.resolve(undefined)"
+    );
+    expect(proof).toContain("Promise.allSettled([firstRequest])");
+    expect(proof).toContain("waitForDirectBackendPidBlock");
+    expect(proof).toContain("withdrawApproval(");
+    expect(proof).toContain("expectedVersionId");
+    expect(proof).toContain("expectedApprovalInstanceId");
+    expect(proof).toContain("expectedNodeIndex");
+    expect(proof).toContain('results[0].status === "fulfilled"');
+    expect(proof).toContain('results[1].status === "rejected"');
+    expect(proof).toContain("getStatus() === 409");
+    expect(proof).toContain("versions.length === 2");
+    expect(proof).toContain('sourceVersion?.status === "withdrawn"');
+    expect(proof).toContain('approval?.status === "withdrawn"');
+    expect(proof).toContain("approvalActionLog.findMany");
+    expect(proof).toContain("auditLog.findMany");
+    expect(proof).toContain("frozenApplicationLineFacts");
+    expect(proof).toContain("frozenApplicationAttachmentFacts");
+    expect(proof).toContain("spotProcurementPayment.count");
+    expect(proof).toContain("spotProcurementReceipt.count");
+  });
+
+  it("proves withdrawal and approval node advance have one strict-409 loser and a consistent terminal state", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyApplicationWithdrawalVsNodeAdvanceCompetition"
+    );
+    const proofEnd = verifier.indexOf(
+      "\nasync function ",
+      proofStart + 1
+    );
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyApplicationWithdrawalVsNodeAdvanceCompetition()"
+    );
+    expect(proof).toContain("runBehindDatabaseLock");
+    expect(proof).toContain("withdrawalService.withdrawApproval(");
+    expect(proof).toContain("reviewService.review(");
+    expect(proof).toContain('decision: "approve"');
+    expect(proof).toContain("assertOneWinner(");
+    expect(proof).toContain("loser.reason.getStatus() === 409");
+    expect(proof).toContain("winnerIndex === 0");
+    expect(proof).toContain('root?.status === "draft"');
+    expect(proof).toContain('sourceVersion?.status === "withdrawn"');
+    expect(proof).toContain('root?.status === "approval_pending"');
+    expect(proof).toContain("approval.currentNodeIndex === 1");
+    expect(proof).toContain("actionLogs.length === 1");
+    expect(proof).toContain("auditLogs.length === 1");
+    expect(proof).toContain("spotProcurementPayment.count");
+    expect(proof).toContain("spotProcurementReceipt.count");
+  });
+
+  it("proves return to applicant creates one copied V2 draft with no payment or receipt facts", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyApplicationReturnToApplicantTerminalState"
+    );
+    const proofEnd = verifier.indexOf(
+      "\nasync function ",
+      proofStart + 1
+    );
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyApplicationReturnToApplicantTerminalState()"
+    );
+    expect(proof).toContain("new SpotProcurementApplicationService");
+    expect(proof).toContain("applicationService.review(");
+    expect(proof).toContain('decision: "return_to_applicant"');
+    expect(proof).toContain("expectedVersionId");
+    expect(proof).toContain("expectedApprovalInstanceId");
+    expect(proof).toContain("expectedNodeIndex");
+    expect(proof).toContain("versions.length === 2");
+    expect(proof).toContain('sourceVersion?.status === "returned"');
+    expect(proof).toContain(
+      'approval?.status === "returned_to_applicant"'
+    );
+    expect(proof).toContain('root?.status === "draft"');
+    expect(proof).toContain("root.currentVersionId === draft.id");
+    expect(proof).toContain("approvalActionLog.findMany");
+    expect(proof).toContain("auditLog.findMany");
+    expect(proof).toContain("frozenApplicationLineFacts");
+    expect(proof).toContain("frozenApplicationAttachmentFacts");
+    expect(proof).toContain("spotProcurementPayment.count");
+    expect(proof).toContain("spotProcurementReceipt.count");
+  });
+
+  it("proves a withdrawal audit fault rolls the whole transaction back", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const proofStart = verifier.indexOf(
+      "async function verifyApplicationWithdrawalMidTransactionRollback"
+    );
+    const proofEnd = verifier.indexOf(
+      "\nasync function ",
+      proofStart + 1
+    );
+    const proof = verifier.slice(
+      proofStart,
+      proofEnd === -1 ? verifier.length : proofEnd
+    );
+
+    expect(proofStart).toBeGreaterThanOrEqual(0);
+    expect(verifier).toContain(
+      "await verifyApplicationWithdrawalMidTransactionRollback()"
+    );
+    expect(proof).toContain("new SpotProcurementApplicationService");
+    expect(proof).toContain("applicationService.withdrawApproval(");
+    expect(proof).toContain(
+      'input.action === "spot_procurement.approval.withdraw"'
+    );
+    expect(proof).toContain(
+      'throw new Error("injected withdrawal audit failure")'
+    );
+    expect(proof).toContain("expectedVersionId");
+    expect(proof).toContain("expectedApprovalInstanceId");
+    expect(proof).toContain("expectedNodeIndex");
+    expect(proof).toContain("versions.length === 1");
+    expect(proof).toContain('root?.status === "approval_pending"');
+    expect(proof).toContain(
+      "root.currentVersionId === fixture.versionId"
+    );
+    expect(proof).toContain(
+      'sourceVersion?.status === "approval_pending"'
+    );
+    expect(proof).toContain(
+      'approval?.status === "approval_pending"'
+    );
+    expect(proof).toContain("approvalActionLog.count");
+    expect(proof).toContain("auditLog.count");
+    expect(proof).toContain("actionLogCount === 0");
+    expect(proof).toContain("auditLogCount === 0");
+    expect(proof).toContain("spotProcurementPayment.count");
+    expect(proof).toContain("spotProcurementReceipt.count");
+  });
+
+  it("fails legacy mixed-form withdrawal and return closed without changing any frozen fact", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const fixtureStart = verifier.indexOf(
+      "async function createLegacyPendingApplicationApprovalFixture"
+    );
+    const fixtureEnd = verifier.indexOf(
+      "\nasync function ",
+      fixtureStart + 1
+    );
+    const fixture = verifier.slice(
+      fixtureStart,
+      fixtureEnd === -1 ? verifier.length : fixtureEnd
+    );
+    const snapshotStart = verifier.indexOf(
+      "async function snapshotApplicationApprovalState"
+    );
+    const snapshotEnd = verifier.indexOf(
+      "\nasync function ",
+      snapshotStart + 1
+    );
+    const snapshot = verifier.slice(
+      snapshotStart,
+      snapshotEnd === -1 ? verifier.length : snapshotEnd
+    );
+
+    expect(fixtureStart).toBeGreaterThanOrEqual(0);
+    expect(snapshotStart).toBeGreaterThanOrEqual(0);
+    for (const field of [
+      "supplierPartyId",
+      "supplierKey",
+      "supplierNameSnapshot",
+      "approvedAmountCents",
+      "actualCostCents",
+      "totalAmountCents",
+      "invoiceMode",
+      "invoiceType",
+      "vatRateOptionId",
+      "vatRateValueSnapshot",
+      "vatRateLabelSnapshot",
+      "unitPrice",
+      "amountCents",
+      "usageLocation"
+    ]) {
+      expect(fixture).toContain(field);
+    }
+    expect(fixture).toContain("spotProcurementLine.createMany");
+    expect(fixture).toContain("spotProcurementAttachment.createMany");
+    expect(snapshot).toContain("spotProcurement.findUniqueOrThrow");
+    expect(snapshot).toContain("spotProcurementVersion.findMany");
+    expect(snapshot).toContain("spotProcurementLine.findMany");
+    expect(snapshot).toContain("spotProcurementAttachment.findMany");
+    expect(snapshot).toContain("approvalInstance.findUniqueOrThrow");
+    expect(snapshot).toContain("approvalActionLog.findMany");
+    expect(snapshot).toContain("auditLog.findMany");
+    expect(
+      verifier.match(/assertLegacyApplicationFixtureComplete\(/gu) ?? []
+    ).toHaveLength(3);
+
+    for (const proofName of [
+      "verifyLegacyApplicationWithdrawalFailsClosed",
+      "verifyLegacyApplicationReturnToApplicantFailsClosed"
+    ]) {
+      const proofStart = verifier.indexOf(`async function ${proofName}`);
+      const proofEnd = verifier.indexOf("\nasync function ", proofStart + 1);
+      const proof = verifier.slice(
+        proofStart,
+        proofEnd === -1 ? verifier.length : proofEnd
+      );
+
+      expect(proofStart).toBeGreaterThanOrEqual(0);
+      expect(verifier).toContain(`await ${proofName}()`);
+      expect(proof).toContain("getStatus() === 409");
+      expect(proof).toContain("assertUnchanged(before, after");
+      expect(proof).toContain("after.versions.length === 1");
+      expect(proof).toContain("version.versionNo === 2");
+    }
+  });
+
+  it("proves successful real-form withdrawal and return keep every retired commercial field null", () => {
+    const verifier = readFileSync(
+      join(process.cwd(), "prisma/verify-spot-procurement-concurrency.cjs"),
+      "utf8"
+    );
+    const helperStart = verifier.indexOf(
+      "function assertRealApplicationLegacyFieldsNull"
+    );
+    const helperEnd = verifier.indexOf(
+      "\nfunction ",
+      helperStart + 1
+    );
+    const helper = verifier.slice(
+      helperStart,
+      helperEnd === -1 ? verifier.length : helperEnd
+    );
+
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    for (const field of [
+      "supplierPartyId",
+      "supplierKey",
+      "supplierNameSnapshot",
+      "approvedAmountCents",
+      "actualCostCents",
+      "totalAmountCents",
+      "invoiceMode",
+      "invoiceType",
+      "vatRateOptionId",
+      "vatRateValueSnapshot",
+      "vatRateLabelSnapshot",
+      "unitPrice",
+      "amountCents",
+      "usageLocation"
+    ]) {
+      expect(helper).toContain(field);
+    }
+    expect(
+      verifier.match(/assertRealApplicationLegacyFieldsNull\(/gu) ?? []
+    ).toHaveLength(3);
+  });
+
   it("removes the unique container name even when docker run has not settled", async () => {
     const containerName = "jiangkong-spot-concurrency-pending-run";
     const pendingDockerRun = new Promise<never>(() => undefined);
-    const command = jest
+    const dockerCommand = jest
       .fn()
       .mockImplementation(
-        (_commandName: string, args: string[]) => {
+        (args: string[]) => {
           if (args[0] === "run") return pendingDockerRun;
           return Promise.resolve({ stdout: "", stderr: "" });
         }
@@ -104,7 +459,7 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
       .fn()
       .mockResolvedValue(undefined);
 
-    void command("docker", [
+    void dockerCommand([
       "run",
       "--detach",
       "--rm",
@@ -114,8 +469,7 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     ]);
     const cleanup = createSpotProcurementRunnerCleanup({
       commandRuntime: { stopAll },
-      command,
-      docker: "docker",
+      dockerCommand,
       containerName,
       temporaryRoot: "/tmp/spot-concurrency-test",
       removeTemporaryRoot
@@ -124,8 +478,7 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     await cleanup();
 
     expect(stopAll).toHaveBeenCalledTimes(1);
-    expect(command).toHaveBeenCalledWith(
-      "docker",
+    expect(dockerCommand).toHaveBeenCalledWith(
       ["rm", "--force", containerName],
       { timeoutMs: 60_000 }
     );

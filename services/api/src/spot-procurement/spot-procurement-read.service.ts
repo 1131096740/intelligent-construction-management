@@ -730,7 +730,13 @@ export class SpotProcurementReadService {
       allPayments,
       accessiblePaymentIds
     );
-    const usesRealProcurementForm = isRealProcurementForm(currentVersion);
+    const usesRealProcurementForm = isCanonicalRealProcurementForm(
+      procurement,
+      currentVersion,
+      lines
+    );
+    const canonicalRealRevisionSource =
+      usesRealProcurementForm && procurement.actualCostCents === null;
     const currentApprovalTimeline = await approvalTimelineForBusiness(
       this.prisma,
       SPOT_PROCUREMENT_BUSINESS_TYPES.application,
@@ -760,13 +766,26 @@ export class SpotProcurementReadService {
       paymentArchives,
       abnormalTermination,
       hasActualPayment: Boolean(actualPayment),
-      pilotEnabled: this.pilot.isEnabled(procurement.projectId)
+      pilotEnabled: this.pilot.isEnabled(procurement.projectId),
+      canonicalRealRevisionSource
     });
     const canReviewCurrentApproval = availableActions.some(
       (action) => action.key === "review_approval" && action.enabled
     );
+    const canWithdrawCurrentApproval = availableActions.some(
+      (action) =>
+        action.key === "withdraw_approval" && action.enabled
+    );
     const reviewApprovalContext =
       canReviewCurrentApproval && currentApproval
+        ? {
+            expectedVersionId: currentVersion.id,
+            expectedApprovalInstanceId: currentApproval.id,
+            expectedNodeIndex: currentApproval.currentNodeIndex
+          }
+        : null;
+    const withdrawApprovalContext =
+      canWithdrawCurrentApproval && currentApproval
         ? {
             expectedVersionId: currentVersion.id,
             expectedApprovalInstanceId: currentApproval.id,
@@ -865,6 +884,7 @@ export class SpotProcurementReadService {
       }),
       approval: approvalSummary(currentApproval),
       reviewApprovalContext,
+      withdrawApprovalContext,
       approvalTimeline: currentApprovalTimeline,
       payments: paymentRows,
       paymentSummary: usesRealProcurementForm
@@ -2041,7 +2061,11 @@ export class SpotProcurementReadService {
       const rowLines = linesByVersionId.get(version.id) ?? [];
       const visiblePayments = paymentsByProcurementId.get(row.id) ?? [];
       const allRowPayments = allPaymentsByProcurementId.get(row.id) ?? [];
-      const isRealApplication = isRealProcurementForm(version);
+      const isRealApplication = isCanonicalRealProcurementForm(
+        row,
+        version,
+        rowLines
+      );
       const realPayment = summarizeRealPaymentFacts(
         visiblePayments,
         actualPaidByPaymentId,
@@ -2632,6 +2656,7 @@ export class SpotProcurementReadService {
     } | null;
     hasActualPayment: boolean;
     pilotEnabled: boolean;
+    canonicalRealRevisionSource: boolean;
   }): DetailActionReadModel[] {
     const isOwner =
       input.actorUserId === input.procurement.applicantUserId ||
@@ -2651,9 +2676,25 @@ export class SpotProcurementReadService {
             false
           )
         : null;
+    const hasRevisionDownstreamFacts =
+      input.allPayments.length > 0 || input.receipt !== null;
+    const canMutateCurrentApplicationRevision =
+      input.canonicalRealRevisionSource &&
+      !hasRevisionDownstreamFacts;
     const canReview =
+      canMutateCurrentApplicationRevision &&
       Boolean(reviewAccess?.canAct) &&
       input.currentApproval?.applicantUserId !== input.actorUserId;
+    const canWithdraw =
+      input.pilotEnabled &&
+      canMutateCurrentApplicationRevision &&
+      input.procurement.status === "approval_pending" &&
+      input.currentVersion.status === "approval_pending" &&
+      input.currentPendingApprovalCount === 1 &&
+      input.currentApproval?.status === "approval_pending" &&
+      input.currentApproval.applicantUserId ===
+        input.procurement.applicantUserId &&
+      input.actorUserId === input.procurement.applicantUserId;
     const hasActualPayment = input.executions.some(
       (execution) => execution.voidedAt === null
     );
@@ -2674,6 +2715,7 @@ export class SpotProcurementReadService {
         payment.submittedAt === null
     );
     const canCreatePayment =
+      input.canonicalRealRevisionSource &&
       input.procurement.status === "approved_in_progress" &&
       input.currentVersion.status === "approved" &&
       input.actorUserId === input.procurement.handlerUserId &&
@@ -2681,6 +2723,7 @@ export class SpotProcurementReadService {
       !hasActivePayment &&
       hasRecreatableSource;
     const canCreateVersion =
+      input.canonicalRealRevisionSource &&
       !["closed", "voided"].includes(input.procurement.status) &&
       ["approved", "rejected"].includes(input.currentVersion.status) &&
       isOwner &&
@@ -2736,11 +2779,16 @@ export class SpotProcurementReadService {
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.create",
         enabled:
+          canMutateCurrentApplicationRevision &&
           input.procurement.status === "draft" &&
           input.currentVersion.status === "draft" &&
           isOwner &&
           canCreate,
-        disabledReason: "只有当前草稿的申请人或经办人可以编辑"
+        disabledReason: !input.canonicalRealRevisionSource
+          ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
+          : hasRevisionDownstreamFacts
+            ? "当前采购已存在付款或收货事实，不能继续编辑"
+          : "只有当前草稿的申请人或经办人可以编辑"
       }),
       detailAction({
         key: "submit_approval",
@@ -2749,11 +2797,16 @@ export class SpotProcurementReadService {
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.create",
         enabled:
+          canMutateCurrentApplicationRevision &&
           input.procurement.status === "draft" &&
           input.currentVersion.status === "draft" &&
           isOwner &&
           canCreate,
-        disabledReason: "采购草稿完整后由申请人或经办人提交"
+        disabledReason: !input.canonicalRealRevisionSource
+          ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
+          : hasRevisionDownstreamFacts
+            ? "当前采购已存在付款或收货事实，不能提交审批"
+          : "采购草稿完整后由申请人或经办人提交"
       }),
       detailAction({
         key: "review_approval",
@@ -2766,6 +2819,10 @@ export class SpotProcurementReadService {
         disabledReason:
           input.currentPendingApprovalCount > 1
             ? "当前采购存在多个待审批实例，请联系管理员处理"
+            : !input.canonicalRealRevisionSource
+              ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
+            : hasRevisionDownstreamFacts
+              ? "当前采购已存在付款或收货事实，不能处理审批"
             : reviewAccess?.canAct
               ? "申请人不能审批自己发起的采购"
               : "当前账号不是本审批节点处理人"
@@ -2775,10 +2832,21 @@ export class SpotProcurementReadService {
         label: "撤回采购审批",
         kind: "normal",
         roleKeys: input.roleKeys,
-        enabled:
-          input.procurement.status === "approval_pending" &&
-          input.actorUserId === input.procurement.applicantUserId,
-        disabledReason: "只有采购申请人可在审批中撤回"
+        enabled: canWithdraw,
+        disabledReason:
+          input.currentPendingApprovalCount > 1
+            ? "当前采购存在多个待审批实例，请联系管理员处理"
+            : input.currentApproval?.status === "approval_pending" &&
+                input.currentApproval.applicantUserId !==
+                  input.procurement.applicantUserId
+              ? "当前审批申请人与采购申请人不一致，请联系管理员处理"
+            : !input.canonicalRealRevisionSource
+              ? "旧版或混合采购申请暂不支持撤回，请联系管理员处理"
+            : hasRevisionDownstreamFacts
+              ? "当前采购已存在付款或收货事实，不能撤回审批"
+            : !input.pilotEnabled
+              ? "当前项目尚未开放零星采购办理"
+              : "只有采购申请人可撤回唯一审批中的当前版本"
       }),
       detailAction({
         key: "create_payment_draft",
@@ -2787,8 +2855,9 @@ export class SpotProcurementReadService {
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.payment.submit",
         enabled: canCreatePayment,
-        disabledReason:
-          "只有采购批准、原草稿已放弃且不存在活动付款时，当前采购经办人才可重新创建"
+        disabledReason: !input.canonicalRealRevisionSource
+          ? "旧版或混合采购申请不能进入新版付款流程"
+          : "只有采购批准、原草稿已放弃且不存在活动付款时，当前采购经办人才可重新创建"
       }),
       detailAction({
         key: "create_version",
@@ -2797,8 +2866,9 @@ export class SpotProcurementReadService {
         roleKeys: input.roleKeys,
         requiredAction: "spot_procurement.create",
         enabled: canCreateVersion,
-        disabledReason:
-          "仅当前申请人或经办人可在无活动付款、无实际付款时修订已批准或已驳回版本"
+        disabledReason: !input.canonicalRealRevisionSource
+          ? "旧版或混合采购申请仅支持只读，请联系管理员处理"
+          : "仅当前申请人或经办人可在无活动付款、无实际付款时修订已批准或已驳回版本"
       }),
       detailAction({
         key: "void_procurement",
@@ -3596,6 +3666,65 @@ function isRealProcurementForm(
   version: Pick<SpotProcurementVersion, "totalAmountCents">
 ) {
   return version.totalAmountCents === null;
+}
+
+function isCanonicalRealProcurementForm(
+  procurement: Pick<
+    SpotProcurement,
+    | "supplierPartyId"
+    | "supplierKey"
+    | "supplierNameSnapshot"
+    | "approvedAmountCents"
+    | "handlerUserId"
+  >,
+  version: Pick<
+    SpotProcurementVersion,
+    | "supplierPartyId"
+    | "supplierKey"
+    | "supplierNameSnapshot"
+    | "totalAmountCents"
+    | "handlerUserId"
+  >,
+  lines: Array<
+    Pick<
+      SpotProcurementLine,
+      | "invoiceMode"
+      | "invoiceType"
+      | "vatRateOptionId"
+      | "vatRateValueSnapshot"
+      | "vatRateLabelSnapshot"
+      | "unitPrice"
+      | "amountCents"
+      | "usageLocation"
+    >
+  >
+) {
+  return (
+    lines.length > 0 &&
+    procurement.handlerUserId === version.handlerUserId &&
+    [
+      procurement.supplierPartyId,
+      procurement.supplierKey,
+      procurement.supplierNameSnapshot,
+      procurement.approvedAmountCents,
+      version.supplierPartyId,
+      version.supplierKey,
+      version.supplierNameSnapshot,
+      version.totalAmountCents
+    ].every((value) => value === null) &&
+    lines.every((line) =>
+      [
+        line.invoiceMode,
+        line.invoiceType,
+        line.vatRateOptionId,
+        line.vatRateValueSnapshot,
+        line.vatRateLabelSnapshot,
+        line.unitPrice,
+        line.amountCents,
+        line.usageLocation
+      ].every((value) => value === null)
+    )
+  );
 }
 
 function isRealPaymentForm(

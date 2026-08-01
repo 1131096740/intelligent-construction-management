@@ -37,7 +37,6 @@ import {
   invalidateSpotProcurementPaymentInvoice,
   voidSpotProcurement,
   voidSpotProcurementPayment,
-  withdrawSpotProcurement,
   withdrawSpotProcurementPayment,
   type CreateSpotProcurementDraftPayload,
   type PrepareSpotProcurementReviewActionInput,
@@ -264,7 +263,6 @@ describe("spot procurement API client", () => {
       changeReason: "修改使用部位"
     });
     await submitSpotProcurement("procurement/1");
-    await withdrawSpotProcurement("procurement/1");
     await voidSpotProcurement("procurement/1", { reason: "现场取消需求" });
     await createSpotProcurementPaymentDraft("procurement/1");
 
@@ -273,14 +271,12 @@ describe("spot procurement API client", () => {
       "/spot-procurements/procurement%2F1/draft",
       "/spot-procurements/procurement%2F1/versions",
       "/spot-procurements/procurement%2F1/submission",
-      "/spot-procurements/procurement%2F1/approval-withdrawal",
       "/spot-procurements/procurement%2F1/voiding",
       "/spot-procurements/procurement%2F1/payments"
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.method)).toEqual([
       "POST",
       "PATCH",
-      "POST",
       "POST",
       "POST",
       "POST",
@@ -299,8 +295,7 @@ describe("spot procurement API client", () => {
       })
     );
     expect(mockApiFetch.mock.calls[3]?.[1]?.body).toBe("{}");
-    expect(mockApiFetch.mock.calls[4]?.[1]?.body).toBe("{}");
-    expect(mockApiFetch.mock.calls[6]?.[1]?.body).toBe("{}");
+    expect(mockApiFetch.mock.calls[5]?.[1]?.body).toBe("{}");
   });
 
   it.each([

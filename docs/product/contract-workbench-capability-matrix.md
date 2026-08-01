@@ -66,7 +66,7 @@
 | POST | `/contract-drafts/:param/edit-lease/takeover` | takeOverContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | — |
 | POST | `/contract-drafts/:param/preview-generation` | queueContractDraftPreview | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | — |
 | POST | `/contract-drafts/:param/submission` | submitContractDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | — |
-| GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | — |
+| GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | — |
 | PATCH | `/contract-layout-template-versions/:param` | updateLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-layout-template-versions/:param/clone` | cloneLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-layout-template-versions/:param/discard` | discardLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
@@ -75,7 +75,7 @@
 | POST | `/contract-layout-template-versions/:param/preview-generation` | queueLayoutTemplatePreview | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-layout-template-versions/:param/publication` | publishLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-layout-template-versions/:param/revoke` | revokeLayoutTemplateVersion |  | backend_without_frontend | 补入口 | — |
-| POST | `/contract-layout-template-versions/:param/stop` | stopLayoutTemplateVersion |  | backend_without_frontend | 补入口 | — |
+| POST | `/contract-layout-template-versions/:param/stop` | stopLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-layout-template-versions/:param/submission` | submitLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
 | GET | `/contract-layout-templates` | listPublishedLayoutTemplates | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | — |
 | POST | `/contract-layout-templates` | createLayoutTemplate | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | — |
@@ -94,7 +94,7 @@
 | POST | `/contract-template-versions/:param/discard` | discardContractTemplateVersion | apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-template-versions/:param/publication` | publishContractTemplateVersion | apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-template-versions/:param/revoke` | revokeContractTemplateVersion |  | backend_without_frontend | 补入口 | — |
-| POST | `/contract-template-versions/:param/stop` | stopContractTemplateVersion |  | backend_without_frontend | 补入口 | — |
+| POST | `/contract-template-versions/:param/stop` | stopContractTemplateVersion | apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue | matched | 保留 | — |
 | POST | `/contract-template-versions/:param/submission` | submitContractTemplateVersion | apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue | matched | 保留 | — |
 | GET | `/contract-templates` | listPublishedContractTemplates | apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue<br>apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue<br>apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | — |
 | POST | `/contract-templates` | createContractTemplate | apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue | matched | 保留 | — |
@@ -128,7 +128,7 @@
 | POST | `/contracts` | createContractDraft |  | backend_without_frontend | 补入口 | — |
 | POST | `/contracts` | createWorkbenchDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | — |
 | GET | `/contracts/:param` | fetchContractDetail | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | — |
-| POST | `/contracts/:param/abandonment` | abandonContractDraft | apps/web-admin/src/pages/contracts/ContractListPage.vue<br>apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | — |
+| POST | `/contracts/:param/abandonment` | abandonContractDraft |  | backend_without_frontend | 补入口 | — |
 | POST | `/contracts/:param/approval` | reviewContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | — |
 | POST | `/contracts/:param/approval-delegation` | delegateContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | — |
 | POST | `/contracts/:param/approval-reminder` | remindContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | — |
@@ -163,7 +163,7 @@
 | GET | `/me/workbench-summary` | fetchWorkbenchSummary |  | backend_without_frontend | 补入口 | — |
 | GET | `/payments/contract-application` | fetchContractPaymentApplication | apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue | matched | 保留 | — |
 | GET | `/projects/:param/affiliate-company-contracts` | fetchProjectAffiliateCompanyContracts | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | — |
-| POST | `/projects/:param/affiliate-company-contracts` | recordProjectAffiliateCompanyContract | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | — |
+| POST | `/projects/:param/affiliate-company-contracts` | recordProjectAffiliateCompanyContract |  | backend_without_frontend | 补入口 | — |
 | POST | `/projects/:param/affiliate-company-contracts/:param/confirmation` | confirmProjectAffiliateCompanyContract | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | — |
 | POST | `/projects/:param/affiliate-contract-facts` | recordProjectAffiliateContractFact | apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue | matched | 保留 | — |
 | POST | `/projects/:param/affiliate-contract-facts/:param/confirmation` | confirmProjectAffiliateContractFact | apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue | matched | 保留 | — |

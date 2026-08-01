@@ -33,7 +33,12 @@ function procurement(status = "draft") {
     handlerUserId: "material-1",
     currentVersionId: "version-1",
     status,
-    closedAt: null
+    closedAt: null,
+    supplierPartyId: null,
+    supplierKey: null,
+    supplierNameSnapshot: null,
+    approvedAmountCents: null,
+    actualCostCents: null
   };
 }
 
@@ -45,6 +50,9 @@ function version(status = "draft") {
     status,
     reason: realFormDraft.reason,
     note: realFormDraft.note,
+    supplierPartyId: null,
+    supplierKey: null,
+    supplierNameSnapshot: null,
     handlerUserId: "material-1",
     applicationDepartmentSnapshot: realFormDraft.applicationDepartment,
     applicationNameSnapshot: realFormDraft.applicationName,
@@ -52,11 +60,35 @@ function version(status = "draft") {
     purchaserDepartmentId: "department-1",
     purchaserDepartmentNameSnapshot: "工程部",
     requestedArrivalAt: new Date(realFormDraft.requestedArrivalAt),
+    totalAmountCents: null,
     changeReason: null,
     changeSummary: null,
     submittedAt: null,
     approvedAt: null,
     createdByUserId: "material-1"
+  };
+}
+
+function frozenRealFormLine(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "line-1",
+    versionId: "version-1",
+    sortOrder: 1,
+    materialName: "免烧砖",
+    specification: "240×115×53",
+    unit: "块",
+    quantity: { toString: () => "1200" },
+    invoiceMode: null,
+    invoiceType: null,
+    vatRateOptionId: null,
+    vatRateValueSnapshot: null,
+    vatRateLabelSnapshot: null,
+    unitPrice: null,
+    amountCents: null,
+    usageLocation: null,
+    note: "二次结构",
+    createdAt: new Date("2026-07-20T00:00:00.000Z"),
+    ...overrides
   };
 }
 
@@ -91,7 +123,7 @@ function context(roleKey = "material_staff") {
       count: jest.fn().mockResolvedValue(1),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findMany: jest.fn().mockResolvedValue([])
+      findMany: jest.fn().mockResolvedValue([frozenRealFormLine()])
     },
     spotProcurementAttachment: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -111,6 +143,7 @@ function context(roleKey = "material_staff") {
     },
     spotProcurementReceipt: {
       create: jest.fn().mockResolvedValue({ id: "receipt-1" }),
+      findUnique: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     spotProcurementReceiptDelegation: {
@@ -407,6 +440,18 @@ describe("SpotProcurementApplicationService real-form application", () => {
 
   it("returns the frozen approval to a new draft revision without creating payment or receipt facts", async () => {
     const { service, tx, audit } = context("project_manager");
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      frozenRealFormLine()
+    ]);
+    tx.spotProcurementAttachment.findMany.mockResolvedValue([
+      {
+        id: "attachment-1",
+        versionId: "version-1",
+        fileId: "file-1",
+        category: "quotation",
+        uploadedByUserId: "material-1"
+      }
+    ]);
     tx.$queryRaw
       .mockResolvedValueOnce([procurement("approval_pending")])
       .mockResolvedValueOnce([version("approval_pending")])
@@ -474,6 +519,33 @@ describe("SpotProcurementApplicationService real-form application", () => {
         createdByUserId: "manager-1"
       })
     });
+    expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          versionId: "version-2",
+          materialName: "免烧砖",
+          quantity: expect.anything(),
+          invoiceMode: null,
+          invoiceType: null,
+          vatRateOptionId: null,
+          vatRateValueSnapshot: null,
+          vatRateLabelSnapshot: null,
+          unitPrice: null,
+          amountCents: null,
+          usageLocation: null
+        })
+      ]
+    });
+    expect(tx.spotProcurementAttachment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          versionId: "version-2",
+          fileId: "file-1",
+          category: "quotation",
+          uploadedByUserId: "material-1"
+        }
+      ]
+    });
     expect(tx.spotProcurement.update).toHaveBeenCalledWith({
       where: { id: "procurement-1" },
       data: expect.objectContaining({
@@ -497,6 +569,582 @@ describe("SpotProcurementApplicationService real-form application", () => {
       })
     );
   });
+
+  it("withdraws one exact pending approval into a new draft revision with frozen coordinates", async () => {
+    const { service, tx, audit, pilot } = context();
+    tx.spotProcurementLine.findMany.mockResolvedValue([
+      frozenRealFormLine()
+    ]);
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            }
+          ],
+          applicantUserId: "material-1"
+        }
+      ]);
+    tx.spotProcurementVersion.create.mockResolvedValueOnce({
+      ...version("draft"),
+      id: "version-2",
+      versionNo: 2,
+      changeReason: "申请人撤回采购审批",
+      createdByUserId: "material-1"
+    });
+
+    await expect(
+      service.withdrawApproval("procurement-1", "material-1", {
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 1
+      })
+    ).resolves.toMatchObject({
+      status: "draft",
+      currentVersionId: "version-2",
+      versionNo: 2,
+      versionStatus: "draft"
+    });
+
+    expect(pilot.assertEnabled).toHaveBeenCalledWith("project-1");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        approvalInstanceId: "approval-1",
+        action: "withdraw",
+        actorUserId: "material-1"
+      })
+    });
+    expect(tx.spotProcurementVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: { status: "withdrawn" }
+    });
+    expect(tx.spotProcurementLine.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          versionId: "version-2",
+          materialName: "免烧砖",
+          invoiceMode: null,
+          vatRateOptionId: null,
+          unitPrice: null,
+          amountCents: null,
+          usageLocation: null
+        })
+      ]
+    });
+    expect(tx.spotProcurement.update).toHaveBeenCalledWith({
+      where: { id: "procurement-1" },
+      data: expect.objectContaining({
+        currentVersionId: "version-2",
+        status: "draft"
+      })
+    });
+    expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "spot_procurement.approval.withdraw",
+        businessId: "version-1",
+        metadata: expect.objectContaining({
+          procurementId: "procurement-1",
+          sourceVersionId: "version-1",
+          newVersionId: "version-2",
+          expectedVersionId: "version-1",
+          expectedApprovalInstanceId: "approval-1",
+          expectedNodeIndex: 1
+        })
+      })
+    );
+  });
+
+  it.each([
+    [
+      "version",
+      {
+        expectedVersionId: "version-stale",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 1
+      }
+    ],
+    [
+      "approval instance",
+      {
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-stale",
+        expectedNodeIndex: 1
+      }
+    ],
+    [
+      "approval node",
+      {
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      }
+    ]
+  ])(
+    "rejects a stale withdrawal %s with zero writes",
+    async (_label, coordinates) => {
+      const { service, tx, audit, approvalForms } = context();
+      tx.$queryRaw
+        .mockResolvedValueOnce([procurement("approval_pending")])
+        .mockResolvedValueOnce([version("approval_pending")])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 1,
+            frozenNodes: [],
+            applicantUserId: "material-1"
+          }
+        ]);
+
+      await expect(
+        service.withdrawApproval(
+          "procurement-1",
+          "material-1",
+          coordinates
+        )
+      ).rejects.toMatchObject({ status: 409 });
+
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(
+        approvalForms.tryRefreshLatestForBusiness
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["approval_pending", "draft"])(
+    "checks withdrawal ownership before pilot, current-version, and %s status disclosure",
+    async (status) => {
+    const { service, tx, audit, pilot } = context();
+    tx.$queryRaw
+      .mockResolvedValueOnce([
+        {
+          ...procurement(status),
+          applicantUserId: "applicant-1"
+        }
+      ])
+      .mockResolvedValueOnce([version("approval_pending")]);
+
+    await expect(
+      service.withdrawApproval("procurement-1", "observer-1", {
+        expectedVersionId:
+          status === "approval_pending" ? "version-1" : "forged-version",
+        expectedApprovalInstanceId:
+          status === "approval_pending" ? "approval-1" : "forged-approval",
+        expectedNodeIndex: status === "approval_pending" ? 1 : 99
+      })
+    ).rejects.toMatchObject({ status: 403 });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(pilot.assertEnabled).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [
+      "legacy root and version facts on withdrawal",
+      "withdraw",
+      {
+        root: {
+          supplierPartyId: "party-1",
+          supplierKey: "party:party-1",
+          supplierNameSnapshot: "旧版供应商",
+          approvedAmountCents: 12_000n
+        },
+        currentVersion: {
+          supplierPartyId: "party-1",
+          supplierKey: "party:party-1",
+          supplierNameSnapshot: "旧版供应商",
+          totalAmountCents: 12_000n
+        },
+        line: {
+          invoiceMode: "invoice",
+          invoiceType: "vat_general",
+          vatRateOptionId: "vat-13",
+          vatRateValueSnapshot: { toString: () => "0.13" },
+          vatRateLabelSnapshot: "13%",
+          unitPrice: { toString: () => "10" },
+          amountCents: 12_000n,
+          usageLocation: "旧版使用地点"
+        }
+      }
+    ],
+    [
+      "mixed line financial facts on return to applicant",
+      "return",
+      {
+        root: {},
+        currentVersion: {},
+        line: { amountCents: 1n }
+      }
+    ]
+  ])(
+    "fails %s closed before any workflow or revision write",
+    async (_label, operation, legacyFacts) => {
+      const { service, tx, audit, approvalForms } = context(
+        "project_manager"
+      );
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            ...procurement("approval_pending"),
+            ...legacyFacts.root
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            ...version("approval_pending"),
+            ...legacyFacts.currentVersion
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              {
+                name: "项目经理审批",
+                mode: "any",
+                roleKeys: ["project_manager"]
+              }
+            ],
+            applicantUserId: "material-1"
+          }
+        ]);
+      tx.spotProcurementLine.findMany.mockResolvedValue([
+        frozenRealFormLine(legacyFacts.line)
+      ]);
+
+      const request =
+        operation === "withdraw"
+          ? service.withdrawApproval("procurement-1", "material-1", {
+              expectedVersionId: "version-1",
+              expectedApprovalInstanceId: "approval-1",
+              expectedNodeIndex: 0
+            })
+          : service.review("procurement-1", "manager-1", {
+              decision: "return_to_applicant",
+              comment: "请补充资料",
+              expectedVersionId: "version-1",
+              expectedApprovalInstanceId: "approval-1",
+              expectedNodeIndex: 0
+            });
+
+      await expect(request).rejects.toMatchObject({ status: 409 });
+
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurementLine.createMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementAttachment.createMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(
+        approvalForms.tryRefreshLatestForBusiness
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["update", "submit", "approve", "create_version"] as const)(
+    "keeps legacy procurement facts read-only through the %s entry point",
+    async (operation) => {
+      const { service, tx, audit, approvalForms } = context(
+        operation === "approve" ? "project_manager" : "material_staff"
+      );
+      const rootStatus = operation === "approve" ? "approval_pending" : "draft";
+      const versionStatus =
+        operation === "approve"
+          ? "approval_pending"
+          : operation === "create_version"
+            ? "rejected"
+            : "draft";
+      tx.$queryRaw
+        .mockResolvedValueOnce([
+          {
+            ...procurement(rootStatus),
+            supplierPartyId: "party-legacy",
+            supplierKey: "party:party-legacy",
+            supplierNameSnapshot: "旧版供应商"
+          }
+        ])
+        .mockResolvedValueOnce([version(versionStatus)]);
+      if (operation === "approve") {
+        tx.$queryRaw.mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 0,
+            frozenNodes: [
+              {
+                name: "项目经理审批",
+                mode: "any",
+                roleKeys: ["project_manager"]
+              }
+            ],
+            applicantUserId: "material-1"
+          }
+        ]);
+      }
+
+      const request =
+        operation === "update"
+          ? service.updateDraft(
+              "procurement-1",
+              "material-1",
+              realFormDraft
+            )
+          : operation === "submit"
+            ? service.submit("procurement-1", "material-1")
+            : operation === "approve"
+              ? service.review("procurement-1", "manager-1", {
+                  decision: "approve",
+                  expectedVersionId: "version-1",
+                  expectedApprovalInstanceId: "approval-1",
+                  expectedNodeIndex: 0
+                })
+              : service.createVersion("procurement-1", "material-1", {
+                  ...realFormDraft,
+                  changeReason: "调整采购范围"
+                });
+
+      await expect(request).rejects.toMatchObject({ status: 409 });
+
+      expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurementLine.deleteMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementLine.createMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementAttachment.deleteMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementAttachment.createMany).not.toHaveBeenCalled();
+      expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(
+        approvalForms.tryRefreshLatestForBusiness
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each<
+    [
+      string,
+      {
+        lines?: Array<ReturnType<typeof frozenRealFormLine>>;
+        version?: { handlerUserId: string };
+        payment?: boolean;
+        receipt?: boolean;
+      }
+    ]
+  >([
+    ["empty material facts", { lines: [] }],
+    ["mismatched frozen handler", { version: { handlerUserId: "other-handler" } }],
+    ["existing payment facts", { payment: true }],
+    ["existing receipt facts", { receipt: true }]
+  ])(
+    "fails withdrawal closed for %s before any workflow write",
+    async (_label, anomaly) => {
+      const { service, tx, audit, approvalForms } = context();
+      tx.$queryRaw
+        .mockResolvedValueOnce([procurement("approval_pending")])
+        .mockResolvedValueOnce([
+          {
+            ...version("approval_pending"),
+            ...(anomaly.version ?? {})
+          }
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: "approval-1",
+            status: "approval_pending",
+            currentNodeIndex: 1,
+            frozenNodes: [],
+            applicantUserId: "material-1"
+          }
+        ]);
+      tx.spotProcurementLine.findMany.mockResolvedValue(
+        anomaly.lines ?? [frozenRealFormLine()]
+      );
+      if (anomaly.payment) {
+        tx.spotProcurementPayment.findMany.mockResolvedValue([
+          { id: "payment-legacy" }
+        ]);
+      }
+      if (anomaly.receipt) {
+        tx.spotProcurementReceipt.findUnique.mockResolvedValue({
+          id: "receipt-legacy"
+        });
+      }
+
+      await expect(
+        service.withdrawApproval("procurement-1", "material-1", {
+          expectedVersionId: "version-1",
+          expectedApprovalInstanceId: "approval-1",
+          expectedNodeIndex: 1
+        })
+      ).rejects.toMatchObject({ status: 409 });
+
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.create).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(
+        approvalForms.tryRefreshLatestForBusiness
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects a withdrawal when the frozen approval applicant does not match the procurement applicant", async () => {
+    const { service, tx, audit } = context();
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          frozenNodes: [],
+          applicantUserId: "different-applicant"
+        }
+      ]);
+
+    await expect(
+      service.withdrawApproval("procurement-1", "material-1", {
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 1
+      })
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects approval review when the frozen applicant does not match the procurement applicant", async () => {
+    const { service, tx, audit } = context("project_manager");
+    tx.$queryRaw
+      .mockResolvedValueOnce([procurement("approval_pending")])
+      .mockResolvedValueOnce([version("approval_pending")])
+      .mockResolvedValueOnce([
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "项目经理审批",
+              mode: "any",
+              roleKeys: ["project_manager"]
+            }
+          ],
+          applicantUserId: "different-applicant"
+        }
+      ]);
+
+    await expect(
+      service.review("procurement-1", "manager-1", {
+        decision: "approve",
+        expectedVersionId: "version-1",
+        expectedApprovalInstanceId: "approval-1",
+        expectedNodeIndex: 0
+      })
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+    expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", []],
+    [
+      "duplicate",
+      [
+        {
+          id: "approval-2",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          frozenNodes: [],
+          applicantUserId: "material-1"
+        },
+        {
+          id: "approval-1",
+          status: "approval_pending",
+          currentNodeIndex: 1,
+          frozenNodes: [],
+          applicantUserId: "material-1"
+        }
+      ]
+    ]
+  ])(
+    "fails withdrawal closed for a %s pending approval instance set",
+    async (_label, approvals) => {
+      const { service, tx, audit, approvalForms } = context();
+      tx.$queryRaw
+        .mockResolvedValueOnce([procurement("approval_pending")])
+        .mockResolvedValueOnce([version("approval_pending")])
+        .mockResolvedValueOnce(approvals);
+
+      await expect(
+        service.withdrawApproval("procurement-1", "material-1", {
+          expectedVersionId: "version-1",
+          expectedApprovalInstanceId: "approval-1",
+          expectedNodeIndex: 1
+        })
+      ).rejects.toMatchObject({ status: 409 });
+
+      const approvalLockSql = tx.$queryRaw.mock.calls[2]?.[0] as {
+        strings?: readonly string[];
+      };
+      const approvalLockText =
+        approvalLockSql.strings?.join(" ") ?? "";
+      expect(approvalLockText).toContain(
+        'ORDER BY "updatedAt" DESC, "id" DESC'
+      );
+      expect(approvalLockText).toContain("FOR UPDATE");
+      expect(approvalLockText).not.toContain("LIMIT 1");
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurementVersion.update).not.toHaveBeenCalled();
+      expect(tx.spotProcurement.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(
+        approvalForms.tryRefreshLatestForBusiness
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects a row-lock-serialized duplicate review before it crosses into the actor's next role", async () => {
     const { service, tx, audit } = context();
@@ -525,7 +1173,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
           status: "approval_pending",
           currentNodeIndex: 0,
           frozenNodes,
-          applicantUserId: "applicant-1"
+          applicantUserId: "material-1"
         }
       ])
       .mockResolvedValueOnce([procurement("approval_pending")])
@@ -539,7 +1187,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
             { ...frozenNodes[0], approvedRoleKeys: ["material_director"] },
             frozenNodes[1]
           ],
-          applicantUserId: "applicant-1"
+          applicantUserId: "material-1"
         }
       ]);
     const frozenRequest = {

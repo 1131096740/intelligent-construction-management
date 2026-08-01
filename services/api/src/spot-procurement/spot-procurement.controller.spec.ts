@@ -6,6 +6,7 @@ import { createApiValidationPipe } from "../validation/api-validation";
 import { CreateSpotProcurementDto } from "./dto/create-spot-procurement.dto";
 import { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
+import { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import { SpotProcurementController } from "./spot-procurement.controller";
 
 const realFormDraft = {
@@ -58,6 +59,41 @@ describe("SpotProcurementController real-form input", () => {
           expectedNodeIndex: -1
         },
         { type: "body", metatype: ReviewSpotProcurementDto }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("requires the frozen approval coordinates on procurement withdrawal", async () => {
+    const pipe = createApiValidationPipe();
+    const coordinates = {
+      expectedVersionId: "version-1",
+      expectedApprovalInstanceId: "approval-1",
+      expectedNodeIndex: 0
+    };
+
+    await expect(
+      pipe.transform(coordinates, {
+        type: "body",
+        metatype: WithdrawSpotProcurementApprovalDto
+      })
+    ).resolves.toEqual(coordinates);
+
+    await expect(
+      pipe.transform(
+        { ...coordinates, expectedApprovalInstanceId: "   " },
+        {
+          type: "body",
+          metatype: WithdrawSpotProcurementApprovalDto
+        }
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      pipe.transform(
+        { ...coordinates, expectedNodeIndex: -1 },
+        {
+          type: "body",
+          metatype: WithdrawSpotProcurementApprovalDto
+        }
       )
     ).rejects.toBeInstanceOf(BadRequestException);
   });

@@ -166,7 +166,11 @@ function procurementDetail(paymentOverrides = {}) {
     invoiceLedger: { available: false, currentCoordinates: null, invoices: [], allocations: [], noInvoiceConfirmations: [], invoiceExceptions: [] },
     discrepancy: { available: false, status: "not_available", label: "收货复核后可处理少货" },
     applicationPdf: { available: true, generated: true, businessType: "spot_procurement_version", businessId: "version-1", disabledReason: null },
-    availableActions: [], primaryAction: null, disabledReasons: []
+    availableActions: [],
+    reviewApprovalContext: null,
+    withdrawApprovalContext: null,
+    primaryAction: null,
+    disabledReasons: []
   };
 }
 
@@ -2220,6 +2224,313 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
     expectedApprovalInstanceId: "approval-procurement-review-return",
     expectedNodeIndex: 0
   });
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("withdraws one exact spot procurement approval after a fresh preflight", async ({ page }, testInfo) => {
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await mockLogin(page, {
+    id: "applicant-1",
+    name: "申请人甲",
+    roleKeys: ["material_staff"]
+  });
+  const requests: Array<{
+    procurementId: string;
+    method: string;
+    body?: unknown;
+  }> = [];
+  const withdrawn = new Set<string>();
+  const desktopPostStarted = deferred();
+  const releaseDesktopPost = deferred();
+
+  await page.route(
+    "**/api/spot-procurements/procurement-withdraw-**",
+    async (route) => {
+      const request = route.request();
+      const pathName = new URL(request.url()).pathname;
+      const segments = pathName.split("/").filter(Boolean);
+      const procurementId =
+        segments.at(-1) === "approval-withdrawal"
+          ? segments.at(-2) ?? ""
+          : segments.at(-1) ?? "";
+      const body =
+        request.method() === "POST"
+          ? request.postDataJSON()
+          : undefined;
+      requests.push({
+        procurementId,
+        method: request.method(),
+        ...(body === undefined ? {} : { body })
+      });
+      if (request.method() === "POST") {
+        if (procurementId === "procurement-withdraw-desktop") {
+          desktopPostStarted.resolve();
+          await releaseDesktopPost.promise;
+        }
+        withdrawn.add(procurementId);
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            procurementId,
+            status: "draft",
+            currentVersionId: `version-${procurementId}-draft`,
+            versionId: `version-${procurementId}-draft`,
+            versionNo: 2,
+            versionStatus: "draft"
+          })
+        });
+      }
+
+      const base = procurementDetail();
+      const isWithdrawn = withdrawn.has(procurementId);
+      const emptyPaymentSummary = {
+        paymentId: null,
+        status: "pending_determination",
+        statusLabel: "付款金额待确定",
+        approvalAmountCents: null,
+        actualPaidAmountCents: null,
+        refundAmountCents: null,
+        netPaidAmountCents: null,
+        remainingAmountCents: null,
+        visibilityRestricted: false
+      };
+      const notCreatedReceipt = {
+        available: false,
+        status: "not_created",
+        statusLabel: "尚未生成收货单",
+        openAfterActualPayment: false,
+        hasActualPayment: false,
+        blockedReason: "尚未生成收货单",
+        currentRevisionNo: null,
+        firstSubmittedAt: null,
+        submittedAt: null,
+        lockedAt: null
+      };
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...base,
+          procurement: {
+            ...base.procurement,
+            id: procurementId,
+            code: procurementId.endsWith("mobile")
+              ? "LXCG-WITHDRAW-MOBILE"
+              : "LXCG-WITHDRAW-DESKTOP",
+            applicant,
+            status: isWithdrawn ? "draft" : "approval_pending",
+            statusLabel: isWithdrawn ? "草稿" : "审批中",
+            supplierPartyId: undefined,
+            supplierName: undefined,
+            approvedAmountCents: undefined,
+            actualCostCents: undefined,
+            actualCost: undefined,
+            payment: emptyPaymentSummary
+          },
+          currentVersion: {
+            ...base.currentVersion,
+            id: isWithdrawn
+              ? `version-${procurementId}-draft`
+              : `version-${procurementId}`,
+            versionNo: isWithdrawn ? 2 : 1,
+            status: isWithdrawn ? "draft" : "approval_pending",
+            statusLabel: isWithdrawn ? "草稿" : "审批中",
+            supplierPartyId: undefined,
+            supplierName: undefined,
+            totalAmountCents: undefined
+          },
+          lines: [
+            {
+              id: "line-1",
+              sortOrder: 1,
+              materialName: "免烧砖",
+              specification: "240×115×53",
+              unit: "块",
+              quantity: "1000",
+              note: "免烧砖"
+            }
+          ],
+          payments: [],
+          paymentSummary: emptyPaymentSummary,
+          receipt: notCreatedReceipt,
+          approval: {
+            status: isWithdrawn
+              ? "withdrawn"
+              : "approval_pending",
+            statusLabel: isWithdrawn ? "已撤回" : "审批中",
+            currentNodeName: isWithdrawn
+              ? null
+              : "物资部主管审批",
+            currentRoleKeys: isWithdrawn
+              ? []
+              : ["material_director"]
+          },
+          availableActions: isWithdrawn
+            ? [
+                {
+                  key: "edit_draft",
+                  label: "编辑草稿",
+                  kind: "primary",
+                  enabled: true,
+                  disabledReason: null
+                }
+              ]
+            : [
+                {
+                  key: "withdraw_approval",
+                  label: "撤回采购审批",
+                  kind: "normal",
+                  enabled: true,
+                  disabledReason: null
+                }
+              ],
+          reviewApprovalContext: null,
+          withdrawApprovalContext: isWithdrawn
+            ? null
+            : {
+                expectedVersionId: `version-${procurementId}`,
+                expectedApprovalInstanceId:
+                  `approval-${procurementId}`,
+                expectedNodeIndex: 0
+              },
+          primaryAction: null,
+          applicationPdf: {
+            ...base.applicationPdf,
+            available: false,
+            generated: false
+          }
+        })
+      });
+    }
+  );
+
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill("13900000000");
+  await page.getByPlaceholder("请输入密码").fill("Spot@2026");
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
+
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto(
+    "/零星采购/procurement-withdraw-desktop"
+  );
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "撤回采购审批", exact: true })
+    .click();
+  const desktopDialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "撤回采购审批" });
+  await expect(desktopDialog).toBeVisible();
+  const desktopConfirm = desktopDialog.getByRole("button", {
+    name: "确认撤回",
+    exact: true
+  });
+  await desktopConfirm.evaluate((element) => {
+    (element as HTMLElement).click();
+    (element as HTMLElement).click();
+  });
+  await desktopPostStarted.promise;
+  await expect(
+    desktopDialog.getByRole("button", {
+      name: "取消",
+      exact: true
+    })
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(desktopDialog).toBeVisible();
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      "spot-procurement-withdraw-pending-1366x768.png"
+    ),
+    fullPage: true
+  });
+  expect(
+    requests.filter(
+      (request) =>
+        request.procurementId ===
+          "procurement-withdraw-desktop" &&
+        request.method === "POST"
+    )
+  ).toHaveLength(1);
+  releaseDesktopPost.resolve();
+  await expect(
+    page.getByText(
+      "采购审批已撤回，并已生成新的可修改采购草稿。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText("草稿", { exact: true }).first()
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      requests
+        .filter(
+          (request) =>
+            request.procurementId ===
+            "procurement-withdraw-desktop"
+        )
+        .map((request) => request.method)
+    )
+    .toEqual(["GET", "GET", "POST", "GET"]);
+  expect(
+    requests.find(
+      (request) =>
+        request.procurementId ===
+          "procurement-withdraw-desktop" &&
+        request.method === "POST"
+    )?.body
+  ).toEqual({
+    expectedVersionId:
+      "version-procurement-withdraw-desktop",
+    expectedApprovalInstanceId:
+      "approval-procurement-withdraw-desktop",
+    expectedNodeIndex: 0
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/零星采购/procurement-withdraw-mobile");
+  await page.getByText("审批与动作", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "撤回采购审批", exact: true })
+    .click();
+  const mobileDialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "撤回采购审批" });
+  await expect(mobileDialog).toBeVisible();
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      "spot-procurement-withdraw-390x844.png"
+    ),
+    fullPage: true
+  });
+  await mobileDialog
+    .getByRole("button", { name: "确认撤回", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      requests
+        .filter(
+          (request) =>
+            request.procurementId ===
+            "procurement-withdraw-mobile"
+        )
+        .map((request) => request.method)
+    )
+    .toEqual(["GET", "GET", "POST", "GET"]);
+  await expect(
+    page.getByText("草稿", { exact: true }).first()
+  ).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
   expect(consoleErrors).toEqual([]);

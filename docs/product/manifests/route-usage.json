@@ -4390,6 +4390,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "prepareSpotProcurementWithdrawalAction",
+            "method": "GET",
+            "normalizedPath": "/spot-procurements/:param",
+            "normalizedKey": "GET /spot-procurements/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -14777,7 +14787,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "withdrawSpotProcurement",
+            "wrapper": "executeSpotProcurementWithdrawalAction",
             "method": "POST",
             "normalizedPath": "/spot-procurements/:param/approval-withdrawal",
             "normalizedKey": "POST /spot-procurements/:param/approval-withdrawal",
@@ -15727,10 +15737,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,

@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 43,
-    "pageActionCount": 37,
+    "registeredActionCount": 44,
+    "pageActionCount": 38,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 134,
     "parsedVueFileCount": 134,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 919,
+    "templateEventDirectiveCount": 918,
     "propCallbackDirectiveCount": 10,
-    "coveredProductionMutationConsumerCount": 19,
-    "candidateProductionMutationConsumerCount": 38,
-    "acceptedProductionMutationConsumerCount": 19,
+    "coveredProductionMutationConsumerCount": 20,
+    "candidateProductionMutationConsumerCount": 39,
+    "acceptedProductionMutationConsumerCount": 20,
     "productionMutationConsumerPairCount": 273,
-    "blockerCount": 300
+    "blockerCount": 299
   },
   "evidence": {
     "totalProductionModuleCount": 236,
@@ -215,7 +215,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 953,
+        "sourceLine": 955,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -348,10 +348,10 @@
             "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "authenticated_only",
+            "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": null
+            "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
@@ -384,7 +384,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 920,
+        "sourceLine": 922,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -678,7 +678,7 @@
         "event": "click",
         "handler": "onSave",
         "kind": "event",
-        "sourceLine": 317,
+        "sourceLine": 319,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -705,10 +705,10 @@
             "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "authenticated_only",
+            "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": null
+            "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
@@ -804,7 +804,7 @@
         "event": "confirm",
         "handler": "onConfirmTransfer",
         "kind": "prop_callback",
-        "sourceLine": 1014,
+        "sourceLine": 1016,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -1117,7 +1117,7 @@
         "event": "click",
         "handler": "requestSubmission",
         "kind": "event",
-        "sourceLine": 327,
+        "sourceLine": 329,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -2746,7 +2746,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1681,
+        "sourceLine": 1970,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2811,7 +2811,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1668,
+        "sourceLine": 1957,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3006,7 +3006,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 1612,
+        "sourceLine": 1887,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3072,7 +3072,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 1626,
+        "sourceLine": 1901,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3138,7 +3138,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 1640,
+        "sourceLine": 1915,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -3204,7 +3204,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1359,
+        "sourceLine": 1634,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -3248,6 +3248,71 @@
             "localCallChain": [
               "runSubmit",
               "submitSpotProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmWithdrawal",
+        "kind": "event",
+        "sourceLine": 1929,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "withdraw_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "executeSpotProcurementWithdrawalAction",
+          "method": "POST",
+          "path": "/spot-procurements/:param/approval-withdrawal",
+          "normalizedKey": "POST /spot-procurements/:param/approval-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/approval-withdrawal",
+            "normalizedKey": "POST /spot-procurements/:param/approval-withdrawal",
+            "controller": "SpotProcurementController",
+            "handler": "withdrawApproval",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmWithdrawal",
+              "executeSpotProcurementWithdrawalAction"
             ]
           },
           "ticketFollowups": []
@@ -5610,15 +5675,6 @@
         "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
         "normalizedKeys": [
           "POST /spot-procurements/:param/voiding"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "withdrawSpotProcurement",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/approval-withdrawal"
         ]
       },
       {

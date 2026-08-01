@@ -21,6 +21,7 @@ import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-terminatio
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
+import { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
@@ -151,9 +152,14 @@ export class SpotProcurementController {
   @Post(":procurementId/approval-withdrawal")
   withdrawApproval(
     @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawSpotProcurementApprovalDto
   ) {
-    return this.applications.withdrawApproval(procurementId, user.id);
+    return this.applications.withdrawApproval(
+      procurementId,
+      user.id,
+      body
+    );
   }
 
   @Post(":procurementId/voiding")

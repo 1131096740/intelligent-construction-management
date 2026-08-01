@@ -11,6 +11,9 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_spot_procurement_concurrency_verify";
+const EXPECTED_MIGRATION_COUNT = 114;
+const TERMINAL_MIGRATION =
+  "20260728161000_spot_procurement_application_revision_status";
 const root = path.resolve(__dirname, "../../..");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
@@ -57,6 +60,17 @@ function assertLocalDockerEndpoint(endpoint) {
   }
 }
 
+function createControlledDockerEnv(sourceEnv, fallbackHome) {
+  const dockerEnv = {
+    PATH: sourceEnv.PATH ?? "",
+    HOME: sourceEnv.HOME ?? fallbackHome
+  };
+  for (const key of ["DOCKER_HOST", "DOCKER_CONTEXT"]) {
+    if (sourceEnv[key] !== undefined) dockerEnv[key] = sourceEnv[key];
+  }
+  return dockerEnv;
+}
+
 async function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -73,11 +87,10 @@ async function freePort() {
   });
 }
 
-async function waitForPostgres(containerName) {
+async function waitForPostgres(containerName, dockerCommand) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      await command(
-        docker,
+      await dockerCommand(
         [
           "exec",
           containerName,
@@ -99,8 +112,7 @@ async function waitForPostgres(containerName) {
 
 function createSpotProcurementRunnerCleanup({
   commandRuntime,
-  command,
-  docker,
+  dockerCommand,
   containerName,
   temporaryRoot,
   removeTemporaryRoot = rm,
@@ -109,8 +121,7 @@ function createSpotProcurementRunnerCleanup({
   return createRunnerCleanup({
     stopChildren: () => commandRuntime.stopAll(),
     removeContainer: () =>
-      command(
-        docker,
+      dockerCommand(
         ["rm", "--force", containerName],
         { timeoutMs: 60_000 }
       ).catch((error) => {
@@ -141,6 +152,17 @@ async function main() {
   const databaseUrl =
     `postgresql://jiangkong:${databasePassword}` +
     `@127.0.0.1:${databasePort}/${DATABASE_NAME}`;
+  const dockerEnv = createControlledDockerEnv(
+    process.env,
+    temporaryRoot
+  );
+  const dockerCommand = (args, options = {}) => {
+    const { extraEnv = {}, ...commandOptions } = options;
+    return command(docker, args, {
+      ...commandOptions,
+      env: { ...dockerEnv, ...extraEnv }
+    });
+  };
   const runtimeEnv = {
     PATH: process.env.PATH ?? "",
     HOME: process.env.HOME ?? temporaryRoot,
@@ -155,8 +177,7 @@ async function main() {
 
   const cleanup = createSpotProcurementRunnerCleanup({
     commandRuntime,
-    command,
-    docker,
+    dockerCommand,
     containerName,
     temporaryRoot,
     onComplete: () =>
@@ -181,9 +202,8 @@ async function main() {
 
   try {
     await withGuaranteedCleanup(async () => {
-      assertLocalDockerEndpoint(process.env.DOCKER_HOST ?? "");
-      const dockerEndpoint = await command(
-        docker,
+      assertLocalDockerEndpoint(dockerEnv.DOCKER_HOST ?? "");
+      const dockerEndpoint = await dockerCommand(
         [
           "context",
           "inspect",
@@ -192,10 +212,9 @@ async function main() {
         ]
       );
       assertLocalDockerEndpoint(dockerEndpoint.stdout);
-      await command(docker, ["info"]);
+      await dockerCommand(["info"]);
 
-      await command(
-        docker,
+      await dockerCommand(
         [
           "run",
           "--detach",
@@ -213,15 +232,11 @@ async function main() {
           "postgres:16"
         ],
         {
-          env: {
-            PATH: process.env.PATH ?? "",
-            HOME: process.env.HOME ?? temporaryRoot,
-            POSTGRES_PASSWORD: databasePassword
-          },
+          extraEnv: { POSTGRES_PASSWORD: databasePassword },
           forwardOutput: true
         }
       );
-      await waitForPostgres(containerName);
+      await waitForPostgres(containerName, dockerCommand);
       console.log(
         `临时 PostgreSQL 16 已就绪：${containerName}` +
           `（${DATABASE_NAME}，仅 127.0.0.1）`
@@ -247,9 +262,68 @@ async function main() {
           "exec",
           "prisma",
           "migrate",
+          "deploy"
+        ],
+        { env: runtimeEnv, forwardOutput: true }
+      );
+      await command(
+        pnpm,
+        [
+          "--filter",
+          "@jiangkong/api",
+          "exec",
+          "prisma",
+          "migrate",
           "status"
         ],
         { env: runtimeEnv, forwardOutput: true }
+      );
+      const migrationProof = await dockerCommand(
+        [
+          "exec",
+          containerName,
+          "psql",
+          "-U",
+          "jiangkong",
+          "-d",
+          DATABASE_NAME,
+          "-X",
+          "-A",
+          "-t",
+          "-F",
+          "|",
+          "-c",
+          `SELECT count(*) FILTER (` +
+            `WHERE finished_at IS NOT NULL ` +
+            `AND rolled_back_at IS NULL), ` +
+            `count(*) FILTER (` +
+            `WHERE migration_name = '${TERMINAL_MIGRATION}' ` +
+            `AND finished_at IS NOT NULL ` +
+            `AND rolled_back_at IS NULL) ` +
+            `FROM _prisma_migrations;`
+        ],
+        { timeoutMs: 30_000 }
+      );
+      const [
+        appliedMigrationCount,
+        terminalMigrationCount
+      ] = migrationProof.stdout
+        .trim()
+        .split("|")
+        .map((value) => Number(value));
+      if (
+        appliedMigrationCount !== EXPECTED_MIGRATION_COUNT ||
+        terminalMigrationCount !== 1
+      ) {
+        throw new Error(
+          "临时 PostgreSQL 迁移证明不完整：" +
+            `applied=${appliedMigrationCount} ` +
+            `terminal=${terminalMigrationCount}`
+        );
+      }
+      console.log(
+        `空库 ${EXPECTED_MIGRATION_COUNT} 个迁移双 deploy 通过，` +
+          `终点迁移 ${TERMINAL_MIGRATION} 已完成`
       );
       await command(
         process.execPath,
@@ -284,5 +358,6 @@ if (require.main === module) {
 }
 
 module.exports = {
+  createControlledDockerEnv,
   createSpotProcurementRunnerCleanup
 };

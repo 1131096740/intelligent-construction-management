@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `159b19c1737a577a2def4147ca101cd20901195e12d0560d64d7e19eb59c27d2` |
-| webApiWrappers | blocked | `23a0f2e35cd7d87bff41f116d5a140615f295f71e01e1d3ba8201a51860cc84f` |
-| webPageActions | blocked | `9255d7a587184687f4b105377bab017a728b3663659a36a5d9c6af087b40c186` |
-| routeUsage | blocked | `7d516954f3f0b5701f31924d1f4379d46fc28fced77f5f0af24c336849661e0c` |
+| nestRoutes | ready | `90a4efc1af630b4c3d071307b6faca44f792b40412ab50293e993ddcd9051661` |
+| webApiWrappers | blocked | `bcce22ff93b433272b1b2ed4d8d06249958cbfee96f31a0f94aaf69531ade971` |
+| webPageActions | blocked | `167eb805197ef58c654dfa133904387ff10622f09850b646116b902e60ce1358` |
+| routeUsage | blocked | `f7d401bc648d3dceb343867be280f712353f17882e440595486fd6c456aba429` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 23 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 26 |
-| mainRequestBindingCount | 395 |
+| mainRequestBindingCount | 396 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 48 |
 | duplicateMutationRouteCount | 5 |
-| registeredActionCount | 43 |
-| actionBindingCount | 56 |
-| acceptedActionBindingCount | 28 |
+| registeredActionCount | 44 |
+| actionBindingCount | 57 |
+| acceptedActionBindingCount | 29 |
 | unresolvedActionBindingCount | 28 |
 | productionMutationConsumerPairCount | 273 |
-| coveredProductionMutationConsumerPairCount | 19 |
-| uncoveredProductionMutationConsumerPairCount | 254 |
-| blockerCount | 365 |
+| coveredProductionMutationConsumerPairCount | 20 |
+| uncoveredProductionMutationConsumerPairCount | 253 |
+| blockerCount | 364 |
 
 ## 路由矩阵
 
@@ -140,7 +140,7 @@
 | GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail | — | not_applicable | — |
 | GET | /spot-procurement-payments | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPayments | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | — | not_applicable | — |
-| GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction | — | not_applicable | — |
+| GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementWithdrawalAction | — | not_applicable | — |
 | GET | /spot-procurements/application-text-suggestions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationTextSuggestions | — | not_applicable | — |
 | GET | /spot-procurements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCapabilities | — | not_applicable | — |
 | GET | /spot-procurements/create-project-options | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementCreateProjectOptions | — | not_applicable | — |
@@ -402,7 +402,7 @@
 | POST | /spot-procurements/:procurementId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/abnormal-termination/confirmation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#confirmSpotProcurementAbnormalTermination | spot-procurement.abnormal-termination-confirm | covered | — |
 | POST | /spot-procurements/:procurementId/abnormal-termination | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#requestSpotProcurementAbnormalTermination | spot-procurement.abnormal-termination-request | covered | — |
-| POST | /spot-procurements/:procurementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /spot-procurements/:procurementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementWithdrawalAction | spot-procurement.withdraw | covered | — |
 | POST | /spot-procurements/:procurementId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementReviewAction | spot-procurement.review-approve<br>spot-procurement.review-reject<br>spot-procurement.review-return-to-applicant | covered | — |
 | POST | /spot-procurements/:procurementId/discrepancy | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review | unclassified | none | — | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
@@ -750,7 +750,6 @@
 - apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#voidSpotProcurement → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#voidSpotProcurementPayment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
-- apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurement → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurementPayment → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 
 ### 未解决动作绑定
