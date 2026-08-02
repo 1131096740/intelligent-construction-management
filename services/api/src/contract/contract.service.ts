@@ -51,6 +51,7 @@ import {
   ReviewContractApprovalDto,
   type ExpectedContractOwnerRiskDto
 } from "./dto/review-contract-approval.dto";
+import { WithdrawContractApprovalDto } from "./dto/withdraw-contract-approval.dto";
 import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
@@ -2945,36 +2946,116 @@ export class ContractService {
   }
 
   // 申请人撤回进行中的合同审批：版本退回 draft 以便修改后重新提交（同一版本，不新建版本）。
-  async withdrawApproval(contractVersionId: string, actorUserId: string) {
+  async withdrawApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    input: WithdrawContractApprovalDto
+  ) {
+    const expectedContractUpdatedAt = new Date(input.expectedContractUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    const expectedApprovalInstanceId = input.expectedApprovalInstanceId?.trim();
+    if (Number.isNaN(expectedContractUpdatedAt.getTime())) {
+      throw new BadRequestException("预期合同版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
+    if (!expectedApprovalInstanceId) {
+      throw new BadRequestException("预期审批实例不能空白");
+    }
+    if (!Number.isInteger(input.expectedNodeIndex) || input.expectedNodeIndex < 0) {
+      throw new BadRequestException("预期审批节点格式不正确");
+    }
+
+    // 先用客户端冻结的审批实例核实申请人与目标绑定，避免非申请人探测合同版本是否存在。
+    // 该查询不加锁；通过后事务内仍按 ContractVersion -> ApprovalInstance 的固定顺序加锁并复核。
+    const withdrawalIdentity = await this.prisma.approvalInstance.findFirst({
+      where: {
+        id: expectedApprovalInstanceId,
+        applicantUserId: actorUserId,
+        businessType: "contract_version",
+        businessId: contractVersionId,
+        flowType: "contract.approve"
+      },
+      select: { id: true }
+    });
+    if (!withdrawalIdentity) {
+      throw new ForbiddenException("只有合同审批申请人可以撤回审批");
+    }
+
     return this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ContractVersion"
+        WHERE "id" = ${contractVersionId}
+        FOR UPDATE
+      `);
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
 
       if (!version) {
-        throw new Error("未找到要撤回的合同审批任务，请刷新审批中心后重试");
+        throw new NotFoundException("未找到要撤回的合同审批任务，请刷新审批中心后重试");
       }
 
-      if (version.status !== "in_approval") {
-        throw new Error("当前合同已离开审批中，不能撤回审批");
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'contract_version'
+          AND "businessId" = ${version.id}
+          AND "flowType" = 'contract.approve'
+          AND (
+            "id" = ${expectedApprovalInstanceId}
+            OR "status" = 'in_progress'
+          )
+        ORDER BY "id"
+        FOR UPDATE
+      `);
+
+      const expectedInstance = await tx.approvalInstance.findFirst({
+        where: {
+          id: expectedApprovalInstanceId,
+          applicantUserId: actorUserId,
+          businessType: "contract_version",
+          businessId: version.id,
+          flowType: "contract.approve"
+        }
+      });
+
+      if (!expectedInstance || expectedInstance.applicantUserId !== actorUserId) {
+        throw new ForbiddenException("只有合同审批申请人可以撤回审批");
       }
 
-      const instance = await tx.approvalInstance.findFirst({
+      const activeInstances = await tx.approvalInstance.findMany({
         where: {
           businessType: "contract_version",
           businessId: version.id,
           flowType: "contract.approve",
           status: "in_progress"
-        }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 2
       });
-
-      if (!instance) {
-        throw new Error("未找到进行中的合同审批流程，请刷新审批中心后重试");
+      const instance = activeInstances.length === 1 ? activeInstances[0] : null;
+      if (
+        !(version.updatedAt instanceof Date) ||
+        version.updatedAt.getTime() !== expectedContractUpdatedAt.getTime() ||
+        version.status !== "in_approval" ||
+        !instance ||
+        instance.id !== expectedInstance.id ||
+        instance.id !== expectedApprovalInstanceId ||
+        instance.applicantUserId !== actorUserId ||
+        instance.currentNodeIndex !== input.expectedNodeIndex ||
+        !(instance.updatedAt instanceof Date) ||
+        instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw contractApprovalWithdrawalConflict();
       }
 
-      if (instance.applicantUserId !== actorUserId) {
-        throw new Error("只有合同审批申请人可以撤回审批");
-      }
+      const auditCoordinates = {
+        expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),
+        expectedApprovalInstanceId,
+        expectedNodeIndex: input.expectedNodeIndex,
+        expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
+      };
 
       const updated = await tx.contractVersion.update({
         where: { id: version.id },
@@ -3006,7 +3087,8 @@ export class ContractService {
         metadata: {
           fromStatus: version.status,
           toStatus: "draft",
-          applicantUserId: instance.applicantUserId
+          applicantUserId: instance.applicantUserId,
+          ...auditCoordinates
         }
       });
 
@@ -3713,6 +3795,13 @@ function contractApprovalReviewConflict() {
   return new ConflictException({
     code: "CONTRACT_APPROVAL_REVIEW_CONFLICT",
     message: "合同审批状态或坐标已变化，请刷新页面后重试"
+  });
+}
+
+function contractApprovalWithdrawalConflict() {
+  return new ConflictException({
+    code: "CONTRACT_APPROVAL_WITHDRAWAL_CONFLICT",
+    message: "合同审批状态或撤回坐标已变化，请刷新页面后重试"
   });
 }
 

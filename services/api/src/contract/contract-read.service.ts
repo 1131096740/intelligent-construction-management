@@ -70,6 +70,12 @@ interface CurrentContractApprovalReview {
   } | null;
 }
 
+interface CurrentContractApprovalWithdrawal {
+  id: string;
+  currentNodeIndex: number;
+  updatedAt: Date;
+}
+
 function emptyCurrentContractApprovalReview(): CurrentContractApprovalReview {
   return { access: emptyApprovalReviewAccess(), approval: null };
 }
@@ -1179,6 +1185,23 @@ export class ContractReadService {
               currentApprovalReview.approval.updatedAt.toISOString()
           }
         : null;
+    const currentApprovalWithdrawal = await this.currentApprovalWithdrawal(
+      "contract_version",
+      version.id,
+      actorUserId
+    );
+    const withdrawApprovalContext =
+      version.status === "in_approval" &&
+      version.updatedAt instanceof Date &&
+      currentApprovalWithdrawal?.updatedAt instanceof Date
+        ? {
+            expectedContractUpdatedAt: version.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalWithdrawal.id,
+            expectedNodeIndex: currentApprovalWithdrawal.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              currentApprovalWithdrawal.updatedAt.toISOString()
+          }
+        : null;
     const approvalReviewAccess = candidateReviewApprovalContext
       ? currentApprovalReview.access
       : { ...currentApprovalReview.access, canReview: false };
@@ -1244,7 +1267,8 @@ export class ContractReadService {
         )),
         canUploadGovernedFinal,
         canReportSigningMaterialChange,
-        genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction)
+        genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction),
+        withdrawApprovalContext
       }
     );
 
@@ -1383,6 +1407,7 @@ export class ContractReadService {
       approvalTimeline,
       availableActions,
       reviewApprovalContext,
+      withdrawApprovalContext,
       lifecycleKind: draftLifecycle.lifecycleKind,
       lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
@@ -1473,6 +1498,7 @@ export class ContractReadService {
       approvalTimeline: [],
       availableActions: [],
       reviewApprovalContext: null,
+      withdrawApprovalContext: null,
       primaryAction: null,
       disabledReasons: [],
       chainLinks: [
@@ -1914,6 +1940,63 @@ export class ContractReadService {
     };
   }
 
+  private async currentApprovalWithdrawal(
+    businessType: string,
+    businessId: string,
+    actorUserId?: string
+  ): Promise<CurrentContractApprovalWithdrawal | null> {
+    if (!actorUserId) return null;
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "contract.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          applicantUserId: string;
+          currentNodeIndex: number;
+          updatedAt: Date;
+        }>>;
+      };
+    }).approvalInstance;
+    if (!approvalClient?.findMany) return null;
+
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "contract.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
+    });
+    if (instances.length !== 1 || instances[0]?.applicantUserId !== actorUserId) {
+      return null;
+    }
+
+    return instances[0];
+  }
+
   private async activeDelegatedApprovalIdentities(
     actorUserId: string,
     projectId: string
@@ -1949,6 +2032,7 @@ export class ContractReadService {
       canUploadGovernedFinal: boolean;
       canReportSigningMaterialChange: boolean;
       genericDraftActionsAllowed: boolean;
+      withdrawApprovalContext: ContractDetailReadModel["withdrawApprovalContext"];
     }
   ): DetailActionReadModel[] {
     const materialChangeStatus = status as ContractSigningMaterialChangeStatus;
@@ -1984,14 +2068,16 @@ export class ContractReadService {
         )),
         disabledReason: "审批单尚未生成或当前账号无下载权限"
       }),
-      detailAction({
-        key: "withdraw_approval",
-        label: "撤回审批",
-        kind: "normal",
-        roleKeys,
-        requiredAction: "contract.submit",
-        enabled: ["in_approval", "approval_pending"].includes(status)
-      }),
+      ...(context?.withdrawApprovalContext
+        ? [detailAction({
+            key: "withdraw_approval",
+            label: "撤回审批",
+            kind: "normal",
+            roleKeys,
+            skipRoleCheck: true,
+            enabled: true
+          })]
+        : []),
       detailAction({
         key: "remind_approval",
         label: "催办审批",

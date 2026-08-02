@@ -1589,6 +1589,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "prepareContractApprovalWithdrawalAction",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param",
+            "normalizedKey": "GET /contracts/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -8451,7 +8461,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "withdrawContractApproval",
+            "wrapper": "executeContractApprovalWithdrawalAction",
             "method": "POST",
             "normalizedPath": "/contracts/:param/approval-withdrawal",
             "normalizedKey": "POST /contracts/:param/approval-withdrawal",

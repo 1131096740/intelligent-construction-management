@@ -1,5 +1,6 @@
 import type {
   ContractBusinessOptionReadModel,
+  ContractApprovalWithdrawalContextReadModel,
   ContractWorkbenchLedgerPage,
   ContractWorkbenchView,
   ContractDetailReadModel,
@@ -18,6 +19,10 @@ import type {
 } from "@jiangkong/shared-domain";
 import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
 import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
+import {
+  ContractApprovalReviewResultUnknownError,
+  ContractApprovalWithdrawalResultUnknownError
+} from "../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
@@ -1210,14 +1215,85 @@ export type ExecuteContractApprovalReviewActionResult =
       error: unknown;
     };
 
-export class ContractApprovalReviewResultUnknownError extends Error {
-  constructor(readonly cause: unknown) {
-    super(
-      "合同审批提交结果暂时无法确认，请重新读取合同详情后人工核对，不要重复提交"
-    );
-    this.name = "ContractApprovalReviewResultUnknownError";
-  }
+export type ContractApprovalWithdrawalCoordinates =
+  ContractApprovalWithdrawalContextReadModel;
+
+export interface ContractApprovalWithdrawalActionContext
+  extends ContractApprovalWithdrawalCoordinates {
+  action: "withdraw";
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  routeContractId: string;
+  contractId: string;
+  contractVersionId: string;
 }
+
+export interface PrepareContractApprovalWithdrawalActionInput
+  extends ContractApprovalWithdrawalActionContext {
+  isCurrent: (
+    context: ContractApprovalWithdrawalActionContext
+  ) => boolean;
+}
+
+type ContractApprovalWithdrawalPreflightReadModel =
+  ContractDetailReadModel;
+
+export type PrepareContractApprovalWithdrawalActionResult =
+  | {
+      status: "ready";
+      context: ContractApprovalWithdrawalActionContext;
+      preflight: ContractApprovalWithdrawalPreflightReadModel;
+    }
+  | {
+      status: "stale";
+      context: ContractApprovalWithdrawalActionContext;
+    };
+
+export interface ExecuteContractApprovalWithdrawalActionInput {
+  action: "withdraw";
+  capture: (
+    action: "withdraw"
+  ) => ContractApprovalWithdrawalActionContext | null;
+  preflight: (
+    context: ContractApprovalWithdrawalActionContext
+  ) => Promise<PrepareContractApprovalWithdrawalActionResult>;
+  current: (
+    context: ContractApprovalWithdrawalActionContext,
+    prepared: PrepareContractApprovalWithdrawalActionResult
+  ) => boolean;
+  stale: (
+    context: ContractApprovalWithdrawalActionContext
+  ) => void | Promise<void>;
+  complete: (
+    context: ContractApprovalWithdrawalActionContext,
+    response: unknown
+  ) => void | Promise<void>;
+  fail: (
+    context: ContractApprovalWithdrawalActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: ContractApprovalWithdrawalActionContext) => void;
+}
+
+export type ExecuteContractApprovalWithdrawalActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: ContractApprovalWithdrawalActionContext;
+    }
+  | {
+      status: "completed";
+      context: ContractApprovalWithdrawalActionContext;
+      response: unknown;
+    }
+  | {
+      status: "failed";
+      context: ContractApprovalWithdrawalActionContext;
+      error: unknown;
+    };
 
 export interface ContractNumberRuleReadModel {
   id: string;
@@ -5547,8 +5623,202 @@ function sameContractApprovalOwnerRisk(
   );
 }
 
-export function withdrawContractApproval(contractVersionId: string) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/approval-withdrawal`);
+export async function prepareContractApprovalWithdrawalAction(
+  input: PrepareContractApprovalWithdrawalActionInput
+): Promise<PrepareContractApprovalWithdrawalActionResult> {
+  const context = normalizeContractApprovalWithdrawalAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchContractDetail(
+    context.routeContractId
+  ) as ContractApprovalWithdrawalPreflightReadModel;
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertContractApprovalWithdrawalPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeContractApprovalWithdrawalAction(
+  input: ExecuteContractApprovalWithdrawalActionInput
+): Promise<ExecuteContractApprovalWithdrawalActionResult> {
+  const capturedContext = input.capture(input.action);
+  if (!capturedContext) return { status: "not_started" };
+  let activeContext = capturedContext;
+
+  try {
+    const frozenCapturedContext = normalizeContractApprovalWithdrawalAction(
+      capturedContext
+    );
+    activeContext = frozenCapturedContext;
+    const prepared = await input.preflight(frozenCapturedContext);
+    activeContext = prepared.context;
+    if (
+      prepared.status !== "ready" ||
+      !sameContractApprovalWithdrawalContext(
+        frozenCapturedContext,
+        prepared.context
+      ) ||
+      !input.current(frozenCapturedContext, prepared)
+    ) {
+      await input.stale(frozenCapturedContext);
+      return { status: "stale", context: frozenCapturedContext };
+    }
+
+    let response: unknown;
+    try {
+      response = await postJson<unknown>(
+        `/contracts/${encodeURIComponent(activeContext.contractVersionId)}/approval-withdrawal`,
+        contractApprovalWithdrawalPayload(activeContext)
+      );
+    } catch (error) {
+      if (error instanceof CoreFlowApiError && error.status < 500) {
+        throw error;
+      }
+      throw new ContractApprovalWithdrawalResultUnknownError(error);
+    }
+
+    if (!input.current(frozenCapturedContext, prepared)) {
+      throw new ContractApprovalWithdrawalResultUnknownError(
+        new Error("合同审批撤回请求已发出，但提交后的页面归属已变化")
+      );
+    }
+    await input.complete(activeContext, response);
+    return { status: "completed", context: activeContext, response };
+  } catch (error) {
+    await input.fail(activeContext, error);
+    return { status: "failed", context: activeContext, error };
+  } finally {
+    input.finish(activeContext);
+  }
+}
+
+function normalizeContractApprovalWithdrawalAction(
+  input: ContractApprovalWithdrawalActionContext
+): ContractApprovalWithdrawalActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const routeContractId = input.routeContractId.trim();
+  const contractId = input.contractId.trim();
+  const contractVersionId = input.contractVersionId.trim();
+  const expectedContractUpdatedAt =
+    input.expectedContractUpdatedAt.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const expectedApprovalUpdatedAt =
+    input.expectedApprovalUpdatedAt.trim();
+  if (
+    input.action !== "withdraw" ||
+    !ownerScope ||
+    !routeContractId ||
+    !contractId ||
+    !contractVersionId ||
+    !expectedContractUpdatedAt ||
+    !expectedApprovalInstanceId ||
+    !expectedApprovalUpdatedAt ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0
+  ) {
+    throw new Error(
+      "合同审批撤回上下文无效，请重新读取当前合同后再操作"
+    );
+  }
+
+  return Object.freeze({
+    action: "withdraw",
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    routeContractId,
+    contractId,
+    contractVersionId,
+    expectedContractUpdatedAt,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    expectedApprovalUpdatedAt
+  });
+}
+
+function sameContractApprovalWithdrawalContext(
+  expected: ContractApprovalWithdrawalActionContext,
+  actual: ContractApprovalWithdrawalActionContext
+) {
+  return (
+    expected.action === actual.action &&
+    expected.ownerScope === actual.ownerScope &&
+    expected.routeGeneration === actual.routeGeneration &&
+    expected.detailEpoch === actual.detailEpoch &&
+    expected.dialogGeneration === actual.dialogGeneration &&
+    expected.operationId === actual.operationId &&
+    expected.routeContractId === actual.routeContractId &&
+    expected.contractId === actual.contractId &&
+    expected.contractVersionId === actual.contractVersionId &&
+    expected.expectedContractUpdatedAt ===
+      actual.expectedContractUpdatedAt &&
+    expected.expectedApprovalInstanceId ===
+      actual.expectedApprovalInstanceId &&
+    expected.expectedNodeIndex === actual.expectedNodeIndex &&
+    expected.expectedApprovalUpdatedAt ===
+      actual.expectedApprovalUpdatedAt
+  );
+}
+
+function assertContractApprovalWithdrawalPreflight(
+  context: ContractApprovalWithdrawalActionContext,
+  preflight: ContractApprovalWithdrawalPreflightReadModel
+) {
+  const enabledWithdrawalActions = preflight.availableActions.filter(
+    (action) => action.key === "withdraw_approval" && action.enabled
+  );
+  const coordinates = preflight.withdrawApprovalContext;
+  if (
+    preflight.id !== context.contractId ||
+    preflight.contractVersionId !== context.contractVersionId ||
+    preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt ||
+    enabledWithdrawalActions.length !== 1 ||
+    coordinates?.expectedContractUpdatedAt !==
+      context.expectedContractUpdatedAt ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
+    coordinates.expectedApprovalUpdatedAt !==
+      context.expectedApprovalUpdatedAt
+  ) {
+    throw new Error(
+      "合同审批撤回资格或审批坐标已变化，请重新读取当前合同"
+    );
+  }
+}
+
+function contractApprovalWithdrawalPayload(
+  context: ContractApprovalWithdrawalActionContext
+): ContractApprovalWithdrawalCoordinates {
+  if (context.action !== "withdraw") {
+    throw new Error(
+      "合同审批撤回上下文无效，请重新读取当前合同后再操作"
+    );
+  }
+  return {
+    expectedContractUpdatedAt: context.expectedContractUpdatedAt,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex,
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+  };
 }
 
 export function remindContractApproval(contractVersionId: string) {

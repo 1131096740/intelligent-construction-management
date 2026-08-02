@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 57,
-    "pageActionCount": 51,
+    "registeredActionCount": 58,
+    "pageActionCount": 52,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
-    "reachableProductionModuleCount": 232,
-    "templateEventDirectiveCount": 946,
+    "reachableProductionModuleCount": 233,
+    "templateEventDirectiveCount": 947,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 28,
-    "candidateProductionMutationConsumerCount": 47,
-    "acceptedProductionMutationConsumerCount": 28,
+    "coveredProductionMutationConsumerCount": 29,
+    "candidateProductionMutationConsumerCount": 48,
+    "acceptedProductionMutationConsumerCount": 29,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 295
+    "blockerCount": 294
   },
   "evidence": {
-    "totalProductionModuleCount": 239,
-    "reachableProductionModuleCount": 232,
+    "totalProductionModuleCount": 240,
+    "reachableProductionModuleCount": 233,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135
   },
@@ -325,6 +325,71 @@
               "executeContractApprovalReviewAction"
             ],
             "variant": "reject"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractWithdrawal",
+        "kind": "event",
+        "sourceLine": 997,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractReviewCapability.availableActions",
+        "key": "withdraw_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractApprovalWithdrawalAction",
+          "method": "POST",
+          "path": "/contracts/:param/approval-withdrawal",
+          "normalizedKey": "POST /contracts/:param/approval-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/approval-withdrawal",
+            "normalizedKey": "POST /contracts/:param/approval-withdrawal",
+            "controller": "ContractController",
+            "handler": "withdrawApproval",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractWithdrawal",
+              "executeContractApprovalWithdrawalAction"
+            ]
           },
           "ticketFollowups": []
         }
@@ -1413,7 +1478,7 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1014,
+        "sourceLine": 1026,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -5407,15 +5472,6 @@
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "normalizedKeys": [
           "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawContractApproval",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-withdrawal"
         ]
       },
       {

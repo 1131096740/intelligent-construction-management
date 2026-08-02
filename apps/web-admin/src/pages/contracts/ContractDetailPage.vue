@@ -316,7 +316,7 @@
               </label>
               <div class="action-buttons action-buttons--end">
                 <t-button
-                  v-if="isContractActionEnabled('withdraw_approval')"
+                  v-if="contractWithdrawalActionEnabled()"
                   variant="outline"
                   :loading="archiveActionBusy === 'withdrawApproval'"
                   @click="requestContractWithdrawal"
@@ -986,7 +986,19 @@
     />
 
     <SensitiveActionDialog
-      v-if="sensitiveAction.kind !== 'approvalApprove' && sensitiveAction.kind !== 'approvalReject'"
+      v-if="sensitiveAction.kind === 'withdrawal' && contractWithdrawalActionEnabled()"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :loading="archiveActionBusy === 'withdrawApproval'"
+      :error="sensitiveAction.error"
+      @confirm="confirmContractWithdrawal"
+    />
+
+    <SensitiveActionDialog
+      v-if="sensitiveAction.kind !== 'approvalApprove' && sensitiveAction.kind !== 'approvalReject' && sensitiveAction.kind !== 'withdrawal'"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
       :description="sensitiveAction.description"
@@ -1090,28 +1102,34 @@ import {
   createPrivateFileDownloadTicket,
   delegateContractApproval,
   downloadApprovalForm as requestApprovalFormDownload,
+  executeContractApprovalWithdrawalAction,
   executeContractApprovalReviewAction,
   executeContractSigningMaterialChange,
   fetchApprovalDelegationUserOptions,
   fetchContractChangeEligibility,
   fetchContractDetail,
   generateContractPdfArchive,
+  prepareContractApprovalWithdrawalAction,
   prepareContractApprovalReviewAction,
   remindContractApproval,
   returnMutuallySignedContractForCorrection,
   transferContractApproval,
   uploadContractArchiveFile,
   uploadMutuallySignedContract,
-  uploadPrivateFile,
-  withdrawContractApproval
+  uploadPrivateFile
 } from "../../api/core-flow-read.api";
 import type {
+  ContractApprovalWithdrawalActionContext,
+  ContractApprovalWithdrawalCoordinates,
   ContractApprovalOwnerRiskSnapshot,
   ContractApprovalReviewActionContext,
   ContractApprovalReviewActionDecision,
   ContractSigningMaterialChangeActionContext
 } from "../../api/core-flow-read.api";
-import { ContractApprovalReviewResultUnknownError } from "../../api/core-flow-read.api";
+import {
+  ContractApprovalReviewResultUnknownError,
+  ContractApprovalWithdrawalResultUnknownError
+} from "../../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../../lib/contract-signing-material-change-result";
 import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -1214,6 +1232,16 @@ type ContractReviewDialogContext = Pick<
   | "ownerContractRisk"
 >;
 
+interface ContractWithdrawalDialogContext
+  extends ContractApprovalWithdrawalCoordinates {
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  routeContractId: string;
+  contractId: string;
+  contractVersionId: string;
+}
+
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
@@ -1240,6 +1268,12 @@ let contractReviewOperationId = 0;
 let contractReviewDialogContext: ContractReviewDialogContext | null = null;
 let contractReviewInFlight: Promise<boolean> | null = null;
 let contractReviewResultUnknown = false;
+let contractWithdrawalSubmissionToken = 0;
+let contractWithdrawalDialogGeneration = 0;
+let contractWithdrawalOperationId = 0;
+let contractWithdrawalDialogContext: ContractWithdrawalDialogContext | null = null;
+let contractWithdrawalInFlight: Promise<boolean> | null = null;
+let contractWithdrawalResultUnknown = false;
 let changeDialogBaseVersionId = "";
 const changeForm = reactive({
   changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
@@ -1449,7 +1483,7 @@ const showContractApprovalActions = computed(
     isContractActionEnabled("download_approval_form")
 );
 const showContractAssistanceActions = computed(
-  () => isContractActionEnabled("withdraw_approval") ||
+  () => contractWithdrawalActionEnabled() ||
     isContractActionEnabled("remind_approval") ||
     isContractActionEnabled("transfer_approval") ||
     isContractActionEnabled("delegate_approval")
@@ -1597,6 +1631,19 @@ function contractReviewActionEnabled() {
     !contractReviewResultUnknown;
 }
 
+function contractWithdrawalActionEnabled() {
+  return Boolean(
+    contractReviewCapability.value?.availableActions.some(
+      (action) => action.key === "withdraw_approval" && action.enabled
+    )
+  ) &&
+    Boolean(contractReviewCapability.value?.withdrawApprovalContext) &&
+    (contractReviewCapability.value?.availableActions.filter(
+      (action) => action.key === "withdraw_approval" && action.enabled
+    ).length ?? 0) === 1 &&
+    !contractWithdrawalResultUnknown;
+}
+
 function signingMaterialChangeActionEnabled() {
   return Boolean(
     contractReviewCapability.value?.availableActions.some(
@@ -1681,6 +1728,7 @@ async function reloadContractDetail() {
   contractDetailError.value = "";
   contractReviewCapability.value = null;
   contractReviewResultUnknown = false;
+  contractWithdrawalResultUnknown = false;
   detailLoading.value = true;
   try {
     const serverDetail = await fetchContractDetail(contractId);
@@ -1775,6 +1823,11 @@ function clearContractActionTransientState() {
   contractReviewInFlight = null;
   contractReviewResultUnknown = false;
   contractReviewCapability.value = null;
+  contractWithdrawalSubmissionToken += 1;
+  contractWithdrawalDialogGeneration += 1;
+  contractWithdrawalDialogContext = null;
+  contractWithdrawalInFlight = null;
+  contractWithdrawalResultUnknown = false;
   contractArchiveForm.ownerContractRiskConfirmed = false;
   signingMaterialChangeDialogContext.value = null;
   signingMaterialChangeDialogVisible.value = false;
@@ -2291,12 +2344,59 @@ function requestFinalContractConfirmation() {
   });
 }
 
+function currentContractWithdrawalCoordinates(): ContractWithdrawalDialogContext | null {
+  const capability = contractReviewCapability.value;
+  const coordinates = capability?.withdrawApprovalContext;
+  const enabledActions = capability?.availableActions.filter(
+    (action) => action.key === "withdraw_approval" && action.enabled
+  ) ?? [];
+  const currentRouteContractId = routeContractId();
+  if (
+    !capability ||
+    !coordinates ||
+    enabledActions.length !== 1 ||
+    !contractWithdrawalActionEnabled() ||
+    !currentRouteContractId ||
+    capability.id !== currentRouteContractId ||
+    !capability.contractVersionId ||
+    capability.lifecycleUpdatedAt !== coordinates.expectedContractUpdatedAt ||
+    !coordinates.expectedContractUpdatedAt ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    !coordinates.expectedApprovalUpdatedAt
+  ) {
+    return null;
+  }
+
+  return Object.freeze({
+    routeGeneration: detailRequestId,
+    detailEpoch: detailRequestId,
+    dialogGeneration: contractWithdrawalDialogGeneration,
+    routeContractId: currentRouteContractId,
+    contractId: capability.id,
+    contractVersionId: capability.contractVersionId,
+    expectedContractUpdatedAt: coordinates.expectedContractUpdatedAt,
+    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt
+  });
+}
+
 function requestContractWithdrawal() {
+  const context = currentContractWithdrawalCoordinates();
+  if (!context || contractWithdrawalResultUnknown) return;
+  contractWithdrawalDialogGeneration += 1;
+  contractWithdrawalDialogContext = Object.freeze({
+    ...context,
+    dialogGeneration: contractWithdrawalDialogGeneration
+  });
   openSensitiveAction("withdrawal", {
     title: "确认撤回合同审批？",
-    description: "撤回会中止当前待办流转，后续能否再次提交以当前单据状态为准。",
+    description: "撤回会中止当前审批流并将同一合同版本退回草稿；历史审批和撤回记录不会删除。",
     confirmText: "确认撤回",
-    confirmTheme: "danger"
+    confirmTheme: "danger",
+    targetContractVersionId: context.contractVersionId
   });
 }
 
@@ -2476,11 +2576,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
             ...finalDeclarationPayload(finalArchiveConfirmations.value)
           });
         });
-        break;
-      case "withdrawal":
-        succeeded = await runArchiveAction("withdrawApproval", () =>
-          withdrawContractApproval(currentContractVersionId())
-        );
         break;
       case "transfer":
       case "delegate":
@@ -2874,6 +2969,191 @@ function confirmContractReviewReject(values: { reason: string; password: string 
   void execution.finally(() => {
     if (contractReviewInFlight === execution) {
       contractReviewInFlight = null;
+    }
+  });
+  return execution;
+}
+
+function contractWithdrawalOwnerScope(
+  context:
+    | ContractWithdrawalDialogContext
+    | ContractApprovalWithdrawalActionContext
+) {
+  return [
+    context.routeContractId,
+    context.contractVersionId,
+    context.expectedApprovalInstanceId
+  ].join("\u0000");
+}
+
+function sameContractWithdrawalCoordinates(
+  expected: ContractWithdrawalDialogContext,
+  actual: ContractWithdrawalDialogContext
+) {
+  return (
+    expected.routeGeneration === actual.routeGeneration &&
+    expected.detailEpoch === actual.detailEpoch &&
+    expected.dialogGeneration === actual.dialogGeneration &&
+    expected.routeContractId === actual.routeContractId &&
+    expected.contractId === actual.contractId &&
+    expected.contractVersionId === actual.contractVersionId &&
+    expected.expectedContractUpdatedAt ===
+      actual.expectedContractUpdatedAt &&
+    expected.expectedApprovalInstanceId ===
+      actual.expectedApprovalInstanceId &&
+    expected.expectedNodeIndex === actual.expectedNodeIndex &&
+    expected.expectedApprovalUpdatedAt ===
+      actual.expectedApprovalUpdatedAt
+  );
+}
+
+function captureContractWithdrawalContext(): ContractApprovalWithdrawalActionContext | null {
+  const dialog = contractWithdrawalDialogContext;
+  const fresh = currentContractWithdrawalCoordinates();
+  if (
+    !dialog ||
+    !fresh ||
+    !sameContractWithdrawalCoordinates(dialog, fresh) ||
+    archiveActionBusy.value ||
+    contractWithdrawalResultUnknown ||
+    !sensitiveAction.visible ||
+    sensitiveAction.kind !== "withdrawal"
+  ) {
+    return null;
+  }
+
+  const operationId = ++contractWithdrawalOperationId;
+  contractWithdrawalSubmissionToken = operationId;
+  archiveActionBusy.value = "withdrawApproval";
+  archiveActionMessage.value = "";
+  sensitiveAction.error = "";
+  return Object.freeze({
+    action: "withdraw",
+    ownerScope: contractWithdrawalOwnerScope(dialog),
+    routeGeneration: dialog.routeGeneration,
+    detailEpoch: dialog.detailEpoch,
+    dialogGeneration: dialog.dialogGeneration,
+    operationId,
+    routeContractId: dialog.routeContractId,
+    contractId: dialog.contractId,
+    contractVersionId: dialog.contractVersionId,
+    expectedContractUpdatedAt: dialog.expectedContractUpdatedAt,
+    expectedApprovalInstanceId: dialog.expectedApprovalInstanceId,
+    expectedNodeIndex: dialog.expectedNodeIndex,
+    expectedApprovalUpdatedAt: dialog.expectedApprovalUpdatedAt
+  });
+}
+
+function ownsContractWithdrawalSubmission(
+  context: ContractApprovalWithdrawalActionContext
+) {
+  return context.operationId === contractWithdrawalSubmissionToken &&
+    context.ownerScope === contractWithdrawalOwnerScope(context) &&
+    routeContractId() === context.routeContractId;
+}
+
+function contractWithdrawalSubmissionIsCurrent(
+  context: ContractApprovalWithdrawalActionContext
+) {
+  const current = currentContractWithdrawalCoordinates();
+  return ownsContractWithdrawalSubmission(context) &&
+    context.routeGeneration === detailRequestId &&
+    context.detailEpoch === detailRequestId &&
+    context.dialogGeneration === contractWithdrawalDialogGeneration &&
+    sensitiveAction.visible &&
+    sensitiveAction.kind === "withdrawal" &&
+    Boolean(current) &&
+    current?.contractId === context.contractId &&
+    current.contractVersionId === context.contractVersionId &&
+    current.expectedContractUpdatedAt ===
+      context.expectedContractUpdatedAt &&
+    current.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    current.expectedNodeIndex === context.expectedNodeIndex &&
+    current.expectedApprovalUpdatedAt ===
+      context.expectedApprovalUpdatedAt;
+}
+
+async function completeContractWithdrawal(
+  context: ContractApprovalWithdrawalActionContext
+) {
+  if (!ownsContractWithdrawalSubmission(context)) return;
+  const refreshed = await reloadContractDetail();
+  if (!ownsContractWithdrawalSubmission(context)) return;
+  archiveActionMessageTone.value = "success";
+  archiveActionMessage.value = refreshed
+    ? "合同审批已撤回，权威合同详情已刷新。"
+    : "合同审批已撤回，但详情刷新失败；请手动刷新，不要重复提交。";
+  contractWithdrawalDialogContext = null;
+  sensitiveAction.visible = false;
+  sensitiveAction.kind = null;
+}
+
+function staleContractWithdrawal(
+  context: ContractApprovalWithdrawalActionContext
+) {
+  if (!ownsContractWithdrawalSubmission(context)) return;
+  archiveActionMessageTone.value = "danger";
+  archiveActionMessage.value =
+    "合同撤回资格或审批坐标已变化，本次没有提交；请关闭对话框并刷新详情。";
+  sensitiveAction.error = archiveActionMessage.value;
+}
+
+async function failContractWithdrawal(
+  context: ContractApprovalWithdrawalActionContext,
+  error: unknown
+) {
+  if (!ownsContractWithdrawalSubmission(context)) return;
+  if (error instanceof ContractApprovalWithdrawalResultUnknownError) {
+    const refreshed = await reloadContractDetail();
+    if (!ownsContractWithdrawalSubmission(context)) return;
+    contractWithdrawalResultUnknown = true;
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = refreshed
+      ? "合同审批撤回结果暂时无法确认，系统已续读权威详情；请人工核对当前状态，不要重复提交。"
+      : "合同审批撤回结果暂时无法确认，权威详情也未能刷新；请重新进入合同详情核对，不要重复提交。";
+    contractWithdrawalDialogContext = null;
+    sensitiveAction.visible = false;
+    sensitiveAction.kind = null;
+    return;
+  }
+
+  archiveActionMessageTone.value = "danger";
+  const message = error instanceof Error ? error.message : "未知错误";
+  archiveActionMessage.value = `合同审批撤回未完成：${message}`;
+  sensitiveAction.error = archiveActionMessage.value;
+}
+
+function finishContractWithdrawal(
+  context: ContractApprovalWithdrawalActionContext
+) {
+  if (
+    ownsContractWithdrawalSubmission(context) &&
+    archiveActionBusy.value === "withdrawApproval"
+  ) {
+    archiveActionBusy.value = "";
+  }
+}
+
+function confirmContractWithdrawal() {
+  if (contractWithdrawalInFlight) return contractWithdrawalInFlight;
+  const execution = executeContractApprovalWithdrawalAction({
+    action: "withdraw",
+    capture: captureContractWithdrawalContext,
+    preflight: (context) => prepareContractApprovalWithdrawalAction({
+      ...context,
+      isCurrent: contractWithdrawalSubmissionIsCurrent
+    }),
+    current: contractWithdrawalSubmissionIsCurrent,
+    stale: staleContractWithdrawal,
+    complete: completeContractWithdrawal,
+    fail: failContractWithdrawal,
+    finish: finishContractWithdrawal
+  }).then((result) => result.status === "completed");
+  contractWithdrawalInFlight = execution;
+  void execution.finally(() => {
+    if (contractWithdrawalInFlight === execution) {
+      contractWithdrawalInFlight = null;
     }
   });
   return execution;

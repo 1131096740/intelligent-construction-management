@@ -256,6 +256,7 @@ export interface ContractDetailReadModel {
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
   reviewApprovalContext: ContractApprovalReviewContextReadModel | null;
+  withdrawApprovalContext: ContractApprovalWithdrawalContextReadModel | null;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;
@@ -284,6 +285,13 @@ export interface ContractDetailReadModel {
 }
 
 export interface ContractApprovalReviewContextReadModel {
+  expectedContractUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export interface ContractApprovalWithdrawalContextReadModel {
   expectedContractUpdatedAt: string;
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;

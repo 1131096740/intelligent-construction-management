@@ -22,6 +22,7 @@ const contractBodyRoutes = [
   ["contract.uploadFormalApprovalFile", ContractController, "uploadFormalApprovalFile", 2],
   ["contract.setAuthorization", ContractController, "setAuthorization", 2],
   ["contract.reviewApproval", ContractController, "reviewApproval", 2],
+  ["contract.withdrawApproval", ContractController, "withdrawApproval", 2],
   ["contract.transferApproval", ContractController, "transferApproval", 2],
   ["contract.delegateApproval", ContractController, "delegateApproval", 2],
   ["contract.completeGovernedSeal", ContractController, "completeGovernedSeal", 2],
@@ -105,6 +106,9 @@ const validContractRouteBodies = [
   }],
   ["contract.reviewApproval", ContractController, "reviewApproval", 2, {
     decision: "approve",
+    ...validContractReviewCoordinates
+  }],
+  ["contract.withdrawApproval", ContractController, "withdrawApproval", 2, {
     ...validContractReviewCoordinates
   }],
   ["contract.transferApproval", ContractController, "transferApproval", 2, { toUserId: "user-2" }],
@@ -258,6 +262,29 @@ describe("ContractController authorization wiring", () => {
       2,
       {
         decision: "approve",
+        ...validContractReviewCoordinates,
+        [field]: value
+      }
+    );
+
+    expect(response.errors).toContain(message);
+  });
+
+  it.each([
+    ["expectedContractUpdatedAt", undefined, "缺少预期合同版本"],
+    ["expectedContractUpdatedAt", "not-a-date", "预期合同版本格式不正确"],
+    ["expectedApprovalInstanceId", undefined, "缺少预期审批实例"],
+    ["expectedApprovalInstanceId", "   ", "预期审批实例不能为空白"],
+    ["expectedNodeIndex", undefined, "预期审批节点必须是整数"],
+    ["expectedNodeIndex", -1, "预期审批节点不能小于 0"],
+    ["expectedApprovalUpdatedAt", undefined, "缺少预期审批版本"],
+    ["expectedApprovalUpdatedAt", "not-a-date", "预期审批版本格式不正确"]
+  ] as const)("拒绝合同撤回坐标 %s 的非法值", async (field, value, message) => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "withdrawApproval",
+      2,
+      {
         ...validContractReviewCoordinates,
         [field]: value
       }

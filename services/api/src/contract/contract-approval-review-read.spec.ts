@@ -125,4 +125,38 @@ describe("Contract approval review read coordinates", () => {
     expect(detail.availableActions.filter((action) => action.key === "review_approval"))
       .toEqual([expect.objectContaining({ enabled: false })]);
   });
+
+  it("publishes withdrawal coordinates and one enabled action only to the applicant", async () => {
+    const { service } = detailFixture();
+
+    const detail = await service.getDetail(
+      "HT-2026-001",
+      ["project-1"],
+      "applicant-1"
+    );
+
+    expect(detail).toHaveProperty("withdrawApprovalContext", REVIEW_CONTEXT);
+    expect(detail.availableActions.filter(
+      (action) => action.key === "withdraw_approval" && action.enabled
+    )).toHaveLength(1);
+  });
+
+  it.each([
+    ["non-applicant", 1, "reviewer-1"],
+    ["missing active instance", 0, "applicant-1"],
+    ["duplicate active instances", 2, "applicant-1"]
+  ] as const)("does not publish withdrawal authority for %s", async (_label, count, actorUserId) => {
+    const { service } = detailFixture(count);
+
+    const detail = await service.getDetail(
+      "HT-2026-001",
+      ["project-1"],
+      actorUserId
+    );
+
+    expect(detail).toHaveProperty("withdrawApprovalContext", null);
+    expect(detail.availableActions.filter(
+      (action) => action.key === "withdraw_approval" && action.enabled
+    )).toEqual([]);
+  });
 });

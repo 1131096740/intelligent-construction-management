@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1e3c55b552a54f42c82bd1249c8b145cadb92cca2a37c59951ec92db0d419ad7",
+      "sha256": "4d409f14259936c56df8060cf57eccf6c293a6d52ca9c9a5c3c4df615763e1b3",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 406,
-        "transportWrapperCount": 386,
+        "exportedFunctionCount": 407,
+        "transportWrapperCount": 387,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 406,
+        "mainRequestBindingCount": 407,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 405,
-        "productionConsumerCount": 349,
+        "requestEdgeCount": 406,
+        "productionConsumerCount": 350,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "080a186642df3a4078d7db935b8791d16518a07d81b0e437dd69fa7450f237cb",
+      "sha256": "745931f6253ac9a7ad4ab731d34deb1b2212fcf84c6079ae5547736985968f92",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 57,
-        "pageActionCount": 51,
+        "registeredActionCount": 58,
+        "pageActionCount": 52,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
         "parsedVueFileCount": 135,
-        "reachableProductionModuleCount": 232,
-        "templateEventDirectiveCount": 946,
+        "reachableProductionModuleCount": 233,
+        "templateEventDirectiveCount": 947,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 28,
-        "candidateProductionMutationConsumerCount": 47,
-        "acceptedProductionMutationConsumerCount": 28,
+        "coveredProductionMutationConsumerCount": 29,
+        "candidateProductionMutationConsumerCount": 48,
+        "acceptedProductionMutationConsumerCount": 29,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 295
+        "blockerCount": 294
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "1a98a019eed790598de764a0ea0130df9644f3747e24f5a048ff61d7c72e8d14",
+      "sha256": "4034e7742466c50db8c899e206a0a8a9887a465413cb5d693c02a5fa593686bf",
       "status": "ready",
       "summary": {
         "routeCount": 398,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 406,
+    "mainRequestBindingCount": 407,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 57,
-    "actionBindingCount": 82,
-    "acceptedActionBindingCount": 43,
+    "registeredActionCount": 58,
+    "actionBindingCount": 83,
+    "acceptedActionBindingCount": 44,
     "unresolvedActionBindingCount": 20,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 28,
-    "uncoveredProductionMutationConsumerPairCount": 249,
-    "blockerCount": 312
+    "coveredProductionMutationConsumerPairCount": 29,
+    "uncoveredProductionMutationConsumerPairCount": 248,
+    "blockerCount": 311
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -1782,14 +1782,6 @@
         "consumer": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/expense-requests/:param/voiding"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawContractApproval",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-withdrawal"
         ]
       },
       {
@@ -4439,6 +4431,20 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "prepareContractApprovalWithdrawalAction",
+          "method": "GET",
+          "path": "/contracts/:param",
+          "normalizedKey": "GET /contracts/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/pages/contracts/contract-approval-withdrawal-api.test.ts"
           ]
         }
       ],
@@ -12408,7 +12414,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "withdrawContractApproval",
+          "wrapper": "executeContractApprovalWithdrawalAction",
           "method": "POST",
           "path": "/contracts/:param/approval-withdrawal",
           "normalizedKey": "POST /contracts/:param/approval-withdrawal",
@@ -12417,16 +12423,41 @@
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/pages/contracts/contract-approval-withdrawal-api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-approval.withdraw",
+          "bindingIndex": 0,
+          "identity": "contract-approval.withdraw\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000executeContractApprovalWithdrawalAction\u0000POST\u0000POST /contracts/:param/approval-withdrawal\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "contractReviewCapability.availableActions",
+            "key": "withdraw_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractApprovalWithdrawalAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

@@ -55,7 +55,6 @@ import {
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   confirmProjectUpstreamSettlement,
-  ContractApprovalReviewResultUnknownError,
   requestSettlementExceptionQuota,
   reviewSettlementExceptionQuota,
   createProjectExpenseRequest,
@@ -133,7 +132,6 @@ import {
   type PrepareProjectExpenseApprovalReviewActionInput,
   type PrepareContractApprovalReviewActionInput,
   type PreparePaymentApprovalReviewActionInput,
-  withdrawContractApproval,
   withdrawPaymentApproval,
   abandonPaymentRequest,
   withdrawSettlementApproval,
@@ -162,6 +160,7 @@ import {
   withdrawContractTakeoverContractSideConfirmation,
   withdrawContractTakeoverFinanceSideConfirmation
 } from "./core-flow-read.api";
+import { ContractApprovalReviewResultUnknownError } from "../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 
 describe("core flow read API client", () => {
@@ -2616,7 +2615,6 @@ describe("core flow read API client", () => {
     } as Response);
 
     await fetchActiveContractNumberRules();
-    await withdrawContractApproval("contract-version-1");
     await remindContractApproval("contract-version-1");
     await transferContractApproval("contract-version-1", {
       toUserId: "contract-transfer-user"
@@ -2641,7 +2639,6 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
-      "/api/contracts/contract-version-1/approval-withdrawal",
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
       "/api/contracts/contract-version-1/approval-delegation",
@@ -2654,7 +2651,7 @@ describe("core flow read API client", () => {
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
         selfReviewReason: "不会在非自审页面生成",

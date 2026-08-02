@@ -8,7 +8,7 @@
 | --- | --- |
 | Controller 源码路由 | 已扫描 184 条 |
 | Web API 请求 | 已扫描 139 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 395 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 398 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 24 条合同专项候选；物理删除授权固定为否 |
 
@@ -131,12 +131,12 @@
 | POST | `/contracts` | createWorkbenchDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | GET | `/contracts/:param` | fetchContractDetail | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/abandonment` | abandonContractDraft |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/contracts/:param/approval` | reviewContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/approval` | executeContractApprovalReviewAction | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval-delegation` | delegateContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval-reminder` | remindContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval-submission` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/approval-transfer` | transferContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/approval-withdrawal` | withdrawContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/approval-withdrawal` | executeContractApprovalWithdrawalAction | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/archive-confirmation` | confirmContractArchive | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/archive-files` | uploadContractArchiveFile | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/authorizations` | setContractAuthorization | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue | matched | 保留 | 否 | — |
