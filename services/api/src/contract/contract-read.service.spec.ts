@@ -1863,11 +1863,13 @@ describe("ContractReadService", () => {
   it("为本人发起的董事长终审节点返回精确自审访问标记", async () => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "leader-1",
           frozenNodes: [{ roleKeys: ["chairman", "general_manager"] }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       }
     };
     const service = new ContractReadService(prisma as never) as unknown as {
@@ -1877,7 +1879,14 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<unknown>;
+      ): Promise<{
+        access: {
+          canAct: boolean;
+          canReview: boolean;
+          requiresSelfReviewConfirmation: boolean;
+        };
+        approval: unknown;
+      }>;
       contractActions(
         status: string,
         roleKeys: never[],
@@ -1886,19 +1895,26 @@ describe("ContractReadService", () => {
       ): Array<Record<string, unknown>>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
       ["chairman"],
       "leader-1"
     );
-    expect(access).toEqual({
-      canAct: true,
-      canReview: true,
-      requiresSelfReviewConfirmation: true
+    expect(review).toEqual({
+      access: {
+        canAct: true,
+        canReview: true,
+        requiresSelfReviewConfirmation: true
+      },
+      approval: {
+        id: "approval-instance-1",
+        currentNodeIndex: 0,
+        updatedAt: new Date("2026-08-02T01:00:01.000Z")
+      }
     });
-    expect(service.contractActions("approval_pending", ["chairman"] as never[], access, [])).toEqual(
+    expect(service.contractActions("approval_pending", ["chairman"] as never[], review.access, [])).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "review_approval",
@@ -1909,14 +1925,22 @@ describe("ContractReadService", () => {
         expect.objectContaining({ key: "delegate_approval", enabled: true })
       ])
     );
-    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
+    expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith({
       where: {
         businessType: "contract_version",
         businessId: "contract-version-1",
+        flowType: "contract.approve",
         status: "in_progress"
       },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        frozenNodes: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
     });
   });
 
@@ -1927,11 +1951,13 @@ describe("ContractReadService", () => {
   ] as const)("standing delegation 在%s时 canReview=%s", async (_label, expected, delegatorActive) => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{ roleKeys: ["contract_director"] }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       },
       approvalDelegation: {
         findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
@@ -1955,10 +1981,10 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canReview: boolean }>;
+      ): Promise<{ access: { canReview: boolean } }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
@@ -1966,13 +1992,14 @@ describe("ContractReadService", () => {
       "delegatee-1"
     );
 
-    expect(access.canReview).toBe(expected);
+    expect(review.access.canReview).toBe(expected);
   });
 
   it("keeps frozen assignment review without consulting standing delegation", async () => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [
             {
@@ -1980,8 +2007,9 @@ describe("ContractReadService", () => {
               assignments: [{ fromRoleKey: "contract_director", toUserId: "assigned-1" }]
             }
           ],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       },
       approvalDelegation: { findMany: jest.fn() }
     };
@@ -1992,10 +2020,10 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canReview: boolean }>;
+      ): Promise<{ access: { canReview: boolean } }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
@@ -2003,7 +2031,7 @@ describe("ContractReadService", () => {
       "assigned-1"
     );
 
-    expect(access.canReview).toBe(true);
+    expect(review.access.canReview).toBe(true);
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
 
@@ -2013,15 +2041,17 @@ describe("ContractReadService", () => {
   ] as const)("受治理合同节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{
             roleKeys: ["contract_director"],
             candidateUserIdsByRole: { contract_director: ["contract-director-1"] },
             candidateUserIds: ["contract-director-1"]
           }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       },
       approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
@@ -2035,10 +2065,10 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canAct: boolean; canReview: boolean }>;
+      ): Promise<{ access: { canAct: boolean; canReview: boolean } }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
@@ -2046,8 +2076,8 @@ describe("ContractReadService", () => {
       actorUserId
     );
 
-    expect(access.canAct).toBe(expected);
-    expect(access.canReview).toBe(expected);
+    expect(review.access.canAct).toBe(expected);
+    expect(review.access.canReview).toBe(expected);
   });
   it("paginates mutually exclusive lifecycle views with full visible counts", async () => {
     const now = new Date("2026-07-20T01:00:00.000Z");

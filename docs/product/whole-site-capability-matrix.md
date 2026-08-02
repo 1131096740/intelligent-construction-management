@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `8d6b1fe1bd74ead2324d42c4ac5265eba84ef3156d8523d9e5118c1d2cb10b26` |
-| webApiWrappers | blocked | `2ee11a0947c97c6bb1bbc91c6cef2277f965ca4a44417b1742c57bb16e1f42a6` |
-| webPageActions | blocked | `37dc7427ad53c22bf62acae684c593bcb2b309bccc7f56364b2d86f49494f763` |
-| routeUsage | ready | `853e99c9c2ac3c4da26ed5bbe0edc439aa9b02f8edb28f75f9499208ef3024db` |
+| webApiWrappers | blocked | `1e3c55b552a54f42c82bd1249c8b145cadb92cca2a37c59951ec92db0d419ad7` |
+| webPageActions | blocked | `080a186642df3a4078d7db935b8791d16518a07d81b0e437dd69fa7450f237cb` |
+| routeUsage | ready | `1a98a019eed790598de764a0ea0130df9644f3747e24f5a048ff61d7c72e8d14` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 405 |
+| mainRequestBindingCount | 406 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 55 |
-| actionBindingCount | 80 |
-| acceptedActionBindingCount | 41 |
+| registeredActionCount | 57 |
+| actionBindingCount | 82 |
+| acceptedActionBindingCount | 43 |
 | unresolvedActionBindingCount | 20 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 27 |
-| uncoveredProductionMutationConsumerPairCount | 250 |
-| blockerCount | 313 |
+| coveredProductionMutationConsumerPairCount | 28 |
+| uncoveredProductionMutationConsumerPairCount | 249 |
+| blockerCount | 312 |
 
 ## 路由矩阵
 
@@ -77,7 +77,7 @@
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
-| GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail | contract.signing-material-change | not_applicable | — |
+| GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalReviewAction | contract.signing-material-change | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
 | GET | /contracts/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLifecycleLedger | — | not_applicable | ORPHAN_WRAPPER |
@@ -240,7 +240,7 @@
 | POST | /contracts/:contractVersionId/approval-submission | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contracts/:contractVersionId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractApprovalReviewAction | contract-approval.review-approve<br>contract-approval.review-reject | covered | — |
 | POST | /contracts/:contractVersionId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadContractArchiveFile | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/authorizations | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -621,7 +621,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#retrySettlementSignedDocumentGeneration → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#returnContractTakeoverForSupplement → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#returnMutuallySignedContractForCorrection → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewContractApproval → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue

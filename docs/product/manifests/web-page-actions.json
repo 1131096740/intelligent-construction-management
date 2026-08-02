@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 55,
-    "pageActionCount": 49,
+    "registeredActionCount": 57,
+    "pageActionCount": 51,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
     "reachableProductionModuleCount": 232,
-    "templateEventDirectiveCount": 944,
+    "templateEventDirectiveCount": 946,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 27,
-    "candidateProductionMutationConsumerCount": 46,
-    "acceptedProductionMutationConsumerCount": 27,
+    "coveredProductionMutationConsumerCount": 28,
+    "candidateProductionMutationConsumerCount": 47,
+    "acceptedProductionMutationConsumerCount": 28,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 296
+    "blockerCount": 295
   },
   "evidence": {
     "totalProductionModuleCount": 239,
@@ -193,6 +193,138 @@
               "submitRecord",
               "recordProjectAffiliateCompanyContractWithUpload"
             ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractReviewApprove",
+        "kind": "event",
+        "sourceLine": 972,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractReviewCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractApprovalReviewAction",
+          "method": "POST",
+          "path": "/contracts/:param/approval",
+          "normalizedKey": "POST /contracts/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/approval",
+            "normalizedKey": "POST /contracts/:param/approval",
+            "controller": "ContractController",
+            "handler": "reviewApproval",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractReviewApprove",
+              "executeContractApprovalReviewAction"
+            ],
+            "variant": "approve"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractReviewReject",
+        "kind": "event",
+        "sourceLine": 985,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractReviewCapability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractApprovalReviewAction",
+          "method": "POST",
+          "path": "/contracts/:param/approval",
+          "normalizedKey": "POST /contracts/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/approval",
+            "normalizedKey": "POST /contracts/:param/approval",
+            "controller": "ContractController",
+            "handler": "reviewApproval",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractReviewReject",
+              "executeContractApprovalReviewAction"
+            ],
+            "variant": "reject"
           },
           "ticketFollowups": []
         }
@@ -1281,13 +1413,13 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 987,
+        "sourceLine": 1014,
         "sourceColumn": 6
       },
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "contractSigningCapability.availableActions",
+        "source": "contractReviewCapability.availableActions",
         "key": "report_signing_material_change",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -5239,15 +5371,6 @@
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "normalizedKeys": [
           "POST /contracts/:param/formal-files/final/return"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractApproval",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval"
         ]
       },
       {

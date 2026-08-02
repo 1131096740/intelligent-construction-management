@@ -10,6 +10,15 @@ import { PrismaService } from "../database/prisma.service";
 import { ContractService } from "./contract.service";
 import { ContractGovernanceDenial } from "./contract-formal-file.service";
 
+const CONTRACT_REVIEW_VERSION_UPDATED_AT = new Date("2026-08-02T01:00:00.000Z");
+const CONTRACT_REVIEW_APPROVAL_UPDATED_AT = new Date("2026-08-02T01:00:01.000Z");
+const contractReviewCoordinates = (expectedNodeIndex = 0) => ({
+  expectedContractUpdatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT.toISOString(),
+  expectedApprovalInstanceId: "approval-instance-1",
+  expectedNodeIndex,
+  expectedApprovalUpdatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT.toISOString()
+});
+
 describe("ContractService", () => {
   it("copies an abandoned original contract into a new draft identity without workflow evidence", async () => {
     const updatedAt = new Date("2026-07-20T02:00:00.000Z");
@@ -3609,6 +3618,7 @@ describe("ContractService", () => {
           id: "contract-version-1",
           contractId: "contract-1",
           status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT,
           contractGovernanceVersion: 1
         }),
         update: jest.fn().mockResolvedValue({
@@ -3628,6 +3638,7 @@ describe("ContractService", () => {
           id: "approval-instance-1",
           applicantUserId: "applicant-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -3673,6 +3684,7 @@ describe("ContractService", () => {
     );
 
     const result = await service.reviewApproval("contract-version-1", "chairman-1", {
+      ...contractReviewCoordinates(),
       decision: "approve"
     });
 
@@ -3726,6 +3738,7 @@ describe("ContractService", () => {
         toStatus: "approved_pending_seal",
         nodeName: "董事长/总经理",
         approvedRoleKey: "chairman",
+        ...contractReviewCoordinates(),
         ownerContractRisk: {
           status: "clear",
           ownerContractAmountCents: "5000000",
@@ -3743,6 +3756,7 @@ describe("ContractService", () => {
           id: "contract-version-1",
           contractId: "contract-1",
           status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT,
           contractGovernanceVersion: 1
         }),
         update: jest.fn().mockResolvedValue({
@@ -3762,6 +3776,7 @@ describe("ContractService", () => {
           id: "approval-instance-1",
           applicantUserId: "applicant-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [{
             name: "董事长/总经理",
             mode: "any",
@@ -3804,6 +3819,7 @@ describe("ContractService", () => {
     );
 
     await expect(service.reviewApproval("contract-version-1", "chairman-1", {
+      ...contractReviewCoordinates(),
       decision: "approve"
     })).resolves.toMatchObject({ status: "approved_pending_seal" });
 
@@ -3831,7 +3847,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn()
       },
@@ -3839,6 +3856,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "合同部主管",
@@ -3863,6 +3881,7 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "contract-director-1", {
+        ...contractReviewCoordinates(),
         decision: "approve"
       })
     ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
@@ -3879,7 +3898,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -3895,6 +3915,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -3928,7 +3949,10 @@ describe("ContractService", () => {
   ] as const)("合同领导自审缺少确认事实时零写入", async (input, message) => {
     const { service, tx } = contractLeaderSelfReviewFixture();
 
-    await expect(service.reviewApproval("contract-version-1", "leader-1", input)).rejects.toThrow(message);
+    await expect(service.reviewApproval("contract-version-1", "leader-1", {
+      ...contractReviewCoordinates(),
+      ...input
+    })).rejects.toThrow(message);
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
@@ -3942,6 +3966,7 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "leader-1", {
+        ...contractReviewCoordinates(),
         decision: "approve",
         selfReviewReason: "业务紧急",
         confirmationPassword: "wrong-password"
@@ -3957,6 +3982,7 @@ describe("ContractService", () => {
     const { service, tx } = contractLeaderSelfReviewFixture();
 
     await service.reviewApproval("contract-version-1", "leader-1", {
+      ...contractReviewCoordinates(),
       decision: "approve",
       selfReviewReason: "  业务紧急且由本人发起  ",
       confirmationPassword: "top-secret"
@@ -3992,7 +4018,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -4008,6 +4035,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -4054,6 +4082,7 @@ describe("ContractService", () => {
     );
 
     const result = await service.reviewApproval("contract-version-1", "delegate-user-1", {
+      ...contractReviewCoordinates(),
       decision: "approve"
     });
 
@@ -4074,7 +4103,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -4085,6 +4115,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -4108,6 +4139,7 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "general-manager-1", {
+      ...contractReviewCoordinates(),
       decision: "reject",
       comment: "合同条款需调整"
     });
@@ -4162,10 +4194,17 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "chairman-1", {
+        ...contractReviewCoordinates(),
         decision: "reject",
         comment: "   "
       })
-    ).rejects.toThrow("请填写审批意见，说明驳回或退回原因");
+    ).rejects.toMatchObject({
+      status: 400,
+      response: {
+        statusCode: 400,
+        message: "请填写审批意见，说明驳回或退回原因"
+      }
+    });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -4188,6 +4227,7 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-missing", "chairman-1", {
+        ...contractReviewCoordinates(),
         decision: "approve"
       })
     ).rejects.toThrow("未找到合同版本，请刷新合同台账后重试");
@@ -4200,13 +4240,34 @@ describe("ContractService", () => {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
-          status: "draft"
+          contractId: "contract-1",
+          status: "approved_pending_seal",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn()
       },
       approvalInstance: {
         findFirst: jest.fn()
-      }
+          .mockResolvedValueOnce({
+            id: "approval-instance-1",
+            applicantUserId: "contract-staff-1",
+            currentNodeIndex: 1,
+            updatedAt: new Date("2026-08-02T01:00:02.000Z"),
+            status: "approved",
+            frozenNodes: [{
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"],
+              candidateUserIdsByRole: {
+                chairman: ["chairman-1"],
+                general_manager: []
+              },
+              candidateUserIds: ["chairman-1"]
+            }]
+          })
+          .mockResolvedValueOnce(null)
+      },
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -4217,10 +4278,14 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "chairman-1", {
+        ...contractReviewCoordinates(),
         decision: "approve"
       })
-    ).rejects.toThrow("当前合同已离开审批中，不能继续处理审批");
-    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: "CONTRACT_APPROVAL_REVIEW_CONFLICT" }
+    });
+    expect(tx.approvalInstance.findFirst).toHaveBeenCalledTimes(2);
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
@@ -4230,13 +4295,28 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({
+            id: "approval-instance-1",
+            applicantUserId: "contract-staff-1",
+            currentNodeIndex: 0,
+            updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
+            status: "returned_to_applicant",
+            frozenNodes: [{
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }]
+          })
+          .mockResolvedValueOnce(null)
+      },
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -4247,9 +4327,13 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "chairman-1", {
+        ...contractReviewCoordinates(),
         decision: "approve"
       })
-    ).rejects.toThrow("未找到进行中的合同审批流程，请刷新后重试");
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: "CONTRACT_APPROVAL_REVIEW_CONFLICT" }
+    });
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
@@ -4259,7 +4343,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn()
       },
@@ -4267,6 +4352,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: []
         })
       }
@@ -4280,9 +4366,16 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "chairman-1", {
+        ...contractReviewCoordinates(),
         decision: "approve"
       })
-    ).rejects.toThrow("当前合同审批节点异常，请刷新后重试");
+    ).rejects.toMatchObject({
+      status: 403,
+      response: {
+        statusCode: 403,
+        message: "当前账号无权处理该合同审批节点"
+      }
+    });
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
@@ -4292,7 +4385,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn()
       },
@@ -4300,6 +4394,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -4325,9 +4420,16 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "project-manager-1", {
+        ...contractReviewCoordinates(),
         decision: "approve"
       })
-    ).rejects.toThrow("当前账号无权处理该合同审批节点");
+    ).rejects.toMatchObject({
+      status: 403,
+      response: {
+        statusCode: 403,
+        message: "当前账号无权处理该合同审批节点"
+      }
+    });
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
   });
 
@@ -4351,7 +4453,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -4362,6 +4465,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 1,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes
         }),
         update: jest.fn()
@@ -4379,6 +4483,7 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "chairman-1", {
+      ...contractReviewCoordinates(1),
       decision: "reject_previous",
       comment: "请上一节点补充说明"
     });
@@ -4425,7 +4530,8 @@ describe("ContractService", () => {
         toStatus: "in_approval",
         fromNodeName: "董事长/总经理",
         toNodeName: "合同部主管",
-        approvedRoleKey: "chairman"
+        approvedRoleKey: "chairman",
+        ...contractReviewCoordinates(1)
       }
     });
   });
@@ -4436,7 +4542,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn()
       },
@@ -4444,6 +4551,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -4468,6 +4576,7 @@ describe("ContractService", () => {
 
     await expect(
       service.reviewApproval("contract-version-1", "chairman-1", {
+        ...contractReviewCoordinates(),
         decision: "reject_previous",
         comment: "无法退回上一节点"
       })
@@ -4482,7 +4591,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -4493,6 +4603,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -4516,6 +4627,7 @@ describe("ContractService", () => {
     const service = new ContractService(prisma, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "general-manager-1", {
+      ...contractReviewCoordinates(),
       decision: "return_to_applicant",
       comment: "退回申请人补充资料"
     });
@@ -4552,7 +4664,8 @@ describe("ContractService", () => {
         fromStatus: "in_approval",
         toStatus: "draft",
         nodeName: "董事长/总经理",
-        approvedRoleKey: "general_manager"
+        approvedRoleKey: "general_manager",
+        ...contractReviewCoordinates()
       }
     });
   });
@@ -4804,7 +4917,8 @@ describe("ContractService", () => {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-version-1",
           contractId: "contract-1",
-          status: "in_approval"
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
         update: jest.fn().mockResolvedValue({
           id: "contract-version-1",
@@ -4820,6 +4934,7 @@ describe("ContractService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-instance-1",
           currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
           frozenNodes: [
             {
               name: "董事长/总经理",
@@ -4860,6 +4975,7 @@ describe("ContractService", () => {
     const service = new ContractService(prisma as never, audit as never);
 
     const result = await service.reviewApproval("contract-version-1", "transfer-user-1", {
+      ...contractReviewCoordinates(),
       decision: "approve"
     });
 
@@ -4874,6 +4990,7 @@ describe("ContractService", () => {
         toStatus: "approved_pending_seal",
         nodeName: "董事长/总经理",
         approvedRoleKey: "chairman",
+        ...contractReviewCoordinates(),
         ownerContractRisk: {
           status: "clear",
           ownerContractAmountCents: "5000000",

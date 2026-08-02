@@ -1579,6 +1579,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "prepareContractApprovalReviewAction",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param",
+            "normalizedKey": "GET /contracts/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -8252,7 +8262,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "reviewContractApproval",
+            "wrapper": "executeContractApprovalReviewAction",
             "method": "POST",
             "normalizedPath": "/contracts/:param/approval",
             "normalizedKey": "POST /contracts/:param/approval",

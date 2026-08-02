@@ -47,7 +47,10 @@ import {
   CreateContractDraftDto,
   type CreatePaymentTermsStageDto
 } from "./dto/create-contract.dto";
-import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import {
+  ReviewContractApprovalDto,
+  type ExpectedContractOwnerRiskDto
+} from "./dto/review-contract-approval.dto";
 import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
@@ -2487,6 +2490,21 @@ export class ContractService {
       throw new Error("不支持的合同审批处理方式，请刷新页面后重试");
     }
     requireApprovalCommentForReturn(input.decision, input.comment);
+    const expectedContractUpdatedAt = new Date(input.expectedContractUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    const expectedApprovalInstanceId = input.expectedApprovalInstanceId?.trim();
+    if (Number.isNaN(expectedContractUpdatedAt.getTime())) {
+      throw new BadRequestException("预期合同版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
+    if (!expectedApprovalInstanceId) {
+      throw new BadRequestException("预期审批实例不能空白");
+    }
+    if (!Number.isInteger(input.expectedNodeIndex) || input.expectedNodeIndex < 0) {
+      throw new BadRequestException("预期审批节点格式不正确");
+    }
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -2501,37 +2519,54 @@ export class ContractService {
         throw new Error("未找到合同版本，请刷新合同台账后重试");
       }
 
-      if (version.status !== "in_approval") {
-        throw new Error("当前合同已离开审批中，不能继续处理审批");
-      }
-
       await lockApprovalReviewRow(tx, Prisma.sql`
         SELECT "id" FROM "ApprovalInstance"
         WHERE "businessType" = 'contract_version'
           AND "businessId" = ${version.id}
           AND "flowType" = 'contract.approve'
-          AND "status" = 'in_progress'
+          AND (
+            "id" = ${expectedApprovalInstanceId}
+            OR "status" = 'in_progress'
+          )
+        ORDER BY "id"
         FOR UPDATE
       `);
 
-      const instance = await tx.approvalInstance.findFirst({
-        where: {
-          businessType: "contract_version",
-          businessId: version.id,
-          flowType: "contract.approve",
-          status: "in_progress"
-        }
+      const expectedApprovalWhere = {
+        id: expectedApprovalInstanceId,
+        businessType: "contract_version",
+        businessId: version.id,
+        flowType: "contract.approve"
+      } as const;
+      const activeApprovalWhere = {
+        businessType: "contract_version",
+        businessId: version.id,
+        flowType: "contract.approve",
+        status: "in_progress"
+      } as const;
+      const expectedInstance = await tx.approvalInstance.findFirst({
+        where: expectedApprovalWhere
       });
+      const approvalClient = tx.approvalInstance as typeof tx.approvalInstance & {
+        findMany?: typeof tx.approvalInstance.findMany;
+      };
+      const activeInstances = approvalClient.findMany
+        ? await approvalClient.findMany({
+            where: activeApprovalWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 2
+          })
+        : [await tx.approvalInstance.findFirst({ where: activeApprovalWhere })].filter(
+            (item): item is NonNullable<typeof item> => item !== null
+          );
 
-      if (!instance) {
-        throw new Error("未找到进行中的合同审批流程，请刷新后重试");
-      }
+      const nodes = Array.isArray(expectedInstance?.frozenNodes)
+        ? expectedInstance.frozenNodes as unknown as ContractApprovalNode[]
+        : [];
+      const currentNode = nodes[input.expectedNodeIndex];
 
-      const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
-      const currentNode = nodes[instance.currentNodeIndex];
-
-      if (!currentNode) {
-        throw new Error("当前合同审批节点异常，请刷新后重试");
+      if (!expectedInstance || !currentNode) {
+        throw new ForbiddenException("当前账号无权处理该合同审批节点");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
@@ -2554,15 +2589,12 @@ export class ContractService {
         identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
       }
       if (!identity) {
-        throw new Error("当前账号无权处理该合同审批节点");
+        throw new ForbiddenException("当前账号无权处理该合同审批节点");
       }
       const approvedRoleKey = identity.approvedRoleKey;
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
-      });
 
       const selfReview = await confirmApprovalSelfReview({
-        applicantUserId: instance.applicantUserId,
+        applicantUserId: expectedInstance.applicantUserId,
         actorUserId,
         actorRoleKeys: identity.representedUserId === actorUserId &&
           !identity.viaAssignment
@@ -2576,6 +2608,34 @@ export class ContractService {
         confirmPassword: this.auth
           ? (password) => this.auth!.confirmPassword(actorUserId, password)
           : undefined
+      });
+
+      const activeInstance = activeInstances.length === 1
+        ? activeInstances[0]
+        : null;
+      if (
+        !(version.updatedAt instanceof Date) ||
+        version.updatedAt.getTime() !== expectedContractUpdatedAt.getTime() ||
+        version.status !== "in_approval" ||
+        !activeInstance ||
+        activeInstance.id !== expectedInstance.id ||
+        activeInstance.id !== expectedApprovalInstanceId ||
+        activeInstance.currentNodeIndex !== input.expectedNodeIndex ||
+        !(activeInstance.updatedAt instanceof Date) ||
+        activeInstance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw contractApprovalReviewConflict();
+      }
+      const instance = expectedInstance;
+
+      const auditCoordinates = {
+        expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),
+        expectedApprovalInstanceId,
+        expectedNodeIndex: input.expectedNodeIndex,
+        expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
+      };
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
       });
 
       if (input.decision === "reject_previous") {
@@ -2626,6 +2686,7 @@ export class ContractService {
             fromNodeName: currentNode.name,
             toNodeName: nextNodes[previousNodeIndex].name,
             approvedRoleKey,
+            ...auditCoordinates,
             ...selfReview.metadata
           }
         });
@@ -2670,6 +2731,7 @@ export class ContractService {
             toStatus: "draft",
             nodeName: currentNode.name,
             approvedRoleKey,
+            ...auditCoordinates,
             ...selfReview.metadata
           }
         });
@@ -2681,6 +2743,9 @@ export class ContractService {
         input.decision === "approve" && instance.currentNodeIndex === nodes.length - 1;
       const ownerContractRisk = isFinalApproval
         ? await this.finalOwnerContractRisk(tx, version.contractId)
+        : null;
+      const ownerContractRiskSnapshot = ownerContractRisk
+        ? contractOwnerRiskReviewSnapshot(ownerContractRisk)
         : null;
       if (
         ownerContractRisk &&
@@ -2696,6 +2761,19 @@ export class ContractService {
           message,
           ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk)
         });
+      }
+      if (
+        isFinalApproval &&
+        input.ownerContractRiskConfirmed === true &&
+        (
+          !input.expectedOwnerContractRisk ||
+          !contractOwnerRiskSnapshotMatches(
+            input.expectedOwnerContractRisk,
+            ownerContractRiskSnapshot!
+          )
+        )
+      ) {
+        throw contractOwnerRiskSnapshotConflict();
       }
       const ownerContractRiskMetadata = ownerContractRisk
         ? { ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk) }
@@ -2780,6 +2858,7 @@ export class ContractService {
           toStatus: nextStatus,
           nodeName: currentNode.name,
           approvedRoleKey,
+          ...auditCoordinates,
           ...selfReview.metadata,
           ...ownerContractRiskMetadata
         }
@@ -3626,8 +3705,52 @@ export class ContractService {
 
 function requireApprovalCommentForReturn(decision: ReviewContractApprovalDto["decision"], comment?: string) {
   if (decision !== "approve" && !comment?.trim()) {
-    throw new Error("请填写审批意见，说明驳回或退回原因");
+    throw new BadRequestException("请填写审批意见，说明驳回或退回原因");
   }
+}
+
+function contractApprovalReviewConflict() {
+  return new ConflictException({
+    code: "CONTRACT_APPROVAL_REVIEW_CONFLICT",
+    message: "合同审批状态或坐标已变化，请刷新页面后重试"
+  });
+}
+
+function contractOwnerRiskSnapshotConflict() {
+  return new ConflictException({
+    code: "CONTRACT_OWNER_RISK_SNAPSHOT_CONFLICT",
+    message: "业主主合同风险快照已变化，请刷新合同详情后重新确认"
+  });
+}
+
+function contractOwnerRiskReviewSnapshot(
+  risk: ContractOwnerRisk
+): ExpectedContractOwnerRiskDto {
+  return {
+    ...contractOwnerRiskToApi(risk),
+    message: risk.status === "clear"
+      ? "我方对下合同累计金额未超过业主主合同有效金额。"
+      : risk.status === "missing_owner_contract"
+        ? "项目尚未登记生效业主主合同，本次合同终审必须显式确认风险。"
+        : `我方对下合同累计金额已超过业主主合同有效金额 ${formatMoneyCentsAsYuan(
+            risk.excessAmountCents
+          )} 元，本次合同终审必须显式确认风险。`,
+    requiresExplicitConfirmation: risk.status !== "clear"
+  };
+}
+
+function contractOwnerRiskSnapshotMatches(
+  expected: ExpectedContractOwnerRiskDto,
+  current: ExpectedContractOwnerRiskDto
+) {
+  return (
+    expected.status === current.status &&
+    expected.ownerContractAmountCents === current.ownerContractAmountCents &&
+    expected.downstreamContractAmountCents === current.downstreamContractAmountCents &&
+    expected.excessAmountCents === current.excessAmountCents &&
+    expected.message === current.message &&
+    expected.requiresExplicitConfirmation === current.requiresExplicitConfirmation
+  );
 }
 
 function contractOwnerRiskToApi(risk: ContractOwnerRisk) {

@@ -55,12 +55,15 @@ import {
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   confirmProjectUpstreamSettlement,
+  ContractApprovalReviewResultUnknownError,
   requestSettlementExceptionQuota,
   reviewSettlementExceptionQuota,
   createProjectExpenseRequest,
   executeProjectExpenseApprovalReviewAction,
+  executeContractApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
   prepareProjectExpenseApprovalReviewAction,
+  prepareContractApprovalReviewAction,
   prepareProjectExpenseWithdrawalAction,
   voidProjectExpenseRequest,
   createProjectExpenseExecutionRecordAttemptState,
@@ -116,7 +119,6 @@ import {
   remindContractApproval,
   remindPaymentApproval,
   remindSettlementApproval,
-  reviewContractApproval,
   reviewSettlementApproval,
   uploadContractArchiveFile,
   uploadPrivateFile,
@@ -129,6 +131,7 @@ import {
   executePaymentApprovalReviewAction,
   preparePaymentApprovalReviewAction,
   type PrepareProjectExpenseApprovalReviewActionInput,
+  type PrepareContractApprovalReviewActionInput,
   type PreparePaymentApprovalReviewActionInput,
   withdrawContractApproval,
   withdrawPaymentApproval,
@@ -2613,12 +2616,6 @@ describe("core flow read API client", () => {
     } as Response);
 
     await fetchActiveContractNumberRules();
-    await reviewContractApproval("contract-version-1", {
-      decision: "approve",
-      selfReviewReason: "合同紧急",
-      confirmationPassword: " contract-password ",
-      ownerContractRiskConfirmed: true
-    });
     await withdrawContractApproval("contract-version-1");
     await remindContractApproval("contract-version-1");
     await transferContractApproval("contract-version-1", {
@@ -2644,7 +2641,6 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
-      "/api/contracts/contract-version-1/approval",
       "/api/contracts/contract-version-1/approval-withdrawal",
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
@@ -2658,20 +2654,274 @@ describe("core flow read API client", () => {
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        selfReviewReason: "合同紧急",
-        confirmationPassword: " contract-password ",
-        ownerContractRiskConfirmed: true
-      })
-    );
-    expect(fetchMock.mock.calls[7][1]?.body).toBe(
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
         selfReviewReason: "不会在非自审页面生成",
         confirmationPassword: " settlement-password "
       })
+    );
+  });
+
+  it.each([
+    ["missing action", contractReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      contractReviewDetail({
+        availableActions: [contractReviewAction({ enabled: false })]
+      })
+    ],
+    [
+      "duplicate enabled action",
+      contractReviewDetail({
+        availableActions: [contractReviewAction(), contractReviewAction()]
+      })
+    ],
+    ["contract drift", contractReviewDetail({ contractId: "contract/b" })],
+    ["version drift", contractReviewDetail({ contractVersionId: "version/b" })],
+    [
+      "contract timestamp drift",
+      contractReviewDetail({ expectedContractUpdatedAt: "2026-08-01T01:00:00.000Z" })
+    ],
+    ["approval drift", contractReviewDetail({ expectedApprovalInstanceId: "approval-b" })],
+    ["node drift", contractReviewDetail({ expectedNodeIndex: 2 })],
+    [
+      "approval timestamp drift",
+      contractReviewDetail({ expectedApprovalUpdatedAt: "2026-08-01T01:05:00.000Z" })
+    ],
+    ["missing coordinates", contractReviewDetail({ reviewApprovalContext: null })],
+    [
+      "self review drift",
+      contractReviewDetail({ requiresSelfReviewConfirmation: true })
+    ],
+    [
+      "owner risk drift",
+      contractReviewDetail({
+        ownerContractRisk: contractOwnerRisk({ excessAmountCents: "2" })
+      })
+    ]
+  ])(
+    "refuses a %s contract review preflight before the approval POST",
+    async (_label, preflight) => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(preflight)
+      );
+
+      await expect(
+        prepareContractApprovalReviewAction(contractReviewActionInput())
+      ).rejects.toThrow("合同审批资格、风险或审批坐标已变化");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/contracts/route%2Fa",
+        {}
+      );
+    }
+  );
+
+  it("freezes the contract review facts and performs one POST after the fresh GET", async () => {
+    const risk = contractOwnerRisk();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(contractReviewDetail({
+          requiresSelfReviewConfirmation: true,
+          ownerContractRisk: risk
+        }))
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = contractReviewActionInput({
+      decision: "approve",
+      comment: "  同意进入用章  ",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "  本人发起，已独立复核  ",
+      confirmationPassword: " current-password ",
+      ownerContractRisk: risk,
+      ownerContractRiskConfirmed: true
+    });
+    const prepared = await prepareContractApprovalReviewAction(input);
+    input.comment = "随后篡改";
+    risk.message = "随后篡改风险文案";
+
+    expect(Object.isFrozen(prepared.context)).toBe(true);
+    expect(Object.isFrozen(prepared.context.ownerContractRisk)).toBe(true);
+    const complete = vi.fn();
+    const stale = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        stale,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/route%2Fa",
+      "/api/contracts/version%2Fa/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        comment: "同意进入用章",
+        selfReviewReason: "本人发起，已独立复核",
+        confirmationPassword: " current-password ",
+        ownerContractRiskConfirmed: true,
+        expectedOwnerContractRisk: {
+          status: "missing_owner_contract",
+          ownerContractAmountCents: "0",
+          downstreamContractAmountCents: "18000000",
+          excessAmountCents: "18000000",
+          message: "项目尚未登记生效业主主合同",
+          requiresExplicitConfirmation: true
+        },
+        expectedContractUpdatedAt: "2026-08-01T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-08-01T00:05:00.000Z"
+      })
+    );
+    expect(stale).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it("does not send the owner-risk confirmation or snapshot when rejecting", async () => {
+    const risk = contractOwnerRisk();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail({
+        ownerContractRisk: risk
+      })))
+      .mockResolvedValueOnce(jsonResponse({ id: "rejected" }));
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput({
+        decision: "reject",
+        comment: "  合同价格依据不足  ",
+        ownerContractRisk: risk,
+        ownerContractRiskConfirmed: false
+      })
+    );
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "reject",
+      comment: "合同价格依据不足",
+      expectedContractUpdatedAt: "2026-08-01T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-a",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-01T00:05:00.000Z"
+    });
+  });
+
+  it("keeps reject fixed and invokes stale without posting", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(contractReviewDetail())
+    );
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput({
+        decision: "reject",
+        comment: "  合同价格依据不足  "
+      })
+    );
+    fetchMock.mockClear();
+    const stale = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => ({ status: "stale", context: prepared.context }),
+        current: () => false,
+        stale,
+        complete: vi.fn(),
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(stale).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it("does not complete stale work after the single contract review POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput()
+    );
+    const stale = vi.fn();
+    const complete = vi.fn();
+    let currentChecks = 0;
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => ++currentChecks === 1,
+        stale,
+        complete,
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(stale).toHaveBeenCalledOnce();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("wraps an indeterminate contract review POST without retrying it", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail()))
+      .mockRejectedValueOnce(new TypeError("socket closed after write"));
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput()
+    );
+    const fail = vi.fn();
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        fail,
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "failed" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fail).toHaveBeenCalledWith(
+      prepared.context,
+      expect.any(ContractApprovalReviewResultUnknownError)
     );
   });
 
@@ -4104,6 +4354,113 @@ function paymentReviewDetail(
             overrides.requiresSelfReviewConfirmation ?? false
         }
       ]
+  };
+}
+
+function contractOwnerRisk(
+  overrides: Partial<{
+    status: "clear" | "missing_owner_contract" | "exceeds_owner_contract";
+    ownerContractAmountCents: string;
+    downstreamContractAmountCents: string;
+    excessAmountCents: string;
+    message: string;
+    requiresExplicitConfirmation: boolean;
+  }> = {}
+) {
+  return {
+    status: "missing_owner_contract" as const,
+    ownerContractAmountCents: "0",
+    downstreamContractAmountCents: "18000000",
+    excessAmountCents: "18000000",
+    message: "项目尚未登记生效业主主合同",
+    requiresExplicitConfirmation: true,
+    ...overrides
+  };
+}
+
+function contractReviewAction(
+  overrides: Partial<{
+    enabled: boolean;
+    requiresSelfReviewConfirmation: boolean;
+  }> = {}
+) {
+  return {
+    key: "review_approval",
+    label: "办理合同审批",
+    kind: "primary",
+    enabled: overrides.enabled ?? true,
+    disabledReason: overrides.enabled === false ? "当前不可审批" : null,
+    requiresSelfReviewConfirmation:
+      overrides.requiresSelfReviewConfirmation ?? false
+  };
+}
+
+function contractReviewDetail(
+  overrides: {
+    contractId?: string;
+    contractVersionId?: string;
+    expectedContractUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+    requiresSelfReviewConfirmation?: boolean;
+    ownerContractRisk?: ReturnType<typeof contractOwnerRisk>;
+  } = {}
+) {
+  const expectedContractUpdatedAt =
+    overrides.expectedContractUpdatedAt ?? "2026-08-01T00:00:00.000Z";
+  return {
+    id: overrides.contractId ?? "contract/a",
+    contractVersionId: overrides.contractVersionId ?? "version/a",
+    lifecycleUpdatedAt: expectedContractUpdatedAt,
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedContractUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-08-01T00:05:00.000Z"
+          },
+    ownerContractRisk: overrides.ownerContractRisk ?? contractOwnerRisk(),
+    availableActions:
+      overrides.availableActions ??
+      [
+        contractReviewAction({
+          requiresSelfReviewConfirmation:
+            overrides.requiresSelfReviewConfirmation
+        })
+      ]
+  };
+}
+
+function contractReviewActionInput(
+  overrides: Partial<PrepareContractApprovalReviewActionInput> = {}
+): PrepareContractApprovalReviewActionInput {
+  return {
+    ownerScope: "contract-page-a",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    routeContractId: "route/a",
+    contractId: "contract/a",
+    contractVersionId: "version/a",
+    expectedContractUpdatedAt: "2026-08-01T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-08-01T00:05:00.000Z",
+    decision: "approve",
+    requiresSelfReviewConfirmation: false,
+    ownerContractRisk: contractOwnerRisk(),
+    ownerContractRiskConfirmed: true,
+    isCurrent: () => true,
+    ...overrides
   };
 }
 

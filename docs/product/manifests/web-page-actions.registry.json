@@ -322,13 +322,65 @@
       "semantic": "business_write",
       "capability": {
         "kind": "detail_action",
-        "source": "contractSigningCapability.availableActions",
+        "source": "contractReviewCapability.availableActions",
         "key": "report_signing_material_change"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "executeContractSigningMaterialChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractReviewApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractReviewCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeContractApprovalReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractReviewReject"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractReviewCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeContractApprovalReviewAction",
+          "variant": "reject"
         }
       ]
     },

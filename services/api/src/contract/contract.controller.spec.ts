@@ -61,6 +61,21 @@ const validContractDraft = {
   businessTemplateVersionId: "template-version-1"
 };
 
+const validContractReviewCoordinates = {
+  expectedContractUpdatedAt: "2026-08-02T01:00:00.000Z",
+  expectedApprovalInstanceId: "approval-instance-1",
+  expectedNodeIndex: 0,
+  expectedApprovalUpdatedAt: "2026-08-02T01:00:01.000Z"
+};
+const validExpectedOwnerContractRisk = {
+  status: "missing_owner_contract",
+  ownerContractAmountCents: "0",
+  downstreamContractAmountCents: "5000000",
+  excessAmountCents: "5000000",
+  message: "项目尚未登记生效业主主合同，本次合同终审必须显式确认风险。",
+  requiresExplicitConfirmation: true
+} as const;
+
 const validContractRouteBodies = [
   ["contract.create", ContractController, "create", 0, validContractDraft],
   ["contract.createChangeDraft", ContractController, "createChangeDraft", 1, {
@@ -88,7 +103,10 @@ const validContractRouteBodies = [
     expectedRevision: 1,
     required: false
   }],
-  ["contract.reviewApproval", ContractController, "reviewApproval", 2, { decision: "approve" }],
+  ["contract.reviewApproval", ContractController, "reviewApproval", 2, {
+    decision: "approve",
+    ...validContractReviewCoordinates
+  }],
   ["contract.transferApproval", ContractController, "transferApproval", 2, { toUserId: "user-2" }],
   ["contract.delegateApproval", ContractController, "delegateApproval", 2, { toUserId: "user-2" }],
   ["contract.completeGovernedSeal", ContractController, "completeGovernedSeal", 2, {
@@ -216,6 +234,7 @@ describe("ContractController authorization wiring", () => {
   it("保留合同领导自审原因和当前密码", async () => {
     const value = {
       decision: "approve",
+      ...validContractReviewCoordinates,
       selfReviewReason: "项目紧急且由本人发起",
       confirmationPassword: "current-password"
     };
@@ -223,10 +242,35 @@ describe("ContractController authorization wiring", () => {
     await expect(validateContractBody(ContractController, "reviewApproval", 2, value)).resolves.toEqual(value);
   });
 
+  it.each([
+    ["expectedContractUpdatedAt", undefined, "缺少预期合同版本"],
+    ["expectedContractUpdatedAt", "not-a-date", "预期合同版本格式不正确"],
+    ["expectedApprovalInstanceId", undefined, "缺少预期审批实例"],
+    ["expectedApprovalInstanceId", "   ", "预期审批实例不能为空白"],
+    ["expectedNodeIndex", undefined, "预期审批节点必须是整数"],
+    ["expectedNodeIndex", -1, "预期审批节点不能小于 0"],
+    ["expectedApprovalUpdatedAt", undefined, "缺少预期审批版本"],
+    ["expectedApprovalUpdatedAt", "not-a-date", "预期审批版本格式不正确"]
+  ] as const)("拒绝合同审批坐标 %s 的非法值", async (field, value, message) => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "reviewApproval",
+      2,
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        [field]: value
+      }
+    );
+
+    expect(response.errors).toContain(message);
+  });
+
   it("仅接受显式布尔值作为业主主合同终审风险确认", async () => {
     await expect(
       validateContractBody(ContractController, "reviewApproval", 2, {
         decision: "approve",
+        ...validContractReviewCoordinates,
         ownerContractRiskConfirmed: true
       })
     ).resolves.toMatchObject({ ownerContractRiskConfirmed: true });
@@ -236,10 +280,111 @@ describe("ContractController authorization wiring", () => {
         ContractController,
         "reviewApproval",
         2,
-        { decision: "approve", ownerContractRiskConfirmed: value }
+        {
+          decision: "approve",
+          ...validContractReviewCoordinates,
+          ownerContractRiskConfirmed: value
+        }
       );
       expect(response.errors).toContain("业主主合同风险确认必须是布尔值");
     }
+  });
+
+  it("保留并验证业主主合同终审风险快照", async () => {
+    const value = {
+      decision: "approve",
+      ...validContractReviewCoordinates,
+      ownerContractRiskConfirmed: true,
+      expectedOwnerContractRisk: validExpectedOwnerContractRisk
+    };
+
+    await expect(
+      validateContractBody(ContractController, "reviewApproval", 2, value)
+    ).resolves.toEqual(value);
+  });
+
+  it.each([
+    ["status", "unknown", "预期业主主合同风险状态不正确"],
+    ["ownerContractAmountCents", "01", "预期业主主合同金额必须按分填写为 0 或更大的整数"],
+    ["downstreamContractAmountCents", 1, "预期对下合同金额格式不正确"],
+    ["excessAmountCents", "-1", "预期超额金额必须按分填写为 0 或更大的整数"],
+    ["message", "   ", "预期业主主合同风险提示不能为空"],
+    ["requiresExplicitConfirmation", "true", "预期业主主合同风险确认要求必须是布尔值"]
+  ] as const)("拒绝业主主合同风险快照字段 %s 的非法值", async (field, value, message) => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "reviewApproval",
+      2,
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        ownerContractRiskConfirmed: true,
+        expectedOwnerContractRisk: {
+          ...validExpectedOwnerContractRisk,
+          [field]: value
+        }
+      }
+    );
+
+    expect(response.errors).toContain(message);
+  });
+
+  it("拒绝缺少必填字段的业主主合同风险快照", async () => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "reviewApproval",
+      2,
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        ownerContractRiskConfirmed: true,
+        expectedOwnerContractRisk: {}
+      }
+    );
+
+    expect(response.errors).toEqual(expect.arrayContaining([
+      "预期业主主合同风险状态不正确",
+      "缺少预期业主主合同风险提示",
+      "预期业主主合同风险确认要求必须是布尔值"
+    ]));
+  });
+
+  it.each([null, [], "risk"])("拒绝非对象的业主主合同风险快照: %p", async (snapshot) => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "reviewApproval",
+      2,
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        ownerContractRiskConfirmed: true,
+        expectedOwnerContractRisk: snapshot
+      }
+    );
+
+    expect(response.errors).toContain("预期业主主合同风险必须是对象");
+  });
+
+  it("拒绝业主主合同风险快照中的未知字段", async () => {
+    const response = await getContractValidationResponse(
+      ContractController,
+      "reviewApproval",
+      2,
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        ownerContractRiskConfirmed: true,
+        expectedOwnerContractRisk: {
+          ...validExpectedOwnerContractRisk,
+          internalRisk: "TOP-SECRET"
+        }
+      }
+    );
+
+    expect(response.errors).toEqual([
+      "expectedOwnerContractRisk.internalRisk 不是允许提交的字段"
+    ]);
+    expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
   });
 
   it("拒绝客户端新建历史补充协议类型", async () => {
@@ -262,6 +407,7 @@ describe("ContractController authorization wiring", () => {
     await expect(
       validateContractBody(ContractController, "reviewApproval", 2, {
         decision: "approve",
+        ...validContractReviewCoordinates,
         selfReviewReason: boundary,
         confirmationPassword: "❤️".repeat(128)
       })
@@ -271,7 +417,11 @@ describe("ContractController authorization wiring", () => {
       ContractController,
       "reviewApproval",
       2,
-      { decision: "approve", selfReviewReason: `${boundary}原` }
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        selfReviewReason: `${boundary}原`
+      }
     );
     expect(reasonResponse.errors).toContain("自审原因不能超过 500 个字符");
 
@@ -279,7 +429,11 @@ describe("ContractController authorization wiring", () => {
       ContractController,
       "reviewApproval",
       2,
-      { decision: "approve", confirmationPassword: `${"❤️".repeat(128)}密` }
+      {
+        decision: "approve",
+        ...validContractReviewCoordinates,
+        confirmationPassword: `${"❤️".repeat(128)}密`
+      }
     );
     expect(passwordResponse.errors).toContain("当前密码格式不正确");
   });
@@ -300,7 +454,7 @@ describe("ContractController authorization wiring", () => {
       ContractController,
       "reviewApproval",
       2,
-      { decision: "approve", [field]: value }
+      { decision: "approve", ...validContractReviewCoordinates, [field]: value }
     );
 
     expect(response.errors).toContain(message);
@@ -314,6 +468,7 @@ describe("ContractController authorization wiring", () => {
       2,
       {
         decision: "approve",
+        ...validContractReviewCoordinates,
         selfReviewReason: "业务紧急",
         confirmationPassword: "current-password",
         internalSecret: "TOP-SECRET"
@@ -576,7 +731,10 @@ describe("ContractController authorization wiring", () => {
   });
 
   it.each([
-    ["reviewApproval", { decision: "unsupported" }, "合同审批决定不正确"],
+    ["reviewApproval", {
+      decision: "unsupported",
+      ...validContractReviewCoordinates
+    }, "合同审批决定不正确"],
     ["transferApproval", { toUserId: "   " }, "请选择接收人"],
     ["uploadArchiveFile", { fileId: "   " }, "合同归档文件不能为空白"],
     ["generatePdfArchive", { templateKey: 123 }, "模板标识必须是文字"],

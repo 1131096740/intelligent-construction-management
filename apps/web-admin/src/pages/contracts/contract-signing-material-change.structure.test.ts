@@ -19,7 +19,7 @@ describe("contract signing material-change action", () => {
     expect(detail).toContain('v-if="signingMaterialChangeActionEnabled()"');
     expect(detail).toContain('@confirm="confirmSigningMaterialChange"');
     expect(detail).toContain("require-reason");
-    expect(detail).toContain("contractSigningCapability.value");
+    expect(detail).toContain("contractReviewCapability.value");
     expect(detail).toContain("executeContractSigningMaterialChange({");
     expect(detail).toContain("signingMaterialChangeSubmissionToken");
     expect(detail).toContain("routeContractId() === context.routeContractId");

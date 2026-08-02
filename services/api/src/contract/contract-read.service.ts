@@ -61,6 +61,19 @@ function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
 }
 
+interface CurrentContractApprovalReview {
+  access: ApprovalReviewAccess;
+  approval: {
+    id: string;
+    currentNodeIndex: number;
+    updatedAt: Date;
+  } | null;
+}
+
+function emptyCurrentContractApprovalReview(): CurrentContractApprovalReview {
+  return { access: emptyApprovalReviewAccess(), approval: null };
+}
+
 const HISTORICAL_TAKEOVER_READ_ROLES = new Set<RoleKey>(
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS
 );
@@ -1147,13 +1160,28 @@ export class ContractReadService {
       this.confirmedHistoricalBalanceForContract(contract.id),
       this.actorRoleKeys(actorUserId, contract.projectId)
     ]);
-    const approvalReviewAccess = await this.canReviewCurrentApproval(
+    const currentApprovalReview = await this.canReviewCurrentApproval(
       "contract_version",
       version.id,
       contract.projectId,
       roleKeys,
       actorUserId
     );
+    const candidateReviewApprovalContext =
+      currentApprovalReview.access.canReview &&
+      version.updatedAt instanceof Date &&
+      currentApprovalReview.approval?.updatedAt instanceof Date
+        ? {
+            expectedContractUpdatedAt: version.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalReview.approval.id,
+            expectedNodeIndex: currentApprovalReview.approval.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              currentApprovalReview.approval.updatedAt.toISOString()
+          }
+        : null;
+    const approvalReviewAccess = candidateReviewApprovalContext
+      ? currentApprovalReview.access
+      : { ...currentApprovalReview.access, canReview: false };
     const canUploadGovernedFinal = await this.canUploadGovernedFinal(
       actorUserId,
       contract.projectId,
@@ -1237,6 +1265,14 @@ export class ContractReadService {
           draftLifecycle.expectedAction === "abandon_application"
       }));
     }
+
+    const enabledReviewActions = availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    );
+    const reviewApprovalContext =
+      candidateReviewApprovalContext && enabledReviewActions.length === 1
+        ? candidateReviewApprovalContext
+        : null;
 
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
@@ -1346,6 +1382,7 @@ export class ContractReadService {
       signingMaterialChangeContext,
       approvalTimeline,
       availableActions,
+      reviewApprovalContext,
       lifecycleKind: draftLifecycle.lifecycleKind,
       lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
@@ -1435,6 +1472,7 @@ export class ContractReadService {
       archiveFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      reviewApprovalContext: null,
       primaryAction: null,
       disabledReasons: [],
       chainLinks: [
@@ -1774,37 +1812,64 @@ export class ContractReadService {
     projectId: string,
     roleKeys: RoleKey[],
     actorUserId?: string
-  ): Promise<ApprovalReviewAccess> {
+  ): Promise<CurrentContractApprovalReview> {
     if (!actorUserId) {
-      return emptyApprovalReviewAccess();
+      return emptyCurrentContractApprovalReview();
     }
 
     const approvalClient = (this.prisma as unknown as {
       approvalInstance?: {
-        findFirst(args: {
-          where: { businessType: string; businessId: string; status: string };
-          orderBy: { createdAt: "desc" };
-          select: { applicantUserId: true; frozenNodes: true; currentNodeIndex: true };
-        }): Promise<{
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "contract.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            frozenNodes: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
           applicantUserId: string;
           frozenNodes: unknown;
           currentNodeIndex: number;
-        } | null>;
+          updatedAt: Date;
+        }>>;
       };
     }).approvalInstance;
-    if (!approvalClient) {
-      return emptyApprovalReviewAccess();
+    if (!approvalClient?.findMany) {
+      return emptyCurrentContractApprovalReview();
     }
 
-    const instance = await approvalClient.findFirst({
-      where: { businessType, businessId, status: "in_progress" },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "contract.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        frozenNodes: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
     });
 
-    if (!instance) {
-      return emptyApprovalReviewAccess();
+    if (instances.length !== 1) {
+      return emptyCurrentContractApprovalReview();
     }
+    const instance = instances[0];
 
     const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
@@ -1815,14 +1880,21 @@ export class ContractReadService {
       false
     );
     if (directOrAssignedAccess.canAct) {
-      return directOrAssignedAccess;
+      return {
+        access: directOrAssignedAccess,
+        approval: {
+          id: instance.id,
+          currentNodeIndex: instance.currentNodeIndex,
+          updatedAt: instance.updatedAt
+        }
+      };
     }
 
     const activeDelegators = await this.activeDelegatedApprovalIdentities(
       actorUserId,
       projectId
     );
-    return approvalReviewAccessOnFrozenNode(
+    const delegatedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
@@ -1830,6 +1902,16 @@ export class ContractReadService {
       instance.applicantUserId,
       activeDelegators
     );
+    return {
+      access: delegatedAccess,
+      approval: delegatedAccess.canAct
+        ? {
+            id: instance.id,
+            currentNodeIndex: instance.currentNodeIndex,
+            updatedAt: instance.updatedAt
+          }
+        : null
+    };
   }
 
   private async activeDelegatedApprovalIdentities(

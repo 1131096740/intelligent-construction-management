@@ -8,17 +8,17 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 405,
-    "transportWrapperCount": 385,
+    "exportedFunctionCount": 406,
+    "transportWrapperCount": 386,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 405,
+    "mainRequestBindingCount": 406,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 404,
-    "productionConsumerCount": 348,
+    "requestEdgeCount": 405,
+    "productionConsumerCount": 349,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
-    "duplicateNormalizedRouteGroupCount": 11,
+    "duplicateNormalizedRouteGroupCount": 12,
     "authTransportExceptionCount": 5
   },
   "evidence": {
@@ -4619,7 +4619,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5527,
+          "sourceLine": 5948,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4649,7 +4649,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5511,
+          "sourceLine": 5932,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4679,7 +4679,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5511,
+          "sourceLine": 5932,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4709,7 +4709,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4702,
+          "sourceLine": 4813,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4738,7 +4738,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5511,
+          "sourceLine": 5932,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4828,7 +4828,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5554,
+          "sourceLine": 5975,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4857,7 +4857,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5541,
+          "sourceLine": 5962,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4886,7 +4886,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5569,
+          "sourceLine": 5990,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4915,7 +4915,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5511,
+          "sourceLine": 5932,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -4934,6 +4934,36 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "executeContractApprovalReviewAction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 75,
+          "method": "POST",
+          "path": "/contracts/:param/approval",
+          "normalizedPath": "/contracts/:param/approval",
+          "normalizedKey": "POST /contracts/:param/approval",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeContractApprovalReviewAction",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -6361,6 +6391,37 @@
       "unreachableConsumers": []
     },
     {
+      "name": "prepareContractApprovalReviewAction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 69,
+          "method": "GET",
+          "path": "/contracts/:param",
+          "normalizedPath": "/contracts/:param",
+          "normalizedKey": "GET /contracts/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "prepareContractApprovalReviewAction",
+              "fetchContractDetail",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "preparePaymentApprovalReviewAction",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -7457,36 +7518,6 @@
           "localCallChains": [
             [
               "returnMutuallySignedContractForCorrection",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "reviewContractApproval",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 75,
-          "method": "POST",
-          "path": "/contracts/:param/approval",
-          "normalizedPath": "/contracts/:param/approval",
-          "normalizedKey": "POST /contracts/:param/approval",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "reviewContractApproval",
               "postJson"
             ]
           ]
@@ -12262,6 +12293,23 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "fetchActiveContractNumberRules"
+        }
+      ]
+    },
+    {
+      "normalizedKey": "GET /contracts/:param",
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeContractSigningMaterialChange"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchContractDetail"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "prepareContractApprovalReviewAction"
         }
       ]
     },

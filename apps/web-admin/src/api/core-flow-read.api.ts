@@ -114,7 +114,9 @@ async function deleteJson<TResponse>(path: string): Promise<TResponse> {
 }
 
 export function fetchContractDetail(contractId: string) {
-  return readJson<ContractDetailReadModel>(`/contracts/${contractId}`);
+  return readJson<ContractDetailReadModel>(
+    `/contracts/${encodeURIComponent(contractId)}`
+  );
 }
 
 export interface ContractSigningMaterialChangeActionContext {
@@ -1106,6 +1108,115 @@ export interface ReviewContractApprovalPayload {
   selfReviewReason?: string;
   confirmationPassword?: string;
   ownerContractRiskConfirmed?: boolean;
+  expectedOwnerContractRisk?: ContractApprovalOwnerRiskSnapshot;
+  expectedContractUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export interface ContractReviewApprovalCoordinates {
+  expectedContractUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export type ContractApprovalReviewActionDecision = "approve" | "reject";
+
+export type ContractApprovalOwnerRiskSnapshot = Readonly<
+  NonNullable<ContractDetailReadModel["ownerContractRisk"]>
+>;
+
+export interface ContractApprovalReviewActionContext
+  extends ContractReviewApprovalCoordinates {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  routeContractId: string;
+  contractId: string;
+  contractVersionId: string;
+  decision: ContractApprovalReviewActionDecision;
+  comment?: string;
+  requiresSelfReviewConfirmation: boolean;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+  ownerContractRisk: ContractApprovalOwnerRiskSnapshot | null;
+  ownerContractRiskConfirmed: boolean;
+}
+
+export interface PrepareContractApprovalReviewActionInput
+  extends ContractApprovalReviewActionContext {
+  isCurrent: (context: ContractApprovalReviewActionContext) => boolean;
+}
+
+type ContractApprovalReviewPreflightReadModel = ContractDetailReadModel & {
+  reviewApprovalContext?: ContractReviewApprovalCoordinates | null;
+};
+
+export type PrepareContractApprovalReviewActionResult =
+  | {
+      status: "ready";
+      context: ContractApprovalReviewActionContext;
+      preflight: ContractApprovalReviewPreflightReadModel;
+    }
+  | {
+      status: "stale";
+      context: ContractApprovalReviewActionContext;
+    };
+
+export interface ExecuteContractApprovalReviewActionInput {
+  decision: ContractApprovalReviewActionDecision;
+  capture: (
+    decision: ContractApprovalReviewActionDecision
+  ) => ContractApprovalReviewActionContext | null;
+  preflight: (
+    context: ContractApprovalReviewActionContext
+  ) => Promise<PrepareContractApprovalReviewActionResult>;
+  current: (
+    context: ContractApprovalReviewActionContext,
+    prepared: PrepareContractApprovalReviewActionResult
+  ) => boolean;
+  stale: (
+    context: ContractApprovalReviewActionContext
+  ) => void | Promise<void>;
+  complete: (
+    context: ContractApprovalReviewActionContext,
+    response: unknown
+  ) => void | Promise<void>;
+  fail: (
+    context: ContractApprovalReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: ContractApprovalReviewActionContext) => void;
+}
+
+export type ExecuteContractApprovalReviewActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: ContractApprovalReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: ContractApprovalReviewActionContext;
+      response: unknown;
+    }
+  | {
+      status: "failed";
+      context: ContractApprovalReviewActionContext;
+      error: unknown;
+    };
+
+export class ContractApprovalReviewResultUnknownError extends Error {
+  constructor(readonly cause: unknown) {
+    super(
+      "合同审批提交结果暂时无法确认，请重新读取合同详情后人工核对，不要重复提交"
+    );
+    this.name = "ContractApprovalReviewResultUnknownError";
+  }
 }
 
 export interface ContractNumberRuleReadModel {
@@ -5119,11 +5230,321 @@ export function fetchActiveContractNumberRules() {
   return readJson<ContractNumberRuleReadModel[]>("/contract-number-rules");
 }
 
-export function reviewContractApproval(
-  contractVersionId: string,
-  body: ReviewContractApprovalPayload
+export async function prepareContractApprovalReviewAction(
+  input: PrepareContractApprovalReviewActionInput
+): Promise<PrepareContractApprovalReviewActionResult> {
+  const context = normalizeContractApprovalReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchContractDetail(
+    context.routeContractId
+  ) as ContractApprovalReviewPreflightReadModel;
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertContractApprovalReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeContractApprovalReviewAction(
+  input: ExecuteContractApprovalReviewActionInput
+): Promise<ExecuteContractApprovalReviewActionResult> {
+  const capturedContext = input.capture(input.decision);
+  if (!capturedContext) return { status: "not_started" };
+  let activeContext = capturedContext;
+
+  try {
+    const frozenCapturedContext = normalizeContractApprovalReviewAction(
+      capturedContext
+    );
+    activeContext = frozenCapturedContext;
+    const prepared = await input.preflight(frozenCapturedContext);
+    activeContext = prepared.context;
+    if (
+      prepared.status !== "ready" ||
+      !sameContractApprovalReviewContext(
+        frozenCapturedContext,
+        prepared.context
+      ) ||
+      !input.current(frozenCapturedContext, prepared)
+    ) {
+      await input.stale(frozenCapturedContext);
+      return { status: "stale", context: frozenCapturedContext };
+    }
+
+    const payload = contractApprovalReviewActionPayload(
+      activeContext,
+      input.decision
+    );
+    let response: unknown;
+    try {
+      response = await postJson<unknown>(
+        `/contracts/${encodeURIComponent(activeContext.contractVersionId)}/approval`,
+        payload
+      );
+    } catch (error) {
+      if (error instanceof CoreFlowApiError && error.status < 500) {
+        throw error;
+      }
+      throw new ContractApprovalReviewResultUnknownError(error);
+    }
+
+    if (!input.current(frozenCapturedContext, prepared)) {
+      await input.stale(activeContext);
+      return { status: "stale", context: activeContext };
+    }
+    await input.complete(activeContext, response);
+    return { status: "completed", context: activeContext, response };
+  } catch (error) {
+    await input.fail(activeContext, error);
+    return { status: "failed", context: activeContext, error };
+  } finally {
+    input.finish(activeContext);
+  }
+}
+
+function contractApprovalReviewActionPayload(
+  context: ContractApprovalReviewActionContext,
+  decision: ContractApprovalReviewActionDecision
+): ReviewContractApprovalPayload {
+  if (
+    context.decision !== decision ||
+    (decision === "reject" && !context.comment) ||
+    (context.requiresSelfReviewConfirmation &&
+      (!context.selfReviewReason ||
+        !context.confirmationPassword?.trim())) ||
+    (decision === "approve" &&
+      context.ownerContractRisk?.requiresExplicitConfirmation === true &&
+      !context.ownerContractRiskConfirmed)
+  ) {
+    throw new Error(
+      "合同审批上下文无效，请重新读取当前合同后再操作"
+    );
+  }
+
+  return {
+    decision,
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresSelfReviewConfirmation
+      ? {
+          selfReviewReason: context.selfReviewReason,
+          confirmationPassword: context.confirmationPassword
+        }
+      : {}),
+    ...(decision === "approve" &&
+    context.ownerContractRisk?.requiresExplicitConfirmation
+      ? {
+          ownerContractRiskConfirmed: true,
+          expectedOwnerContractRisk: context.ownerContractRisk
+        }
+      : {}),
+    expectedContractUpdatedAt: context.expectedContractUpdatedAt,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex,
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+  };
+}
+
+function normalizeContractApprovalReviewAction(
+  input: ContractApprovalReviewActionContext
+): ContractApprovalReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const routeContractId = input.routeContractId.trim();
+  const contractId = input.contractId.trim();
+  const contractVersionId = input.contractVersionId.trim();
+  const expectedContractUpdatedAt =
+    input.expectedContractUpdatedAt.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const expectedApprovalUpdatedAt =
+    input.expectedApprovalUpdatedAt.trim();
+  const comment = input.comment?.trim() || undefined;
+  const selfReviewReason = input.requiresSelfReviewConfirmation
+    ? input.selfReviewReason?.trim() || undefined
+    : undefined;
+  const confirmationPassword = input.requiresSelfReviewConfirmation
+    ? input.confirmationPassword
+    : undefined;
+  const ownerContractRisk = normalizeContractApprovalOwnerRisk(
+    input.ownerContractRisk
+  );
+  if (
+    !ownerScope ||
+    !routeContractId ||
+    !contractId ||
+    !contractVersionId ||
+    !expectedContractUpdatedAt ||
+    !expectedApprovalInstanceId ||
+    !expectedApprovalUpdatedAt ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0 ||
+    (input.decision !== "approve" && input.decision !== "reject") ||
+    typeof input.requiresSelfReviewConfirmation !== "boolean" ||
+    typeof input.ownerContractRiskConfirmed !== "boolean" ||
+    (input.decision === "reject" && !comment) ||
+    (input.requiresSelfReviewConfirmation &&
+      (!selfReviewReason || !confirmationPassword?.trim())) ||
+    (input.decision === "approve" &&
+      ownerContractRisk?.requiresExplicitConfirmation === true &&
+      !input.ownerContractRiskConfirmed)
+  ) {
+    throw new Error(
+      "合同审批上下文无效，请重新读取当前合同后再操作"
+    );
+  }
+
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    routeContractId,
+    contractId,
+    contractVersionId,
+    expectedContractUpdatedAt,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    expectedApprovalUpdatedAt,
+    decision: input.decision,
+    requiresSelfReviewConfirmation:
+      input.requiresSelfReviewConfirmation,
+    ownerContractRisk,
+    ownerContractRiskConfirmed: input.ownerContractRiskConfirmed,
+    ...(comment ? { comment } : {}),
+    ...(selfReviewReason ? { selfReviewReason } : {}),
+    ...(confirmationPassword ? { confirmationPassword } : {})
+  });
+}
+
+function sameContractApprovalReviewContext(
+  expected: ContractApprovalReviewActionContext,
+  actual: ContractApprovalReviewActionContext
 ) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/approval`, body);
+  return (
+    expected.ownerScope === actual.ownerScope &&
+    expected.routeGeneration === actual.routeGeneration &&
+    expected.detailEpoch === actual.detailEpoch &&
+    expected.dialogGeneration === actual.dialogGeneration &&
+    expected.operationId === actual.operationId &&
+    expected.routeContractId === actual.routeContractId &&
+    expected.contractId === actual.contractId &&
+    expected.contractVersionId === actual.contractVersionId &&
+    expected.expectedContractUpdatedAt ===
+      actual.expectedContractUpdatedAt &&
+    expected.expectedApprovalInstanceId ===
+      actual.expectedApprovalInstanceId &&
+    expected.expectedNodeIndex === actual.expectedNodeIndex &&
+    expected.expectedApprovalUpdatedAt ===
+      actual.expectedApprovalUpdatedAt &&
+    expected.decision === actual.decision &&
+    expected.comment === actual.comment &&
+    expected.requiresSelfReviewConfirmation ===
+      actual.requiresSelfReviewConfirmation &&
+    expected.selfReviewReason === actual.selfReviewReason &&
+    expected.confirmationPassword === actual.confirmationPassword &&
+    expected.ownerContractRiskConfirmed ===
+      actual.ownerContractRiskConfirmed &&
+    sameContractApprovalOwnerRisk(
+      expected.ownerContractRisk,
+      actual.ownerContractRisk
+    )
+  );
+}
+
+function normalizeContractApprovalOwnerRisk(
+  input: ContractApprovalOwnerRiskSnapshot | null
+): ContractApprovalOwnerRiskSnapshot | null {
+  if (input === null) return null;
+  if (
+    !["clear", "missing_owner_contract", "exceeds_owner_contract"].includes(
+      input.status
+    ) ||
+    typeof input.ownerContractAmountCents !== "string" ||
+    typeof input.downstreamContractAmountCents !== "string" ||
+    typeof input.excessAmountCents !== "string" ||
+    typeof input.message !== "string" ||
+    typeof input.requiresExplicitConfirmation !== "boolean"
+  ) {
+    throw new Error(
+      "合同审批上下文无效，请重新读取当前合同后再操作"
+    );
+  }
+  return Object.freeze({
+    status: input.status,
+    ownerContractAmountCents: input.ownerContractAmountCents,
+    downstreamContractAmountCents:
+      input.downstreamContractAmountCents,
+    excessAmountCents: input.excessAmountCents,
+    message: input.message,
+    requiresExplicitConfirmation: input.requiresExplicitConfirmation
+  });
+}
+
+function assertContractApprovalReviewPreflight(
+  context: ContractApprovalReviewActionContext,
+  preflight: ContractApprovalReviewPreflightReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const coordinates = preflight.reviewApprovalContext;
+  if (
+    preflight.id !== context.contractId ||
+    preflight.contractVersionId !== context.contractVersionId ||
+    preflight.lifecycleUpdatedAt !== context.expectedContractUpdatedAt ||
+    enabledReviewActions.length !== 1 ||
+    (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !==
+      context.requiresSelfReviewConfirmation ||
+    coordinates?.expectedContractUpdatedAt !==
+      context.expectedContractUpdatedAt ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
+    coordinates.expectedApprovalUpdatedAt !==
+      context.expectedApprovalUpdatedAt ||
+    !sameContractApprovalOwnerRisk(
+      context.ownerContractRisk,
+      preflight.ownerContractRisk ?? null
+    )
+  ) {
+    throw new Error(
+      "合同审批资格、风险或审批坐标已变化，请重新读取当前合同"
+    );
+  }
+}
+
+function sameContractApprovalOwnerRisk(
+  expected: ContractApprovalOwnerRiskSnapshot | null,
+  actual: ContractDetailReadModel["ownerContractRisk"] | null
+) {
+  if (expected === null || actual == null) {
+    return expected === null && actual == null;
+  }
+  return (
+    expected.status === actual.status &&
+    expected.ownerContractAmountCents === actual.ownerContractAmountCents &&
+    expected.downstreamContractAmountCents ===
+      actual.downstreamContractAmountCents &&
+    expected.excessAmountCents === actual.excessAmountCents &&
+    expected.message === actual.message &&
+    expected.requiresExplicitConfirmation ===
+      actual.requiresExplicitConfirmation
+  );
 }
 
 export function withdrawContractApproval(contractVersionId: string) {

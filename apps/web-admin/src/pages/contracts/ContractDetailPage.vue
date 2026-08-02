@@ -224,7 +224,7 @@
                 :message="ownerContractRisk.message"
               />
               <div
-                v-if="isContractActionEnabled('submit_approval') || isContractActionEnabled('review_approval')"
+                v-if="isContractActionEnabled('submit_approval') || contractReviewActionEnabled()"
                 class="action-fields"
               >
                 <label
@@ -236,7 +236,7 @@
                   </t-checkbox>
                 </label>
                 <label
-                  v-if="isContractActionEnabled('review_approval')"
+                  v-if="contractReviewActionEnabled()"
                   class="action-field action-field--wide"
                 >
                   <span>审批意见</span>
@@ -267,7 +267,7 @@
                   前往合同工作台提交
                 </t-button>
                 <t-button
-                  v-if="isContractActionEnabled('review_approval')"
+                  v-if="contractReviewActionEnabled()"
                   :theme="buttonTheme('review_approval')"
                   :variant="buttonVariant('review_approval')"
                   :loading="archiveActionBusy === 'reviewApproval'"
@@ -276,7 +276,7 @@
                   通过
                 </t-button>
                 <t-button
-                  v-if="isContractActionEnabled('review_approval')"
+                  v-if="contractReviewActionEnabled()"
                   theme="danger"
                   variant="outline"
                   :loading="archiveActionBusy === 'reviewApproval'"
@@ -960,6 +960,33 @@
     </template>
 
     <SensitiveActionDialog
+      v-if="sensitiveAction.kind === 'approvalApprove' && contractReviewActionEnabled()"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-password="sensitiveAction.requirePassword"
+      :loading="archiveActionBusy === 'reviewApproval'"
+      :error="sensitiveAction.error"
+      @confirm="confirmContractReviewApprove"
+    />
+
+    <SensitiveActionDialog
+      v-if="sensitiveAction.kind === 'approvalReject' && contractReviewActionEnabled()"
+      v-model="sensitiveAction.visible"
+      :title="sensitiveAction.title"
+      :description="sensitiveAction.description"
+      :confirm-text="sensitiveAction.confirmText"
+      :confirm-theme="sensitiveAction.confirmTheme"
+      :require-password="sensitiveAction.requirePassword"
+      :loading="archiveActionBusy === 'reviewApproval'"
+      :error="sensitiveAction.error"
+      @confirm="confirmContractReviewReject"
+    />
+
+    <SensitiveActionDialog
+      v-if="sensitiveAction.kind !== 'approvalApprove' && sensitiveAction.kind !== 'approvalReject'"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
       :description="sensitiveAction.description"
@@ -1063,14 +1090,15 @@ import {
   createPrivateFileDownloadTicket,
   delegateContractApproval,
   downloadApprovalForm as requestApprovalFormDownload,
+  executeContractApprovalReviewAction,
   executeContractSigningMaterialChange,
   fetchApprovalDelegationUserOptions,
   fetchContractChangeEligibility,
   fetchContractDetail,
   generateContractPdfArchive,
+  prepareContractApprovalReviewAction,
   remindContractApproval,
   returnMutuallySignedContractForCorrection,
-  reviewContractApproval,
   transferContractApproval,
   uploadContractArchiveFile,
   uploadMutuallySignedContract,
@@ -1078,8 +1106,12 @@ import {
   withdrawContractApproval
 } from "../../api/core-flow-read.api";
 import type {
+  ContractApprovalOwnerRiskSnapshot,
+  ContractApprovalReviewActionContext,
+  ContractApprovalReviewActionDecision,
   ContractSigningMaterialChangeActionContext
 } from "../../api/core-flow-read.api";
+import { ContractApprovalReviewResultUnknownError } from "../../api/core-flow-read.api";
 import { ContractSigningMaterialChangeResultUnknownError } from "../../lib/contract-signing-material-change-result";
 import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -1130,7 +1162,6 @@ import {
 } from "./contract-change.state";
 import { contractVersionStatusLabel } from "./contract-labels";
 
-type ContractReviewDecision = "approve" | "reject";
 type SensitiveActionKind =
   | "approvalApprove"
   | "approvalReject"
@@ -1170,11 +1201,24 @@ interface SigningMaterialChangeSubmissionContext
   reason: string;
 }
 
+type ContractReviewDialogContext = Pick<
+  ContractApprovalReviewActionContext,
+  | "routeContractId"
+  | "contractId"
+  | "contractVersionId"
+  | "expectedContractUpdatedAt"
+  | "expectedApprovalInstanceId"
+  | "expectedNodeIndex"
+  | "expectedApprovalUpdatedAt"
+  | "decision"
+  | "ownerContractRisk"
+>;
+
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const contractDetail = ref<ContractDetailReadModel | null>(null);
-const contractSigningCapability = ref<ContractDetailReadModel | null>(null);
+const contractReviewCapability = ref<ContractDetailReadModel | null>(null);
 const selectedFormalFileId = ref("");
 const formalPreviewFileId = ref("");
 const formalPreviewUrl = ref("");
@@ -1190,6 +1234,12 @@ const changeError = ref("");
 let detailRequestId = 0;
 let changeSubmissionToken = 0;
 let signingMaterialChangeSubmissionToken = 0;
+let contractReviewSubmissionToken = 0;
+let contractReviewDialogGeneration = 0;
+let contractReviewOperationId = 0;
+let contractReviewDialogContext: ContractReviewDialogContext | null = null;
+let contractReviewInFlight: Promise<boolean> | null = null;
+let contractReviewResultUnknown = false;
 let changeDialogBaseVersionId = "";
 const changeForm = reactive({
   changeDirection: "unchanged" as "increase" | "decrease" | "unchanged",
@@ -1380,12 +1430,22 @@ const contractHeaderPrimaryActionLabel = computed(() =>
     : contractHeaderPrimaryAction.value?.label
 );
 const requiresContractSelfReviewConfirmation = computed(
-  () => contractActionByKey.value.get("review_approval")?.requiresSelfReviewConfirmation === true
+  () => {
+    const capability = contractReviewCapability.value;
+    const actions = capability?.availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    ) ?? [];
+    return Boolean(capability?.reviewApprovalContext) &&
+      actions.length === 1 &&
+      actions[0]?.requiresSelfReviewConfirmation === true;
+  }
 );
-const ownerContractRisk = computed(() => contractDetail.value?.ownerContractRisk ?? null);
+const ownerContractRisk = computed(
+  () => contractReviewCapability.value?.ownerContractRisk ?? contractDetail.value?.ownerContractRisk ?? null
+);
 const showContractApprovalActions = computed(
   () => isContractActionEnabled("submit_approval") ||
-    isContractActionEnabled("review_approval") ||
+    contractReviewActionEnabled() ||
     isContractActionEnabled("download_approval_form")
 );
 const showContractAssistanceActions = computed(
@@ -1524,9 +1584,22 @@ function isContractActionEnabled(key: string) {
   return contractActionByKey.value.get(key)?.enabled ?? false;
 }
 
+function contractReviewActionEnabled() {
+  return Boolean(
+    contractReviewCapability.value?.availableActions.some(
+      (action) => action.key === "review_approval" && action.enabled
+    )
+  ) &&
+    Boolean(contractReviewCapability.value?.reviewApprovalContext) &&
+    (contractReviewCapability.value?.availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    ).length ?? 0) === 1 &&
+    !contractReviewResultUnknown;
+}
+
 function signingMaterialChangeActionEnabled() {
   return Boolean(
-    contractSigningCapability.value?.availableActions.some(
+    contractReviewCapability.value?.availableActions.some(
       (action) =>
         action.key === "report_signing_material_change" && action.enabled
     )
@@ -1597,6 +1670,7 @@ function showContractNotice(message: string) {
 
 async function reloadContractDetail() {
   const requestId = ++detailRequestId;
+  contractArchiveForm.ownerContractRiskConfirmed = false;
   const contractId = routeContractId();
   if (!contractId) {
     contractDetail.value = null;
@@ -1605,7 +1679,8 @@ async function reloadContractDetail() {
   }
 
   contractDetailError.value = "";
-  contractSigningCapability.value = null;
+  contractReviewCapability.value = null;
+  contractReviewResultUnknown = false;
   detailLoading.value = true;
   try {
     const serverDetail = await fetchContractDetail(contractId);
@@ -1615,7 +1690,7 @@ async function reloadContractDetail() {
       (detail as unknown as { changeVersions?: unknown }).changeVersions
     );
     if (!versions) throw new Error("合同版本历史数据异常，已停止展示");
-    contractSigningCapability.value = serverDetail;
+    contractReviewCapability.value = serverDetail;
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
     changeEligibility.value = null;
@@ -1643,7 +1718,7 @@ async function reloadContractDetail() {
     return true;
   } catch (error) {
     if (requestId !== detailRequestId) return false;
-    contractSigningCapability.value = null;
+    contractReviewCapability.value = null;
     contractDetail.value = null;
     normalizedChangeVersions.value = [];
     changeEligibility.value = null;
@@ -1694,6 +1769,13 @@ function clearChangeTransientState() {
 
 function clearContractActionTransientState() {
   signingMaterialChangeSubmissionToken += 1;
+  contractReviewSubmissionToken += 1;
+  contractReviewDialogGeneration += 1;
+  contractReviewDialogContext = null;
+  contractReviewInFlight = null;
+  contractReviewResultUnknown = false;
+  contractReviewCapability.value = null;
+  contractArchiveForm.ownerContractRiskConfirmed = false;
   signingMaterialChangeDialogContext.value = null;
   signingMaterialChangeDialogVisible.value = false;
   signingMaterialChangeDialogError.value = "";
@@ -1913,7 +1995,74 @@ function goToContractWorkbenchSubmission() {
   });
 }
 
-function requestContractReview(decision: ContractReviewDecision) {
+function currentContractReviewDialogContext(
+  decision: ContractApprovalReviewActionDecision
+): ContractReviewDialogContext | null {
+  const capability = contractReviewCapability.value;
+  const coordinates = capability?.reviewApprovalContext;
+  const routeId = routeContractId();
+  if (
+    !capability ||
+    !coordinates ||
+    !routeId ||
+    !contractReviewActionEnabled() ||
+    capability.id !== routeId ||
+    capability.lifecycleUpdatedAt !== coordinates.expectedContractUpdatedAt
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    routeContractId: routeId,
+    contractId: capability.id,
+    contractVersionId: capability.contractVersionId,
+    expectedContractUpdatedAt: coordinates.expectedContractUpdatedAt,
+    expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+    decision,
+    ownerContractRisk: freezeContractReviewOwnerRisk(
+      capability.ownerContractRisk
+    )
+  });
+}
+
+function freezeContractReviewOwnerRisk(
+  risk: ContractDetailReadModel["ownerContractRisk"] | null | undefined
+): ContractApprovalOwnerRiskSnapshot | null {
+  return risk
+    ? Object.freeze({
+        status: risk.status,
+        ownerContractAmountCents: risk.ownerContractAmountCents,
+        downstreamContractAmountCents: risk.downstreamContractAmountCents,
+        excessAmountCents: risk.excessAmountCents,
+        message: risk.message,
+        requiresExplicitConfirmation: risk.requiresExplicitConfirmation
+      })
+    : null;
+}
+
+function sameContractReviewOwnerRisk(
+  left: ContractApprovalOwnerRiskSnapshot | null,
+  right: ContractApprovalOwnerRiskSnapshot | null
+) {
+  if (left === null || right === null) return left === right;
+  return left.status === right.status &&
+    left.ownerContractAmountCents === right.ownerContractAmountCents &&
+    left.downstreamContractAmountCents === right.downstreamContractAmountCents &&
+    left.excessAmountCents === right.excessAmountCents &&
+    left.message === right.message &&
+    left.requiresExplicitConfirmation === right.requiresExplicitConfirmation;
+}
+
+function requestContractReview(decision: ContractApprovalReviewActionDecision) {
+  const reviewContext = currentContractReviewDialogContext(decision);
+  if (!reviewContext) {
+    setActionError(
+      new Error("合同审批资格或审批坐标已变化"),
+      "无法处理合同审批，请刷新详情后重试。"
+    );
+    return;
+  }
   try {
     currentContractVersionId();
     if (decision === "reject") requiredText(contractArchiveForm.approvalComment, "驳回原因");
@@ -1934,6 +2083,8 @@ function requestContractReview(decision: ContractReviewDecision) {
     setActionError(error, "合同审批信息不完整，请修正后重试。");
     return;
   }
+  contractReviewDialogGeneration += 1;
+  contractReviewDialogContext = reviewContext;
   openSensitiveAction(decision === "approve" ? "approvalApprove" : "approvalReject", {
     title: decision === "approve" ? "确认通过合同审批？" : "确认驳回合同审批？",
     description: decision === "approve"
@@ -2034,7 +2185,7 @@ function requestContractSealCompletion() {
 }
 
 function captureSigningMaterialChangeContext() {
-  const detail = contractSigningCapability.value;
+  const detail = contractReviewCapability.value;
   const coordinates = detail?.signingMaterialChangeContext;
   const sealTask = detail?.sealTask;
   const routeId = routeContractId();
@@ -2227,12 +2378,6 @@ async function executeSensitiveAction(values: { reason: string; password: string
   let succeeded = false;
   try {
     switch (sensitiveAction.kind) {
-      case "approvalApprove":
-        succeeded = await performContractReview("approve", values.password);
-        break;
-      case "approvalReject":
-        succeeded = await performContractReview("reject", values.password);
-        break;
       case "approvalFormDownload":
         succeeded = await runArchiveAction("approvalForm", () => requestApprovalFormDownload(
           "contract_version",
@@ -2386,7 +2531,7 @@ function captureSigningMaterialChangeSubmission(values: {
   password: string;
 }): SigningMaterialChangeSubmissionContext | null {
   const owner = signingMaterialChangeDialogContext.value;
-  const capability = contractSigningCapability.value;
+  const capability = contractReviewCapability.value;
   const coordinates = capability?.signingMaterialChangeContext;
   const actionCount = capability?.availableActions.filter(
     (action) =>
@@ -2471,7 +2616,7 @@ async function failSigningMaterialChange(
   if (error instanceof ContractSigningMaterialChangeResultUnknownError) {
     const refreshed = await reloadContractDetail();
     if (!ownsSigningMaterialChangeSubmission(context)) return;
-    const authoritative = contractSigningCapability.value;
+    const authoritative = contractReviewCapability.value;
     const confirmed =
       refreshed &&
       authoritative?.draftRevision === context.expectedRevision + 1 &&
@@ -2516,31 +2661,222 @@ function confirmSigningMaterialChange(values: {
   });
 }
 
-async function performContractReview(decision: ContractReviewDecision, password: string) {
-  const selfReviewPayload = buildApprovalSelfReviewPayload(
-    requiresContractSelfReviewConfirmation.value,
-    {
-      selfReviewReason: contractArchiveForm.selfReviewReason,
-      confirmationPassword: password
-    }
-  );
-  const succeeded = await runArchiveAction("reviewApproval", () => reviewContractApproval(
-    currentContractVersionId(),
-    {
-      decision,
-      comment: contractArchiveForm.approvalComment.trim() || undefined,
-      ...(ownerContractRisk.value?.requiresExplicitConfirmation
-        ? { ownerContractRiskConfirmed: contractArchiveForm.ownerContractRiskConfirmed }
-        : {}),
-      ...selfReviewPayload
-    }
-  ));
-  if (succeeded) {
-    contractArchiveForm.approvalComment = "";
-    contractArchiveForm.selfReviewReason = "";
-    contractArchiveForm.ownerContractRiskConfirmed = false;
+function contractReviewOwnerScope(context: ContractReviewDialogContext) {
+  return [
+    context.routeContractId,
+    context.contractVersionId,
+    context.expectedApprovalInstanceId
+  ].join("\u0000");
+}
+
+function captureContractReviewContext(
+  decision: ContractApprovalReviewActionDecision,
+  password: string
+): ContractApprovalReviewActionContext | null {
+  const dialog = contractReviewDialogContext;
+  const freshDialog = currentContractReviewDialogContext(decision);
+  if (
+    !dialog ||
+    !freshDialog ||
+    dialog.decision !== decision ||
+    dialog.contractId !== freshDialog.contractId ||
+    dialog.contractVersionId !== freshDialog.contractVersionId ||
+    dialog.expectedContractUpdatedAt !== freshDialog.expectedContractUpdatedAt ||
+    dialog.expectedApprovalInstanceId !== freshDialog.expectedApprovalInstanceId ||
+    dialog.expectedNodeIndex !== freshDialog.expectedNodeIndex ||
+    dialog.expectedApprovalUpdatedAt !== freshDialog.expectedApprovalUpdatedAt ||
+    !sameContractReviewOwnerRisk(
+      dialog.ownerContractRisk,
+      freshDialog.ownerContractRisk
+    ) ||
+    archiveActionBusy.value ||
+    contractReviewResultUnknown
+  ) {
+    return null;
   }
-  return succeeded;
+
+  const comment = contractArchiveForm.approvalComment.trim() || undefined;
+  if (decision === "reject" && !comment) {
+    sensitiveAction.error = "驳回原因不能为空。";
+    return null;
+  }
+  let selfReviewPayload: ReturnType<typeof buildApprovalSelfReviewPayload>;
+  try {
+    selfReviewPayload = buildApprovalSelfReviewPayload(
+      requiresContractSelfReviewConfirmation.value,
+      {
+        selfReviewReason: contractArchiveForm.selfReviewReason,
+        confirmationPassword: password
+      }
+    );
+  } catch (error) {
+    sensitiveAction.error = error instanceof Error
+      ? error.message
+      : "合同自审确认信息不完整。";
+    return null;
+  }
+  const risk = dialog.ownerContractRisk;
+  if (
+    decision === "approve" &&
+    risk?.requiresExplicitConfirmation &&
+    !contractArchiveForm.ownerContractRiskConfirmed
+  ) {
+    sensitiveAction.error = "请先确认业主主合同缺失或超额风险。";
+    return null;
+  }
+
+  const operationId = ++contractReviewOperationId;
+  contractReviewSubmissionToken = operationId;
+  archiveActionBusy.value = "reviewApproval";
+  archiveActionMessage.value = "";
+  sensitiveAction.error = "";
+  return {
+    ownerScope: contractReviewOwnerScope(dialog),
+    routeGeneration: detailRequestId,
+    detailEpoch: detailRequestId,
+    dialogGeneration: contractReviewDialogGeneration,
+    operationId,
+    routeContractId: dialog.routeContractId,
+    contractId: dialog.contractId,
+    contractVersionId: dialog.contractVersionId,
+    expectedContractUpdatedAt: dialog.expectedContractUpdatedAt,
+    expectedApprovalInstanceId: dialog.expectedApprovalInstanceId,
+    expectedNodeIndex: dialog.expectedNodeIndex,
+    expectedApprovalUpdatedAt: dialog.expectedApprovalUpdatedAt,
+    decision,
+    requiresSelfReviewConfirmation: requiresContractSelfReviewConfirmation.value,
+    ...(comment ? { comment } : {}),
+    ...selfReviewPayload,
+    ownerContractRisk: risk ? { ...risk } : null,
+    ownerContractRiskConfirmed: Boolean(
+      risk?.requiresExplicitConfirmation &&
+      contractArchiveForm.ownerContractRiskConfirmed
+    )
+  };
+}
+
+function ownsContractReviewSubmission(context: ContractApprovalReviewActionContext) {
+  return context.operationId === contractReviewSubmissionToken &&
+    context.ownerScope === contractReviewOwnerScope(context) &&
+    routeContractId() === context.routeContractId;
+}
+
+function contractReviewSubmissionIsCurrent(
+  context: ContractApprovalReviewActionContext
+) {
+  const expectedKind = context.decision === "approve"
+    ? "approvalApprove"
+    : "approvalReject";
+  return ownsContractReviewSubmission(context) &&
+    context.routeGeneration === detailRequestId &&
+    context.detailEpoch === detailRequestId &&
+    context.dialogGeneration === contractReviewDialogGeneration &&
+    sensitiveAction.visible &&
+    sensitiveAction.kind === expectedKind;
+}
+
+async function completeContractReview(
+  context: ContractApprovalReviewActionContext
+) {
+  if (!ownsContractReviewSubmission(context)) return;
+  const refreshed = await reloadContractDetail();
+  if (!ownsContractReviewSubmission(context)) return;
+  archiveActionMessageTone.value = "success";
+  archiveActionMessage.value = refreshed
+    ? "合同审批已处理，权威合同详情已刷新。"
+    : "合同审批已处理，但详情刷新失败；请手动刷新，不要重复提交。";
+  contractArchiveForm.approvalComment = "";
+  contractArchiveForm.selfReviewReason = "";
+  contractArchiveForm.ownerContractRiskConfirmed = false;
+  contractReviewDialogContext = null;
+  sensitiveAction.visible = false;
+  sensitiveAction.kind = null;
+}
+
+function staleContractReview(context: ContractApprovalReviewActionContext) {
+  if (!ownsContractReviewSubmission(context)) return;
+  archiveActionMessageTone.value = "danger";
+  archiveActionMessage.value =
+    "合同审批资格或审批坐标已变化，本次没有提交；请关闭对话框并刷新详情。";
+  sensitiveAction.error = archiveActionMessage.value;
+}
+
+async function failContractReview(
+  context: ContractApprovalReviewActionContext,
+  error: unknown
+) {
+  if (!ownsContractReviewSubmission(context)) return;
+  if (error instanceof ContractApprovalReviewResultUnknownError) {
+    const refreshed = await reloadContractDetail();
+    if (!ownsContractReviewSubmission(context)) return;
+    contractReviewResultUnknown = true;
+    archiveActionMessageTone.value = "danger";
+    archiveActionMessage.value = refreshed
+      ? "审批提交结果暂时无法确认，系统已续读权威详情；请人工核对当前节点，不要重复提交。"
+      : "审批提交结果暂时无法确认，权威详情也未能刷新；请重新进入合同详情核对，不要重复提交。";
+  } else {
+    archiveActionMessageTone.value = "danger";
+    const message = error instanceof Error ? error.message : "未知错误";
+    archiveActionMessage.value = `合同审批未完成：${message}`;
+  }
+  sensitiveAction.error = archiveActionMessage.value;
+}
+
+function finishContractReview(context: ContractApprovalReviewActionContext) {
+  if (
+    ownsContractReviewSubmission(context) &&
+    archiveActionBusy.value === "reviewApproval"
+  ) {
+    archiveActionBusy.value = "";
+  }
+}
+
+function confirmContractReviewApprove(values: { reason: string; password: string }) {
+  if (contractReviewInFlight) return contractReviewInFlight;
+  const execution = executeContractApprovalReviewAction({
+    decision: "approve",
+    capture: () => captureContractReviewContext("approve", values.password),
+    preflight: (context) => prepareContractApprovalReviewAction({
+      ...context,
+      isCurrent: contractReviewSubmissionIsCurrent
+    }),
+    current: contractReviewSubmissionIsCurrent,
+    stale: staleContractReview,
+    complete: completeContractReview,
+    fail: failContractReview,
+    finish: finishContractReview
+  }).then((result) => result.status === "completed");
+  contractReviewInFlight = execution;
+  void execution.finally(() => {
+    if (contractReviewInFlight === execution) {
+      contractReviewInFlight = null;
+    }
+  });
+  return execution;
+}
+
+function confirmContractReviewReject(values: { reason: string; password: string }) {
+  if (contractReviewInFlight) return contractReviewInFlight;
+  const execution = executeContractApprovalReviewAction({
+    decision: "reject",
+    capture: () => captureContractReviewContext("reject", values.password),
+    preflight: (context) => prepareContractApprovalReviewAction({
+      ...context,
+      isCurrent: contractReviewSubmissionIsCurrent
+    }),
+    current: contractReviewSubmissionIsCurrent,
+    stale: staleContractReview,
+    complete: completeContractReview,
+    fail: failContractReview,
+    finish: finishContractReview
+  }).then((result) => result.status === "completed");
+  contractReviewInFlight = execution;
+  void execution.finally(() => {
+    if (contractReviewInFlight === execution) {
+      contractReviewInFlight = null;
+    }
+  });
+  return execution;
 }
 
 async function performContractAssignment(kind: "transfer" | "delegate") {
