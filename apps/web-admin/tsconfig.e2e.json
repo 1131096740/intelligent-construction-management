@@ -5,5 +5,9 @@
     "skipLibCheck": true,
     "types": ["node", "@playwright/test"]
   },
-  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+  "include": [
+    "e2e/**/*.ts",
+    "playwright.config.ts",
+    "playwright.project-financing-quota-termination.config.ts"
+  ]
 }

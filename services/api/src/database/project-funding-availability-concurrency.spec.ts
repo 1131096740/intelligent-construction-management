@@ -191,6 +191,9 @@ describe("project funding PostgreSQL evidence", () => {
         ).rejects.toThrow("项目可用资金不足，当前最多可实际支付 0 分");
 
         const inactiveQuotaProjectId = projectId("inactive-quota");
+        const inactiveQuotaId = `pf-live-quota-${marker}`;
+        const inactiveQuotaAttachmentFileId =
+          `pf-live-quota-file-${marker}`;
         await clients[0]!.project.create({
           data: {
             id: inactiveQuotaProjectId,
@@ -198,14 +201,27 @@ describe("project funding PostgreSQL evidence", () => {
             name: "失效额度拒绝夹具"
           }
         });
+        await clients[0]!.fileObject.create({
+          data: {
+            id: inactiveQuotaAttachmentFileId,
+            bucket: "local-test",
+            objectKey: `project-funding/${marker}/inactive-quota.pdf`,
+            originalName: "inactive-quota.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128,
+            uploadedByUserId: actorId,
+            contentSha256: "a".repeat(64),
+            storageStatus: "active"
+          }
+        });
         await clients[0]!.projectFinancingQuota.create({
           data: {
-            id: `pf-live-quota-${marker}`,
+            id: inactiveQuotaId,
             projectId: inactiveQuotaProjectId,
             amountCents: 1_000n,
             reason: "实库失效额度门禁",
             validUntil: new Date("2020-01-01T00:00:00.000Z"),
-            attachmentFileId: `pf-live-quota-file-${marker}`,
+            attachmentFileId: inactiveQuotaAttachmentFileId,
             attachmentFileSha256Snapshot: "a".repeat(64),
             requestedByUserId: actorId,
             requestedByRoleKey: "finance_staff",
@@ -214,6 +230,30 @@ describe("project funding PostgreSQL evidence", () => {
             approvedByUserId: actorId,
             approvedAt: new Date("2019-01-01T00:00:00.000Z"),
             status: "approved"
+          }
+        });
+        await clients[0]!.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: inactiveQuotaId,
+            status: "approved",
+            currentNodeIndex: 2,
+            applicantUserId: actorId,
+            frozenNodes: [
+              {
+                name: "财务主管",
+                mode: "any",
+                roleKeys: ["finance_director"],
+                approvedRoleKeys: ["finance_director"]
+              },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"],
+                approvedRoleKeys: ["chairman"]
+              }
+            ]
           }
         });
         await expect(
