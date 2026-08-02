@@ -155,6 +155,38 @@ runner 的 guaranteed cleanup 删除一次性容器
 查询无输出、56575 无监听、`/tmp` 无 `jiangkong-spot-concurrency-*` 临时目录。本轮未连接
 生产、未触碰其他容器，也未运行该限定 scope 之外的撤回、付款、收货、票据或其他业务场景。
 
+### 2026-08-02 第五次独立授权复验
+
+当前分支已包含融资额度第 115、116 个迁移，直接运行当前 runner 会越过用户只授权的
+114 迁移边界。因此本轮先核对祖先关系，并从祖先提交
+`6ff707b7cc147ee9b3b89be824980a8058455677` 创建一次性只读代码快照；该快照固定
+`EXPECTED_MIGRATION_COUNT=114`，终点仍为
+`20260728161000_spot_procurement_application_revision_status`，且申请审批服务、签名 helper
+和限定 verifier 与当前分支对应实现无差异。快照本地构建通过后，只执行：
+
+```text
+SPOT_PROCUREMENT_CONCURRENCY_SCOPE=application-review-approve
+```
+
+一次性 PostgreSQL 16 仅绑定
+`127.0.0.1:64463/jiangkong_spot_procurement_concurrency_verify`。空库首次完整应用 114 个
+迁移，第二次 deploy 明确零待办，`migrate status` 同步，迁移表证明终点恰好一条。三段
+限定回执再次全部通过：
+
+- 双 backend 真实锁等待后审批坐标并发单赢家，陈旧请求 409，ActionLog/Audit 唯一且签名
+  岗位、代表账号、文件、SHA 和版本精确匹配；
+- 缺签与文件/版本 SHA 漂移均在根单、版本、节点、ActionLog、Audit、付款和收货写入前
+  失败，调用前后事实完全一致；
+- Audit 中段注入故障时已在事务内观察签名 ActionLog、终审状态、付款、收货和三条 Audit，
+  抛错后事务外全部回滚且新增行数为零。
+
+runner guaranteed cleanup 删除精确容器
+`jiangkong-spot-concurrency-1785633403439-44761` 及其运行时临时目录。独立复核中，
+`docker ps --all` 对该容器无输出、64463 无监听、`/private/tmp` 无
+`jiangkong-spot-concurrency-*` 目录；固定 114 范围所用的一次性代码快照也已删除。当前工作树
+HEAD 仍为 `ea8f5aae80cdb82b29535ae09d2fb18ef3284997`，本次证据只绑定 114 迁移零采审批切片，
+不证明当前 116 迁移融资额度门禁。未连接生产、未触碰其他容器，也未运行授权范围外场景。
+
 ## 测试与静态门禁
 
 当前精确 diff 的验证结果：
