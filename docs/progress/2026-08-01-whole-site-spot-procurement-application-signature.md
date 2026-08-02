@@ -187,6 +187,37 @@ runner guaranteed cleanup 删除精确容器
 HEAD 仍为 `ea8f5aae80cdb82b29535ae09d2fb18ef3284997`，本次证据只绑定 114 迁移零采审批切片，
 不证明当前 116 迁移融资额度门禁。未连接生产、未触碰其他容器，也未运行授权范围外场景。
 
+### 2026-08-02 第六次独立授权复验
+
+用户再次明确授权同一 `spot-procurement.review-approve` 限定范围后，本轮先核对当前
+`HEAD=d56118a42eca69453c8dc5727d8137a9d5eac860` 仍包含第 115、116 个融资迁移，不能直接
+运行当前 116 迁移 runner。于是再次从可追溯祖先
+`6ff707b7cc147ee9b3b89be824980a8058455677` 创建一次性 114 迁移快照，并确认申请审批服务、
+签名 helper、限定 verifier 与 fixtures 均和当前分支逐文件一致。快照使用隔离复制的
+Prisma Client 生成目录完成 114 Schema generate 与 API build；当前工作树 Prisma Client
+schema 哈希前后均为
+`49bd76146119f157b03d369fd0174699c0952ffafc4589ef395d668187e927a3`，未被快照生成改写。
+
+限定 runner 只连接
+`127.0.0.1:53743/jiangkong_spot_procurement_concurrency_verify`。真实 PostgreSQL 16 结果：
+
+- 空库首次完整应用 114 个迁移，第二次 deploy 明确零待办，`migrate status` 同步；
+- `_prisma_migrations` 的成功迁移数为 114，终点
+  `20260728161000_spot_procurement_application_revision_status` 恰好一条；
+- 双 backend 真实锁等待后审批坐标与签名并发恰好一个 winner，loser 以陈旧坐标 409
+  失败，ActionLog/Audit 唯一，审批岗位、代表账号、签名文件、SHA 和版本精确匹配；
+- 缺签及文件/版本 SHA 漂移均在根单、版本、节点、ActionLog、Audit、付款和收货写入前
+  失败，调用前后事实完全一致；
+- Audit 中段注入故障时，事务内已观察签名 ActionLog、终审状态、付款、收货和三条 Audit，
+  抛错后事务外全部回滚且新增行数为零。
+
+runner guaranteed cleanup 删除精确容器
+`jiangkong-spot-concurrency-1785640379204-20938` 及其运行时临时目录。独立复核中，精确
+容器查询无输出、53743 无监听、`/private/tmp` 无 `jiangkong-spot-concurrency-*` 目录；
+一次性 114 代码快照也已删除。既有停止容器 `jiangkong-postgres` 与
+`jgzg-contract-draft-aggregate-pg` 仍保持原状态，未被本轮触碰。未连接生产，未运行限定
+scope 之外场景；本证据仍不证明当前 116 迁移或融资额度运行门。
+
 ## 测试与静态门禁
 
 当前精确 diff 的验证结果：
