@@ -24,7 +24,10 @@ import {
 import { PrismaService } from "../../database/prisma.service";
 import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import type { AuthenticatedRequest } from "../auth.types";
-import { REQUIRED_POSITIONS_KEY } from "../decorators/require-positions.decorator";
+import {
+  ANY_PROJECT_POSITION_SCOPE_KEY,
+  REQUIRED_POSITIONS_KEY
+} from "../decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../decorators/require-project-role.decorator";
 
 @Injectable()
@@ -56,7 +59,13 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException("未获取到登录用户，请重新登录");
     }
 
-    const projectId = await this.extractProjectId(request);
+    const anyProjectPositionScope = this.reflector.getAllAndOverride<boolean>(
+      ANY_PROJECT_POSITION_SCOPE_KEY,
+      [context.getHandler(), context.getClass()]
+    );
+    const projectId = anyProjectPositionScope
+      ? undefined
+      : await this.extractProjectId(request);
     const includeAnyProjectRole =
       !projectId &&
       (Boolean(requiredPositions?.length) && !requiredAction ||

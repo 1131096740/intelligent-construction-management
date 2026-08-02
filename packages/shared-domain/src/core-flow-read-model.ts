@@ -314,6 +314,13 @@ export interface SettlementPayableCalculationItemReadModel {
   tone?: CoreFlowTone;
 }
 
+export interface SettlementApprovalWithdrawalContextReadModel {
+  expectedSettlementUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
 export interface SettlementPayableCalculationReadModel {
   items: SettlementPayableCalculationItemReadModel[];
   note: string;
@@ -358,6 +365,8 @@ export interface SettlementDetailReadModel {
   archiveFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  lifecycleUpdatedAt: string;
+  withdrawApprovalContext: SettlementApprovalWithdrawalContextReadModel | null;
   primaryAction: string | null;
   disabledReasons: string[];
   chainLinks: BusinessChainLink[];

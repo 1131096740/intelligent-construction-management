@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 58,
-    "pageActionCount": 52,
+    "registeredActionCount": 59,
+    "pageActionCount": 53,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
-    "reachableProductionModuleCount": 233,
-    "templateEventDirectiveCount": 947,
+    "reachableProductionModuleCount": 234,
+    "templateEventDirectiveCount": 948,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 29,
-    "candidateProductionMutationConsumerCount": 48,
-    "acceptedProductionMutationConsumerCount": 29,
+    "coveredProductionMutationConsumerCount": 30,
+    "candidateProductionMutationConsumerCount": 49,
+    "acceptedProductionMutationConsumerCount": 30,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 294
+    "blockerCount": 293
   },
   "evidence": {
-    "totalProductionModuleCount": 240,
-    "reachableProductionModuleCount": 233,
+    "totalProductionModuleCount": 241,
+    "reachableProductionModuleCount": 234,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135
   },
@@ -3207,6 +3207,85 @@
             "localCallChain": [
               "submitTermination",
               "executeProjectFinancingQuotaTerminationAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-approval.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmSettlementWithdrawal",
+        "kind": "event",
+        "sourceLine": 725,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "settlementApprovalCapability.availableActions",
+        "key": "withdraw_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeSettlementApprovalWithdrawalAction",
+          "method": "POST",
+          "path": "/settlements/:param/approval-withdrawal",
+          "normalizedKey": "POST /settlements/:param/approval-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/approval-withdrawal",
+            "normalizedKey": "POST /settlements/:param/approval-withdrawal",
+            "controller": "SettlementController",
+            "handler": "withdrawApproval",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "budget_director",
+              "budget_staff",
+              "chairman",
+              "comprehensive_director",
+              "contract_director",
+              "contract_staff",
+              "engineering_department_director",
+              "finance_director",
+              "finance_staff",
+              "general_manager",
+              "material_director",
+              "project_manager",
+              "super_admin"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmSettlementWithdrawal",
+              "executeSettlementApprovalWithdrawalAction"
             ]
           },
           "ticketFollowups": []
@@ -6832,15 +6911,6 @@
         "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "normalizedKeys": [
           "POST /settlements/:param/archive-files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawSettlementApproval",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval-withdrawal"
         ]
       },
       {

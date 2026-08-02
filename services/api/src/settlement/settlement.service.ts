@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional
+} from "@nestjs/common";
 import { Prisma, type ContractVersion, type Settlement, type SettlementDraft } from "@prisma/client";
 import {
   approvalElapsedHours,
@@ -53,6 +60,7 @@ import type { GenerateSettlementPdfArchiveDto } from "./dto/generate-settlement-
 import type { PreviewSettlementLinesDto } from "./dto/preview-settlement-lines.dto";
 import type { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import type { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
+import type { WithdrawSettlementApprovalDto } from "./dto/withdraw-settlement-approval.dto";
 import {
   renderSettlementArchivePdf,
   renderSettlementDraftExcel,
@@ -2225,18 +2233,20 @@ export class SettlementService {
         FOR UPDATE
       `);
 
-      const instance = await tx.approvalInstance.findFirst({
+      const activeInstances = await tx.approvalInstance.findMany({
         where: {
           businessType: "settlement",
           businessId: settlement.id,
           flowType: "settlement.approve",
           status: "in_progress"
-        }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 2
       });
-
-      if (!instance) {
-        throw new Error("未找到进行中的结算审批流程，请刷新后重试");
+      if (activeInstances.length !== 1) {
+        throw settlementApprovalReviewConflict();
       }
+      const instance = activeInstances[0];
 
       const nodes = instance.frozenNodes as unknown as SettlementApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
@@ -2547,40 +2557,120 @@ export class SettlementService {
     return result;
   }
 
-  async withdrawApproval(settlementId: string, actorUserId: string) {
+  async withdrawApproval(
+    settlementId: string,
+    actorUserId: string,
+    input: WithdrawSettlementApprovalDto
+  ) {
     if (!this.prisma) {
       throw new Error("结算审批撤回服务暂不可用，请稍后重试或联系管理员");
     }
 
+    const expectedSettlementUpdatedAt = new Date(input.expectedSettlementUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    const expectedApprovalInstanceId = input.expectedApprovalInstanceId?.trim();
+    if (Number.isNaN(expectedSettlementUpdatedAt.getTime())) {
+      throw new BadRequestException("预期结算版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
+    if (!expectedApprovalInstanceId) {
+      throw new BadRequestException("预期审批实例不能空白");
+    }
+    if (!Number.isInteger(input.expectedNodeIndex) || input.expectedNodeIndex < 0) {
+      throw new BadRequestException("预期审批节点格式不正确");
+    }
+
+    // 先按客户端冻结的审批实例核实申请人与业务目标绑定，避免非申请人探测结算单是否存在。
+    // 此处故意不限制 status：合法申请人的陈旧或终态提交必须进入事务内 CAS 并返回稳定 409。
+    const withdrawalIdentity = await this.prisma.approvalInstance.findFirst({
+      where: {
+        id: expectedApprovalInstanceId,
+        applicantUserId: actorUserId,
+        businessType: "settlement",
+        businessId: settlementId,
+        flowType: "settlement.approve"
+      },
+      select: { id: true }
+    });
+    if (!withdrawalIdentity) {
+      throw new ForbiddenException("只有结算审批申请人可以撤回审批");
+    }
+
     return this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "Settlement"
+        WHERE "id" = ${settlementId}
+        FOR UPDATE
+      `);
       const settlement = await tx.settlement.findUnique({
         where: { id: settlementId }
       });
 
       if (!settlement) {
-        throw new Error("未找到结算单，请刷新结算台账后重试");
+        throw new NotFoundException("未找到要撤回的结算审批任务，请刷新审批中心后重试");
       }
 
-      if (settlement.status !== "approval_pending") {
-        throw new Error("当前结算单已不在审批中，不能撤回审批");
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'settlement'
+          AND "businessId" = ${settlement.id}
+          AND "flowType" = 'settlement.approve'
+          AND (
+            "id" = ${expectedApprovalInstanceId}
+            OR "status" = 'in_progress'
+          )
+        ORDER BY "id"
+        FOR UPDATE
+      `);
+
+      const expectedInstance = await tx.approvalInstance.findFirst({
+        where: {
+          id: expectedApprovalInstanceId,
+          applicantUserId: actorUserId,
+          businessType: "settlement",
+          businessId: settlement.id,
+          flowType: "settlement.approve"
+        }
+      });
+
+      if (!expectedInstance || expectedInstance.applicantUserId !== actorUserId) {
+        throw new ForbiddenException("只有结算审批申请人可以撤回审批");
       }
 
-      const instance = await tx.approvalInstance.findFirst({
+      const activeInstances = await tx.approvalInstance.findMany({
         where: {
           businessType: "settlement",
           businessId: settlement.id,
           flowType: "settlement.approve",
           status: "in_progress"
-        }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 2
       });
-
-      if (!instance) {
-        throw new Error("未找到进行中的结算审批流程，请刷新后重试");
+      const instance = activeInstances.length === 1 ? activeInstances[0] : null;
+      if (
+        !(settlement.updatedAt instanceof Date) ||
+        settlement.updatedAt.getTime() !== expectedSettlementUpdatedAt.getTime() ||
+        settlement.status !== "approval_pending" ||
+        !instance ||
+        instance.id !== expectedInstance.id ||
+        instance.id !== expectedApprovalInstanceId ||
+        instance.applicantUserId !== actorUserId ||
+        instance.currentNodeIndex !== input.expectedNodeIndex ||
+        !(instance.updatedAt instanceof Date) ||
+        instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw settlementApprovalWithdrawalConflict();
       }
 
-      if (instance.applicantUserId !== actorUserId) {
-        throw new Error("只有结算审批申请人可以撤回");
-      }
+      const auditCoordinates = {
+        expectedSettlementUpdatedAt: expectedSettlementUpdatedAt.toISOString(),
+        expectedApprovalInstanceId,
+        expectedNodeIndex: input.expectedNodeIndex,
+        expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
+      };
 
       const updated = await tx.settlement.update({
         where: { id: settlement.id },
@@ -2615,7 +2705,8 @@ export class SettlementService {
         metadata: {
           fromStatus: settlement.status,
           toStatus: "withdrawn",
-          applicantUserId: instance.applicantUserId
+          applicantUserId: instance.applicantUserId,
+          ...auditCoordinates
         }
       });
 
@@ -3932,6 +4023,20 @@ function settlementTaxModeLabel(value: string | null): string {
   return value === "single_rate" || value === "multiple_rate"
     ? contractTaxModeLabel(value as ContractTaxMode)
     : "—";
+}
+
+function settlementApprovalWithdrawalConflict() {
+  return new ConflictException({
+    code: "SETTLEMENT_APPROVAL_WITHDRAWAL_CONFLICT",
+    message: "结算审批状态或撤回坐标已变化，请刷新页面后重试"
+  });
+}
+
+function settlementApprovalReviewConflict() {
+  return new ConflictException({
+    code: "SETTLEMENT_APPROVAL_REVIEW_CONFLICT",
+    message: "未找到进行中的结算审批流程，请刷新后重试"
+  });
 }
 
 export function calculateSettlementLineTotalBigInt(

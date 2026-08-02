@@ -4182,6 +4182,16 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
             ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "prepareSettlementApprovalWithdrawalAction",
+            "method": "GET",
+            "normalizedPath": "/settlements/:param",
+            "normalizedKey": "GET /settlements/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+            ]
           }
         ],
         "authStore": [],
@@ -14227,9 +14237,23 @@
       "sourceFile": "services/api/src/settlement/settlement.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
+      "requiredPositions": [
+        "budget_director",
+        "budget_staff",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "contract_staff",
+        "engineering_department_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "material_director",
+        "project_manager",
+        "super_admin"
+      ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -14242,7 +14266,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "withdrawSettlementApproval",
+            "wrapper": "executeSettlementApprovalWithdrawalAction",
             "method": "POST",
             "normalizedPath": "/settlements/:param/approval-withdrawal",
             "normalizedKey": "POST /settlements/:param/approval-withdrawal",

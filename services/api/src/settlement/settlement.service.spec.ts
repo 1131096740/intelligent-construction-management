@@ -2953,7 +2953,7 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [{
@@ -2963,7 +2963,7 @@ describe("SettlementService", () => {
             candidateUserIdsByRole: { budget_director: ["budget-director-1"] },
             candidateUserIds: ["budget-director-1"]
           }]
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -3046,6 +3046,59 @@ describe("SettlementService", () => {
     });
   });
 
+  it("fails closed when settlement approval review sees duplicate active instances", async () => {
+    const activeInstance = {
+      id: "approval-instance-1",
+      currentNodeIndex: 0,
+      frozenNodes: [{
+        name: "预算部主管",
+        mode: "any",
+        roleKeys: ["budget_director"]
+      }]
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([
+          activeInstance,
+          { ...activeInstance, id: "approval-instance-2" }
+        ]),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(prisma as never, audit as never);
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "budget-director-1", {
+        decision: "approve"
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "SETTLEMENT_APPROVAL_REVIEW_CONFLICT"
+      }
+    });
+    expect(tx.approvalInstance.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      take: 2
+    }));
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("拒绝普通岗位申请人审批自己发起的结算", async () => {
     const tx = {
       settlement: {
@@ -3057,12 +3110,12 @@ describe("SettlementService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [{ name: "预算部主管", mode: "any", roleKeys: ["budget_director"] }],
           applicantUserId: "budget-director-1"
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: { create: jest.fn() },
@@ -3104,14 +3157,14 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
             { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
           ],
           applicantUserId: "leader-1"
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: { create: jest.fn() },
@@ -3343,7 +3396,7 @@ describe("SettlementService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(null)
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const prisma = {
@@ -3370,11 +3423,11 @@ describe("SettlementService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: []
-        }),
+        }]),
         update: jest.fn()
       }
     };
@@ -3412,11 +3465,11 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -3559,7 +3612,7 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3569,7 +3622,7 @@ describe("SettlementService", () => {
               roleKeys: ["contract_director", "budget_director"]
             }
           ]
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -3752,11 +3805,11 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -3822,11 +3875,11 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 2,
           frozenNodes
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -3909,11 +3962,11 @@ describe("SettlementService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [{ name: "物资员", mode: "any", roleKeys: ["material_staff"] }]
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -3949,11 +4002,11 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [{ name: "物资主管", mode: "any", roleKeys: ["material_director"] }]
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -4024,199 +4077,16 @@ describe("SettlementService", () => {
     });
   });
 
-  it("allows the settlement approval applicant to withdraw before approval completes", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          status: "approval_pending"
-        }),
-        update: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          status: "withdrawn"
-        })
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          applicantUserId: "applicant-1"
-        }),
-        update: jest.fn()
-      },
-      approvalActionLog: {
-        create: jest.fn()
-      },
-      projectSettlementExceptionQuotaUsage: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 })
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const settlementService = new SettlementService(prisma as never, audit as never);
-
-    const result = await settlementService.withdrawApproval("settlement-1", "applicant-1");
-
-    expect(result.status).toBe("withdrawn");
-    expect(tx.settlement.update).toHaveBeenCalledWith({
-      where: { id: "settlement-1" },
-      data: { status: "withdrawn" }
-    });
-    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
-      where: { id: "approval-instance-1" },
-      data: { status: "withdrawn" }
-    });
-    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
-      data: {
-        approvalInstanceId: "approval-instance-1",
-        action: "withdraw",
-        actorUserId: "applicant-1"
-      }
-    });
-    expect(tx.projectSettlementExceptionQuotaUsage.updateMany).toHaveBeenCalledWith({
-      where: { settlementId: "settlement-1", status: "occupied" },
-      data: { status: "released" }
-    });
-    expect(audit.record).toHaveBeenCalledWith(tx, {
-      actorUserId: "applicant-1",
-      action: "settlement.exception_quota.release.withdraw",
-      businessType: "settlement",
-      businessId: "settlement-1",
-      metadata: { releasedUsageCount: 1 }
-    });
-    expect(audit.record).toHaveBeenCalledWith(tx, {
-      actorUserId: "applicant-1",
-      action: "settlement.approval.withdraw",
-      businessType: "settlement",
-      businessId: "settlement-1",
-      metadata: {
-        fromStatus: "approval_pending",
-        toStatus: "withdrawn",
-        applicantUserId: "applicant-1"
-      }
-    });
-  });
-
-  it("rejects settlement approval withdrawal from a non-applicant", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          status: "approval_pending"
-        }),
-        update: jest.fn()
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "approval-instance-1",
-          applicantUserId: "applicant-1"
-        }),
-        update: jest.fn()
-      },
-      approvalActionLog: {
-        create: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const settlementService = new SettlementService(prisma as never, audit as never);
-
-    await expect(
-      settlementService.withdrawApproval("settlement-1", "other-user")
-    ).rejects.toThrow("只有结算审批申请人可以撤回");
-    expect(tx.settlement.update).not.toHaveBeenCalled();
-    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
-    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
-  });
-
-  it("结算单不存在时不能撤回审批", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        update: jest.fn()
-      },
-      approvalInstance: {
-        findFirst: jest.fn(),
-        update: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const settlementService = new SettlementService(prisma as never, audit as never);
-
-    await expect(
-      settlementService.withdrawApproval("settlement-missing", "applicant-1")
-    ).rejects.toThrow("未找到结算单，请刷新结算台账后重试");
-    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
-    expect(tx.settlement.update).not.toHaveBeenCalled();
-  });
-
-  it("rejects settlement approval withdrawal after approval has left pending status", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          status: "approved_pending_archive"
-        }),
-        update: jest.fn()
-      },
-      approvalInstance: {
-        findFirst: jest.fn(),
-        update: jest.fn()
-      },
-      approvalActionLog: {
-        create: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const settlementService = new SettlementService(prisma as never, audit as never);
-
-    await expect(
-      settlementService.withdrawApproval("settlement-1", "applicant-1")
-    ).rejects.toThrow("当前结算单已不在审批中，不能撤回审批");
-    expect(tx.approvalInstance.findFirst).not.toHaveBeenCalled();
-    expect(tx.settlement.update).not.toHaveBeenCalled();
-  });
-
-  it("缺少进行中的结算审批流程时不能撤回审批", async () => {
-    const tx = {
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "settlement-1",
-          projectId: "project-1",
-          status: "approval_pending"
-        }),
-        update: jest.fn()
-      },
-      approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        update: jest.fn()
-      }
-    };
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
-    };
-    const settlementService = new SettlementService(prisma as never, audit as never);
-
-    await expect(
-      settlementService.withdrawApproval("settlement-1", "applicant-1")
-    ).rejects.toThrow("未找到进行中的结算审批流程，请刷新后重试");
-    expect(tx.settlement.update).not.toHaveBeenCalled();
-    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
-  });
-
   it("结算审批撤回服务不可用时给出中文业务提示", async () => {
     const settlementService = new SettlementService();
 
     await expect(
-      settlementService.withdrawApproval("settlement-1", "applicant-1")
+      settlementService.withdrawApproval("settlement-1", "applicant-1", {
+        expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: 0,
+        expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z"
+      })
     ).rejects.toThrow("结算审批撤回服务暂不可用，请稍后重试或联系管理员");
   });
 
@@ -4498,11 +4368,11 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -4556,11 +4426,11 @@ describe("SettlementService", () => {
         })
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {
@@ -4632,11 +4502,11 @@ describe("SettlementService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes
-        }),
+        }]),
         update: jest.fn()
       },
       approvalActionLog: {

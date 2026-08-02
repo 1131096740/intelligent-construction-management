@@ -410,6 +410,31 @@
       ]
     },
     {
+      "id": "settlement-approval.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmSettlementWithdrawal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "settlementApprovalCapability.availableActions",
+        "key": "withdraw_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeSettlementApprovalWithdrawalAction"
+        }
+      ]
+    },
+    {
       "id": "contract-template.risk-stop",
       "usage": "page_action",
       "routePaths": [

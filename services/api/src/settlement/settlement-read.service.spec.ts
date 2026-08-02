@@ -477,7 +477,8 @@ describe("SettlementReadService", () => {
           amountCents: 58000000n,
           payableAmountCents: 46400000n,
           invoiceTypeSnapshot: "vat_special",
-          taxFactRevisionSnapshot: 3
+          taxFactRevisionSnapshot: 3,
+          updatedAt: new Date("2026-07-01T08:00:00.000Z")
         })
       },
       contract: {
@@ -751,7 +752,8 @@ describe("SettlementReadService", () => {
           code: "JS-2026-031",
           periodLabel: "2026-06",
           status: "archive_pending",
-          amountCents: 58000000n
+          amountCents: 58000000n,
+          updatedAt: new Date("2026-07-01T08:00:00.000Z")
         })
       },
       contract: {
@@ -871,7 +873,8 @@ describe("SettlementReadService", () => {
           code: "JS-2026-031",
           periodLabel: "2026-06",
           status: "effective",
-          amountCents: 58000000n
+          amountCents: 58000000n,
+          updatedAt: new Date("2026-07-01T08:00:00.000Z")
         })
       },
       contract: {

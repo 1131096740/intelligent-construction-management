@@ -930,13 +930,31 @@ export class SettlementReadService {
       roleKeys,
       actorUserId
     );
+    const currentApprovalWithdrawal = await this.currentApprovalWithdrawal(
+      "settlement",
+      settlement.id,
+      actorUserId
+    );
+    const withdrawApprovalContext =
+      settlement.status === "approval_pending" &&
+      settlement.updatedAt instanceof Date &&
+      currentApprovalWithdrawal?.updatedAt instanceof Date
+        ? {
+            expectedSettlementUpdatedAt: settlement.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalWithdrawal.id,
+            expectedNodeIndex: currentApprovalWithdrawal.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              currentApprovalWithdrawal.updatedAt.toISOString()
+          }
+        : null;
     const availableActions = this.settlementActions(
       settlement.status,
       roleKeys,
       approvalReviewAccess,
       archiveFiles,
       settlement.governanceVersion,
-      generationFailed
+      generationFailed,
+      withdrawApprovalContext
     );
     const taxFactSummary = await this.taxFactSummary(
       settlement,
@@ -1003,6 +1021,8 @@ export class SettlementReadService {
       archiveFiles,
       approvalTimeline,
       availableActions,
+      withdrawApprovalContext,
+      lifecycleUpdatedAt: settlement.updatedAt.toISOString(),
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [
@@ -1112,6 +1132,8 @@ export class SettlementReadService {
       archiveFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      withdrawApprovalContext: null,
+      lifecycleUpdatedAt: new Date(0).toISOString(),
       primaryAction: null,
       disabledReasons: [],
       chainLinks: [
@@ -1411,13 +1433,76 @@ export class SettlementReadService {
     return identities;
   }
 
+  private async currentApprovalWithdrawal(
+    businessType: string,
+    businessId: string,
+    actorUserId?: string
+  ): Promise<{
+    id: string;
+    applicantUserId: string;
+    currentNodeIndex: number;
+    updatedAt: Date;
+  } | null> {
+    if (!actorUserId) return null;
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "settlement.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          applicantUserId: string;
+          currentNodeIndex: number;
+          updatedAt: Date;
+        }>>;
+      };
+    }).approvalInstance;
+    if (!approvalClient?.findMany) return null;
+
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "settlement.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
+    });
+    if (instances.length !== 1 || instances[0]?.applicantUserId !== actorUserId) {
+      return null;
+    }
+
+    return instances[0];
+  }
+
   private settlementActions(
     status: string,
     roleKeys: RoleKey[],
     approvalReviewAccess: ApprovalReviewAccess,
     archiveFiles: SettlementDetailReadModel["archiveFiles"],
     governanceVersion?: number | null,
-    generationFailed = false
+    generationFailed = false,
+    withdrawApprovalContext?: SettlementDetailReadModel["withdrawApprovalContext"]
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -1427,14 +1512,16 @@ export class SettlementReadService {
         roleKeys,
         enabled: true
       }),
-      detailAction({
-        key: "withdraw_approval",
-        label: "撤回审批",
-        kind: "normal",
-        roleKeys,
-        requiredAction: "settlement.create",
-        enabled: status === "approval_pending"
-      }),
+      ...(withdrawApprovalContext
+        ? [detailAction({
+            key: "withdraw_approval",
+            label: "撤回审批",
+            kind: "normal",
+            roleKeys,
+            skipRoleCheck: true,
+            enabled: true
+          })]
+        : []),
       detailAction({
         key: "remind_approval",
         label: "催办审批",

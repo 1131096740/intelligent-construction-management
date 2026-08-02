@@ -19,7 +19,10 @@ import {
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
-import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import {
+  RequirePositions,
+  UseAnyProjectPositionScope
+} from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
@@ -31,6 +34,7 @@ import { DownloadSettlementApprovalPdfDto } from "./dto/download-settlement-appr
 import { GenerateSettlementPdfArchiveDto } from "./dto/generate-settlement-pdf-archive.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
+import { WithdrawSettlementApprovalDto } from "./dto/withdraw-settlement-approval.dto";
 import { SettlementReadService } from "./settlement-read.service";
 import {
   SETTLEMENT_ATTACHMENT_TEMPLATE_MIME,
@@ -203,8 +207,14 @@ export class SettlementController {
   }
 
   @Post(":settlementId/approval-withdrawal")
-  withdrawApproval(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.settlements.withdrawApproval(settlementId, user.id);
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  @UseAnyProjectPositionScope()
+  withdrawApproval(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawSettlementApprovalDto
+  ) {
+    return this.settlements.withdrawApproval(settlementId, user.id, body);
   }
 
   // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。

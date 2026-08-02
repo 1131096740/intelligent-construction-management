@@ -15,6 +15,7 @@ import type {
   LifecycleLedgerViewCount,
   PaymentDetailReadModel,
   ProjectExpenseApprovalDetailReadModel,
+  SettlementApprovalWithdrawalContextReadModel,
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
@@ -24,6 +25,7 @@ import {
   ContractApprovalWithdrawalResultUnknownError
 } from "../lib/contract-approval-result";
 import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
+import { SettlementApprovalWithdrawalResultUnknownError } from "../lib/settlement-approval-result";
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
@@ -331,7 +333,9 @@ export function createContractChangeDraft(
 }
 
 export function fetchSettlementDetail(settlementId: string) {
-  return readJson<SettlementDetailReadModel>(`/settlements/${settlementId}`);
+  return readJson<SettlementDetailReadModel>(
+    `/settlements/${encodeURIComponent(settlementId)}`
+  );
 }
 
 export function fetchPaymentDetail(paymentId: string) {
@@ -1292,6 +1296,91 @@ export type ExecuteContractApprovalWithdrawalActionResult =
   | {
       status: "failed";
       context: ContractApprovalWithdrawalActionContext;
+      error: unknown;
+    };
+
+export type SettlementApprovalWithdrawalCoordinates =
+  SettlementApprovalWithdrawalContextReadModel;
+
+export interface SettlementApprovalWithdrawalActionContext
+  extends SettlementApprovalWithdrawalCoordinates {
+  action: "withdraw";
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  routeSettlementId: string;
+  settlementCode: string;
+  settlementId: string;
+}
+
+export interface PrepareSettlementApprovalWithdrawalActionInput
+  extends SettlementApprovalWithdrawalActionContext {
+  isCurrent: (
+    context: SettlementApprovalWithdrawalActionContext
+  ) => boolean;
+}
+
+type SettlementApprovalWithdrawalPreflightReadModel =
+  SettlementDetailReadModel;
+
+export type PrepareSettlementApprovalWithdrawalActionResult =
+  | {
+      status: "ready";
+      context: SettlementApprovalWithdrawalActionContext;
+      preflight: SettlementApprovalWithdrawalPreflightReadModel;
+    }
+  | {
+      status: "stale";
+      context: SettlementApprovalWithdrawalActionContext;
+    };
+
+export interface ExecuteSettlementApprovalWithdrawalActionInput {
+  action: "withdraw";
+  capture: (
+    action: "withdraw"
+  ) => SettlementApprovalWithdrawalActionContext | null;
+  preflight: (
+    context: SettlementApprovalWithdrawalActionContext
+  ) => Promise<PrepareSettlementApprovalWithdrawalActionResult>;
+  current: (
+    context: SettlementApprovalWithdrawalActionContext,
+    prepared: PrepareSettlementApprovalWithdrawalActionResult
+  ) => boolean;
+  stale: (
+    context: SettlementApprovalWithdrawalActionContext
+  ) => void | Promise<void>;
+  complete: (
+    context: SettlementApprovalWithdrawalActionContext,
+    response: SettlementApprovalWithdrawalResponse
+  ) => void | Promise<void>;
+  fail: (
+    context: SettlementApprovalWithdrawalActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: SettlementApprovalWithdrawalActionContext) => void;
+}
+
+export interface SettlementApprovalWithdrawalResponse {
+  id: string;
+  status: "withdrawn";
+}
+
+export type ExecuteSettlementApprovalWithdrawalActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: SettlementApprovalWithdrawalActionContext;
+    }
+  | {
+      status: "completed";
+      context: SettlementApprovalWithdrawalActionContext;
+      response: SettlementApprovalWithdrawalResponse;
+    }
+  | {
+      status: "failed";
+      context: SettlementApprovalWithdrawalActionContext;
       error: unknown;
     };
 
@@ -5961,8 +6050,289 @@ export function reviewSettlementApproval(
   return postJson<unknown>(`/settlements/${settlementId}/approval`, body);
 }
 
-export function withdrawSettlementApproval(settlementId: string) {
-  return postJson<unknown>(`/settlements/${settlementId}/approval-withdrawal`);
+export async function prepareSettlementApprovalWithdrawalAction(
+  input: PrepareSettlementApprovalWithdrawalActionInput
+): Promise<PrepareSettlementApprovalWithdrawalActionResult> {
+  const context = normalizeSettlementApprovalWithdrawalAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = normalizeSettlementApprovalWithdrawalPreflight(
+    await fetchSettlementDetail(context.routeSettlementId)
+  );
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertSettlementApprovalWithdrawalPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeSettlementApprovalWithdrawalAction(
+  input: ExecuteSettlementApprovalWithdrawalActionInput
+): Promise<ExecuteSettlementApprovalWithdrawalActionResult> {
+  const capturedContext = input.capture(input.action);
+  if (!capturedContext) return { status: "not_started" };
+  let activeContext = capturedContext;
+
+  try {
+    const frozenCapturedContext = normalizeSettlementApprovalWithdrawalAction(
+      capturedContext
+    );
+    activeContext = frozenCapturedContext;
+    const prepared = await input.preflight(frozenCapturedContext);
+    activeContext = prepared.context;
+    if (
+      prepared.status !== "ready" ||
+      !sameSettlementApprovalWithdrawalContext(
+        frozenCapturedContext,
+        prepared.context
+      ) ||
+      !input.current(frozenCapturedContext, prepared)
+    ) {
+      await input.stale(frozenCapturedContext);
+      return { status: "stale", context: frozenCapturedContext };
+    }
+
+    let response: SettlementApprovalWithdrawalResponse;
+    try {
+      response = await postSettlementApprovalWithdrawalRequest(activeContext);
+    } catch (error) {
+      if (error instanceof CoreFlowApiError && error.status < 500) {
+        throw error;
+      }
+      throw new SettlementApprovalWithdrawalResultUnknownError(error);
+    }
+
+    try {
+      if (!input.current(frozenCapturedContext, prepared)) {
+        throw new SettlementApprovalWithdrawalResultUnknownError(
+          new Error("结算审批撤回请求已发出，但提交后的页面归属已变化")
+        );
+      }
+      await input.complete(activeContext, response);
+    } catch (error) {
+      if (error instanceof SettlementApprovalWithdrawalResultUnknownError) {
+        throw error;
+      }
+      throw new SettlementApprovalWithdrawalResultUnknownError(error);
+    }
+    return { status: "completed", context: activeContext, response };
+  } catch (error) {
+    await input.fail(activeContext, error);
+    return { status: "failed", context: activeContext, error };
+  } finally {
+    input.finish(activeContext);
+  }
+}
+
+async function postSettlementApprovalWithdrawalRequest(
+  context: SettlementApprovalWithdrawalActionContext
+) {
+  const response = await postJson<unknown>(
+    `/settlements/${encodeURIComponent(context.settlementId)}/approval-withdrawal`,
+    settlementApprovalWithdrawalPayload(context)
+  );
+  return normalizeSettlementApprovalWithdrawalResponse(response, context);
+}
+
+function normalizeSettlementApprovalWithdrawalAction(
+  input: SettlementApprovalWithdrawalActionContext
+): SettlementApprovalWithdrawalActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const routeSettlementId = input.routeSettlementId.trim();
+  const settlementCode = input.settlementCode.trim();
+  const settlementId = input.settlementId.trim();
+  const expectedSettlementUpdatedAt =
+    input.expectedSettlementUpdatedAt.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const expectedApprovalUpdatedAt =
+    input.expectedApprovalUpdatedAt.trim();
+  if (
+    input.action !== "withdraw" ||
+    !ownerScope ||
+    !routeSettlementId ||
+    !settlementCode ||
+    !settlementId ||
+    !expectedSettlementUpdatedAt ||
+    !expectedApprovalInstanceId ||
+    !expectedApprovalUpdatedAt ||
+    Number.isNaN(new Date(expectedSettlementUpdatedAt).getTime()) ||
+    Number.isNaN(new Date(expectedApprovalUpdatedAt).getTime()) ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0
+  ) {
+    throw new Error(
+      "结算审批撤回上下文无效，请重新读取当前结算后再操作"
+    );
+  }
+
+  return Object.freeze({
+    action: "withdraw",
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    routeSettlementId,
+    settlementCode,
+    settlementId,
+    expectedSettlementUpdatedAt,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    expectedApprovalUpdatedAt
+  });
+}
+
+function sameSettlementApprovalWithdrawalContext(
+  expected: SettlementApprovalWithdrawalActionContext,
+  actual: SettlementApprovalWithdrawalActionContext
+) {
+  return (
+    expected.action === actual.action &&
+    expected.ownerScope === actual.ownerScope &&
+    expected.routeGeneration === actual.routeGeneration &&
+    expected.detailEpoch === actual.detailEpoch &&
+    expected.dialogGeneration === actual.dialogGeneration &&
+    expected.operationId === actual.operationId &&
+    expected.routeSettlementId === actual.routeSettlementId &&
+    expected.settlementCode === actual.settlementCode &&
+    expected.settlementId === actual.settlementId &&
+    expected.expectedSettlementUpdatedAt ===
+      actual.expectedSettlementUpdatedAt &&
+    expected.expectedApprovalInstanceId ===
+      actual.expectedApprovalInstanceId &&
+    expected.expectedNodeIndex === actual.expectedNodeIndex &&
+    expected.expectedApprovalUpdatedAt ===
+      actual.expectedApprovalUpdatedAt
+  );
+}
+
+function normalizeSettlementApprovalWithdrawalPreflight(
+  input: unknown
+): SettlementApprovalWithdrawalPreflightReadModel {
+  if (!isSettlementWithdrawalRecord(input)) {
+    throw new Error("结算审批撤回权威详情无效，请重新读取当前结算");
+  }
+  const { availableActions, withdrawApprovalContext } = input;
+  if (
+    typeof input.id !== "string" ||
+    !input.id.trim() ||
+    typeof input.settlementId !== "string" ||
+    !input.settlementId.trim() ||
+    typeof input.lifecycleUpdatedAt !== "string" ||
+    !input.lifecycleUpdatedAt.trim() ||
+    Number.isNaN(new Date(input.lifecycleUpdatedAt).getTime()) ||
+    !Array.isArray(availableActions) ||
+    availableActions.some(
+      (action) =>
+        !isSettlementWithdrawalRecord(action) ||
+        typeof action.key !== "string" ||
+        typeof action.enabled !== "boolean"
+    ) ||
+    (withdrawApprovalContext !== null &&
+      (!isSettlementWithdrawalRecord(withdrawApprovalContext) ||
+        typeof withdrawApprovalContext.expectedSettlementUpdatedAt !==
+          "string" ||
+        Number.isNaN(
+          new Date(
+            withdrawApprovalContext.expectedSettlementUpdatedAt
+          ).getTime()
+        ) ||
+        typeof withdrawApprovalContext.expectedApprovalInstanceId !==
+          "string" ||
+        typeof withdrawApprovalContext.expectedNodeIndex !== "number" ||
+        !Number.isInteger(withdrawApprovalContext.expectedNodeIndex) ||
+        withdrawApprovalContext.expectedNodeIndex < 0 ||
+        typeof withdrawApprovalContext.expectedApprovalUpdatedAt !==
+          "string" ||
+        Number.isNaN(
+          new Date(
+            withdrawApprovalContext.expectedApprovalUpdatedAt
+          ).getTime()
+        )))
+  ) {
+    throw new Error("结算审批撤回权威详情无效，请重新读取当前结算");
+  }
+  return input as unknown as SettlementApprovalWithdrawalPreflightReadModel;
+}
+
+function assertSettlementApprovalWithdrawalPreflight(
+  context: SettlementApprovalWithdrawalActionContext,
+  preflight: SettlementApprovalWithdrawalPreflightReadModel
+) {
+  const enabledWithdrawalActions = preflight.availableActions.filter(
+    (action) => action.key === "withdraw_approval" && action.enabled
+  );
+  const coordinates = preflight.withdrawApprovalContext;
+  if (
+    preflight.id !== context.settlementCode ||
+    preflight.settlementId !== context.settlementId ||
+    preflight.lifecycleUpdatedAt !== context.expectedSettlementUpdatedAt ||
+    enabledWithdrawalActions.length !== 1 ||
+    coordinates?.expectedSettlementUpdatedAt !==
+      context.expectedSettlementUpdatedAt ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
+    coordinates.expectedApprovalUpdatedAt !==
+      context.expectedApprovalUpdatedAt
+  ) {
+    throw new Error(
+      "结算审批撤回资格或审批坐标已变化，请重新读取当前结算"
+    );
+  }
+}
+
+function settlementApprovalWithdrawalPayload(
+  context: SettlementApprovalWithdrawalActionContext
+): SettlementApprovalWithdrawalCoordinates {
+  if (context.action !== "withdraw") {
+    throw new Error(
+      "结算审批撤回上下文无效，请重新读取当前结算后再操作"
+    );
+  }
+  return {
+    expectedSettlementUpdatedAt: context.expectedSettlementUpdatedAt,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex,
+    expectedApprovalUpdatedAt: context.expectedApprovalUpdatedAt
+  };
+}
+
+function normalizeSettlementApprovalWithdrawalResponse(
+  input: unknown,
+  context: SettlementApprovalWithdrawalActionContext
+): SettlementApprovalWithdrawalResponse {
+  if (
+    !isSettlementWithdrawalRecord(input) ||
+    typeof input.id !== "string" ||
+    input.id !== context.settlementId ||
+    typeof input.status !== "string" ||
+    input.status !== "withdrawn"
+  ) {
+    throw new Error("结算审批撤回响应无效，请读取权威结算详情核对结果");
+  }
+  return Object.freeze({ id: input.id, status: input.status });
+}
+
+function isSettlementWithdrawalRecord(
+  input: unknown
+): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
 }
 
 export function remindSettlementApproval(settlementId: string) {

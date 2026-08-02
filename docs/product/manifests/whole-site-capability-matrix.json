@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "8d6b1fe1bd74ead2324d42c4ac5265eba84ef3156d8523d9e5118c1d2cb10b26",
+      "sha256": "077586ff08c2cadb603e4561fd535980cbecc36f552a71c6a091a8ae118972a8",
       "status": "ready",
       "summary": {
         "routeCount": 398
@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "4d409f14259936c56df8060cf57eccf6c293a6d52ca9c9a5c3c4df615763e1b3",
+      "sha256": "43a1f4ecc10d2432b887b0101933e1fdcb630ff9eb59aa193e8e8e1aa8af28d5",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 407,
-        "transportWrapperCount": 387,
+        "exportedFunctionCount": 408,
+        "transportWrapperCount": 388,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 407,
+        "mainRequestBindingCount": 408,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 406,
-        "productionConsumerCount": 350,
+        "requestEdgeCount": 407,
+        "productionConsumerCount": 351,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,29 +42,29 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "745931f6253ac9a7ad4ab731d34deb1b2212fcf84c6079ae5547736985968f92",
+      "sha256": "47cbf1cad9ffb9a9a44147aacf750b2bdb1f6ba1d85e2aeb75d3416793c165d3",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 58,
-        "pageActionCount": 52,
+        "registeredActionCount": 59,
+        "pageActionCount": 53,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
         "parsedVueFileCount": 135,
-        "reachableProductionModuleCount": 233,
-        "templateEventDirectiveCount": 947,
+        "reachableProductionModuleCount": 234,
+        "templateEventDirectiveCount": 948,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 29,
-        "candidateProductionMutationConsumerCount": 48,
-        "acceptedProductionMutationConsumerCount": 29,
+        "coveredProductionMutationConsumerCount": 30,
+        "candidateProductionMutationConsumerCount": 49,
+        "acceptedProductionMutationConsumerCount": 30,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 294
+        "blockerCount": 293
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "4034e7742466c50db8c899e206a0a8a9887a465413cb5d693c02a5fa593686bf",
+      "sha256": "5ba6b36402852aaa8189233598fb6295fb0daaf3123d217a962086064ff69965",
       "status": "ready",
       "summary": {
         "routeCount": 398,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 2,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 407,
+    "mainRequestBindingCount": 408,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 58,
-    "actionBindingCount": 83,
-    "acceptedActionBindingCount": 44,
+    "registeredActionCount": 59,
+    "actionBindingCount": 84,
+    "acceptedActionBindingCount": 45,
     "unresolvedActionBindingCount": 20,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 29,
-    "uncoveredProductionMutationConsumerPairCount": 248,
-    "blockerCount": 311
+    "coveredProductionMutationConsumerPairCount": 30,
+    "uncoveredProductionMutationConsumerPairCount": 247,
+    "blockerCount": 310
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -1806,14 +1806,6 @@
         "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /payments/:param/approval-withdrawal"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawSettlementApproval",
-        "consumer": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval-withdrawal"
         ]
       },
       {
@@ -7569,6 +7561,20 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "prepareSettlementApprovalWithdrawalAction",
+          "method": "GET",
+          "path": "/settlements/:param",
+          "normalizedKey": "GET /settlements/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/pages/settlements/settlement-approval-withdrawal-api.test.ts"
           ]
         }
       ],
@@ -19699,9 +19705,23 @@
         "sourceFile": "services/api/src/settlement/settlement.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "positions",
         "isPublic": false,
-        "requiredPositions": [],
+        "requiredPositions": [
+          "budget_director",
+          "budget_staff",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "contract_staff",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,
@@ -19712,7 +19732,7 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "withdrawSettlementApproval",
+          "wrapper": "executeSettlementApprovalWithdrawalAction",
           "method": "POST",
           "path": "/settlements/:param/approval-withdrawal",
           "normalizedKey": "POST /settlements/:param/approval-withdrawal",
@@ -19721,16 +19741,41 @@
             "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
           ],
           "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+            "apps/web-admin/src/pages/settlements/settlement-approval-withdrawal-api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "settlement-approval.withdraw",
+          "bindingIndex": 0,
+          "identity": "settlement-approval.withdraw\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000executeSettlementApprovalWithdrawalAction\u0000POST\u0000POST /settlements/:param/approval-withdrawal\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "settlementApprovalCapability.availableActions",
+            "key": "withdraw_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "executeSettlementApprovalWithdrawalAction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

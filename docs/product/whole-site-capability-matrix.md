@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `8d6b1fe1bd74ead2324d42c4ac5265eba84ef3156d8523d9e5118c1d2cb10b26` |
-| webApiWrappers | blocked | `4d409f14259936c56df8060cf57eccf6c293a6d52ca9c9a5c3c4df615763e1b3` |
-| webPageActions | blocked | `745931f6253ac9a7ad4ab731d34deb1b2212fcf84c6079ae5547736985968f92` |
-| routeUsage | ready | `4034e7742466c50db8c899e206a0a8a9887a465413cb5d693c02a5fa593686bf` |
+| nestRoutes | ready | `077586ff08c2cadb603e4561fd535980cbecc36f552a71c6a091a8ae118972a8` |
+| webApiWrappers | blocked | `43a1f4ecc10d2432b887b0101933e1fdcb630ff9eb59aa193e8e8e1aa8af28d5` |
+| webPageActions | blocked | `47cbf1cad9ffb9a9a44147aacf750b2bdb1f6ba1d85e2aeb75d3416793c165d3` |
+| routeUsage | ready | `5ba6b36402852aaa8189233598fb6295fb0daaf3123d217a962086064ff69965` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 2 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 407 |
+| mainRequestBindingCount | 408 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 58 |
-| actionBindingCount | 83 |
-| acceptedActionBindingCount | 44 |
+| registeredActionCount | 59 |
+| actionBindingCount | 84 |
+| acceptedActionBindingCount | 45 |
 | unresolvedActionBindingCount | 20 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 29 |
-| uncoveredProductionMutationConsumerPairCount | 248 |
-| blockerCount | 311 |
+| coveredProductionMutationConsumerPairCount | 30 |
+| uncoveredProductionMutationConsumerPairCount | 247 |
+| blockerCount | 310 |
 
 ## 路由矩阵
 
@@ -135,7 +135,7 @@
 | GET | /settlements/:settlementId/attachment-templates/:templateKey/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementAttachmentTemplate | — | not_applicable | — |
 | GET | /settlements/:settlementId/draft-excel | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementDraftExcel | — | not_applicable | — |
 | GET | /settlements/:settlementId/recovery | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#fetchSettlementRecovery | — | not_applicable | — |
-| GET | /settlements/:settlementId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementDetail | — | not_applicable | — |
+| GET | /settlements/:settlementId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareSettlementApprovalWithdrawalAction | — | not_applicable | — |
 | GET | /settlements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLedgerExport | — | not_applicable | — |
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
@@ -383,7 +383,7 @@
 | POST | /settlements/:settlementId/approval-pdf/latest | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /settlements/:settlementId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /settlements/:settlementId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /settlements/:settlementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeSettlementApprovalWithdrawalAction | settlement-approval.withdraw | covered | — |
 | POST | /settlements/:settlementId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /settlements/:settlementId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmSettlementArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /settlements/:settlementId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -669,7 +669,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverContractSideConfirmation → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverFinanceSideConfirmation → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#withdrawSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#attachExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue

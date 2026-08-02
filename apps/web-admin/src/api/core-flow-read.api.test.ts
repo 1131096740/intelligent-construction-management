@@ -134,7 +134,6 @@ import {
   type PreparePaymentApprovalReviewActionInput,
   withdrawPaymentApproval,
   abandonPaymentRequest,
-  withdrawSettlementApproval,
   transferSettlementApproval,
   delegateSettlementApproval,
   transferContractApproval,
@@ -2628,7 +2627,6 @@ describe("core flow read API client", () => {
       selfReviewReason: "不会在非自审页面生成",
       confirmationPassword: " settlement-password "
     });
-    await withdrawSettlementApproval("settlement-1");
     await remindSettlementApproval("settlement-1");
     await transferSettlementApproval("settlement-1", {
       toUserId: "delegate-user-1"
@@ -2644,7 +2642,6 @@ describe("core flow read API client", () => {
       "/api/contracts/contract-version-1/approval-delegation",
       "/api/contracts/contract-version-1/seal-approval",
       "/api/settlements/settlement-1/approval",
-      "/api/settlements/settlement-1/approval-withdrawal",
       "/api/settlements/settlement-1/approval-reminder",
       "/api/settlements/settlement-1/approval-transfer",
       "/api/settlements/settlement-1/approval-delegation"

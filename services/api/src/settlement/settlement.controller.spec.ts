@@ -2,7 +2,10 @@ import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
-import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import {
+  ANY_PROJECT_POSITION_SCOPE_KEY,
+  REQUIRED_POSITIONS_KEY
+} from "../auth/decorators/require-positions.decorator";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -14,6 +17,7 @@ type RuntimeDto = new () => object;
 const settlementBodyRoutes = [
   ["create", 0],
   ["reviewApproval", 2],
+  ["withdrawApproval", 2],
   ["transferApproval", 2],
   ["delegateApproval", 2],
   ["uploadArchiveFile", 2],
@@ -40,6 +44,16 @@ const validSettlementCreate = {
 const validSettlementBodies = [
   ["create", 0, validSettlementCreate],
   ["reviewApproval", 2, { decision: "approve" }],
+  [
+    "withdrawApproval",
+    2,
+    {
+      expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z"
+    }
+  ],
   ["transferApproval", 2, { toUserId: "user-2" }],
   ["delegateApproval", 2, { toUserId: "user-2" }],
   ["uploadArchiveFile", 2, { fileId: "file-1" }],
@@ -156,6 +170,35 @@ describe("SettlementController authorization wiring", () => {
     expect(response.errors).toEqual(["internalSecret 不是允许提交的字段"]);
     expect(JSON.stringify(response)).not.toContain("current-password");
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
+
+  it.each([
+    [
+      { expectedSettlementUpdatedAt: "not-a-date" },
+      "预期结算版本格式不正确"
+    ],
+    [
+      { expectedApprovalInstanceId: "   " },
+      "预期审批实例不能为空白"
+    ],
+    [
+      { expectedNodeIndex: -1 },
+      "预期审批节点不能小于 0"
+    ],
+    [
+      { expectedApprovalUpdatedAt: "not-a-date" },
+      "预期审批版本格式不正确"
+    ]
+  ])("拒绝结算撤回非法四坐标：%p", async (patch, message) => {
+    const response = await getSettlementValidationResponse("withdrawApproval", 2, {
+      expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z",
+      ...patch
+    });
+
+    expect(response.errors).toContain(message);
   });
   it.each(settlementBodyRoutes)("exposes a runtime DTO for %s", (method, bodyIndex) => {
     const metatype = settlementBodyMetatype(method, bodyIndex);
@@ -442,13 +485,25 @@ describe("SettlementController authorization wiring", () => {
     }
   );
 
-  it("guards settlement list and detail with the shared ledger read policy", () => {
+  it("guards settlement list, detail and approval withdrawal with the shared ledger read policy", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.list)).toEqual(
       LEDGER_READ_POSITION_KEYS
     );
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.detail)).toEqual(
       LEDGER_READ_POSITION_KEYS
     );
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.withdrawApproval)
+    ).toEqual(LEDGER_READ_POSITION_KEYS);
+    expect(
+      Reflect.getMetadata(
+        ANY_PROJECT_POSITION_SCOPE_KEY,
+        SettlementController.prototype.withdrawApproval
+      )
+    ).toBe(true);
+    expect(
+      Reflect.getMetadata(ANY_PROJECT_POSITION_SCOPE_KEY, SettlementController.prototype.detail)
+    ).toBeUndefined();
   });
 
   it("limits settlement ledger export to the approved contract, finance and comprehensive positions", () => {
@@ -500,6 +555,35 @@ describe("SettlementController authorization wiring", () => {
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
     expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"], "user-1");
+  });
+
+  it("forwards all four withdrawal coordinates to the settlement service", async () => {
+    const settlements = { withdrawApproval: jest.fn().mockResolvedValue({ status: "withdrawn" }) };
+    const body = {
+      expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z"
+    };
+    const controller = new SettlementController(
+      {} as never,
+      {} as never,
+      settlements as never,
+      {} as never,
+      {} as never
+    );
+
+    await controller.withdrawApproval(
+      "settlement-1",
+      { id: "applicant-1" } as never,
+      body
+    );
+
+    expect(settlements.withdrawApproval).toHaveBeenCalledWith(
+      "settlement-1",
+      "applicant-1",
+      body
+    );
   });
 
   it("keeps POST /settlements compatible while delegating to the single submission service", async () => {

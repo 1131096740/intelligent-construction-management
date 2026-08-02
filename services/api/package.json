@@ -16,6 +16,8 @@
     "verify:money-bigint:local": "node prisma/run-money-bigint-local.cjs",
     "preverify:project-financing-quota-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:project-financing-quota-concurrency:local": "node prisma/run-project-financing-quota-concurrency-local.cjs",
+    "preverify:settlement-approval-withdrawal-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "verify:settlement-approval-withdrawal-concurrency:local": "node prisma/run-settlement-approval-withdrawal-concurrency-local.cjs",
     "preverify:spot-procurement-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "verify:spot-procurement-concurrency:local": "node prisma/run-spot-procurement-concurrency-local.cjs",
     "preverify:payment-approval-concurrency:local": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
