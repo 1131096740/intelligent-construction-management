@@ -177,7 +177,10 @@ async function prepareSharedFixtures(tokens) {
   const entity = await prisma.companyEntity.create({
     data: {
       name: `UAT建设主体-${runId}`,
-      unifiedSocialCreditCode: "91350211M000100Y46",
+      unifiedSocialCreditCode: `91350211${String(runId)
+        .replace(/\D/gu, "")
+        .slice(-10)
+        .padStart(10, "0")}`,
       registeredAddress: "UAT脱敏地址",
       dataStatus: "complete",
       currentVersionNo: 1,
