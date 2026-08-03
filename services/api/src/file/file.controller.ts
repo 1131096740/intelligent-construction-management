@@ -18,25 +18,10 @@ import type { AuthenticatedUser } from "../auth/auth.types";
 import { AuthService } from "../auth/auth.service";
 import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
 import { FileService } from "./file.service";
-
-interface MemoryUploadedFile {
-  originalname: string;
-  mimetype: string;
-  size: number;
-  buffer: Buffer;
-}
-
-function normalizeUploadedOriginalName(originalName: string) {
-  const decoded = Buffer.from(originalName, "latin1").toString("utf8");
-  const looksLikeMojibake = /[\u00c0-\u00ff]/.test(originalName);
-  const decodedToChinese = /[\u4e00-\u9fff]/.test(decoded);
-  const alreadyChinese = /[\u4e00-\u9fff]/.test(originalName);
-
-  if (looksLikeMojibake && decodedToChinese && !alreadyChinese && !decoded.includes("\uFFFD")) {
-    return decoded;
-  }
-  return originalName;
-}
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "./uploaded-file";
 
 @Controller("files")
 export class FileController {

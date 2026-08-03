@@ -215,6 +215,7 @@ import {
   type ContractNegotiationRoundReadModel,
   type ContractOfflineRevisionReadModel
 } from "../../../api/contract-negotiation.api";
+import { fetchContractDraftOperationCapabilities } from "../../../api/contract-workbench.api";
 import {
   contractDifferenceCandidatePresentation,
   contractDifferenceDispositionDisabledReason,
@@ -225,6 +226,45 @@ import {
   contractNegotiationReadinessMessages
 } from "./contract-negotiation.state";
 
+async function disposeContractDocumentDifferenceWithCapability(
+  versionId: string,
+  differenceId: string,
+  body: Parameters<typeof disposeContractDocumentDifference>[1]
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "dispose_contract_document_difference"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能处置合同文档差异");
+  }
+  return disposeContractDocumentDifference(differenceId, body);
+}
+
+async function openContractRevisionPreviewWithCapability(
+  versionId: string,
+  revisionId: string,
+  body: Parameters<typeof openContractRevisionPreview>[1],
+  stillCurrent: () => boolean
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "open_contract_revision_preview"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能查看合同修订稿预览");
+  }
+  return openContractRevisionPreview(revisionId, body, stillCurrent);
+}
+
 type SelectedNegotiation = {
   round: ContractNegotiationRoundReadModel;
   revision: ContractOfflineRevisionReadModel;
@@ -234,7 +274,12 @@ type DispositionDraft = {
   reason: string;
 };
 
-const props = defineProps<{ selected: SelectedNegotiation | null; readiness: unknown; disabled: boolean }>();
+const props = defineProps<{
+  versionId: string;
+  selected: SelectedNegotiation | null;
+  readiness: unknown;
+  disabled: boolean;
+}>();
 const emit = defineEmits<{ changed: [] }>();
 const dispositionDrafts = reactive<Record<string, DispositionDraft>>({});
 const busyDifferenceId = ref("");
@@ -322,7 +367,7 @@ async function submitDisposition(difference: ContractDocumentDifferenceReadModel
   busyDifferenceId.value = difference.id;
   message.value = "";
   try {
-    await disposeContractDocumentDifference(difference.id, {
+    await disposeContractDocumentDifferenceWithCapability(props.versionId, difference.id, {
       disposition: draft.disposition,
       reason: draft.reason.trim() || undefined
     });
@@ -356,7 +401,8 @@ async function openRevisionPreview() {
   const reason = downloadReason.value.trim();
   previewBusy.value = true;
   try {
-    const opened = await openContractRevisionPreview(
+    const opened = await openContractRevisionPreviewWithCapability(
+      props.versionId,
       revision.id,
       { confirmationPassword: password, downloadReason: reason },
       () => isPreviewCurrent(request, selectionKey)

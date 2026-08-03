@@ -35,6 +35,7 @@ import {
   heartbeatContractDraftEditLease,
   setContractAuthorization,
   uploadContractFormalApprovalFile,
+  uploadContractWorkbenchPrivateFile,
   getBusinessParty,
   getContractTemplate,
   getLayoutTemplate,
@@ -1778,6 +1779,25 @@ describe("contract workbench API client", () => {
     expect(JSON.parse((options as RequestInit).body as string)).toEqual({
       fileId: "file-1"
     });
+  });
+
+  it("uploadContractWorkbenchPrivateFile – binds the multipart upload to the exact version", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "file-1" }));
+    const file = new Blob(["private-file"], { type: "application/pdf" });
+
+    await uploadContractWorkbenchPrivateFile(
+      "version / 1",
+      file,
+      "授权书.pdf",
+      "upload-key-1"
+    );
+
+    const [path, options] = mockApiFetch.mock.calls[0];
+    expect(path).toBe("/contract-drafts/version%20%2F%201/files");
+    expect((options as RequestInit).method).toBe("POST");
+    const body = (options as RequestInit).body as FormData;
+    expect(body.get("file")).toBeInstanceOf(Blob);
+    expect(body.get("idempotencyKey")).toBe("upload-key-1");
   });
 
   it("queueContractDocument – POST /contract-workbench/:contractVersionId/documents", async () => {

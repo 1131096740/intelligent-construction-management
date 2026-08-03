@@ -218,6 +218,10 @@
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
+  fetchContractDraftOperationCapabilities,
+  uploadContractWorkbenchPrivateFile
+} from "../../../api/contract-workbench.api";
+import {
   closeContractNegotiationRound,
   listContractOfflineRevisionHistory,
   listContractNegotiationRounds,
@@ -228,7 +232,6 @@ import {
   type ContractOfflineRevisionHistoryReadModel,
   type ContractOfflineRevisionReadModel
 } from "../../../api/contract-negotiation.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   canApplyContractNegotiationResponse,
   canCloseContractNegotiationRound,
@@ -240,6 +243,97 @@ import {
   selectedContractNegotiationRevision,
   type ContractNegotiationSelection
 } from "./contract-negotiation.state";
+
+async function openContractNegotiationRoundWithCapability(
+  versionId: string,
+  note?: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "open_contract_negotiation_round"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能开启合同磋商轮次");
+  }
+  return openContractNegotiationRound(versionId, note);
+}
+
+async function uploadNegotiationFileWithCapability(
+  versionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同工作台文件");
+  }
+  return uploadContractWorkbenchPrivateFile(versionId, file, fileName);
+}
+
+async function uploadContractNegotiationRevisionWithCapability(
+  versionId: string,
+  body: Parameters<typeof uploadContractNegotiationRevision>[1]
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_negotiation_revision"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能提交合同线下修订稿");
+  }
+  return uploadContractNegotiationRevision(versionId, body);
+}
+
+async function closeContractNegotiationRoundWithCapability(
+  versionId: string,
+  roundId: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "close_contract_negotiation_round"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能关闭合同磋商轮次");
+  }
+  return closeContractNegotiationRound(roundId);
+}
+
+async function retryContractOfflineRevisionWithCapability(
+  versionId: string,
+  revisionId: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "retry_contract_offline_revision"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能重试合同修订稿");
+  }
+  return retryContractOfflineRevision(revisionId);
+}
 
 const props = defineProps<{ versionId: string; disabled: boolean; refreshToken: number }>();
 const emit = defineEmits<{
@@ -368,7 +462,7 @@ async function openNegotiationRound() {
   if (
     await run(
       "open",
-      () => openContractNegotiationRound(versionId, roundNote.value),
+      () => openContractNegotiationRoundWithCapability(versionId, roundNote.value),
       "新磋商轮次已开启。"
     )
   ) {
@@ -388,12 +482,12 @@ async function uploadRevision() {
   busyAction.value = "upload";
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadNegotiationFileWithCapability(versionId, file, file.name);
     if (!isActionCurrent(actionRequest, versionId)) {
       showUploadReselectMessage(versionId);
       return;
     }
-    await uploadContractNegotiationRevision(versionId, {
+    await uploadContractNegotiationRevisionWithCapability(versionId, {
       fileId: uploaded.id,
       label,
       note,
@@ -415,11 +509,19 @@ async function uploadRevision() {
 async function closeOpenRound() {
   if (!openRound.value || !canCloseOpenRound.value) return;
   const roundId = openRound.value.id;
-  await run("close", () => closeContractNegotiationRound(roundId), "本轮磋商已关闭。");
+  await run(
+    "close",
+    () => closeContractNegotiationRoundWithCapability(props.versionId, roundId),
+    "本轮磋商已关闭。"
+  );
 }
 
 async function retryRevision(revisionId: string) {
-  await run(`retry-${revisionId}`, () => retryContractOfflineRevision(revisionId), "修订稿已重新进入比较队列。");
+  await run(
+    `retry-${revisionId}`,
+    () => retryContractOfflineRevisionWithCapability(props.versionId, revisionId),
+    "修订稿已重新进入比较队列。"
+  );
 }
 
 function showError(value: string) {

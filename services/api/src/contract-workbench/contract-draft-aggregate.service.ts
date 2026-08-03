@@ -21,6 +21,14 @@ import type {
 
 const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft", "approval_rejected"]);
 
+interface ContractDraftPrivateFileUploadInput {
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  buffer: Buffer;
+  idempotencyKey?: string;
+}
+
 @Injectable()
 export class ContractDraftAggregateService {
   constructor(
@@ -74,19 +82,41 @@ export class ContractDraftAggregateService {
     const isDirector = canTakeOver || await this.isContractDirector(actorUserId);
     const isOriginalDraft = version.changeType !== "change" &&
       version.changeType !== "supplement";
+    const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
     const draftOperationAvailableActions = [
-      ...(isOwner ? [
+      ...(isOwner && isEditableDraft ? [
         "acquire_contract_draft_edit_lease",
         ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
         "check_contract_submission_readiness",
+        "close_contract_negotiation_round",
+        "dispose_contract_document_difference",
         "heartbeat_contract_draft_edit_lease",
+        "open_contract_negotiation_round",
+        "open_contract_revision_preview",
+        "preview_contract_draft_bill_excel_import",
         ...(isOriginalDraft ? ["preview_contract_type_change"] : []),
+        "queue_contract_document",
         "queue_contract_draft_preview",
         "release_contract_draft_edit_lease",
+        "retry_contract_document",
+        "retry_contract_offline_revision",
+        ...(version.baseVersionId ? [
+          "discard_contract_bill_transitions",
+          "save_contract_bill_transitions"
+        ] : []),
         "save_contract_draft",
-        ...(version.status === "draft" ? ["submit_contract_draft"] : [])
+        ...(version.contractGovernanceVersion === 1 ? [
+          "set_contract_authorization"
+        ] : []),
+        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
+        ...(version.contractGovernanceVersion === 1 ? [
+          "upload_contract_formal_approval_file"
+        ] : []),
+        "upload_contract_negotiation_revision",
+        "upload_contract_workbench_private_file"
       ] : []),
       ...(isDirector ? [
+        ...(version.baseVersionId ? ["confirm_contract_bill_transitions"] : []),
         "confirm_contract_settlement_mode",
         "transfer_contract_draft"
       ] : []),
@@ -110,6 +140,48 @@ export class ContractDraftAggregateService {
         canTakeOver
       }
     };
+  }
+
+  async uploadPrivateFile(
+    contractVersionId: string,
+    actorUserId: string,
+    input: ContractDraftPrivateFileUploadInput
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const mutationBoundary = await lockContractDraftMutationBoundary(
+        tx,
+        contractVersionId
+      );
+      if (!mutationBoundary) {
+        throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+      }
+      const [contract, version] = await Promise.all([
+        tx.contract.findUnique({ where: { id: mutationBoundary.contractId } }),
+        tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+      ]);
+      if (!contract || !version) {
+        throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+      }
+      if (contract.ownerUserId !== actorUserId) {
+        throw new ForbiddenException("只有当前合同经办人可以上传合同草稿文件");
+      }
+      if (
+        mutationBoundary.formalBlockers.length > 0 ||
+        contract.voidedAt ||
+        !EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)
+      ) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "DRAFT_NOT_EDITABLE",
+          message: "合同草稿当前不可编辑，请刷新后重试"
+        });
+      }
+    });
+
+    return this.files.uploadPrivateFile({
+      ...input,
+      uploadedByUserId: actorUserId
+    });
   }
 
   private async isContractDirector(actorUserId: string) {

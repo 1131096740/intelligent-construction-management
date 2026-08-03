@@ -187,8 +187,11 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import type { ContractDraftPartyModel } from "../../../api/contract-workbench.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import {
+  fetchContractDraftOperationCapabilities,
+  uploadContractWorkbenchPrivateFile,
+  type ContractDraftPartyModel
+} from "../../../api/contract-workbench.api";
 import {
   cloneContractDraftParty,
   contractDraftPartyDeleteWarning,
@@ -196,8 +199,28 @@ import {
   updateContractDraftParty
 } from "./use-contract-draft";
 
+async function uploadContractPartyFileWithCapability(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同主体附件能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同主体附件");
+  }
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+}
+
 const props = defineProps<{
   parties: ContractDraftPartyModel[];
+  contractVersionId: string;
   disabled: boolean;
 }>();
 
@@ -390,7 +413,11 @@ async function uploadAttachment(attachment: AttachmentForm, event: Event) {
   busy.value = true;
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, `${attachment.label} - ${file.name}`);
+    const uploaded = await uploadContractPartyFileWithCapability(
+      props.contractVersionId,
+      file,
+      `${attachment.label} - ${file.name}`
+    );
     attachment.fileId = uploaded.id;
     attachment.name = `${attachment.label} - ${file.name}`;
     message.value = "附件已上传";

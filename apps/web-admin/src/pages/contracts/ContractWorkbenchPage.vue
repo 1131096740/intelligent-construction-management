@@ -525,6 +525,7 @@
 
           <ContractNegotiationCanvas
             v-if="activeSection === 'negotiation_documents'"
+            :version-id="workbench?.version.id ?? ''"
             :selected="selectedNegotiation"
             :readiness="workbench?.readiness"
             :disabled="editorDisabled"
@@ -612,6 +613,7 @@
               >
                 <ContractPartySection
                   :parties="aggregateModel.parties"
+                  :contract-version-id="workbench?.version.id ?? ''"
                   :disabled="editorDisabled || isChangeVersion"
                   @update:parties="updateParties"
                   @edited="markDirty('parties')"
@@ -659,7 +661,9 @@
                   v-if="isChangeVersion"
                   :contract-version-id="workbench?.version.id ?? ''"
                   :revision="workbench?.version.draftRevision ?? 0"
-                  :disabled="editorDisabled"
+                  :can-save="contractDraftOperationAvailableActions.includes('save_contract_bill_transitions')"
+                  :can-discard="contractDraftOperationAvailableActions.includes('discard_contract_bill_transitions')"
+                  :can-confirm="contractDraftOperationAvailableActions.includes('confirm_contract_bill_transitions')"
                   @changed="reloadCurrent"
                 />
               </section>

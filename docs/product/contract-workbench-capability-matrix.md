@@ -6,9 +6,9 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 186 条 |
-| Web API 请求 | 已扫描 142 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 403 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| Controller 源码路由 | 已扫描 187 条 |
+| Web API 请求 | 已扫描 143 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 404 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 24 条合同专项候选；物理删除授权固定为否 |
 
@@ -16,7 +16,7 @@
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 119 |
+| matched | 120 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 47 |
 | backend_internal_only | 0 |
@@ -66,9 +66,10 @@
 | POST | `/contract-drafts/:param/edit-lease` | acquireContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/heartbeat` | heartbeatContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/takeover` | takeOverContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| POST | `/contract-drafts/:param/files` | uploadContractWorkbenchPrivateFile | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/preview-generation` | queueContractDraftPreview | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/submission` | submitContractDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
-| GET | `/contract-drafts/:param/workbench` | fetchContractDraftOperationCapabilities | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/workbench` | fetchContractDraftOperationCapabilities | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | PATCH | `/contract-layout-template-versions/:param` | updateLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/contract-layout-template-versions/:param/clone` | cloneLayoutTemplateVersion | apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue | matched | 保留 | 否 | — |

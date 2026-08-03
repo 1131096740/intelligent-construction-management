@@ -41,7 +41,9 @@ describe("contract negotiation workbench structure", () => {
   });
 
   it("invalidates uploads, preview credentials and disposition drafts when selection changes", () => {
-    expect(section).toMatch(/await uploadPrivateFile[\s\S]*isActionCurrent[\s\S]*uploadContractNegotiationRevision/u);
+    expect(section).toMatch(
+      /await uploadNegotiationFileWithCapability[\s\S]*isActionCurrent[\s\S]*uploadContractNegotiationRevisionWithCapability/u
+    );
     expect(section).toContain("resetVersionState");
     expect(section).toContain("clearUploadState");
     expect(canvas).toContain("clearPreviewCredentials");

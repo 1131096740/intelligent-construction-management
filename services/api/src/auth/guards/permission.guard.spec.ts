@@ -1171,6 +1171,122 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it.each([
+    ["toContractVersionId", "contract-version-1"],
+    ["roundId", "round-1"],
+    ["differenceId", "difference-1"],
+    ["revisionId", "revision-1"],
+    ["documentId", "document-1"]
+  ] as const)(
+    "resolves contract workbench project roles from persisted %s resources",
+    async (parameter, resourceId) => {
+      const prisma = {
+        userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+        projectMember: {
+          findMany: jest.fn(({ where }: { where: { projectId: string } }) =>
+            Promise.resolve(
+              where.projectId === "project-a"
+                ? [{ positionKey: "contract_staff" }]
+                : []
+            )
+          )
+        },
+        position: { findMany: jest.fn().mockResolvedValue([]) },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({ projectId: "project-a" })
+        },
+        contractNegotiationRound: {
+          findUnique: jest.fn().mockResolvedValue({
+            contractVersionId: "contract-version-1"
+          })
+        },
+        contractOfflineRevision: {
+          findUnique: jest.fn().mockResolvedValue({
+            contractVersionId: "contract-version-1"
+          })
+        },
+        contractGeneratedDocument: {
+          findUnique: jest.fn().mockResolvedValue({
+            contractVersionId: "contract-version-1"
+          })
+        },
+        contractDocumentDifference: {
+          findUnique: jest.fn().mockResolvedValue({ comparisonId: "comparison-1" })
+        },
+        contractDocumentComparison: {
+          findUnique: jest.fn().mockResolvedValue({
+            negotiationRoundId: "round-1",
+            offlineRevisionId: "revision-1"
+          })
+        }
+      };
+      const guard = new PermissionGuard(
+        {
+          getAllAndOverride: jest
+            .fn()
+            .mockReturnValueOnce(undefined)
+            .mockReturnValueOnce("contract.create")
+        } as never,
+        prisma as never
+      );
+
+      await expect(
+        guard.canActivate(
+          contextWithRequest({
+            user: { id: "contract-staff-1" },
+            params: { [parameter]: resourceId },
+            body: { projectId: "project-b" }
+          })
+        )
+      ).resolves.toBe(true);
+      expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+        where: { userId: "contract-staff-1", projectId: "project-a" }
+      });
+    }
+  );
+
+  it("keeps takeover tax-fact revision routes scoped by their explicit project", async () => {
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionKey: "contract_staff" }
+        ])
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractOfflineRevision: { findUnique: jest.fn() }
+    };
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("contract.tax_fact.supplement")
+      } as never,
+      prisma as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "contract-staff-1" },
+          params: {
+            projectId: "project-a",
+            takeoverId: "takeover-1",
+            revisionId: "tax-fact-revision-1"
+          }
+        })
+      )
+    ).resolves.toBe(true);
+    expect(prisma.contractOfflineRevision.findUnique).not.toHaveBeenCalled();
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({
+      where: { userId: "contract-staff-1", projectId: "project-a" }
+    });
+  });
+
   it("resolves a contract bill route from its persisted project before request project ids", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

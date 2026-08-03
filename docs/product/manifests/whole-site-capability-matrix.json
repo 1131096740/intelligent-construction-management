@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "d703ac821df4e7e64466147f1a0cf65f49629ce9c36eb904ec28dfa908eb0f70",
+      "sha256": "60132712137443ef2008ccb5bf7d74762b5370d8a9d3704e6cde5f98f0263a80",
       "status": "ready",
       "summary": {
-        "routeCount": 403
+        "routeCount": 404
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1bb4665a0aee5e241f6103b7f8f8aa1e7cfb0c49f3008cdc0d40ab4708b727ad",
+      "sha256": "b8ce31d75a9720d704ace5134aa0bf5366dcde55ed5deb997a7123e76c179a3e",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 413,
-        "transportWrapperCount": 393,
+        "exportedFunctionCount": 414,
+        "transportWrapperCount": 394,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 413,
+        "mainRequestBindingCount": 414,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 412,
-        "productionConsumerCount": 356,
+        "requestEdgeCount": 413,
+        "productionConsumerCount": 357,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "7b09df30d867ce976efb4682c5d2a711d4e5fa620ab57c2ce0b9d954623317ec",
+      "sha256": "3f488b7825d72bb7b11e93e0b62a0ab12440bb13413e48ba0de8dcdef9126358",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 69,
-        "pageActionCount": 54,
-        "backgroundActionCount": 15,
+        "registeredActionCount": 90,
+        "pageActionCount": 55,
+        "backgroundActionCount": 35,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
         "parsedVueFileCount": 135,
         "reachableProductionModuleCount": 234,
-        "templateEventDirectiveCount": 949,
+        "templateEventDirectiveCount": 951,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 47,
-        "candidateProductionMutationConsumerCount": 59,
-        "acceptedProductionMutationConsumerCount": 47,
+        "coveredProductionMutationConsumerCount": 68,
+        "candidateProductionMutationConsumerCount": 80,
+        "acceptedProductionMutationConsumerCount": 68,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 255
+        "blockerCount": 234
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "7ea92fc558a1853d3937bc12c05aa79a9b94c669f8c356b48cf05050ce15142d",
+      "sha256": "5b19f38f7368048a0af8c23961d8fe944712773ff5c31d996af9edb90bc8880a",
       "status": "blocked",
       "summary": {
-        "routeCount": 403,
-        "exactRouteCount": 403,
-        "normalizedRouteCount": 403,
+        "routeCount": 404,
+        "exactRouteCount": 404,
+        "normalizedRouteCount": 404,
         "classificationOverrideCount": 108,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 295,
-        "pageRouteCount": 298,
+        "derivedProductionPageCount": 296,
+        "pageRouteCount": 299,
         "externalTakeoverCount": 59,
         "exitCandidateCount": 43,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 345,
+          "web_api_wrapper": 346,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,25 +93,25 @@
     }
   },
   "summary": {
-    "routeCount": 403,
-    "pageRouteCount": 298,
+    "routeCount": 404,
+    "pageRouteCount": 299,
     "externalTakeoverRouteCount": 59,
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 413,
+    "mainRequestBindingCount": 414,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 69,
-    "actionBindingCount": 94,
-    "acceptedActionBindingCount": 63,
+    "registeredActionCount": 90,
+    "actionBindingCount": 115,
+    "acceptedActionBindingCount": 84,
     "unresolvedActionBindingCount": 12,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 47,
-    "uncoveredProductionMutationConsumerPairCount": 230,
-    "blockerCount": 286
+    "coveredProductionMutationConsumerPairCount": 68,
+    "uncoveredProductionMutationConsumerPairCount": 209,
+    "blockerCount": 265
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -405,54 +405,6 @@
         ]
       },
       {
-        "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-        "wrapper": "closeContractNegotiationRound",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-        "normalizedKeys": [
-          "POST /contract-negotiation-rounds/:param/close"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-        "wrapper": "disposeContractDocumentDifference",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-        "normalizedKeys": [
-          "POST /contract-document-differences/:param/disposition"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-        "wrapper": "openContractNegotiationRound",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/negotiation-rounds"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-        "wrapper": "openContractRevisionPreview",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-        "normalizedKeys": [
-          "POST /contract-offline-revisions/:param/preview-download-ticket"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-        "wrapper": "retryContractOfflineRevision",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-        "normalizedKeys": [
-          "POST /contract-offline-revisions/:param/retry"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-        "wrapper": "uploadContractNegotiationRevision",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/offline-revisions"
-        ]
-      },
-      {
         "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
         "wrapper": "createContractBusinessScenario",
         "consumer": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
@@ -550,14 +502,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "confirmContractBillTransitions",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
-        "normalizedKeys": [
-          "POST /contract-versions/:param/bill-transitions/confirm"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "createBusinessParty",
         "consumer": "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
         "normalizedKeys": [
@@ -606,14 +550,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardContractBillTransitions",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
-        "normalizedKeys": [
-          "DELETE /contract-versions/:param/bill-transitions"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "discardContractTemplateVersion",
         "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
         "normalizedKeys": [
@@ -646,14 +582,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "previewContractDraftBillExcelImport",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
-        "normalizedKeys": [
-          "POST /contract-drafts/:param/bills/:param/import-preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "publishContractTemplateVersion",
         "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
         "normalizedKeys": [
@@ -678,42 +606,10 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueContractDocument",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/documents"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "queueLayoutTemplatePreview",
         "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "normalizedKeys": [
           "POST /contract-layout-template-versions/:param/preview-generation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "retryContractDocument",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-        "normalizedKeys": [
-          "POST /contract-documents/:param/retry"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "saveContractBillTransitions",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
-        "normalizedKeys": [
-          "PUT /contract-versions/:param/bill-transitions"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "setContractAuthorization",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/authorizations"
         ]
       },
       {
@@ -770,14 +666,6 @@
         "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "normalizedKeys": [
           "PATCH /contract-layout-template-versions/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "uploadContractFormalApprovalFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/approval"
         ]
       },
       {
@@ -1008,14 +896,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createPrivateFileDownloadTicket",
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
         "normalizedKeys": [
           "POST /files/:param/download-ticket"
         ]
@@ -1480,54 +1360,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
         "normalizedKeys": [
           "POST /files"
         ]
@@ -2598,10 +2430,10 @@
         "sourceFile": "services/api/src/contract-bill/contract-bill-transition.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -2625,11 +2457,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-bill-transition.discard",
+          "bindingIndex": 0,
+          "identity": "contract-bill-transition.discard\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000discardContractBillTransitions\u0000DELETE\u0000DELETE /contract-versions/:param/bill-transitions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "discard_contract_bill_transitions",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "discardContractBillTransitions",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -3396,6 +3253,14 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
           "testConsumers": [
@@ -4807,7 +4672,8 @@
           "normalizedKey": "GET /files/:param/download-ticket-capability",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -10079,10 +9945,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10106,11 +9972,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-negotiation.dispose-difference",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.dispose-difference\u0000apps/web-admin/src/api/contract-negotiation.api.ts\u0000disposeContractDocumentDifference\u0000POST\u0000POST /contract-document-differences/:param/disposition\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "dispose_contract_document_difference",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "disposeContractDocumentDifference",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10122,10 +10013,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10149,11 +10040,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-document.retry",
+          "bindingIndex": 0,
+          "identity": "contract-document.retry\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000retryContractDocument\u0000POST\u0000POST /contract-documents/:param/retry\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "retry_contract_document",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "retryContractDocument",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10165,10 +10081,10 @@
         "sourceFile": "services/api/src/contract-bill/contract-draft-bill-excel.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10192,11 +10108,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-bill-import.preview",
+          "bindingIndex": 0,
+          "identity": "contract-bill-import.preview\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000previewContractDraftBillExcelImport\u0000POST\u0000POST /contract-drafts/:param/bills/:param/import-preview\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "preview_contract_draft_bill_excel_import",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "previewContractDraftBillExcelImport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10396,6 +10337,211 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/contract-drafts/:contractVersionId/files",
+        "normalizedKey": "POST /contract-drafts/:param/files",
+        "controller": "ContractDraftController",
+        "handler": "uploadPrivateFile",
+        "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "contract.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "method": "POST",
+          "path": "/contract-drafts/:param/files",
+          "normalizedKey": "POST /contract-drafts/:param/files",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-workbench.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "contract-authorization.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-authorization.upload-file\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractWorkbenchPrivateFile\u0000POST\u0000POST /contract-drafts/:param/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_workbench_private_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-bill-import.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-bill-import.upload-file\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractWorkbenchPrivateFile\u0000POST\u0000POST /contract-drafts/:param/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_workbench_private_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-document.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-document.upload-file\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractWorkbenchPrivateFile\u0000POST\u0000POST /contract-drafts/:param/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_workbench_private_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-formal-document.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-formal-document.upload-file\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractWorkbenchPrivateFile\u0000POST\u0000POST /contract-drafts/:param/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_workbench_private_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-negotiation.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.upload-file\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractWorkbenchPrivateFile\u0000POST\u0000POST /contract-drafts/:param/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_workbench_private_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-party.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-party.upload-file\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractWorkbenchPrivateFile\u0000POST\u0000POST /contract-drafts/:param/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_workbench_private_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -10987,10 +11133,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -11014,11 +11160,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-negotiation.close-round",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.close-round\u0000apps/web-admin/src/api/contract-negotiation.api.ts\u0000closeContractNegotiationRound\u0000POST\u0000POST /contract-negotiation-rounds/:param/close\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "close_contract_negotiation_round",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "closeContractNegotiationRound",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11116,10 +11287,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
@@ -11143,11 +11314,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-negotiation.open-revision-preview",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.open-revision-preview\u0000apps/web-admin/src/api/contract-negotiation.api.ts\u0000openContractRevisionPreview\u0000POST\u0000POST /contract-offline-revisions/:param/preview-download-ticket\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "open_contract_revision_preview",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "openContractRevisionPreview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11159,10 +11355,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -11186,11 +11382,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-negotiation.retry-revision",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.retry-revision\u0000apps/web-admin/src/api/contract-negotiation.api.ts\u0000retryContractOfflineRevision\u0000POST\u0000POST /contract-offline-revisions/:param/retry\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "retry_contract_offline_revision",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "retryContractOfflineRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11544,10 +11765,10 @@
         "sourceFile": "services/api/src/contract-bill/contract-bill-transition.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -11571,11 +11792,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-bill-transition.confirm",
+          "bindingIndex": 0,
+          "identity": "contract-bill-transition.confirm\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000confirmContractBillTransitions\u0000POST\u0000POST /contract-versions/:param/bill-transitions/confirm\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "confirm_contract_bill_transitions",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "confirmContractBillTransitions",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11669,10 +11915,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -11696,11 +11942,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-document.queue",
+          "bindingIndex": 0,
+          "identity": "contract-document.queue\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000queueContractDocument\u0000POST\u0000POST /contract-workbench/:param/documents\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "queue_contract_document",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "queueContractDocument",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11712,10 +11983,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -11739,11 +12010,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-negotiation.open-round",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.open-round\u0000apps/web-admin/src/api/contract-negotiation.api.ts\u0000openContractNegotiationRound\u0000POST\u0000POST /contract-workbench/:param/negotiation-rounds\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "open_contract_negotiation_round",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "openContractNegotiationRound",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11755,10 +12051,10 @@
         "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -11782,11 +12078,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-negotiation.upload-revision",
+          "bindingIndex": 0,
+          "identity": "contract-negotiation.upload-revision\u0000apps/web-admin/src/api/contract-negotiation.api.ts\u0000uploadContractNegotiationRevision\u0000POST\u0000POST /contract-workbench/:param/offline-revisions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_negotiation_revision",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+          "wrapper": "uploadContractNegotiationRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12714,11 +13035,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-authorization.set",
+          "bindingIndex": 0,
+          "identity": "contract-authorization.set\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000setContractAuthorization\u0000POST\u0000POST /contracts/:param/authorizations\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "set_contract_authorization",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "setContractAuthorization",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12843,11 +13189,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-formal-document.associate-approval",
+          "bindingIndex": 0,
+          "identity": "contract-formal-document.associate-approval\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000uploadContractFormalApprovalFile\u0000POST\u0000POST /contracts/:param/formal-files/approval\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "upload_contract_formal_approval_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractFormalApprovalFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14103,6 +14474,32 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "contract-document.download-ticket",
+          "bindingIndex": 0,
+          "identity": "contract-document.download-ticket\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "contractDocumentDownloadAction",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "uncovered",
@@ -14186,12 +14583,6 @@
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
             "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
@@ -22389,10 +22780,10 @@
         "sourceFile": "services/api/src/contract-bill/contract-bill-transition.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -22416,11 +22807,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-bill-transition.save",
+          "bindingIndex": 0,
+          "identity": "contract-bill-transition.save\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000saveContractBillTransitions\u0000PUT\u0000PUT /contract-versions/:param/bill-transitions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.draftOperationAvailableActions",
+            "key": "save_contract_bill_transitions",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "saveContractBillTransitions",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

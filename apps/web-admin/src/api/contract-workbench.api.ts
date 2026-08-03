@@ -8,6 +8,7 @@ import type {
   ContractWorkbenchReadModel as SharedContractWorkbenchReadModel,
   DetailActionReadModel
 } from "@jiangkong/shared-domain";
+import type { PrivateFileReadModel } from "./core-flow-read.api";
 
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
@@ -81,6 +82,15 @@ async function postJson<TResponse>(path: string, body?: unknown): Promise<TRespo
     body: JSON.stringify(body ?? {})
   });
   await ensureOk(response, "提交失败");
+  return response.json() as Promise<TResponse>;
+}
+
+async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "POST",
+    body
+  });
+  await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
 }
 
@@ -785,6 +795,23 @@ export function uploadContractFormalApprovalFile(
   body: UploadContractFormalApprovalFilePayload
 ) {
   return postJson<unknown>(`/contracts/${contractVersionId}/formal-files/approval`, body);
+}
+
+export function uploadContractWorkbenchPrivateFile(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<PrivateFileReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/files`,
+    form
+  );
 }
 
 export function checkContractSubmissionReadiness(contractVersionId: string) {

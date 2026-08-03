@@ -107,8 +107,48 @@
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import type { RequestMethodResponse, UploadFile } from "tdesign-vue-next";
 import { computed, reactive, ref } from "vue";
-import { uploadContractFormalApprovalFile } from "../../../api/contract-workbench.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import {
+  fetchContractDraftOperationCapabilities,
+  uploadContractFormalApprovalFile,
+  uploadContractWorkbenchPrivateFile
+} from "../../../api/contract-workbench.api";
+
+async function uploadContractFormalFileWithCapability(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同正式文件能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同正式文件");
+  }
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+}
+
+async function uploadContractFormalApprovalFileWithCapability(
+  contractVersionId: string,
+  body: Parameters<typeof uploadContractFormalApprovalFile>[1]
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同正式文件能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_formal_approval_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能关联完整审批文件");
+  }
+  return uploadContractFormalApprovalFile(contractVersionId, body);
+}
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel;
@@ -193,7 +233,11 @@ async function uploadApprovalPdf(selected: UploadFile | UploadFile[]): Promise<R
     const current = await props.prepareMutation();
     if (!current) throw new Error("草稿保存失败，已保留当前内容。");
     prepared = true;
-    const uploaded = await uploadPrivateFile(upload.raw, upload.name || upload.raw.name);
+    const uploaded = await uploadContractFormalFileWithCapability(
+      current.version.id,
+      upload.raw,
+      upload.name || upload.raw.name
+    );
     stagedAssociation.value = {
       fileId: uploaded.id,
       contractVersionId: current.version.id,
@@ -246,7 +290,7 @@ async function retryAssociation() {
 }
 
 function associate(staged: StagedFormalAssociation) {
-  return uploadContractFormalApprovalFile(staged.contractVersionId, {
+  return uploadContractFormalApprovalFileWithCapability(staged.contractVersionId, {
     fileId: staged.fileId,
     sourceRevision: staged.sourceRevision,
     ...staged.declaration

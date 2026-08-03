@@ -373,6 +373,39 @@ export class PermissionGuard implements CanActivate {
       return this.extractProjectIdFromContractBill(contractBillIdFromParams);
     }
 
+    const targetContractVersionId = request.params?.toContractVersionId;
+    if (targetContractVersionId) {
+      return this.extractProjectIdFromContractVersion(targetContractVersionId);
+    }
+
+    const negotiationRoundId = request.params?.roundId;
+    if (negotiationRoundId) {
+      return this.extractProjectIdFromContractNegotiationRound(
+        negotiationRoundId
+      );
+    }
+
+    const contractDifferenceId = request.params?.differenceId;
+    if (contractDifferenceId) {
+      return this.extractProjectIdFromContractDocumentDifference(
+        contractDifferenceId
+      );
+    }
+
+    const offlineRevisionId = request.params?.revisionId;
+    if (offlineRevisionId && !request.params?.takeoverId) {
+      return this.extractProjectIdFromContractOfflineRevision(
+        offlineRevisionId
+      );
+    }
+
+    const generatedDocumentId = request.params?.documentId;
+    if (generatedDocumentId) {
+      return this.extractProjectIdFromContractGeneratedDocument(
+        generatedDocumentId
+      );
+    }
+
     const contractVersionIdFromParams = request.params?.contractVersionId;
     if (contractVersionIdFromParams) {
       return this.extractProjectIdFromContractVersion(contractVersionIdFromParams);
@@ -464,6 +497,72 @@ export class PermissionGuard implements CanActivate {
     );
     if (!projectId) {
       throw new ForbiddenException("合同清单资源不存在或当前账号无权访问");
+    }
+    return projectId;
+  }
+
+  private async extractProjectIdFromContractNegotiationRound(roundId: string) {
+    const round = await this.prisma.contractNegotiationRound.findUnique({
+      where: { id: roundId },
+      select: { contractVersionId: true }
+    });
+    return this.requireContractDocumentProjectId(round?.contractVersionId);
+  }
+
+  private async extractProjectIdFromContractOfflineRevision(revisionId: string) {
+    const revision = await this.prisma.contractOfflineRevision.findUnique({
+      where: { id: revisionId },
+      select: { contractVersionId: true }
+    });
+    return this.requireContractDocumentProjectId(revision?.contractVersionId);
+  }
+
+  private async extractProjectIdFromContractGeneratedDocument(documentId: string) {
+    const document = await this.prisma.contractGeneratedDocument.findUnique({
+      where: { id: documentId },
+      select: { contractVersionId: true }
+    });
+    return this.requireContractDocumentProjectId(document?.contractVersionId);
+  }
+
+  private async extractProjectIdFromContractDocumentDifference(
+    differenceId: string
+  ) {
+    const difference = await this.prisma.contractDocumentDifference.findUnique({
+      where: { id: differenceId },
+      select: { comparisonId: true }
+    });
+    if (!difference) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    const comparison = await this.prisma.contractDocumentComparison.findUnique({
+      where: { id: difference.comparisonId },
+      select: { negotiationRoundId: true, offlineRevisionId: true }
+    });
+    if (!comparison) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    if (comparison.offlineRevisionId) {
+      return this.extractProjectIdFromContractOfflineRevision(
+        comparison.offlineRevisionId
+      );
+    }
+    return this.extractProjectIdFromContractNegotiationRound(
+      comparison.negotiationRoundId
+    );
+  }
+
+  private async requireContractDocumentProjectId(
+    contractVersionId: string | undefined
+  ) {
+    if (!contractVersionId) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    const projectId = await this.extractProjectIdFromContractVersion(
+      contractVersionId
+    );
+    if (!projectId) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
     }
     return projectId;
   }

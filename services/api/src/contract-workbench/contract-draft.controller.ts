@@ -8,14 +8,21 @@ import {
   Inject,
   Param,
   Post,
-  Put
+  Put,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "../file/uploaded-file";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import {
@@ -71,6 +78,34 @@ export class ContractDraftController {
     return this.contracts.abandonDraft(contractVersionId, user.id, {
       ...body,
       action: "delete_pristine_draft"
+    });
+  }
+
+  @Post(":contractVersionId/files")
+  @RequireProjectRole("contract.create")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  uploadPrivateFile(
+    @Param("contractVersionId") contractVersionId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    if (!file) {
+      throw new Error("请选择要上传的资料文件");
+    }
+
+    return this.aggregate.uploadPrivateFile(contractVersionId, user.id, {
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
     });
   }
 

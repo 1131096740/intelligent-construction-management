@@ -13,6 +13,8 @@ describe("ContractDraftAggregateService", () => {
     contractId: "contract-1",
     status: "draft",
     changeType: "original",
+    baseVersionId: null as string | null,
+    contractGovernanceVersion: 1,
     draftRevision: 3,
     draftData: { fieldValues: { name: "精确版本一" } }
   };
@@ -124,13 +126,47 @@ describe("ContractDraftAggregateService", () => {
       "acquire_contract_draft_edit_lease",
       "apply_contract_type_change",
       "check_contract_submission_readiness",
+      "close_contract_negotiation_round",
+      "dispose_contract_document_difference",
       "heartbeat_contract_draft_edit_lease",
+      "open_contract_negotiation_round",
+      "open_contract_revision_preview",
+      "preview_contract_draft_bill_excel_import",
       "preview_contract_type_change",
+      "queue_contract_document",
       "queue_contract_draft_preview",
       "release_contract_draft_edit_lease",
+      "retry_contract_document",
+      "retry_contract_offline_revision",
       "save_contract_draft",
-      "submit_contract_draft"
+      "set_contract_authorization",
+      "submit_contract_draft",
+      "upload_contract_formal_approval_file",
+      "upload_contract_negotiation_revision",
+      "upload_contract_workbench_private_file"
     ]);
+  });
+
+  it("publishes bill-transition actions only to the matching owner or contract director", async () => {
+    const owner = makeService({
+      foundVersion: { ...version, changeType: "change", baseVersionId: "cv-base" }
+    });
+    const director = makeService({
+      foundVersion: { ...version, changeType: "change", baseVersionId: "cv-base" },
+      director: true
+    });
+
+    await expect(owner.service.getWorkbench("cv-1", "actor-1")).resolves.toMatchObject({
+      draftOperationAvailableActions: expect.arrayContaining([
+        "save_contract_bill_transitions",
+        "discard_contract_bill_transitions"
+      ])
+    });
+    await expect(director.service.getWorkbench("cv-1", "director-1")).resolves.toMatchObject({
+      draftOperationAvailableActions: expect.arrayContaining([
+        "confirm_contract_bill_transitions"
+      ])
+    });
   });
 
   it("returns stable errors for a missing or non-editable version", async () => {
@@ -317,6 +353,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     versionRevision?: number;
     versionStatus?: string;
     versionChangeType?: string;
+    ownerUserId?: string;
     foundTakeover?: { id: string; projectId: string } | null;
     fieldChanged?: boolean;
     referencesChanged?: boolean;
@@ -373,7 +410,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const contract = {
       id: "contract-1",
       projectId: "project-1",
-      ownerUserId: "owner-1",
+      ownerUserId: options.ownerUserId ?? "owner-1",
       voidedAt: null,
       contractTypeKey: "material_purchase",
       code: null
@@ -484,7 +521,8 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const files = {
       assertCanBindContractDraftAttachments: options.failFiles
         ? jest.fn().mockRejectedValue(new ConflictException("文件已绑定其他业务"))
-        : jest.fn().mockResolvedValue(undefined)
+        : jest.fn().mockResolvedValue(undefined),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
     return {
@@ -492,6 +530,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       takeoverRelationState,
       prisma,
       workbench,
+      files,
       audit,
       service: new ContractDraftAggregateService(
         prisma as never,
@@ -503,6 +542,39 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       )
     };
   }
+
+  it("uploads a private file only after the exact draft owner boundary passes", async () => {
+    const { files, service } = makeSaveService();
+    const input = {
+      originalName: "授权书.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 128,
+      buffer: Buffer.from("private-file"),
+      idempotencyKey: "upload-key-1"
+    };
+
+    await expect(
+      service.uploadPrivateFile("cv-1", "owner-1", input)
+    ).resolves.toEqual({ id: "file-1" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      ...input,
+      uploadedByUserId: "owner-1"
+    });
+  });
+
+  it("rejects a non-owner before creating a private file", async () => {
+    const { files, service } = makeSaveService({ ownerUserId: "other-owner" });
+
+    await expect(
+      service.uploadPrivateFile("cv-1", "owner-1", {
+        originalName: "授权书.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 128,
+        buffer: Buffer.from("private-file")
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
 
   it("computes effective changes from server facts and increments the draft once", async () => {
     const { service, tx, audit } = makeSaveService();

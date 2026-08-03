@@ -8,10 +8,11 @@ import {
 import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import {
   downloadContractDraftBillExcelTemplate,
+  fetchContractDraftOperationCapabilities,
   previewContractDraftBillExcelImport,
+  uploadContractWorkbenchPrivateFile,
   type ContractDraftBillExcelImportPreview
 } from "../../../api/contract-workbench.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   addBillCandidateRow,
   authoritativeBillTotals,
@@ -27,6 +28,44 @@ import {
   type ContractBillCellError
 } from "./contract-bill-grid";
 import type { WorkbenchBill } from "./contract-bill-editor";
+
+async function uploadContractBillImportFileWithCapability(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单导入能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同清单文件");
+  }
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+}
+
+async function previewContractDraftBillExcelImportWithCapability(
+  contractVersionId: string,
+  billKey: string,
+  body: { fileId: string }
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单导入能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "preview_contract_draft_bill_excel_import"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能预检合同清单 Excel");
+  }
+  return previewContractDraftBillExcelImport(contractVersionId, billKey, body);
+}
 
 export interface ContractBillRemainderCancellationRequest {
   billId: string;
@@ -54,7 +93,11 @@ interface FocusControllerDependencies {
     contractVersionId: string,
     billKey: string
   ) => Promise<void>;
-  uploadFile: (file: Blob, fileName: string) => Promise<UploadedFileReadModel>;
+  uploadFile: (
+    contractVersionId: string,
+    file: Blob,
+    fileName: string
+  ) => Promise<UploadedFileReadModel>;
   previewImport: (
     contractVersionId: string,
     billKey: string,
@@ -125,8 +168,8 @@ export function createContractBillFocusController(
 ): ContractBillFocusController {
   const dependencies: FocusControllerDependencies = {
     downloadTemplate: downloadContractDraftBillExcelTemplate,
-    uploadFile: uploadPrivateFile,
-    previewImport: previewContractDraftBillExcelImport,
+    uploadFile: uploadContractBillImportFileWithCapability,
+    previewImport: previewContractDraftBillExcelImportWithCapability,
     ...options.deps
   };
   const billSnapshot = ref(cloneBill(options.bill()));
@@ -359,7 +402,11 @@ export function createContractBillFocusController(
     }
     busy.value = true;
     try {
-      const uploaded = await dependencies.uploadFile(file, file.name);
+      const uploaded = await dependencies.uploadFile(
+        contractVersionId,
+        file,
+        file.name
+      );
       const result = normalizeImportPreview(
         await dependencies.previewImport(
           contractVersionId,

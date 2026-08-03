@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import {
   ContractDocumentService,
@@ -23,6 +24,7 @@ export class ContractDocumentController {
 
   @Post("contract-workbench/:contractVersionId/documents")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   queue(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -41,6 +43,7 @@ export class ContractDocumentController {
 
   @Post("contract-workbench/:contractVersionId/offline-revisions")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   uploadOfflineRevision(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -59,6 +62,7 @@ export class ContractDocumentController {
 
   @Post("contract-workbench/:contractVersionId/negotiation-rounds")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   openNegotiationRound(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -77,6 +81,7 @@ export class ContractDocumentController {
 
   @Post("contract-negotiation-rounds/:roundId/close")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   closeNegotiationRound(
     @Param("roundId") roundId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -86,6 +91,7 @@ export class ContractDocumentController {
 
   @Post("contract-document-differences/:differenceId/disposition")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   disposeDifference(
     @Param("differenceId") differenceId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -96,6 +102,7 @@ export class ContractDocumentController {
 
   @Post("contract-offline-revisions/:revisionId/retry")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   retryOfflineRevision(
     @Param("revisionId") revisionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -104,6 +111,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-offline-revisions/:revisionId/preview-download-ticket")
+  @RequireProjectRole("contract.create")
   createOfflineRevisionPreviewDownloadTicket(
     @Param("revisionId") revisionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -114,6 +122,7 @@ export class ContractDocumentController {
 
   @Post("contract-documents/:documentId/retry")
   @ContractCutoverSurface()
+  @RequireProjectRole("contract.create")
   retry(
     @Param("documentId") documentId: string,
     @CurrentUser() user: AuthenticatedUser

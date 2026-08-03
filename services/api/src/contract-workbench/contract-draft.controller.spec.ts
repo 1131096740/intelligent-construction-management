@@ -10,7 +10,8 @@ describe("ContractDraftController", () => {
       saveAggregate: jest.fn().mockResolvedValue({
         contractVersionId: "cv-1",
         draftRevision: 8
-      })
+      }),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const editLease = {
       acquire: jest.fn().mockResolvedValue({ token: "lease-token" }),
@@ -75,6 +76,48 @@ describe("ContractDraftController", () => {
       Reflect.getMetadata(
         REQUIRED_PROJECT_ACTION_KEY,
         ContractDraftController.prototype.saveDraft
+      )
+    ).toBe("contract.create");
+  });
+
+  it("uploads a private file through the exact contract version boundary", async () => {
+    const { aggregate, controller } = makeController();
+    const file = {
+      originalname: "授权书.pdf",
+      mimetype: "application/pdf",
+      size: 128,
+      buffer: Buffer.from("private-file")
+    };
+
+    await expect(
+      controller.uploadPrivateFile(
+        "cv-1",
+        file,
+        { id: "owner-1" } as never,
+        "upload-key-1"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+    expect(aggregate.uploadPrivateFile).toHaveBeenCalledWith(
+      "cv-1",
+      "owner-1",
+      expect.objectContaining({
+        originalName: "授权书.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 128,
+        buffer: file.buffer,
+        idempotencyKey: "upload-key-1"
+      })
+    );
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        ContractDraftController.prototype.uploadPrivateFile
+      )
+    ).toBe(":contractVersionId/files");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.uploadPrivateFile
       )
     ).toBe("contract.create");
   });
