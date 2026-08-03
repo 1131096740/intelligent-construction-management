@@ -43,7 +43,7 @@
 - `apps/web-admin/src/pages/contracts/contract-list.config.test.ts`
 - `apps/web-admin/e2e/draft-lifecycle-governance.e2e.ts`
 
-验证回执：Web 全量 Vitest 178 文件/1949 测试通过；API Jest 292/311 suites、5723/5787 tests 通过（19 suites、64 tests 因环境门跳过）；shared 15 文件/151 测试通过；聚焦结构测试、组织域 81/81、审批委托域 7/7、合同列表 19/19、路由清单分析器 37/37 均通过。子组同时通过 Web/API typecheck、lint、API/Web build、Web E2E typecheck、`check:ui`、业务错误、Prisma validate（占位本地 URL）和 `git diff --check`。为恢复整站 Web 绿灯，最小更新了 3 个既有结构测试的过时上传 helper/引号断言，没有放宽生产行为。本轮未执行浏览器动态长链、数据库/迁移、生产连接、推送、合并或部署。
+验证回执：Web 全量 Vitest 178 文件/1949 测试通过；API Jest 292/311 suites、5723/5787 tests 通过（19 suites、64 tests 因环境门跳过）；shared 15 文件/151 测试通过；聚焦结构测试、组织域 81/81、审批委托域 7/7、合同列表 19/19、路由清单分析器 37/37、合同专项矩阵 21/21 均通过。子组同时通过 Web/API typecheck、lint、API/Web build、Web E2E typecheck、`check:ui`、业务错误、Prisma validate（占位本地 URL）、go-live ops safety self-test 和 `git diff --check`。为恢复整站 Web 绿灯，最小更新了 3 个既有结构测试的过时上传 helper/引号断言，没有放宽生产行为。本轮未执行浏览器动态长链、数据库/迁移、生产连接、推送、合并或部署。
 
 ## 后续
 
