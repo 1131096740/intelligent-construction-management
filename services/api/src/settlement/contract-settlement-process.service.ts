@@ -24,8 +24,15 @@ type ProcessStore = {
       };
     }): Promise<{ id: string; sequenceNo: number; periodStart: Date | null; periodEnd: Date | null}>;
     updateMany(args: {
-      where: { id: string; status: "open"; settlementDraftId?: string; settlementId?: null };
-      data: { settlementDraftId?: string; settlementId?: string; status?: "voided"; endedAt?: Date; endedByUserId?: string; endedReason?: string };
+      where: { id: string; status: "open"; settlementDraftId?: string; settlementId?: string | null };
+      data: {
+        settlementDraftId?: string;
+        settlementId?: string;
+        status?: "effective" | "voided" | "invalidated";
+        endedAt?: Date;
+        endedByUserId?: string;
+        endedReason?: string;
+      };
     }): Promise<{ count: number }>;
   };
   settlement?: {
@@ -108,6 +115,32 @@ export class ContractSettlementProcessService {
       data: { settlementId }
     });
     if (linked.count !== 1) throw new ConflictException("结算过程已变化，请刷新后重试");
+  }
+
+  async completeSettlement(
+    tx: Prisma.TransactionClient,
+    processId: string,
+    settlementId: string,
+    actorUserId: string
+  ) {
+    const store = tx as unknown as ProcessStore;
+    if (!store.contractSettlementProcess) return;
+    const completed = await store.contractSettlementProcess.updateMany({
+      where: {
+        id: processId,
+        status: "open",
+        settlementId
+      },
+      data: {
+        status: "effective",
+        endedAt: new Date(),
+        endedByUserId: actorUserId,
+        endedReason: "结算归档确认生效"
+      }
+    });
+    if (completed.count !== 1) {
+      throw new ConflictException("结算过程已变化，请刷新后重试");
+    }
   }
 
   async voidOpenDraftProcess(tx: Prisma.TransactionClient, processId: string, draftId: string, actorUserId: string, reason: string) {

@@ -4619,14 +4619,16 @@ describe("SettlementService", () => {
           status: "pending_archive_confirm",
           projectId: "project-1",
           contractId: "contract-1",
-          amountCents: -10_000n
+          amountCents: -10_000n,
+          processId: "process-1"
         }),
         update: jest.fn().mockResolvedValue({
           id: "settlement-1",
           status: "effective",
           projectId: "project-1",
           contractId: "contract-1",
-          amountCents: -10_000n
+          amountCents: -10_000n,
+          processId: "process-1"
         })
       },
       settlementArchiveFile: {
@@ -4650,6 +4652,7 @@ describe("SettlementService", () => {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
     const recoveries = { ensureBalanceForEffectiveSettlement: jest.fn() };
+    const processes = { completeSettlement: jest.fn() };
     const settlementService = new SettlementService(
       prisma as never,
       audit as never,
@@ -4659,7 +4662,8 @@ describe("SettlementService", () => {
       undefined,
       undefined,
       undefined,
-      recoveries as never
+      recoveries as never,
+      processes as never
     );
 
     const result = await settlementService.confirmArchiveFile(
@@ -4672,6 +4676,12 @@ describe("SettlementService", () => {
     );
 
     expect(result.status).toBe("effective");
+    expect(processes.completeSettlement).toHaveBeenCalledWith(
+      tx,
+      "process-1",
+      "settlement-1",
+      "user-contract-director"
+    );
     expect(auth.confirmPassword).toHaveBeenCalledWith(
       "user-contract-director",
       "current-password"

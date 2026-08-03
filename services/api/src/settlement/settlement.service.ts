@@ -93,6 +93,7 @@ import {
 import { freezeSettlementParticipants } from "./settlement-participant-freeze";
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 import { SettlementRecoveryService } from "./settlement-recovery.service";
+import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
 
@@ -435,7 +436,9 @@ export class SettlementService {
     @Optional()
     private readonly signedDocuments?: SettlementSignedDocumentService,
     @Optional()
-    private readonly recoveries?: SettlementRecoveryService
+    private readonly recoveries?: SettlementRecoveryService,
+    @Optional()
+    private readonly processes?: ContractSettlementProcessService
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -2864,6 +2867,14 @@ export class SettlementService {
         const effectiveSettlement = await tx.settlement.update({
           where: { id: settlement.id }, data: { status: "effective" satisfies SettlementStatus }
         });
+        if (effectiveSettlement.processId) {
+          await this.processes?.completeSettlement(
+            tx,
+            effectiveSettlement.processId,
+            settlement.id,
+            actorUserId
+          );
+        }
         await this.ensureRecoveryBalance(tx, effectiveSettlement, actorUserId);
         await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
         await this.useSettlementExceptionQuotaUsage(tx, settlement.id, actorUserId);
@@ -2910,6 +2921,14 @@ export class SettlementService {
         where: { id: settlement.id },
         data: { status: "effective" satisfies SettlementStatus }
       });
+      if (effectiveSettlement.processId) {
+        await this.processes?.completeSettlement(
+          tx,
+          effectiveSettlement.processId,
+          settlement.id,
+          actorUserId
+        );
+      }
       await this.ensureRecoveryBalance(tx, effectiveSettlement, actorUserId);
 
       await this.closeContractAfterFinalSettlement(tx, effectiveSettlement, actorUserId);
