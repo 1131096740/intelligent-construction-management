@@ -380,6 +380,11 @@ async function prepareAndSubmitContract(fixture, tokens) {
     }
   );
   current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  assert(
+    current?.settlementMode === (fixture.config.type === "generic_contract" ? "direct_payment" : "settlement_required") &&
+      current.settlementModeConfirmedAt,
+    `${fixture.config.type} 结算方式确认未持久化`
+  );
   await prisma.contractGeneratedDocument.create({
     data: {
       contractVersionId: fixture.version.id,
