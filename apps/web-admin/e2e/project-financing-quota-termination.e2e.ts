@@ -574,6 +574,9 @@ async function loginAndOpenOperations(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000494");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect
+    .poll(() => decodeURIComponent(new URL(page.url()).pathname))
+    .toBe("/首页");
   await page.goto("/项目经营");
   await expect(page.getByRole("heading", { name: "项目经营", exact: true })).toBeVisible();
   await page.getByText("资金办理", { exact: true }).click();
