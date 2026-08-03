@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.10
+> 版本：v1.11
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；C-P0-04 付款修复流已本地清零，下一步执行 C-P0-05 项目费用与项目资金修复流
+> 状态：执行中；C-P0-05 项目费用与项目资金修复流已本地清零，下一步执行 C-P0-06 员工费用修复流
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 414 routes、0 unclassified、162 raw blockers、117 uncovered pairs、2 unresolved bindings；C-P0-01 至 C-P0-04 已清零，累计关闭 130 个 pair 和 18 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-05 项目费用与项目资金修复流 |
+| Task 11 能力矩阵 | 阶段 D 当前为 428 routes、0 unclassified、143 raw blockers、99 uncovered pairs、1 unresolved binding；C-P0-01 至 C-P0-05 已清零，累计关闭 148 个阶段 C pair 和 19 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-06 员工费用/借款/报销、放款、还款与付款修复流 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -451,6 +451,18 @@
 > 剩余 0 pair / 0 unresolved；route usage 为 414 routes、0 unclassified、0 blocker。整站
 > 仍 blocked，下一步只能执行 `C-P0-05` 项目费用、项目资金/垫资、上游资金与挂靠事实修复流。
 > 完整证据见 `docs/progress/2026-08-03-five-package-stage-d-c-p0-04-payment-workflows.md`。
+
+> 2026-08-03 后续执行记录：`C-P0-05` 项目费用、项目资金/垫资、上游资金与挂靠事实
+> 修复流已本地清零。项目新增/编辑、项目支出创建/附件、采购执行、作废和下载，上游资金
+> 登记/依据/确认，以及挂靠合同、结算、付款事实的登记、依据、确认和补充依据，均在 mutation
+> 前读取服务端 capability 并校验精确项目、支出或事实坐标和动作键。新增 14 条能力或业务域
+> 上传路由，4 个新增上传 pair 与阶段 C 登记的 18 个 pair 一并形成 22 个 accepted binding；
+> 项目支出附件下载补齐与详情一致的后端可见性校验，挂靠补充依据在文件落盘前复核项目、
+> 业务类型、目标事实和有效岗位。uncovered pair 117→99、unresolved binding 2→1、raw blocker
+> 162→143，`C-P0-05` 自身剩余 0 pair / 0 unresolved；route usage 为 428 routes、0
+> unclassified、0 blocker。整站仍 blocked，下一步只能执行 `C-P0-06` 员工费用/借款/报销、
+> 放款、还款与付款修复流。完整证据见
+> `docs/progress/2026-08-03-five-package-stage-d-c-p0-05-project-funds-affiliate-facts.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

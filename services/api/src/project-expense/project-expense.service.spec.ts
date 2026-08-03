@@ -56,6 +56,47 @@ describe("ProjectExpenseService", () => {
     expect((service as unknown as Record<string, unknown>).deleteDraft).toBeUndefined();
   });
 
+  it("derives download capability from the same read boundary as each download mutation", async () => {
+    const expense = {
+      id: "expense-1",
+      projectId: "project-1",
+      expenseType: "spot_purchase",
+      status: "approved_pending_payment",
+      applicantUserId: "applicant-1",
+      attachmentFileId: "file-expense-1",
+      purchaseExecutedAt: null,
+      receiptConfirmedAt: null,
+      paidAmountCents: 0n,
+      voidedAt: null
+    };
+    const materialPrisma = {
+      projectExpenseRequest: { findFirst: jest.fn().mockResolvedValue(expense) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue({ id: "pdf-1" }) },
+      ...roleTables("material_staff")
+    };
+    const financePrisma = {
+      projectExpenseRequest: { findFirst: jest.fn().mockResolvedValue(expense) },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue({ id: "pdf-1" }) },
+      ...roleTables("finance_staff")
+    };
+
+    const materialCapability = await new ProjectExpenseService(
+      materialPrisma as never,
+      audit as never,
+      auth as never
+    ).getActionCapability("project-1", "expense-1", "material-1");
+    const financeCapability = await new ProjectExpenseService(
+      financePrisma as never,
+      audit as never,
+      auth as never
+    ).getActionCapability("project-1", "expense-1", "finance-1");
+
+    expect(materialCapability.availableActions).toContain("download_attachment");
+    expect(materialCapability.availableActions).not.toContain("download_approval_pdf");
+    expect(financeCapability.availableActions).toContain("download_attachment");
+    expect(financeCapability.availableActions).toContain("download_approval_pdf");
+  });
+
   function pdfHexText(value: string) {
     const buffer = Buffer.from(value, "utf16le");
     for (let index = 0; index < buffer.length; index += 2) {
@@ -1226,9 +1267,14 @@ describe("ProjectExpenseService", () => {
     const prisma = {
       projectExpenseRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          applicantUserId: "handler-1",
+          expenseType: "reimbursement",
           attachmentFileId: "file-expense-1"
         })
-      }
+      },
+      ...roleTables("finance_staff")
     };
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({
@@ -1254,13 +1300,53 @@ describe("ProjectExpenseService", () => {
     expect(ticket.downloadUrl).toBe("/files/file-expense-1/download");
     expect(prisma.projectExpenseRequest.findFirst).toHaveBeenCalledWith({
       where: { id: "expense-1", projectId: "project-1", voidedAt: null },
-      select: { attachmentFileId: true }
+      select: {
+        id: true,
+        projectId: true,
+        applicantUserId: true,
+        expenseType: true,
+        attachmentFileId: true
+      }
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
     expect(files.createDownloadTicket).toHaveBeenCalledWith("file-expense-1", {
       actorUserId: "finance-1",
       downloadReason: "报销附件复核"
     });
+  });
+
+  it("rejects attachment download when the actor cannot read the project expense", async () => {
+    const prisma = {
+      projectExpenseRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "expense-1",
+          projectId: "project-1",
+          applicantUserId: "handler-1",
+          expenseType: "reimbursement",
+          attachmentFileId: "file-expense-1"
+        })
+      },
+      ...roleTables("employee")
+    };
+    const files = { createDownloadTicket: jest.fn() };
+    const service = new ProjectExpenseService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      files as never
+    );
+
+    await expect(
+      service.createAttachmentDownloadTicket(
+        "project-1",
+        "expense-1",
+        "stranger-1",
+        "current-password",
+        "附件复核"
+      )
+    ).rejects.toThrow("项目支出附件不可下载");
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect(files.createDownloadTicket).not.toHaveBeenCalled();
   });
 
   it("rejects attachment download ticket creation without a download reason", async () => {

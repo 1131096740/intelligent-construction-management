@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 414,
-    "exactRouteCount": 414,
-    "normalizedRouteCount": 414,
+    "routeCount": 428,
+    "exactRouteCount": 428,
+    "normalizedRouteCount": 428,
     "classificationOverrideCount": 110,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 304,
-    "pageRouteCount": 307,
+    "derivedProductionPageCount": 318,
+    "pageRouteCount": 321,
     "externalTakeoverCount": 61,
     "exitCandidateCount": 43,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 356,
+      "web_api_wrapper": 370,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 356,
+    "productionWrapperRouteCount": 370,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -2986,6 +2986,86 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/affiliate-business-facts/:factId/capability",
+      "normalizedKey": "GET /projects/:param/affiliate-business-facts/:param/capability",
+      "controller": "ProjectController",
+      "handler": "affiliateBusinessFactCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectAffiliateFactCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/affiliate-business-facts/:param/capability",
+            "normalizedKey": "GET /projects/:param/affiliate-business-facts/:param/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/affiliate-business-facts/record-capability",
+      "normalizedKey": "GET /projects/:param/affiliate-business-facts/record-capability",
+      "controller": "ProjectController",
+      "handler": "affiliateBusinessRecordCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectAffiliateRecordCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/affiliate-business-facts/record-capability",
+            "normalizedKey": "GET /projects/:param/affiliate-business-facts/record-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/affiliate-company-contracts",
       "normalizedKey": "GET /projects/:param/affiliate-company-contracts",
       "controller": "ProjectController",
@@ -3574,6 +3654,87 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/expense-requests/:expenseRequestId/capability",
+      "normalizedKey": "GET /projects/:param/expense-requests/:param/capability",
+      "controller": "ProjectExpenseController",
+      "handler": "actionCapability",
+      "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectExpenseActionCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/expense-requests/:param/capability",
+            "normalizedKey": "GET /projects/:param/expense-requests/:param/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/expense-requests/create-capability",
+      "normalizedKey": "GET /projects/:param/expense-requests/create-capability",
+      "controller": "ProjectExpenseController",
+      "handler": "createCapability",
+      "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project_expense.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectExpenseCreateCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/expense-requests/create-capability",
+            "normalizedKey": "GET /projects/:param/expense-requests/create-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/financing-quotas",
       "normalizedKey": "GET /projects/:param/financing-quotas",
       "controller": "ProjectController",
@@ -4030,6 +4191,129 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/update-capability",
+      "normalizedKey": "GET /projects/:param/update-capability",
+      "controller": "ProjectController",
+      "handler": "updateCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "general_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectUpdateCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/update-capability",
+            "normalizedKey": "GET /projects/:param/update-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/upstream-fund-facts/:fundFactId/confirmation-capability",
+      "normalizedKey": "GET /projects/:param/upstream-fund-facts/:param/confirmation-capability",
+      "controller": "ProjectController",
+      "handler": "upstreamFundConfirmationCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectUpstreamFundConfirmationCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/upstream-fund-facts/:param/confirmation-capability",
+            "normalizedKey": "GET /projects/:param/upstream-fund-facts/:param/confirmation-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/upstream-fund-facts/record-capability",
+      "normalizedKey": "GET /projects/:param/upstream-fund-facts/record-capability",
+      "controller": "ProjectController",
+      "handler": "upstreamFundRecordCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectUpstreamFundRecordCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/upstream-fund-facts/record-capability",
+            "normalizedKey": "GET /projects/:param/upstream-fund-facts/record-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects/affiliate-mapping-report",
       "normalizedKey": "GET /projects/affiliate-mapping-report",
       "controller": "ProjectController",
@@ -4091,6 +4375,49 @@
             "normalizedKey": "GET /projects/contract-create-options",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/create-capability",
+      "normalizedKey": "GET /projects/create-capability",
+      "controller": "ProjectController",
+      "handler": "createCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "general_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectCreateCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/create-capability",
+            "normalizedKey": "GET /projects/create-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]
           }
         ],
@@ -10215,8 +10542,6 @@
               "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
               "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
@@ -11397,6 +11722,46 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/affiliate-business-facts/:factId/evidence-file-uploads",
+      "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadAffiliateBusinessEvidencePrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.affiliate_business_fact.evidence_supplement",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadProjectAffiliateBusinessPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/affiliate-company-contracts",
       "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
       "controller": "ProjectController",
@@ -11557,6 +11922,46 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/affiliate-contract-facts/file-uploads",
+      "normalizedKey": "POST /projects/:param/affiliate-contract-facts/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadAffiliateContractPrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.affiliate_contract_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadProjectAffiliateContractPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/affiliate-contract-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-contract-facts/file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/affiliate-payment-facts",
       "normalizedKey": "POST /projects/:param/affiliate-payment-facts",
       "controller": "ProjectController",
@@ -11637,6 +12042,46 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/affiliate-payment-facts/file-uploads",
+      "normalizedKey": "POST /projects/:param/affiliate-payment-facts/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadAffiliatePaymentPrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.affiliate_payment_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadProjectAffiliatePaymentPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/affiliate-payment-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-payment-facts/file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/affiliate-settlement-facts",
       "normalizedKey": "POST /projects/:param/affiliate-settlement-facts",
       "controller": "ProjectController",
@@ -11703,6 +12148,46 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/affiliate-settlement-facts/:param/confirmation",
             "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/:param/confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-settlement-facts/file-uploads",
+      "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadAffiliateSettlementPrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.affiliate_settlement_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadProjectAffiliateSettlementPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/affiliate-settlement-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
             ]
@@ -13238,6 +13723,46 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/expense-requests/file-uploads",
+      "normalizedKey": "POST /projects/:param/expense-requests/file-uploads",
+      "controller": "ProjectExpenseController",
+      "handler": "uploadCreatePrivateFile",
+      "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project_expense.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadProjectExpensePrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/expense-requests/file-uploads",
+            "normalizedKey": "POST /projects/:param/expense-requests/file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/financing-quotas",
       "normalizedKey": "POST /projects/:param/financing-quotas",
       "controller": "ProjectController",
@@ -13959,6 +14484,46 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/upstream-fund-facts/:param/confirmation",
             "normalizedKey": "POST /projects/:param/upstream-fund-facts/:param/confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/upstream-fund-facts/file-uploads",
+      "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadUpstreamFundPrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadProjectUpstreamFundPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/upstream-fund-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]

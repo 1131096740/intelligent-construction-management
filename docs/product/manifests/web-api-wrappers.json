@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 424,
-    "transportWrapperCount": 404,
+    "exportedFunctionCount": 438,
+    "transportWrapperCount": 418,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 424,
+    "mainRequestBindingCount": 438,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 423,
-    "productionConsumerCount": 367,
+    "requestEdgeCount": 437,
+    "productionConsumerCount": 381,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -4755,7 +4755,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6756,
+          "sourceLine": 6942,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4785,7 +4785,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6740,
+          "sourceLine": 6926,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4815,7 +4815,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6740,
+          "sourceLine": 6926,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4845,7 +4845,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5146,
+          "sourceLine": 5332,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4874,7 +4874,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6740,
+          "sourceLine": 6926,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4964,7 +4964,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6783,
+          "sourceLine": 6969,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4993,7 +4993,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6770,
+          "sourceLine": 6956,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5022,7 +5022,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6798,
+          "sourceLine": 6984,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5051,7 +5051,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6740,
+          "sourceLine": 6926,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -5958,6 +5958,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchProjectAffiliateFactCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/affiliate-business-facts/:param/capability?businessType=:param",
+          "normalizedPath": "/projects/:param/affiliate-business-facts/:param/capability",
+          "normalizedKey": "GET /projects/:param/affiliate-business-facts/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectAffiliateFactCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchProjectAffiliateMappingReport",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -5983,6 +6011,91 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectAffiliateRecordCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/affiliate-business-facts/record-capability?:param",
+          "normalizedPath": "/projects/:param/affiliate-business-facts/record-capability",
+          "normalizedKey": "GET /projects/:param/affiliate-business-facts/record-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectAffiliateRecordCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectCreateCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/create-capability",
+          "normalizedPath": "/projects/create-capability",
+          "normalizedKey": "GET /projects/create-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectCreateCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectExpenseActionCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/:param/capability",
+          "normalizedPath": "/projects/:param/expense-requests/:param/capability",
+          "normalizedKey": "GET /projects/:param/expense-requests/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectExpenseActionCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6013,6 +6126,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectExpenseCreateCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/expense-requests/create-capability",
+          "normalizedPath": "/projects/:param/expense-requests/create-capability",
+          "normalizedKey": "GET /projects/:param/expense-requests/create-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectExpenseCreateCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6099,6 +6240,90 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectRosterPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectUpdateCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/update-capability",
+          "normalizedPath": "/projects/:param/update-capability",
+          "normalizedKey": "GET /projects/:param/update-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectUpdateCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectUpstreamFundConfirmationCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/upstream-fund-facts/:param/confirmation-capability",
+          "normalizedPath": "/projects/:param/upstream-fund-facts/:param/confirmation-capability",
+          "normalizedKey": "GET /projects/:param/upstream-fund-facts/:param/confirmation-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectUpstreamFundConfirmationCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectUpstreamFundRecordCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/upstream-fund-facts/record-capability",
+          "normalizedPath": "/projects/:param/upstream-fund-facts/record-capability",
+          "normalizedKey": "GET /projects/:param/upstream-fund-facts/record-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectUpstreamFundRecordCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -8658,14 +8883,180 @@
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectAffiliateBusinessPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+          "normalizedPath": "/projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectAffiliateBusinessPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectAffiliateContractPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-contract-facts/file-uploads",
+          "normalizedPath": "/projects/:param/affiliate-contract-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-contract-facts/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectAffiliateContractPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectAffiliatePaymentPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-payment-facts/file-uploads",
+          "normalizedPath": "/projects/:param/affiliate-payment-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-payment-facts/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectAffiliatePaymentPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectAffiliateSettlementPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-settlement-facts/file-uploads",
+          "normalizedPath": "/projects/:param/affiliate-settlement-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectAffiliateSettlementPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectExpensePrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/file-uploads",
+          "normalizedPath": "/projects/:param/expense-requests/file-uploads",
+          "normalizedKey": "POST /projects/:param/expense-requests/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectExpensePrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectUpstreamFundPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/upstream-fund-facts/file-uploads",
+          "normalizedPath": "/projects/:param/upstream-fund-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectUpstreamFundPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

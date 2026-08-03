@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 171,
-    "pageActionCount": 48,
-    "backgroundActionCount": 123,
+    "registeredActionCount": 191,
+    "pageActionCount": 47,
+    "backgroundActionCount": 144,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 234,
     "templateEventDirectiveCount": 960,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 160,
-    "candidateProductionMutationConsumerCount": 162,
-    "acceptedProductionMutationConsumerCount": 160,
-    "productionMutationConsumerPairCount": 277,
-    "blockerCount": 124
+    "coveredProductionMutationConsumerCount": 182,
+    "candidateProductionMutationConsumerCount": 183,
+    "acceptedProductionMutationConsumerCount": 182,
+    "productionMutationConsumerPairCount": 281,
+    "blockerCount": 104
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -7799,8 +7799,8 @@
       ]
     },
     {
-      "id": "project-expense.create-local-role",
-      "usage": "page_action",
+      "id": "project-expense.approval-pdf-download",
+      "usage": "background",
       "routePaths": [
         "/项目经营"
       ],
@@ -7809,19 +7809,215 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
       "trigger": {
-        "element": "form",
-        "event": "submit",
-        "handler": "submitProjectExpense",
-        "kind": "event",
-        "sourceLine": 489,
-        "sourceColumn": 14
+        "element": "module",
+        "event": "call",
+        "handler": "downloadProjectExpenseApprovalPdfWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2027,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canCreateProjectExpense",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "download_approval_pdf",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadProjectExpenseApprovalPdf",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-pdf-download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/expense-requests/:expenseRequestId/approval-pdf-download-ticket",
+            "normalizedKey": "POST /projects/:param/expense-requests/:param/approval-pdf-download-ticket",
+            "controller": "ProjectExpenseController",
+            "handler": "createApprovalPdfDownloadTicket",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadProjectExpenseApprovalPdfWithCapability",
+              "downloadProjectExpenseApprovalPdf"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-expense.attachment-download",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadProjectExpenseAttachmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1988,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "download_attachment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadProjectExpenseAttachment",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/attachment-download-ticket",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/attachment-download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/expense-requests/:expenseRequestId/attachment-download-ticket",
+            "normalizedKey": "POST /projects/:param/expense-requests/:param/attachment-download-ticket",
+            "controller": "ProjectExpenseController",
+            "handler": "createAttachmentDownloadTicket",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadProjectExpenseAttachmentWithCapability",
+              "downloadProjectExpenseAttachment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-expense.attachment-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProjectExpenseAttachmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1527,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_project_expense_request",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectExpensePrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/file-uploads",
+          "normalizedKey": "POST /projects/:param/expense-requests/file-uploads",
+          "bodyKind": "raw",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/expense-requests/file-uploads",
+            "normalizedKey": "POST /projects/:param/expense-requests/file-uploads",
+            "controller": "ProjectExpenseController",
+            "handler": "uploadCreatePrivateFile",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project_expense.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProjectExpenseAttachmentWithCapability",
+              "uploadProjectExpensePrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-expense.create-local-role",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createProjectExpenseRequestWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1511,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_project_expense_request",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -7848,11 +8044,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitProjectExpense"
+              "createProjectExpenseRequestWithCapability",
+              "createProjectExpenseRequest"
             ]
           },
           "ticketFollowups": []
@@ -8098,6 +8297,71 @@
       ]
     },
     {
+      "id": "project-expense.purchase-execution",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordProjectExpensePurchaseExecutionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1947,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_purchase_execution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpensePurchaseExecution",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/purchase-execution",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/purchase-execution",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/expense-requests/:expenseRequestId/purchase-execution",
+            "normalizedKey": "POST /projects/:param/expense-requests/:param/purchase-execution",
+            "controller": "ProjectExpenseController",
+            "handler": "recordPurchaseExecution",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project_expense.purchase_execute"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordProjectExpensePurchaseExecutionWithCapability",
+              "recordProjectExpensePurchaseExecution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "project-expense.receipt-confirm-local-status",
       "usage": "page_action",
       "routePaths": [
@@ -8322,6 +8586,71 @@
             "localCallChain": [
               "confirmProjectExpenseReviewReject",
               "executeProjectExpenseApprovalReviewAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-expense.void",
+      "usage": "background",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "ownerRoutePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "voidProjectExpenseRequestWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2360,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "void",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "voidProjectExpenseRequest",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/voiding",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/voiding",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/expense-requests/:expenseRequestId/voiding",
+            "normalizedKey": "POST /projects/:param/expense-requests/:param/voiding",
+            "controller": "ProjectExpenseController",
+            "handler": "voidRequest",
+            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project_expense.void"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "voidProjectExpenseRequestWithCapability",
+              "voidProjectExpenseRequest"
             ]
           },
           "ticketFollowups": []
@@ -8985,6 +9314,1023 @@
             "localCallChain": [
               "submitTermination",
               "executeProjectFinancingQuotaTerminationAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectAffiliateContractFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 598,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_affiliate_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectAffiliateContractFact",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-contract-facts/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/affiliate-contract-facts/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-contract-facts/:factId/confirmation",
+            "normalizedKey": "POST /projects/:param/affiliate-contract-facts/:param/confirmation",
+            "controller": "ProjectController",
+            "handler": "confirmAffiliateContractFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_contract_fact.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectAffiliateContractFactWithCapability",
+              "confirmProjectAffiliateContractFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.evidence-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProjectAffiliateContractEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 477,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_contract_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectAffiliateContractPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-contract-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-contract-facts/file-uploads",
+          "bodyKind": "raw",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-contract-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-contract-facts/file-uploads",
+            "controller": "ProjectController",
+            "handler": "uploadAffiliateContractPrivateFile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_contract_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProjectAffiliateContractEvidenceWithCapability",
+              "uploadProjectAffiliateContractPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordProjectAffiliateContractFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 402,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_contract_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateContractFact",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-contract-facts",
+          "normalizedKey": "POST /projects/:param/affiliate-contract-facts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-contract-facts",
+            "normalizedKey": "POST /projects/:param/affiliate-contract-facts",
+            "controller": "ProjectController",
+            "handler": "recordAffiliateContractFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_contract_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordProjectAffiliateContractFactWithCapability",
+              "recordProjectAffiliateContractFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-fact.supplement-evidence",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "supplementProjectAffiliateBusinessEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 694,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "supplement_affiliate_evidence",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "supplementProjectAffiliateBusinessEvidence",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-business-facts/:param/evidence",
+          "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-business-facts/:factId/evidence",
+            "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence",
+            "controller": "ProjectController",
+            "handler": "supplementAffiliateBusinessEvidence",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_business_fact.evidence_supplement"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "supplementProjectAffiliateBusinessEvidenceWithCapability",
+              "supplementProjectAffiliateBusinessEvidence"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectAffiliateBusinessPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+          "bodyKind": "raw",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-business-facts/:factId/evidence-file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-business-facts/:param/evidence-file-uploads",
+            "controller": "ProjectController",
+            "handler": "uploadAffiliateBusinessEvidencePrivateFile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_business_fact.evidence_supplement"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "supplementProjectAffiliateBusinessEvidenceWithCapability",
+              "uploadProjectAffiliateBusinessPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectAffiliatePaymentFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 640,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_affiliate_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectAffiliatePaymentFact",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-payment-facts/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/affiliate-payment-facts/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-payment-facts/:factId/confirmation",
+            "normalizedKey": "POST /projects/:param/affiliate-payment-facts/:param/confirmation",
+            "controller": "ProjectController",
+            "handler": "confirmAffiliatePaymentFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_payment_fact.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectAffiliatePaymentFactWithCapability",
+              "confirmProjectAffiliatePaymentFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.evidence-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProjectAffiliatePaymentEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 527,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_payment_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectAffiliatePaymentPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-payment-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-payment-facts/file-uploads",
+          "bodyKind": "raw",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-payment-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-payment-facts/file-uploads",
+            "controller": "ProjectController",
+            "handler": "uploadAffiliatePaymentPrivateFile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_payment_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProjectAffiliatePaymentEvidenceWithCapability",
+              "uploadProjectAffiliatePaymentPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordProjectAffiliatePaymentFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 452,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_payment_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliatePaymentFact",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-payment-facts",
+          "normalizedKey": "POST /projects/:param/affiliate-payment-facts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-payment-facts",
+            "normalizedKey": "POST /projects/:param/affiliate-payment-facts",
+            "controller": "ProjectController",
+            "handler": "recordAffiliatePaymentFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_payment_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordProjectAffiliatePaymentFactWithCapability",
+              "recordProjectAffiliatePaymentFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectAffiliateSettlementFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 619,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_affiliate_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectAffiliateSettlementFact",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-settlement-facts/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-settlement-facts/:factId/confirmation",
+            "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/:param/confirmation",
+            "controller": "ProjectController",
+            "handler": "confirmAffiliateSettlementFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_settlement_fact.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectAffiliateSettlementFactWithCapability",
+              "confirmProjectAffiliateSettlementFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.evidence-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProjectAffiliateSettlementEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 502,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_settlement_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectAffiliateSettlementPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-settlement-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/file-uploads",
+          "bodyKind": "raw",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-settlement-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-settlement-facts/file-uploads",
+            "controller": "ProjectController",
+            "handler": "uploadAffiliateSettlementPrivateFile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_settlement_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProjectAffiliateSettlementEvidenceWithCapability",
+              "uploadProjectAffiliateSettlementPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordProjectAffiliateSettlementFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 427,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_affiliate_settlement_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateSettlementFact",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-settlement-facts",
+          "normalizedKey": "POST /projects/:param/affiliate-settlement-facts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/affiliate-settlement-facts",
+            "normalizedKey": "POST /projects/:param/affiliate-settlement-facts",
+            "controller": "ProjectController",
+            "handler": "recordAffiliateSettlementFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.affiliate_settlement_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordProjectAffiliateSettlementFactWithCapability",
+              "recordProjectAffiliateSettlementFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.create",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createProjectWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1243,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_project",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createProject",
+          "method": "POST",
+          "path": "/projects",
+          "normalizedKey": "POST /projects",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects",
+            "normalizedKey": "POST /projects",
+            "controller": "ProjectController",
+            "handler": "create",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "general_manager"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createProjectWithCapability",
+              "createProject"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.update",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateProjectWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1252,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_project",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "updateProject",
+          "method": "PATCH",
+          "path": "/projects/:param",
+          "normalizedKey": "PATCH /projects/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId",
+            "normalizedKey": "PATCH /projects/:param",
+            "controller": "ProjectController",
+            "handler": "update",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "chairman",
+              "general_manager"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateProjectWithCapability",
+              "updateProject"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmProjectUpstreamFundFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1731,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_upstream_fund_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmProjectUpstreamFundFact",
+          "method": "POST",
+          "path": "/projects/:param/upstream-fund-facts/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/upstream-fund-facts/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/upstream-fund-facts/:fundFactId/confirmation",
+            "normalizedKey": "POST /projects/:param/upstream-fund-facts/:param/confirmation",
+            "controller": "ProjectController",
+            "handler": "confirmUpstreamFundFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.upstream_fund_fact.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmProjectUpstreamFundFactWithCapability",
+              "confirmProjectUpstreamFundFact"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.evidence-upload",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1670,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_upstream_fund_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectUpstreamFundPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/upstream-fund-facts/file-uploads",
+          "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
+          "bodyKind": "raw",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/upstream-fund-facts/file-uploads",
+            "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
+            "controller": "ProjectController",
+            "handler": "uploadUpstreamFundPrivateFile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.upstream_fund_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadProjectUpstreamFundEvidenceWithCapability",
+              "uploadProjectUpstreamFundPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordProjectUpstreamFundFactWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1654,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_upstream_fund_fact",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectUpstreamFundFact",
+          "method": "POST",
+          "path": "/projects/:param/upstream-fund-facts",
+          "normalizedKey": "POST /projects/:param/upstream-fund-facts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/upstream-fund-facts",
+            "normalizedKey": "POST /projects/:param/upstream-fund-facts",
+            "controller": "ProjectController",
+            "handler": "recordUpstreamFundFact",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.upstream_fund_fact.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordProjectUpstreamFundFactWithCapability",
+              "recordProjectUpstreamFundFact"
             ]
           },
           "ticketFollowups": []
@@ -12367,13 +13713,6 @@
         "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
         "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
         "wrapper": "submitExpenseClaim"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "project-expense.create-local-role",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createProjectExpenseRequest"
       }
     ],
     "unresolvedRoutes": [],
@@ -12384,12 +13723,6 @@
         "actionId": "expense-claim.submit-local-status",
         "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
         "capabilitySource": "detail.status === 'draft'"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "project-expense.create-local-role",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "capabilitySource": "canCreateProjectExpense"
       }
     ],
     "uncoveredMutationWrappers": [
@@ -12922,168 +14255,6 @@
         "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
         "normalizedKeys": [
           "POST /organization/users"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "voidProjectExpenseRequest",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/voiding"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectUpstreamFundFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/upstream-fund-facts/:param/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createProject",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createProjectExpenseRequest",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadProjectExpenseApprovalPdf",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/approval-pdf-download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadProjectExpenseAttachment",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/attachment-download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpensePurchaseExecution",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/expense-requests/:param/purchase-execution"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectUpstreamFundFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/upstream-fund-facts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "updateProject",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliateContractFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-contract-facts/:param/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliatePaymentFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-payment-facts/:param/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectAffiliateSettlementFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-settlement-facts/:param/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateContractFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-contract-facts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliatePaymentFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-payment-facts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateSettlementFact",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-settlement-facts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "supplementProjectAffiliateBusinessEvidence",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/affiliate-business-facts/:param/evidence"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
         ]
       },
       {

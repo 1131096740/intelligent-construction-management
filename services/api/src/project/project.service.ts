@@ -1183,6 +1183,38 @@ export class ProjectService {
     }
   }
 
+  async getUpstreamFundFactConfirmationCapability(
+    projectId: string,
+    factId: string,
+    actorUserId: string
+  ) {
+    const fact = await this.prisma.projectUpstreamFundFact.findFirst({
+      where: { id: factId, projectId },
+      select: { id: true, factType: true, basisType: true, status: true }
+    });
+    if (!fact) throw new NotFoundException("上游资金事实不存在");
+    if (
+      fact.factType === "unreconciled_receipt_difference" ||
+      fact.status !== "pending_confirm"
+    ) {
+      return { projectId, fundFactId: fact.id, availableActions: [] };
+    }
+    const roleKeys = await this.loadActorRoleKeys(
+      this.prisma,
+      actorUserId,
+      projectId
+    );
+    const canConfirm =
+      fact.basisType === "oral"
+        ? roleKeys.includes("finance_director")
+        : roleKeys.includes("finance_staff") || roleKeys.includes("finance_director");
+    return {
+      projectId,
+      fundFactId: fact.id,
+      availableActions: canConfirm ? ["confirm_upstream_fund_fact"] : []
+    };
+  }
+
   async confirmUpstreamFundFact(
     projectId: string,
     factId: string,

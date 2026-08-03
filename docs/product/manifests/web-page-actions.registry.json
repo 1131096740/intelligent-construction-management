@@ -1782,20 +1782,21 @@
     },
     {
       "id": "project-expense.create-local-role",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
       "trigger": {
-        "element": "form",
-        "event": "submit",
-        "handler": "submitProjectExpense"
+        "element": "module",
+        "event": "call",
+        "handler": "createProjectExpenseRequestWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canCreateProjectExpense"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_project_expense_request"
       },
       "wrappers": [
         {
@@ -3330,6 +3331,247 @@
       "wrappers": [
         { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementRecoveryPrivateFile" },
         { "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts", "name": "reverseSettlementRecovery" }
+      ]
+    },
+    {
+      "id": "project.create",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createProjectWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_project" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createProject" }
+      ]
+    },
+    {
+      "id": "project.update",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateProjectWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "update_project" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "updateProject" }
+      ]
+    },
+    {
+      "id": "project-expense.purchase-execution",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectExpensePurchaseExecutionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_purchase_execution" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectExpensePurchaseExecution" }
+      ]
+    },
+    {
+      "id": "project-expense.attachment-download",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadProjectExpenseAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "download_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadProjectExpenseAttachment" }
+      ]
+    },
+    {
+      "id": "project-expense.approval-pdf-download",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadProjectExpenseApprovalPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "download_approval_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadProjectExpenseApprovalPdf" }
+      ]
+    },
+    {
+      "id": "project-expense.void",
+      "usage": "background",
+      "routePaths": ["/项目支出/:projectId/:expenseRequestId"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidProjectExpenseRequestWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "void" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "voidProjectExpenseRequest" }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectUpstreamFundFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_upstream_fund_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectUpstreamFundFact" }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectUpstreamFundFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_upstream_fund_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectUpstreamFundFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectAffiliateContractFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_contract_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectAffiliateContractFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectAffiliateSettlementFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_settlement_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectAffiliateSettlementFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectAffiliatePaymentFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_payment_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectAffiliatePaymentFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectAffiliateContractFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_affiliate_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliateContractFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-fact.supplement-evidence",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "supplementProjectAffiliateBusinessEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "supplement_affiliate_evidence" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliateBusinessPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "supplementProjectAffiliateBusinessEvidence" }
+      ]
+    },
+    {
+      "id": "project-expense.attachment-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectExpenseAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_project_expense_request" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectExpensePrivateFile" }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectUpstreamFundEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_upstream_fund_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectUpstreamFundPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectAffiliateContractEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_contract_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliateContractPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectAffiliateSettlementEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_settlement_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliateSettlementPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectAffiliatePaymentEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_payment_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliatePaymentPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectAffiliateSettlementFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_affiliate_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliateSettlementFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectAffiliatePaymentFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_affiliate_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliatePaymentFact" }
       ]
     }
   ]

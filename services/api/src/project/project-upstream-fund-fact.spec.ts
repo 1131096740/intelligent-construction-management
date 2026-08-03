@@ -51,6 +51,33 @@ function roleTables(roleKey: "finance_staff" | "finance_director") {
 }
 
 describe("ProjectService upstream fund facts", () => {
+  it.each([
+    ["finance_staff", "oral", []],
+    ["finance_director", "oral", ["confirm_upstream_fund_fact"]],
+    ["finance_staff", "written", ["confirm_upstream_fund_fact"]]
+  ])(
+    "derives %s confirmation capability for a %s upstream fund fact",
+    async (roleKey, basisType, expected) => {
+      const prisma = {
+        projectUpstreamFundFact: {
+          findFirst: jest.fn().mockResolvedValue(
+            fundFact({ basisType, status: "pending_confirm" })
+          )
+        },
+        ...roleTables(roleKey as "finance_staff" | "finance_director")
+      };
+      const service = new ProjectService(prisma as never);
+
+      const capability = await service.getUpstreamFundFactConfirmationCapability(
+        "project-1",
+        "fund-fact-1",
+        "actor-1"
+      );
+
+      expect(capability.availableActions).toEqual(expected);
+    }
+  );
+
   it("records an owner payment as a pending external fact instead of company cash", async () => {
     const tx = {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },

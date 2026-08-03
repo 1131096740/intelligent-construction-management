@@ -2566,8 +2566,23 @@ export function createProject(body: CreateProjectPayload) {
   return postJson<ProjectOptionReadModel>("/projects", body);
 }
 
+export interface ProjectActionCapabilityReadModel {
+  projectId?: string;
+  availableActions: string[];
+}
+
+export function fetchProjectCreateCapability() {
+  return readJson<ProjectActionCapabilityReadModel>("/projects/create-capability");
+}
+
 export function updateProject(projectId: string, body: UpdateProjectPayload) {
   return patchJson<ProjectOptionReadModel>(`/projects/${projectId}`, body);
+}
+
+export function fetchProjectUpdateCapability(projectId: string) {
+  return readJson<ProjectActionCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/update-capability`
+  );
 }
 
 export function fetchProjectOperatingOverview(projectId: string) {
@@ -2588,6 +2603,27 @@ export function fetchProjectExpenseRequests(
     : "";
   return readJson<ProjectExpenseRequestListReadModel>(
     `/projects/${encodedProjectId}/expense-requests${suffix}`
+  );
+}
+
+export function fetchProjectUpstreamFundRecordCapability(projectId: string) {
+  return readJson<ProjectActionCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/record-capability`
+  );
+}
+
+export interface ProjectUpstreamFundConfirmationCapabilityReadModel
+  extends ProjectActionCapabilityReadModel {
+  projectId: string;
+  fundFactId: string;
+}
+
+export function fetchProjectUpstreamFundConfirmationCapability(
+  projectId: string,
+  fundFactId: string
+) {
+  return readJson<ProjectUpstreamFundConfirmationCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/${encodeURIComponent(fundFactId)}/confirmation-capability`
   );
 }
 
@@ -2615,6 +2651,44 @@ export function confirmProjectUpstreamFundFact(
 export function fetchProjectAffiliateBusinessFacts(projectId: string) {
   return readJson<ProjectAffiliateBusinessFactsReadModel>(
     `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts`
+  );
+}
+
+export interface ProjectAffiliateRecordCapabilityReadModel {
+  projectId: string;
+  businessType: ProjectAffiliateBusinessFactType;
+  entryKind: ProjectAffiliateEntryKind;
+  adjustsFactId: string | null;
+  availableActions: string[];
+}
+
+export function fetchProjectAffiliateRecordCapability(
+  projectId: string,
+  businessType: ProjectAffiliateBusinessFactType,
+  entryKind: ProjectAffiliateEntryKind,
+  adjustsFactId?: string
+) {
+  const query = new URLSearchParams({ businessType, entryKind });
+  if (adjustsFactId) query.set("adjustsFactId", adjustsFactId);
+  return readJson<ProjectAffiliateRecordCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts/record-capability?${query.toString()}`
+  );
+}
+
+export interface ProjectAffiliateFactCapabilityReadModel {
+  projectId: string;
+  factId: string;
+  businessType: ProjectAffiliateBusinessFactType;
+  availableActions: string[];
+}
+
+export function fetchProjectAffiliateFactCapability(
+  projectId: string,
+  businessType: ProjectAffiliateBusinessFactType,
+  factId: string
+) {
+  return readJson<ProjectAffiliateFactCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts/${encodeURIComponent(factId)}/capability?businessType=${encodeURIComponent(businessType)}`
   );
 }
 
@@ -2782,6 +2856,27 @@ export function createProjectExpenseRequest(
   body: CreateProjectExpenseRequestPayload
 ) {
   return postJson<unknown>(`/projects/${projectId}/expense-requests`, body);
+}
+
+export function fetchProjectExpenseCreateCapability(projectId: string) {
+  return readJson<ProjectActionCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/create-capability`
+  );
+}
+
+export interface ProjectExpenseActionCapabilityReadModel
+  extends ProjectActionCapabilityReadModel {
+  projectId: string;
+  expenseRequestId: string;
+}
+
+export function fetchProjectExpenseActionCapability(
+  projectId: string,
+  expenseRequestId: string
+) {
+  return readJson<ProjectExpenseActionCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/capability`
+  );
 }
 
 export function fetchProjectExpenseApprovalDetail(
@@ -3586,6 +3681,97 @@ export function uploadPrivateFile(
   }
 
   return postForm<PrivateFileReadModel>("/files", form);
+}
+
+function projectDomainPrivateFileForm(
+  file: Blob,
+  fileName: string,
+  fields?: Record<string, string>,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  for (const [key, value] of Object.entries(fields ?? {})) {
+    form.append(key, value);
+  }
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return form;
+}
+
+export function uploadProjectExpensePrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
+}
+
+export function uploadProjectUpstreamFundPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/upstream-fund-facts/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
+}
+
+export function uploadProjectAffiliateBusinessPrivateFile(
+  projectId: string,
+  businessType: ProjectAffiliateBusinessFactType,
+  factId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-business-facts/${encodeURIComponent(factId)}/evidence-file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, { businessType }, idempotencyKey)
+  );
+}
+
+export function uploadProjectAffiliateContractPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-contract-facts/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
+}
+
+export function uploadProjectAffiliateSettlementPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-settlement-facts/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
+}
+
+export function uploadProjectAffiliatePaymentPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-payment-facts/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
 }
 
 function uploadSettlementPrivateFile(

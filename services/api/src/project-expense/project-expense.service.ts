@@ -826,6 +826,73 @@ export class ProjectExpenseService {
     };
   }
 
+  async getActionCapability(
+    projectId: string,
+    expenseRequestId: string,
+    actorUserId: string
+  ) {
+    const expense = await this.prisma.projectExpenseRequest.findFirst({
+      where: { id: expenseRequestId, projectId },
+      select: {
+        id: true,
+        projectId: true,
+        expenseType: true,
+        status: true,
+        applicantUserId: true,
+        attachmentFileId: true,
+        purchaseExecutedAt: true,
+        receiptConfirmedAt: true,
+        paidAmountCents: true,
+        voidedAt: true
+      }
+    });
+    if (!expense) throw new NotFoundException("项目支出申请不存在");
+    const roleKeys = await this.loadActorRoleKeys(this.prisma, actorUserId, projectId);
+    const canReadAll = roleKeys.some((role) => PROJECT_EXPENSE_READ_ROLES.includes(role));
+    const canReadGeneral = expense.applicantUserId === actorUserId || canReadAll;
+    const canRead =
+      canReadGeneral ||
+      (expense.expenseType === "spot_purchase" && roleKeys.includes("material_staff"));
+    if (!canRead) throw new ForbiddenException("无权查看该项目支出申请");
+
+    const paid = expense.paidAmountCents > 0n || expense.status === "paid";
+    const receiptConfirmed = expense.receiptConfirmedAt instanceof Date;
+    const availableActions: string[] = [];
+    if (
+      !expense.voidedAt &&
+      ["approval_pending", "approved_pending_payment"].includes(expense.status) &&
+      !paid &&
+      !receiptConfirmed &&
+      canPerform("project_expense.void", roleKeys)
+    ) {
+      availableActions.push("void");
+    }
+    if (
+      !expense.voidedAt &&
+      expense.expenseType === "spot_purchase" &&
+      expense.status === "approved_pending_payment" &&
+      !(expense.purchaseExecutedAt instanceof Date) &&
+      canPerform("project_expense.purchase_execute", roleKeys)
+    ) {
+      availableActions.push("record_purchase_execution");
+    }
+    if (!expense.voidedAt && expense.attachmentFileId) {
+      availableActions.push("download_attachment");
+    }
+    if (!expense.voidedAt && canReadGeneral) {
+      const pdf = await this.prisma.pdfDocument.findFirst({
+        where: {
+          businessType: "project_expense_request",
+          businessId: expense.id,
+          templateKey: APPROVAL_PDF_TEMPLATE_KEY
+        },
+        select: { id: true }
+      });
+      if (pdf) availableActions.push("download_approval_pdf");
+    }
+    return { projectId, expenseRequestId: expense.id, availableActions };
+  }
+
   async createAttachmentDownloadTicket(
     projectId: string,
     expenseRequestId: string,
@@ -846,15 +913,34 @@ export class ProjectExpenseService {
       throw new Error("File service is required to create project expense attachment download ticket");
     }
 
+    const unavailable = "项目支出附件不可下载";
     const expense = await this.prisma.projectExpenseRequest.findFirst({
       where: { id: expenseRequestId, projectId, voidedAt: null },
-      select: { attachmentFileId: true }
+      select: {
+        id: true,
+        projectId: true,
+        applicantUserId: true,
+        expenseType: true,
+        attachmentFileId: true
+      }
     });
     if (!expense) {
-      throw new NotFoundException("项目支出申请不存在");
+      throw new BadRequestException(unavailable);
     }
     if (!expense.attachmentFileId) {
-      throw new BadRequestException("项目支出申请未上传附件");
+      throw new BadRequestException(unavailable);
+    }
+    const roleKeys = await this.loadActorRoleKeys(
+      this.prisma,
+      actorUserId,
+      expense.projectId
+    );
+    const canRead =
+      expense.applicantUserId === actorUserId ||
+      roleKeys.some((role) => PROJECT_EXPENSE_READ_ROLES.includes(role)) ||
+      (expense.expenseType === "spot_purchase" && roleKeys.includes("material_staff"));
+    if (!canRead) {
+      throw new BadRequestException(unavailable);
     }
 
     await this.auth.confirmPassword(actorUserId, confirmationPassword);

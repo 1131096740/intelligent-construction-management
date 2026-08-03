@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,13 +7,22 @@ import {
   Optional,
   Param,
   Patch,
-  Post
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
+import { FileService } from "../file/file.service";
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "../file/uploaded-file";
 import { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import { ConfirmProjectAffiliateBusinessFactDto } from "./dto/confirm-project-affiliate-business-fact.dto";
 import { ConfirmProjectOwnerContractDto } from "./dto/confirm-project-owner-contract.dto";
@@ -46,7 +56,9 @@ export class ProjectController {
     @Optional()
     private readonly affiliateBusiness?: ProjectAffiliateBusinessService,
     @Optional()
-    private readonly affiliateCompanyContracts?: ProjectAffiliateCompanyContractService
+    private readonly affiliateCompanyContracts?: ProjectAffiliateCompanyContractService,
+    @Optional()
+    private readonly files?: FileService
   ) {}
 
   private affiliateBusinessService(): ProjectAffiliateBusinessService {
@@ -69,6 +81,12 @@ export class ProjectController {
     return this.projects.createProject(user.id, body);
   }
 
+  @Get("create-capability")
+  @RequirePositions("chairman", "general_manager")
+  createCapability() {
+    return { availableActions: ["create_project"] };
+  }
+
   @Patch(":projectId")
   @RequirePositions("chairman", "general_manager")
   update(
@@ -77,6 +95,12 @@ export class ProjectController {
     @Body() body: UpdateProjectDto
   ) {
     return this.projects.updateProject(projectId, user.id, body);
+  }
+
+  @Get(":projectId/update-capability")
+  @RequirePositions("chairman", "general_manager")
+  updateCapability(@Param("projectId") projectId: string) {
+    return { projectId, availableActions: ["update_project"] };
   }
 
   @Get()
@@ -152,6 +176,38 @@ export class ProjectController {
     return this.affiliateBusinessService().listFacts(projectId, user.id);
   }
 
+  @Get(":projectId/affiliate-business-facts/record-capability")
+  affiliateBusinessRecordCapability(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("businessType") businessType?: string,
+    @Query("entryKind") entryKind?: string,
+    @Query("adjustsFactId") adjustsFactId?: string
+  ) {
+    return this.affiliateBusinessService().getRecordCapability(
+      projectId,
+      user.id,
+      businessType,
+      entryKind,
+      adjustsFactId
+    );
+  }
+
+  @Get(":projectId/affiliate-business-facts/:factId/capability")
+  affiliateBusinessFactCapability(
+    @Param("projectId") projectId: string,
+    @Param("factId") factId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("businessType") businessType?: string
+  ) {
+    return this.affiliateBusinessService().getFactCapability(
+      projectId,
+      factId,
+      user.id,
+      businessType
+    );
+  }
+
   @Get(":projectId/affiliate-company-contracts")
   @RequirePositions(...PROJECT_OVERVIEW_READ_POSITION_KEYS, "contract_staff")
   affiliateCompanyContractList(
@@ -217,6 +273,27 @@ export class ProjectController {
     return this.projects.recordUpstreamFundFact(projectId, user.id, body);
   }
 
+  @Get(":projectId/upstream-fund-facts/record-capability")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  upstreamFundRecordCapability(@Param("projectId") projectId: string) {
+    return { projectId, availableActions: ["record_upstream_fund_fact"] };
+  }
+
+  @Post(":projectId/upstream-fund-facts/file-uploads")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadUpstreamFundPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "上游资金依据");
+  }
+
   @Post(":projectId/upstream-fund-facts/:fundFactId/confirmation")
   @RequireProjectRole("project.upstream_fund_fact.confirm")
   confirmUpstreamFundFact(
@@ -228,6 +305,20 @@ export class ProjectController {
     return this.projects.confirmUpstreamFundFact(projectId, fundFactId, user.id, body);
   }
 
+  @Get(":projectId/upstream-fund-facts/:fundFactId/confirmation-capability")
+  @RequireProjectRole("project.upstream_fund_fact.confirm")
+  upstreamFundConfirmationCapability(
+    @Param("projectId") projectId: string,
+    @Param("fundFactId") fundFactId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.projects.getUpstreamFundFactConfirmationCapability(
+      projectId,
+      fundFactId,
+      user.id
+    );
+  }
+
   @Post(":projectId/affiliate-contract-facts")
   @RequireProjectRole("project.affiliate_contract_fact.record")
   recordAffiliateContractFact(
@@ -236,6 +327,21 @@ export class ProjectController {
     @Body() body: RecordProjectAffiliateContractFactDto
   ) {
     return this.affiliateBusinessService().recordContractFact(projectId, user.id, body);
+  }
+
+  @Post(":projectId/affiliate-contract-facts/file-uploads")
+  @RequireProjectRole("project.affiliate_contract_fact.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadAffiliateContractPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠合同依据");
   }
 
   @Post(":projectId/affiliate-contract-facts/:factId/confirmation")
@@ -264,6 +370,21 @@ export class ProjectController {
     return this.affiliateBusinessService().recordSettlementFact(projectId, user.id, body);
   }
 
+  @Post(":projectId/affiliate-settlement-facts/file-uploads")
+  @RequireProjectRole("project.affiliate_settlement_fact.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadAffiliateSettlementPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠结算依据");
+  }
+
   @Post(":projectId/affiliate-settlement-facts/:factId/confirmation")
   @RequireProjectRole("project.affiliate_settlement_fact.confirm")
   confirmAffiliateSettlementFact(
@@ -288,6 +409,21 @@ export class ProjectController {
     @Body() body: RecordProjectAffiliatePaymentFactDto
   ) {
     return this.affiliateBusinessService().recordPaymentFact(projectId, user.id, body);
+  }
+
+  @Post(":projectId/affiliate-payment-facts/file-uploads")
+  @RequireProjectRole("project.affiliate_payment_fact.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadAffiliatePaymentPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠付款依据");
   }
 
   @Post(":projectId/affiliate-payment-facts/:factId/confirmation")
@@ -320,6 +456,30 @@ export class ProjectController {
       user.id,
       body
     );
+  }
+
+  @Post(":projectId/affiliate-business-facts/:factId/evidence-file-uploads")
+  @RequireProjectRole("project.affiliate_business_fact.evidence_supplement")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  async uploadAffiliateBusinessEvidencePrivateFile(
+    @Param("projectId") projectId: string,
+    @Param("factId") factId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("businessType") businessType?: string,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    await this.affiliateBusinessService().assertEvidenceUploadAllowed(
+      projectId,
+      factId,
+      user.id,
+      businessType
+    );
+    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠业务补充依据");
   }
 
   @Post(":projectId/proxy-payments")
@@ -382,6 +542,26 @@ export class ProjectController {
     @Body() body: ConfirmProjectOwnerContractDto
   ) {
     return this.projects.confirmOwnerContract(projectId, ownerContractId, user.id, body);
+  }
+
+  private uploadPrivateFile(
+    file: MemoryUploadedFile | undefined,
+    user: AuthenticatedUser,
+    idempotencyKey: string | undefined,
+    label: string
+  ) {
+    if (!file) throw new BadRequestException(`请选择要上传的${label}文件`);
+    if (!this.files) {
+      throw new BadRequestException(`${label}文件服务暂不可用，请稍后重试`);
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: user.id,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 
   @Post(":projectId/settlement-exception-quotas")

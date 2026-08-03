@@ -6,9 +6,9 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 189 条 |
-| Web API 请求 | 已扫描 145 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 414 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| Controller 源码路由 | 已扫描 190 条 |
+| Web API 请求 | 已扫描 146 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 428 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 24 条合同专项候选；物理删除授权固定为否 |
 
@@ -16,7 +16,7 @@
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 122 |
+| matched | 123 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 47 |
 | backend_internal_only | 0 |
@@ -172,6 +172,7 @@
 | POST | `/projects/:param/affiliate-company-contracts/:param/confirmation` | confirmProjectAffiliateCompanyContract | apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/affiliate-contract-facts` | recordProjectAffiliateContractFact | apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/affiliate-contract-facts/:param/confirmation` | confirmProjectAffiliateContractFact | apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue | matched | 保留 | 否 | — |
+| POST | `/projects/:param/affiliate-contract-facts/file-uploads` | uploadProjectAffiliateContractPrivateFile | apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue | matched | 保留 | 否 | — |
 | GET | `/projects/:param/contract-takeovers` | listContractTakeovers | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers` | createContractTakeover | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | GET | `/projects/:param/contract-takeovers/:param` | getContractTakeover | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |

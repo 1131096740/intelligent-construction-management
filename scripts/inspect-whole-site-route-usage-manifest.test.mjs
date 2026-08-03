@@ -1123,7 +1123,7 @@ test("locks the repository baseline to 42 plus 19 external routes and no blocker
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 414);
+  assert.equal(manifest.summary.routeCount, 428);
   assert.equal(manifest.summary.classificationOverrideCount, 110);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
@@ -1133,14 +1133,14 @@ test("locks the repository baseline to 42 plus 19 external routes and no blocker
     manifest.summary.consumerSurfaceOverrideSha256,
     "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 304);
-  assert.equal(manifest.summary.pageRouteCount, 307);
+  assert.equal(manifest.summary.derivedProductionPageCount, 318);
+  assert.equal(manifest.summary.pageRouteCount, 321);
   assert.equal(manifest.summary.externalTakeoverCount, 61);
   assert.equal(manifest.summary.exitCandidateCount, 43);
   assert.equal(manifest.summary.internalTaskCount, 3);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 356,
+    web_api_wrapper: 370,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 2,

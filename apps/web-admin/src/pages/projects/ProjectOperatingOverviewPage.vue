@@ -803,12 +803,19 @@ import {
   createProjectExpenseRequest,
   downloadProjectExpenseApprovalPdf,
   downloadProjectExpenseAttachment,
+  fetchProjectCreateCapability,
+  fetchProjectExpenseActionCapability,
+  fetchProjectExpenseCreateCapability,
   fetchProjectExpenseRequests,
   fetchProjectOperatingOverview,
+  fetchProjectUpstreamFundConfirmationCapability,
+  fetchProjectUpstreamFundRecordCapability,
+  fetchProjectUpdateCapability,
   fetchProjects,
   recordProjectExpensePurchaseExecution,
   recordProjectUpstreamFundFact,
-  uploadPrivateFile,
+  uploadProjectExpensePrivateFile,
+  uploadProjectUpstreamFundPrivateFile,
   updateProject,
   type ProjectExpensePaymentMethod,
   type ProjectExpenseRequestListReadModel,
@@ -1184,7 +1191,7 @@ async function submitProject() {
   projectSubmitting.value = true;
   projectMessage.value = "";
   try {
-    const created = await createProject({
+    const created = await createProjectWithCapability({
       code: requiredText(projectForm.value.code, "项目编号"),
       name: requiredText(projectForm.value.name, "项目名称")
     });
@@ -1216,7 +1223,7 @@ async function submitProjectName() {
   projectUpdating.value = true;
   projectMessage.value = "";
   try {
-    const updated = await updateProject(selectedProjectId.value, {
+    const updated = await updateProjectWithCapability(selectedProjectId.value, {
       name: requiredText(selectedProjectName.value, "项目名称")
     });
     projects.value = projects.value.map((project) => (project.id === updated.id ? updated : project));
@@ -1231,6 +1238,27 @@ async function submitProjectName() {
   } finally {
     projectUpdating.value = false;
   }
+}
+
+async function createProjectWithCapability(
+  body: Parameters<typeof createProject>[0]
+) {
+  const capability = await fetchProjectCreateCapability();
+  const operationAllowed = capability.availableActions.includes("create_project");
+  if (!operationAllowed) throw new Error("当前用户不能新增项目");
+  return createProject(body);
+}
+
+async function updateProjectWithCapability(
+  projectId: string,
+  body: Parameters<typeof updateProject>[1]
+) {
+  const capability = await fetchProjectUpdateCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("update_project");
+  if (!operationAllowed) throw new Error("当前用户不能维护该项目");
+  return updateProject(projectId, body);
 }
 
 async function handleProjectChange(value: string | number) {
@@ -1441,10 +1469,15 @@ async function submitProjectExpense() {
         throw new Error("请上传零星采购附件");
       }
     }
-    const attachment = form.attachmentFile
-      ? await uploadPrivateFile(form.attachmentFile, form.attachmentFile.name)
-      : null;
-    await createProjectExpenseRequest(projectId, {
+    const attachmentFileId = form.attachmentFile
+      ? (
+          await uploadProjectExpenseAttachmentWithCapability(
+            projectId,
+            form.attachmentFile
+          )
+        ).id
+      : undefined;
+    await createProjectExpenseRequestWithCapability(projectId, {
       code,
       expenseType: form.expenseType,
       expenseSubtype: form.expenseSubtype,
@@ -1456,7 +1489,7 @@ async function submitProjectExpense() {
       counterpartyAccountName: form.counterpartyAccountName.trim() || undefined,
       counterpartyBankName: form.counterpartyBankName.trim() || undefined,
       counterpartyBankAccount: form.counterpartyBankAccount.trim() || undefined,
-      attachmentFileId: attachment?.id
+      attachmentFileId
     });
     expenseForm.value = createProjectExpenseForm(form.expenseType);
     syncExpenseFormBaseline();
@@ -1473,6 +1506,38 @@ async function submitProjectExpense() {
   } finally {
     expenseSubmitting.value = false;
   }
+}
+
+async function createProjectExpenseRequestWithCapability(
+  projectId: string,
+  body: Parameters<typeof createProjectExpenseRequest>[1]
+) {
+  const capability = await fetchProjectExpenseCreateCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "create_project_expense_request"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能提交该项目支出申请");
+  return createProjectExpenseRequest(projectId, body);
+}
+
+async function uploadProjectExpenseAttachmentWithCapability(
+  projectId: string,
+  file: File
+) {
+  const capability = await fetchProjectExpenseCreateCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "create_project_expense_request"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传该项目支出附件");
+  return uploadProjectExpensePrivateFile(projectId, file, file.name);
 }
 
 async function loadProjectExpenses() {
@@ -1548,10 +1613,15 @@ async function submitReceipt() {
     const occurredAt = requiredText(form.occurredAt, "发生日期");
     const amountCents = parseYuanToCents(form.amountYuan, "上游资金金额");
     const counterpartyName = requiredText(form.counterpartyName, "交易对方");
-    const evidence = form.voucherFile
-      ? await uploadPrivateFile(form.voucherFile, form.voucherFile.name)
-      : null;
-    await recordProjectUpstreamFundFact(projectId, {
+    const evidenceFileId = form.voucherFile
+      ? (
+          await uploadProjectUpstreamFundEvidenceWithCapability(
+            projectId,
+            form.voucherFile
+          )
+        ).id
+      : undefined;
+    await recordProjectUpstreamFundFactWithCapability(projectId, {
       factType: form.factType,
       basisType: form.basisType,
       occurredAt,
@@ -1561,7 +1631,7 @@ async function submitReceipt() {
         ? { deductionCategory: form.deductionCategory }
         : {}),
       description: form.description.trim() || undefined,
-      evidenceFileId: evidence?.id,
+      evidenceFileId,
       idempotencyKey: crypto.randomUUID()
     });
     receiptForm.value = createReceiptForm(form.factType);
@@ -1579,6 +1649,38 @@ async function submitReceipt() {
   } finally {
     receiptSubmitting.value = false;
   }
+}
+
+async function recordProjectUpstreamFundFactWithCapability(
+  projectId: string,
+  body: Parameters<typeof recordProjectUpstreamFundFact>[1]
+) {
+  const capability = await fetchProjectUpstreamFundRecordCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_upstream_fund_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能登记该项目上游资金事实");
+  return recordProjectUpstreamFundFact(projectId, body);
+}
+
+async function uploadProjectUpstreamFundEvidenceWithCapability(
+  projectId: string,
+  file: File
+) {
+  const capability = await fetchProjectUpstreamFundRecordCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_upstream_fund_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传该上游资金依据");
+  return uploadProjectUpstreamFundPrivateFile(projectId, file, file.name);
 }
 
 function canConfirmUpstreamFundFact(fact: ProjectUpstreamFundFactReadModel) {
@@ -1609,7 +1711,7 @@ async function submitUpstreamFundConfirmation(values: { reason: string; password
   upstreamFundConfirmationBusy.value = true;
   upstreamFundConfirmationError.value = "";
   try {
-    await confirmProjectUpstreamFundFact(projectId, fact.id, {
+    await confirmProjectUpstreamFundFactWithCapability(projectId, fact.id, {
       confirmationPassword: values.password,
       confirmationActionId: crypto.randomUUID()
     });
@@ -1624,6 +1726,30 @@ async function submitUpstreamFundConfirmation(values: { reason: string; password
   } finally {
     upstreamFundConfirmationBusy.value = false;
   }
+}
+
+async function confirmProjectUpstreamFundFactWithCapability(
+  projectId: string,
+  fundFactId: string,
+  body: Parameters<typeof confirmProjectUpstreamFundFact>[2]
+) {
+  const capability = await fetchProjectUpstreamFundConfirmationCapability(
+    projectId,
+    fundFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("上游资金事实已变化，请刷新后重试");
+  }
+  const matchesRequestedFact = capability.fundFactId === fundFactId;
+  if (!matchesRequestedFact) {
+    throw new Error("上游资金事实已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "confirm_upstream_fund_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能确认该上游资金事实");
+  return confirmProjectUpstreamFundFact(projectId, fundFactId, body);
 }
 
 function createReceiptForm(
@@ -1810,12 +1936,36 @@ function openExpenseApprovalDetail(row: ProjectExpenseRow) {
 async function submitExpensePurchaseExecution() {
   await runExpenseAction("purchase-execution", async (row) => {
     const form = expenseActionForm.value;
-    await recordProjectExpensePurchaseExecution(selectedProjectId.value, row.id, {
+    await recordProjectExpensePurchaseExecutionWithCapability(selectedProjectId.value, row.id, {
       executedAt: requiredText(form.purchaseExecutedAt, "采购执行日期"),
       note: form.purchaseExecutionNote.trim() || undefined,
       confirmationPassword: requiredText(form.purchaseExecutionPassword, "采购执行确认密码")
     });
   });
+}
+
+async function recordProjectExpensePurchaseExecutionWithCapability(
+  projectId: string,
+  expenseRequestId: string,
+  body: Parameters<typeof recordProjectExpensePurchaseExecution>[2]
+) {
+  const capability = await fetchProjectExpenseActionCapability(
+    projectId,
+    expenseRequestId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const matchesRequestedExpense = capability.expenseRequestId === expenseRequestId;
+  if (!matchesRequestedExpense) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_purchase_execution"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能登记该项目支出的采购执行");
+  return recordProjectExpensePurchaseExecution(projectId, expenseRequestId, body);
 }
 
 async function downloadExpenseAttachment() {
@@ -1827,12 +1977,34 @@ async function downloadExpenseAttachment() {
     if (!downloadReason) {
       throw new Error("请填写下载原因");
     }
-    const ticket = await downloadProjectExpenseAttachment(selectedProjectId.value, row.id, {
+    const ticket = await downloadProjectExpenseAttachmentWithCapability(selectedProjectId.value, row.id, {
       confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "附件下载密码"),
       downloadReason
     });
     triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
   });
+}
+
+async function downloadProjectExpenseAttachmentWithCapability(
+  projectId: string,
+  expenseRequestId: string,
+  body: Parameters<typeof downloadProjectExpenseAttachment>[2]
+) {
+  const capability = await fetchProjectExpenseActionCapability(
+    projectId,
+    expenseRequestId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const matchesRequestedExpense = capability.expenseRequestId === expenseRequestId;
+  if (!matchesRequestedExpense) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes("download_attachment");
+  if (!operationAllowed) throw new Error("当前用户不能下载该项目支出附件");
+  return downloadProjectExpenseAttachment(projectId, expenseRequestId, body);
 }
 
 async function downloadExpenseApprovalPdf() {
@@ -1844,12 +2016,36 @@ async function downloadExpenseApprovalPdf() {
     if (!downloadReason) {
       throw new Error("请填写下载原因");
     }
-    const ticket = await downloadProjectExpenseApprovalPdf(selectedProjectId.value, row.id, {
+    const ticket = await downloadProjectExpenseApprovalPdfWithCapability(selectedProjectId.value, row.id, {
       confirmationPassword: requiredText(expenseActionForm.value.downloadPassword, "审批单下载密码"),
       downloadReason
     });
     triggerFileDownload(apiDownloadUrl(ticket.downloadUrl), ticket.fileName);
   });
+}
+
+async function downloadProjectExpenseApprovalPdfWithCapability(
+  projectId: string,
+  expenseRequestId: string,
+  body: Parameters<typeof downloadProjectExpenseApprovalPdf>[2]
+) {
+  const capability = await fetchProjectExpenseActionCapability(
+    projectId,
+    expenseRequestId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const matchesRequestedExpense = capability.expenseRequestId === expenseRequestId;
+  if (!matchesRequestedExpense) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "download_approval_pdf"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能下载该项目支出审批单");
+  return downloadProjectExpenseApprovalPdf(projectId, expenseRequestId, body);
 }
 
 function setExpenseActionError(messageText: string) {

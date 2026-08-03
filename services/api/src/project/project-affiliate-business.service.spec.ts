@@ -132,6 +132,89 @@ function paymentFact(overrides: Record<string, unknown> = {}) {
 }
 
 describe("ProjectAffiliateBusinessService", () => {
+  it.each([
+    ["contract_staff", ["record_affiliate_contract_fact"]],
+    ["contract_director", []]
+  ])("derives original contract record capability for %s", async (roleKey, expected) => {
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      ...roleTables(roleKey)
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    const capability = await service.getRecordCapability(
+      "project-1",
+      "actor-1",
+      "contract",
+      "original",
+      undefined
+    );
+
+    expect(capability).toMatchObject({
+      projectId: "project-1",
+      businessType: "contract",
+      entryKind: "original",
+      availableActions: expected
+    });
+  });
+
+  it.each([
+    ["finance_staff", ["supplement_affiliate_evidence"]],
+    ["finance_director", ["confirm_affiliate_fact", "supplement_affiliate_evidence"]]
+  ])("derives oral payment fact capability for %s", async (roleKey, expected) => {
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      ...roleTables(roleKey),
+      projectAffiliatePaymentFact: {
+        findFirst: jest.fn().mockResolvedValue(paymentFact())
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    const capability = await service.getFactCapability(
+      "project-1",
+      "payment-fact-1",
+      "actor-1",
+      "payment"
+    );
+
+    expect(capability.availableActions).toEqual(expected);
+  });
+
+  it("rejects affiliate evidence upload before file storage for the wrong business role", async () => {
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      ...roleTables("employee"),
+      projectAffiliateContractFact: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    await expect(
+      service.assertEvidenceUploadAllowed(
+        "project-1",
+        "contract-fact-1",
+        "employee-1",
+        "contract"
+      )
+    ).rejects.toThrow("当前岗位不能为该挂靠外部事实补充依据");
+    expect(tx.projectAffiliateContractFact.findFirst).not.toHaveBeenCalled();
+  });
+
   it("does not advertise contract adjustments to a confirming-only contract director", async () => {
     const tx = {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },

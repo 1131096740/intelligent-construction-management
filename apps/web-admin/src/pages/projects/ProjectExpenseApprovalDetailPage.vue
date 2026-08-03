@@ -383,6 +383,7 @@ import {
   confirmProjectExpenseReceiptWithPreflight,
   executeProjectExpenseApprovalReviewAction,
   executeProjectExpenseWithdrawalAction,
+  fetchProjectExpenseActionCapability,
   fetchProjectExpenseApprovalDetail,
   prepareProjectExpenseApprovalReviewAction,
   prepareProjectExpenseWithdrawalAction,
@@ -2346,7 +2347,7 @@ function confirmProjectExpenseWithdrawal() {
 async function executeLifecycleAction(request: BusinessDraftActionRequest) {
   const { projectId, expenseRequestId } = routeIds();
   if (request.action === "void") {
-    await voidProjectExpenseRequest(projectId, expenseRequestId, {
+    await voidProjectExpenseRequestWithCapability(projectId, expenseRequestId, {
       reason: request.reason
     });
     actionTone.value = "success";
@@ -2354,6 +2355,28 @@ async function executeLifecycleAction(request: BusinessDraftActionRequest) {
     return;
   }
   throw new Error("当前项目支出不支持该操作，请刷新后重试。");
+}
+
+async function voidProjectExpenseRequestWithCapability(
+  projectId: string,
+  expenseRequestId: string,
+  body: Parameters<typeof voidProjectExpenseRequest>[2]
+) {
+  const capability = await fetchProjectExpenseActionCapability(
+    projectId,
+    expenseRequestId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const matchesRequestedExpense = capability.expenseRequestId === expenseRequestId;
+  if (!matchesRequestedExpense) {
+    throw new Error("项目支出已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes("void");
+  if (!operationAllowed) throw new Error("当前用户不能作废该项目支出申请");
+  return voidProjectExpenseRequest(projectId, expenseRequestId, body);
 }
 
 function formatDateTime(value: string | null | undefined) {
