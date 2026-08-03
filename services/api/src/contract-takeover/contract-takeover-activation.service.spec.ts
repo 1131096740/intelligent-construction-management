@@ -21,6 +21,14 @@ describe("ContractTakeoverActivationService", () => {
     historicalInitialSettlementId?: string | null;
     confirmedFinanceBasisRevision?: number;
     zeroSettlementDeclared?: boolean;
+    companyEntityId?: string | null;
+    companyEntityName?: string | null;
+    companyEntityIsActive?: boolean | null;
+    companyEntityDataStatus?: string | null;
+    companyEntityVersionId?: string | null;
+    companyEntityVersionName?: string | null;
+    companyEntityCreditCode?: string | null;
+    companyEntityRegisteredAddress?: string | null;
   } = {}) {
     const payments = options.payments ?? [];
     const takeover = {
@@ -73,8 +81,15 @@ describe("ContractTakeoverActivationService", () => {
       [
         {
           id: "contract-1",
-          contractTypeKey:
-            options.contractTypeKey ?? "material_purchase"
+          contractTypeKey: options.contractTypeKey ?? "material_purchase",
+          companyEntityId: options.companyEntityId,
+          companyEntityName: options.companyEntityName,
+          companyEntityIsActive: options.companyEntityIsActive,
+          companyEntityDataStatus: options.companyEntityDataStatus,
+          companyEntityVersionId: options.companyEntityVersionId,
+          companyEntityVersionName: options.companyEntityVersionName,
+          companyEntityCreditCode: options.companyEntityCreditCode,
+          companyEntityRegisteredAddress: options.companyEntityRegisteredAddress
         }
       ],
       [
@@ -229,6 +244,38 @@ describe("ContractTakeoverActivationService", () => {
     expect(tx).not.toHaveProperty(
       "contractTakeoverHistoricalPaymentVoucher.updateMany"
     );
+  });
+
+  it("freezes the selected complete company entity into the effective contract version", async () => {
+    const tx = transaction({
+      companyEntityId: "entity-1",
+      companyEntityName: "合同旧主体名称",
+      companyEntityIsActive: true,
+      companyEntityDataStatus: "complete",
+      companyEntityVersionId: "entity-version-2",
+      companyEntityVersionName: "建工智管建设有限公司",
+      companyEntityCreditCode: "91350211M000100Y46",
+      companyEntityRegisteredAddress: "云南省昆明市西山区"
+    });
+    const service = new ContractTakeoverActivationService(audit as never);
+
+    await service.tryActivateInTransaction(
+      tx as never,
+      "takeover-1",
+      "finance-director",
+      "activation-key-1"
+    );
+
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({
+        companyEntityIdSnapshot: "entity-1",
+        companyEntityVersionId: "entity-version-2",
+        companyEntityNameSnapshot: "建工智管建设有限公司",
+        companyEntityCreditCodeSnapshot: "91350211M000100Y46",
+        companyEntityRegisteredAddressSnapshot: "云南省昆明市西山区"
+      })
+    });
   });
 
   it("forces capped generic-contract excess to abnormal overpayment and creates no settlement", async () => {

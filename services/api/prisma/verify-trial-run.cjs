@@ -727,6 +727,8 @@ async function createHistoricalTakeover(token) {
       name: "P0-5B UAT 脱敏历史材料采购合同",
       counterparty: "P0-5B UAT 脱敏供应商",
       contractTypeKey: "material_purchase",
+      companyEntityId: coreFlowSeedData.companyEntity.id,
+      companyEntityName: coreFlowSeedData.companyEntity.name,
       amountCents: "10000000",
       signedAt: "2026-05-20",
       takeoverLevel: "A",
