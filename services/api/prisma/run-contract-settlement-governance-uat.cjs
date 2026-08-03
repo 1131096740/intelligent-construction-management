@@ -666,6 +666,13 @@ function settlementLines(count) {
 }
 
 async function runSettlementScenario(caseId, contractFixture, reviewerRole, reviewerKey, lineCount, template, tokens) {
+  const effectiveContract = await prisma.contractVersion.findUnique({ where: { id: contractFixture.version.id } });
+  assert(
+    effectiveContract?.status === "effective" &&
+      effectiveContract.settlementMode === "settlement_required" &&
+      effectiveContract.settlementModeConfirmedAt,
+    `${caseId} 创建前合同结算方式状态异常：status=${effectiveContract?.status ?? "missing"}, mode=${effectiveContract?.settlementMode ?? "null"}, confirmedAt=${effectiveContract?.settlementModeConfirmedAt?.toISOString?.() ?? "null"}`
+  );
   const draft = await request("POST", `/projects/${projectId}/settlement-drafts`, tokens.contractStaff, {
     contractVersionId: contractFixture.version.id,
     settlementTemplateVersionId: template.id,
