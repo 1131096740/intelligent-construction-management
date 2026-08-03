@@ -1327,31 +1327,6 @@
       ]
     },
     {
-      "id": "contract-template.risk-stop",
-      "usage": "page_action",
-      "routePaths": [
-        "/合同模板库/:templateId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "stopSelectedVersion"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "contractTemplateCapability.versions",
-        "key": "risk_stop"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "stopContractTemplateVersion"
-        }
-      ]
-    },
-    {
       "id": "contract-workbench.submit",
       "usage": "background",
       "routePaths": [
@@ -1603,31 +1578,6 @@
       "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_repayment" },
       "wrappers": [
         { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimLoanRepaymentVoucherFile" }
-      ]
-    },
-    {
-      "id": "layout-template.risk-stop",
-      "usage": "page_action",
-      "routePaths": [
-        "/合同模板库/版式/:layoutTemplateId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "stopCurrentVersion"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "layoutTemplateCapability.versions",
-        "key": "risk_stop"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "stopLayoutTemplateVersion"
-        }
       ]
     },
     {

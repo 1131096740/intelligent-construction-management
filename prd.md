@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.14
+> 版本：v1.15
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；C-P0-01 至 C-P0-07 已清零，C-P1-01 已完成只读隔离，下一步执行 C-P1-02 模板治理只读隔离
+> 状态：执行中；C-P0-01 至 C-P0-07 已清零，C-P1-01 至 C-P1-02 已完成只读隔离，下一步执行 C-P1-03 组织/岗位/委托隔离
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 442 routes、0 unclassified、97 raw blockers、49 uncovered pairs、0 unresolved binding；C-P0-01 至 C-P0-07 已清零，C-P1-01 的 6 个 pair 已完成只读隔离 | 首次上线 P0 队列已清零，但 Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P1-02 至 C-P1-04 只读/隐藏隔离 |
+| Task 11 能力矩阵 | 阶段 D 当前为 442 routes、0 unclassified、99 raw blockers、12 uncovered pairs、0 unresolved binding；C-P0-01 至 C-P0-07 已清零，C-P1-01 至 C-P1-02 已完成只读隔离 | 首次上线 P0 队列已清零，但 Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P1-03 至 C-P1-04 只读/隐藏隔离 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -497,6 +497,16 @@
 > uncovered pair 精确对应 `C-P1-02` 至 `C-P1-04`。下一步只能执行 `C-P1-02` 合同/版式/
 > 条款/编号/结算模板治理只读隔离。完整证据见
 > `docs/progress/2026-08-03-five-package-stage-d-c-p1-01-master-data-readonly.md`。
+
+> 2026-08-03 后续执行记录：`C-P1-02` 合同模板、版式模板、标准条款、编号规则、
+> 合同场景和结算模板治理已完成首次上线只读隔离。生产路由改为 7 个独立只读页，
+> 只展示或使用已发布版本；新建、克隆、编辑、上传、检查、预览生成/下载、提交、
+> 发布、停用和草稿处置触发器均从生产可达面移除。旧编辑实现和后端路由未删除；40 条失去
+> 生产消费证据的路由只登记为 `candidate_only_no_deletion_authorization` 退出候选。目标 37 个
+> uncovered pair 精确归零，同时隔离 2 个原已覆盖的停用 pair；production mutation pair
+> 282→243、uncovered pair 49→12、orphan wrapper 42→81、raw blocker 97→99，0 unclassified / 0 unresolved
+> 保持不变。剩余 12 个 uncovered pair 精确对应 `C-P1-03` 的 11 个和 `C-P1-04` 的 1 个。
+> 完整证据见 `docs/progress/2026-08-03-five-package-stage-d-c-p1-02-template-governance-readonly.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

@@ -5,6 +5,7 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { inspectWholeSiteWebApiManifest } from "./lib/whole-site-web-api-manifest.mjs";
 
 const require = createRequire(
   new URL("../services/api/package.json", import.meta.url)
@@ -646,6 +647,58 @@ export function extractContractExitCandidates(routeUsage) {
   return [...normalizeUniqueExitCandidates(candidates).values()];
 }
 
+function productionConsumerIndex(manifest) {
+  if (!plainRecord(manifest) || !Array.isArray(manifest.wrappers)) {
+    throw capabilityInputError(
+      "CAPABILITY_WEB_MANIFEST_INVALID",
+      "Web API reachability evidence is invalid"
+    );
+  }
+  const index = new Map();
+  for (const wrapper of manifest.wrappers) {
+    if (
+      !plainRecord(wrapper) ||
+      typeof wrapper.apiFile !== "string" ||
+      wrapper.apiFile.length === 0 ||
+      typeof wrapper.name !== "string" ||
+      wrapper.name.length === 0 ||
+      !Array.isArray(wrapper.productionConsumers) ||
+      wrapper.productionConsumers.some(
+        (consumer) =>
+          typeof consumer !== "string" || consumer.length === 0
+      )
+    ) {
+      throw capabilityInputError(
+        "CAPABILITY_WEB_MANIFEST_INVALID",
+        "Web API reachability evidence is invalid"
+      );
+    }
+    const key = `${posixPath(wrapper.apiFile)}\0${wrapper.name}`;
+    if (index.has(key)) {
+      throw capabilityInputError(
+        "CAPABILITY_WEB_MANIFEST_INVALID",
+        "Web API reachability evidence is invalid"
+      );
+    }
+    index.set(
+      key,
+      new Set(wrapper.productionConsumers.map(posixPath))
+    );
+  }
+  return index;
+}
+
+function requireLiveProductionConsumers(index, key) {
+  const consumers = index.get(key);
+  if (!consumers) {
+    throw capabilityInputError(
+      "CAPABILITY_WEB_MANIFEST_INVALID",
+      "Web API reachability evidence is invalid"
+    );
+  }
+  return consumers;
+}
+
 function importedApiModule(specifier) {
   return /(?:^|\/)(?:contract-workbench|core-flow-read)\.api(?:\.[cm]?[jt]s)?$/.test(
     specifier
@@ -805,6 +858,7 @@ export async function inspectCapabilityProject({
   internalRoutes = DEFAULT_INTERNAL_ROUTES,
   legacyRoutes = DEFAULT_LEGACY_ROUTES,
   exitCandidates = [],
+  liveWebManifest,
   runtimeRoutes,
   legacyHits
 }) {
@@ -850,6 +904,10 @@ export async function inspectCapabilityProject({
     )
   ).flat();
   const exportedWrappers = new Set(wrappers.map((wrapper) => wrapper.name));
+  const liveProductionConsumers =
+    liveWebManifest === undefined
+      ? null
+      : productionConsumerIndex(liveWebManifest);
 
   const consumerFiles = [
     ...(await collectFiles(
@@ -909,10 +967,18 @@ export async function inspectCapabilityProject({
   const capabilities = [];
 
   for (const request of wrapperRequests) {
-    const routeConsumers = consumers
-      .filter((consumer) => consumer.wrapper === request.wrapper)
-      .map((consumer) => consumer.consumer)
-      .sort();
+    const liveConsumerKey = `${request.apiFile}\0${request.wrapper}`;
+    const routeConsumers = liveProductionConsumers
+      ? [...requireLiveProductionConsumers(
+          liveProductionConsumers,
+          liveConsumerKey
+        )]
+      : consumers
+          .filter(
+            (consumer) => consumer.wrapper === request.wrapper
+          )
+          .map((consumer) => consumer.consumer)
+          .sort();
     const backend = backendByKey.get(request.key);
     let classification;
     if (!backend) classification = "frontend_without_backend";
@@ -1188,9 +1254,13 @@ async function main() {
   const routeUsage = await readJson(
     resolve(root, "docs/product/manifests/route-usage.json")
   );
+  const liveWebManifest = await inspectWholeSiteWebApiManifest({
+    root
+  });
   const report = await inspectCapabilityProject({
     root,
     exitCandidates: extractContractExitCandidates(routeUsage),
+    liveWebManifest,
     runtimeRoutes:
       runtimeManifest === undefined
         ? undefined

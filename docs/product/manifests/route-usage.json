@@ -13,31 +13,31 @@
     "routeCount": 442,
     "exactRouteCount": 442,
     "normalizedRouteCount": 442,
-    "classificationOverrideCount": 115,
+    "classificationOverrideCount": 153,
     "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "a67afb7ab71ac617d2c4413d76d3b44cf74a7885ee744186787f9cb6d8a2b9f0",
+    "classificationOverrideSha256": "b8a7af157d7bad42e5f761c4b008ba4bdf2b6e393ddad7fd008ca93f1f45c3ca",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 327,
-    "pageRouteCount": 330,
+    "derivedProductionPageCount": 289,
+    "pageRouteCount": 290,
     "externalTakeoverCount": 61,
-    "exitCandidateCount": 48,
+    "exitCandidateCount": 88,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 379,
+      "web_api_wrapper": 339,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 54
+      "none": 94
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 379,
+    "productionWrapperRouteCount": 339,
     "authStoreRouteCount": 5,
-    "productionTicketFollowupCount": 2
+    "productionTicketFollowupCount": 1
   },
   "routes": [
     {
@@ -783,7 +783,7 @@
             "normalizedPath": "/contract-business-scenarios",
             "normalizedKey": "GET /contract-business-scenarios",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
+              "apps/web-admin/src/pages/contract-templates/ContractScenarioReadonlyPage.vue"
             ]
           }
         ],
@@ -1013,29 +1013,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "getLatestLayoutTemplatePreview",
-            "method": "GET",
-            "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
-            "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -1109,7 +1098,7 @@
             "normalizedPath": "/contract-layout-templates/:param",
             "normalizedKey": "GET /contract-layout-templates/:param",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+              "apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue"
             ]
           }
         ],
@@ -1149,7 +1138,7 @@
             "normalizedPath": "/contract-number-rules",
             "normalizedKey": "GET /contract-number-rules",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
+              "apps/web-admin/src/pages/contract-templates/ContractNumberRuleReadonlyPage.vue"
             ]
           }
         ],
@@ -1189,8 +1178,8 @@
             "normalizedPath": "/contract-templates",
             "normalizedKey": "GET /contract-templates",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue",
+              "apps/web-admin/src/pages/contract-templates/ContractScenarioReadonlyPage.vue",
+              "apps/web-admin/src/pages/contract-templates/ContractTemplateReadonlyListPage.vue",
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
             ]
           }
@@ -1234,7 +1223,7 @@
             "normalizedPath": "/contract-templates/:param",
             "normalizedKey": "GET /contract-templates/:param",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+              "apps/web-admin/src/pages/contract-templates/ContractTemplateReadonlyDetailPage.vue"
             ]
           }
         ],
@@ -2273,16 +2262,6 @@
             "sourceLine": 170,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "downloadSettlementTemplatePreview",
-            "method": "GET",
-            "ticketField": "downloadUrl",
-            "sourceLine": 223,
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
             ]
           }
         ],
@@ -4623,7 +4602,7 @@
             "normalizedPath": "/settlement-templates/:param",
             "normalizedKey": "GET /settlement-templates/:param",
             "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateReadonlyPage.vue"
             ]
           }
         ],
@@ -5714,7 +5693,7 @@
             "normalizedPath": "/standard-clauses",
             "normalizedKey": "GET /standard-clauses",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
+              "apps/web-admin/src/pages/contract-templates/StandardClauseReadonlyPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractClausesSection.vue"
             ]
           }
@@ -5745,29 +5724,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "listStandardClauseHistory",
-            "method": "GET",
-            "normalizedPath": "/standard-clauses/history",
-            "normalizedKey": "GET /standard-clauses/history",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -5912,29 +5880,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-            "wrapper": "updateContractBusinessScenario",
-            "method": "PATCH",
-            "normalizedPath": "/contract-business-scenarios/:param",
-            "normalizedKey": "PATCH /contract-business-scenarios/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -5955,29 +5912,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "updateLayoutTemplateVersion",
-            "method": "PATCH",
-            "normalizedPath": "/contract-layout-template-versions/:param",
-            "normalizedKey": "PATCH /contract-layout-template-versions/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -5995,29 +5941,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "updateContractNumberRule",
-            "method": "PATCH",
-            "normalizedPath": "/contract-number-rules/:param",
-            "normalizedKey": "PATCH /contract-number-rules/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -6038,29 +5973,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-            "wrapper": "updateContractScenarioMapping",
-            "method": "PATCH",
-            "normalizedPath": "/contract-scenario-template-mappings/:param",
-            "normalizedKey": "PATCH /contract-scenario-template-mappings/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -6081,29 +6005,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "updateContractTemplateVersion",
-            "method": "PATCH",
-            "normalizedPath": "/contract-template-versions/:param",
-            "normalizedKey": "PATCH /contract-template-versions/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -6477,29 +6390,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "updateSettlementTemplateVersion",
-            "method": "PATCH",
-            "normalizedPath": "/settlement-template-versions/:param",
-            "normalizedKey": "PATCH /settlement-template-versions/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -7243,29 +7145,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-            "wrapper": "createContractBusinessScenario",
-            "method": "POST",
-            "normalizedPath": "/contract-business-scenarios",
-            "normalizedKey": "POST /contract-business-scenarios",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7286,29 +7177,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-            "wrapper": "createContractScenarioMapping",
-            "method": "POST",
-            "normalizedPath": "/contract-business-scenarios/:param/template-mappings",
-            "normalizedKey": "POST /contract-business-scenarios/:param/template-mappings",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7694,29 +7574,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "cloneLayoutTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/clone",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/clone",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7737,29 +7606,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "discardLayoutTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/discard",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/discard",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7780,29 +7638,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "inspectLayoutTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/inspection",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/inspection",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7823,29 +7670,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "queueLayoutTemplatePreview",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/preview-generation",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/preview-generation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7865,29 +7701,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "publishLayoutTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/publication",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/publication",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7938,29 +7763,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
+      "usage": "exit_candidate",
       "classificationSource": "registry_override",
-      "classificationReason": "server_available_action_connected_to_retained_template_page",
-      "consumerSurface": "web_api_wrapper",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "stopLayoutTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/stop",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7981,29 +7795,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "submitLayoutTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-template-versions/:param/submission",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/submission",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8024,29 +7827,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createLayoutTemplate",
-            "method": "POST",
-            "normalizedPath": "/contract-layout-templates",
-            "normalizedKey": "POST /contract-layout-templates",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8104,29 +7896,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createContractNumberRule",
-            "method": "POST",
-            "normalizedPath": "/contract-number-rules",
-            "normalizedKey": "POST /contract-number-rules",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8144,29 +7925,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "stopContractNumberRule",
-            "method": "POST",
-            "normalizedPath": "/contract-number-rules/:param/stop",
-            "normalizedKey": "POST /contract-number-rules/:param/stop",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8267,29 +8037,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "cloneContractTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-template-versions/:param/clone",
-            "normalizedKey": "POST /contract-template-versions/:param/clone",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8310,29 +8069,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "discardContractTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-template-versions/:param/discard",
-            "normalizedKey": "POST /contract-template-versions/:param/discard",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8352,29 +8100,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "publishContractTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-template-versions/:param/publication",
-            "normalizedKey": "POST /contract-template-versions/:param/publication",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8425,29 +8162,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
+      "usage": "exit_candidate",
       "classificationSource": "registry_override",
-      "classificationReason": "server_available_action_connected_to_retained_template_page",
-      "consumerSurface": "web_api_wrapper",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "stopContractTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-template-versions/:param/stop",
-            "normalizedKey": "POST /contract-template-versions/:param/stop",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8468,29 +8194,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "submitContractTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/contract-template-versions/:param/submission",
-            "normalizedKey": "POST /contract-template-versions/:param/submission",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8511,29 +8226,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createContractTemplate",
-            "method": "POST",
-            "normalizedPath": "/contract-templates",
-            "normalizedKey": "POST /contract-templates",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -10763,9 +10467,7 @@
             "normalizedPath": "/files",
             "normalizedKey": "POST /files",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
           },
           {
@@ -14832,29 +14534,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "cloneSettlementTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/clone",
-            "normalizedKey": "POST /settlement-template-versions/:param/clone",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14874,29 +14565,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "discardSettlementTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/discard",
-            "normalizedKey": "POST /settlement-template-versions/:param/discard",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14917,29 +14597,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "inspectSettlementTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/inspection",
-            "normalizedKey": "POST /settlement-template-versions/:param/inspection",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -14960,29 +14629,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "generateSettlementTemplatePreview",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/preview-generation",
-            "normalizedKey": "POST /settlement-template-versions/:param/preview-generation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15003,29 +14661,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "downloadSettlementTemplatePreview",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/preview-pdf/download-ticket",
-            "normalizedKey": "POST /settlement-template-versions/:param/preview-pdf/download-ticket",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15046,29 +14693,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "downloadSettlementTemplatePreview",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/preview-xlsx/download-ticket",
-            "normalizedKey": "POST /settlement-template-versions/:param/preview-xlsx/download-ticket",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15089,29 +14725,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "publishSettlementTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/publication",
-            "normalizedKey": "POST /settlement-template-versions/:param/publication",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15132,29 +14757,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "stopSettlementTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/stop",
-            "normalizedKey": "POST /settlement-template-versions/:param/stop",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15175,29 +14789,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "submitSettlementTemplateVersion",
-            "method": "POST",
-            "normalizedPath": "/settlement-template-versions/:param/submission",
-            "normalizedKey": "POST /settlement-template-versions/:param/submission",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -15218,29 +14821,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-            "wrapper": "createSettlementTemplate",
-            "method": "POST",
-            "normalizedPath": "/settlement-templates",
-            "normalizedKey": "POST /settlement-templates",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -17593,29 +17185,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "discardStandardClauseVersion",
-            "method": "POST",
-            "normalizedPath": "/standard-clause-versions/:param/discard",
-            "normalizedKey": "POST /standard-clause-versions/:param/discard",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -17635,29 +17216,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "publishStandardClauseVersion",
-            "method": "POST",
-            "normalizedPath": "/standard-clause-versions/:param/publication",
-            "normalizedKey": "POST /standard-clause-versions/:param/publication",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -17678,29 +17248,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "submitStandardClauseVersion",
-            "method": "POST",
-            "normalizedPath": "/standard-clause-versions/:param/submission",
-            "normalizedKey": "POST /standard-clause-versions/:param/submission",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -17721,29 +17280,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_02_template_governance_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createStandardClause",
-            "method": "POST",
-            "normalizedPath": "/standard-clauses",
-            "normalizedKey": "POST /standard-clauses",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

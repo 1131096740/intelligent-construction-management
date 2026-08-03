@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "6f3097e8e1269ef1742e3813acb71cd46ea3cf6290f27acb840a3aec8697ef71",
+      "sha256": "6995de98102917cd1b7388864ce1a5d285f1008dd036ecf0b004446374b0248d",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
@@ -32,9 +32,9 @@
         "mainRequestBindingCount": 452,
         "ticketFollowupCount": 2,
         "requestEdgeCount": 451,
-        "productionConsumerCount": 390,
-        "orphanWrapperCount": 42,
-        "testOnlyWrapperCount": 41,
+        "productionConsumerCount": 351,
+        "orphanWrapperCount": 81,
+        "testOnlyWrapperCount": 74,
         "unreferencedWrapperCount": 1,
         "duplicateNormalizedRouteGroupCount": 12,
         "authTransportExceptionCount": 5
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "1864351330c81def1f65b2aef9e3da3927f5d4d0dec1bc81c37abcec17c270bc",
+      "sha256": "8cebbc51a1d431c89f8d3b509bfc41b2a402da13f0b32c21003b02fb85e4e698",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 243,
-        "pageActionCount": 46,
+        "registeredActionCount": 241,
+        "pageActionCount": 44,
         "backgroundActionCount": 197,
         "reachableVueFileCount": 131,
         "routeRootCount": 47,
-        "totalVueFileCount": 135,
-        "parsedVueFileCount": 135,
-        "reachableProductionModuleCount": 233,
-        "templateEventDirectiveCount": 949,
-        "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 233,
-        "candidateProductionMutationConsumerCount": 233,
-        "acceptedProductionMutationConsumerCount": 233,
-        "productionMutationConsumerPairCount": 282,
-        "blockerCount": 52
+        "totalVueFileCount": 142,
+        "parsedVueFileCount": 142,
+        "reachableProductionModuleCount": 232,
+        "templateEventDirectiveCount": 873,
+        "propCallbackDirectiveCount": 7,
+        "coveredProductionMutationConsumerCount": 231,
+        "candidateProductionMutationConsumerCount": 231,
+        "acceptedProductionMutationConsumerCount": 231,
+        "productionMutationConsumerPairCount": 243,
+        "blockerCount": 15
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "12b21cf49ec8eaf27ddbb5d5e56ee9ecfaf459ec447fe21ab26daa6bb275d76f",
+      "sha256": "3e918c4a01c9198fc5117855ac18b3074704fd42e3705184e264a56335a0f09e",
       "status": "ready",
       "summary": {
         "routeCount": 442,
         "exactRouteCount": 442,
         "normalizedRouteCount": 442,
-        "classificationOverrideCount": 115,
+        "classificationOverrideCount": 153,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "a67afb7ab71ac617d2c4413d76d3b44cf74a7885ee744186787f9cb6d8a2b9f0",
+        "classificationOverrideSha256": "b8a7af157d7bad42e5f761c4b008ba4bdf2b6e393ddad7fd008ca93f1f45c3ca",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 327,
-        "pageRouteCount": 330,
+        "derivedProductionPageCount": 289,
+        "pageRouteCount": 290,
         "externalTakeoverCount": 61,
-        "exitCandidateCount": 48,
+        "exitCandidateCount": 88,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 379,
+          "web_api_wrapper": 339,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 1,
-          "none": 54
+          "none": 94
         },
         "blockerCount": 0
       }
@@ -94,24 +94,24 @@
   },
   "summary": {
     "routeCount": 442,
-    "pageRouteCount": 330,
+    "pageRouteCount": 290,
     "externalTakeoverRouteCount": 61,
-    "exitCandidateRouteCount": 48,
+    "exitCandidateRouteCount": 88,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 452,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 42,
+    "orphanWrapperCount": 81,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 243,
-    "actionBindingCount": 273,
-    "acceptedActionBindingCount": 254,
+    "registeredActionCount": 241,
+    "actionBindingCount": 271,
+    "acceptedActionBindingCount": 252,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 282,
-    "coveredProductionMutationConsumerPairCount": 233,
-    "uncoveredProductionMutationConsumerPairCount": 49,
-    "blockerCount": 97
+    "productionMutationConsumerPairCount": 243,
+    "coveredProductionMutationConsumerPairCount": 231,
+    "uncoveredProductionMutationConsumerPairCount": 12,
+    "blockerCount": 99
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -151,6 +151,26 @@
         "classification": "test_only"
       },
       {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "createContractBusinessScenario",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "createContractScenarioMapping",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "updateContractBusinessScenario",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "updateContractScenarioMapping",
+        "classification": "test_only"
+      },
+      {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "abandonContractDraft",
         "classification": "test_only"
@@ -158,6 +178,16 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "addBillRow",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "cloneContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "cloneLayoutTemplateVersion",
         "classification": "test_only"
       },
       {
@@ -172,7 +202,27 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createContractNumberRule",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createContractTemplate",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "createDraftCheckpoint",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createLayoutTemplate",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createStandardClause",
         "classification": "test_only"
       },
       {
@@ -187,12 +237,62 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "discardContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "discardLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "discardStandardClauseVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "fetchContractWorkbench",
         "classification": "test_only"
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "getLatestLayoutTemplatePreview",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "inspectLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "listContractDrafts",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "listStandardClauseHistory",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "publishContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "publishLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "publishStandardClauseVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "queueLayoutTemplatePreview",
         "classification": "test_only"
       },
       {
@@ -227,7 +327,52 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "stopContractNumberRule",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "stopContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "stopLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "submitContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "submitLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "submitStandardClauseVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "updateBillRow",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "updateContractNumberRule",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "updateContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "updateLayoutTemplateVersion",
         "classification": "test_only"
       },
       {
@@ -341,6 +486,56 @@
         "classification": "test_only"
       },
       {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "cloneSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "createSettlementTemplate",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "discardSettlementTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "downloadSettlementTemplatePreview",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "generateSettlementTemplatePreview",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "inspectSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "publishSettlementTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "stopSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "submitSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "updateSettlementTemplateVersion",
+        "classification": "test_only"
+      },
+      {
         "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
         "wrapper": "createSpotProcurementPaymentDraft",
         "classification": "test_only"
@@ -402,206 +597,6 @@
     "unclassifiedRoutes": [],
     "uncoveredMutationConsumers": [
       {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractBusinessScenario",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "POST /contract-business-scenarios"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractScenarioMapping",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "POST /contract-business-scenarios/:param/template-mappings"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractBusinessScenario",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-business-scenarios/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractScenarioMapping",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-scenario-template-mappings/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneContractTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/clone"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneLayoutTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/clone"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractNumberRule",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue",
-        "normalizedKeys": [
-          "POST /contract-number-rules"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractTemplate",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue",
-        "normalizedKeys": [
-          "POST /contract-templates"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createLayoutTemplate",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-templates"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createStandardClause",
-        "consumer": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clauses"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardContractTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/discard"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardLayoutTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/discard"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardStandardClauseVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clause-versions/:param/discard"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "inspectLayoutTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/inspection"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishContractTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/publication"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishLayoutTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/publication"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishStandardClauseVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clause-versions/:param/publication"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueLayoutTemplatePreview",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/preview-generation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractNumberRule",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue",
-        "normalizedKeys": [
-          "POST /contract-number-rules/:param/stop"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitLayoutTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitStandardClauseVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clause-versions/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractNumberRule",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-number-rules/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-template-versions/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateLayoutTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-layout-template-versions/:param"
-        ]
-      },
-      {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "copyAbandonedContractDraft",
         "consumer": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
@@ -623,22 +618,6 @@
         "consumer": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
         "normalizedKeys": [
           "DELETE /approval-delegations/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
         ]
       },
       {
@@ -711,87 +690,6 @@
         "consumer": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
         "normalizedKeys": [
           "PATCH /organization/users/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "cloneSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/clone"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "createSettlementTemplate",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-templates"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "discardSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/discard"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "downloadSettlementTemplatePreview",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/preview-pdf/download-ticket",
-          "POST /settlement-template-versions/:param/preview-xlsx/download-ticket"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "generateSettlementTemplatePreview",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/preview-generation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "inspectSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/inspection"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "publishSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/publication"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "stopSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/stop"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "submitSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "updateSettlementTemplateVersion",
-        "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "PATCH /settlement-template-versions/:param"
         ]
       }
     ],
@@ -1698,7 +1596,7 @@
           "normalizedKey": "GET /contract-business-scenarios",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
+            "apps/web-admin/src/pages/contract-templates/ContractScenarioReadonlyPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
@@ -1986,8 +1884,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -1996,9 +1894,7 @@
           "path": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
           "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -2007,7 +1903,9 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": []
+      "blockerCodes": [
+        "ORPHAN_WRAPPER"
+      ]
     },
     {
       "route": {
@@ -2041,7 +1939,7 @@
           "normalizedKey": "GET /contract-layout-templates/:param",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
+            "apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
@@ -2123,7 +2021,7 @@
           "normalizedKey": "GET /contract-number-rules",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
+            "apps/web-admin/src/pages/contract-templates/ContractNumberRuleReadonlyPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
@@ -2181,7 +2079,7 @@
           "normalizedKey": "GET /contract-templates/:param",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateReadonlyDetailPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
@@ -2222,8 +2120,8 @@
           "normalizedKey": "GET /contract-templates",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue",
+            "apps/web-admin/src/pages/contract-templates/ContractScenarioReadonlyPage.vue",
+            "apps/web-admin/src/pages/contract-templates/ContractTemplateReadonlyListPage.vue",
             "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
           ],
           "testConsumers": [
@@ -6062,7 +5960,7 @@
           "normalizedKey": "GET /settlement-templates/:param",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateReadonlyPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-template.api.test.ts"
@@ -7300,8 +7198,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -7310,9 +7208,7 @@
           "path": "/standard-clauses/history",
           "normalizedKey": "GET /standard-clauses/history",
           "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -7321,7 +7217,9 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": []
+      "blockerCodes": [
+        "ORPHAN_WRAPPER"
+      ]
     },
     {
       "route": {
@@ -7352,7 +7250,7 @@
           "normalizedKey": "GET /standard-clauses",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
+            "apps/web-admin/src/pages/contract-templates/StandardClauseReadonlyPage.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractClausesSection.vue"
           ],
           "testConsumers": [
@@ -7529,8 +7427,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
@@ -7539,9 +7437,7 @@
           "path": "/contract-business-scenarios/:param",
           "normalizedKey": "PATCH /contract-business-scenarios/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
           ]
@@ -7549,9 +7445,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -7575,8 +7471,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -7585,9 +7481,7 @@
           "path": "/contract-layout-template-versions/:param",
           "normalizedKey": "PATCH /contract-layout-template-versions/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -7595,9 +7489,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -7618,8 +7512,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -7628,9 +7522,7 @@
           "path": "/contract-number-rules/:param",
           "normalizedKey": "PATCH /contract-number-rules/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -7638,9 +7530,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -7664,8 +7556,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
@@ -7674,9 +7566,7 @@
           "path": "/contract-scenario-template-mappings/:param",
           "normalizedKey": "PATCH /contract-scenario-template-mappings/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
           ]
@@ -7684,9 +7574,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -7710,8 +7600,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -7720,9 +7610,7 @@
           "path": "/contract-template-versions/:param",
           "normalizedKey": "PATCH /contract-template-versions/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -7730,9 +7618,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -8264,8 +8152,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -8274,9 +8162,7 @@
           "path": "/settlement-template-versions/:param",
           "normalizedKey": "PATCH /settlement-template-versions/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-template.api.test.ts"
           ]
@@ -8284,9 +8170,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -9326,8 +9212,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
@@ -9336,9 +9222,7 @@
           "path": "/contract-business-scenarios/:param/template-mappings",
           "normalizedKey": "POST /contract-business-scenarios/:param/template-mappings",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
           ]
@@ -9346,9 +9230,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -9372,8 +9256,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
@@ -9382,9 +9266,7 @@
           "path": "/contract-business-scenarios",
           "normalizedKey": "POST /contract-business-scenarios",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-scenario.api.test.ts"
           ]
@@ -9392,9 +9274,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10172,8 +10054,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10182,9 +10064,7 @@
           "path": "/contract-layout-template-versions/:param/clone",
           "normalizedKey": "POST /contract-layout-template-versions/:param/clone",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10192,9 +10072,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10218,8 +10098,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10228,9 +10108,7 @@
           "path": "/contract-layout-template-versions/:param/discard",
           "normalizedKey": "POST /contract-layout-template-versions/:param/discard",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10238,9 +10116,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10264,8 +10142,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10274,9 +10152,7 @@
           "path": "/contract-layout-template-versions/:param/inspection",
           "normalizedKey": "POST /contract-layout-template-versions/:param/inspection",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10284,9 +10160,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10310,8 +10186,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10320,9 +10196,7 @@
           "path": "/contract-layout-template-versions/:param/preview-generation",
           "normalizedKey": "POST /contract-layout-template-versions/:param/preview-generation",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10330,9 +10204,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10355,8 +10229,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10365,9 +10239,7 @@
           "path": "/contract-layout-template-versions/:param/publication",
           "normalizedKey": "POST /contract-layout-template-versions/:param/publication",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10375,9 +10247,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10443,8 +10315,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10453,45 +10325,18 @@
           "path": "/contract-layout-template-versions/:param/stop",
           "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "layout-template.risk-stop",
-          "bindingIndex": 0,
-          "identity": "layout-template.risk-stop\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000stopLayoutTemplateVersion\u0000POST\u0000POST /contract-layout-template-versions/:param/stop\u00000",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "layoutTemplateCapability.versions",
-            "key": "risk_stop",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "stopLayoutTemplateVersion",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
-      "blockerCodes": []
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": [
+        "ORPHAN_WRAPPER"
+      ]
     },
     {
       "route": {
@@ -10514,8 +10359,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10524,9 +10369,7 @@
           "path": "/contract-layout-template-versions/:param/submission",
           "normalizedKey": "POST /contract-layout-template-versions/:param/submission",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10534,9 +10377,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10560,8 +10403,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10570,9 +10413,7 @@
           "path": "/contract-layout-templates",
           "normalizedKey": "POST /contract-layout-templates",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10580,9 +10421,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10671,8 +10512,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10681,9 +10522,7 @@
           "path": "/contract-number-rules/:param/stop",
           "normalizedKey": "POST /contract-number-rules/:param/stop",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10691,9 +10530,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10714,8 +10553,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10724,9 +10563,7 @@
           "path": "/contract-number-rules",
           "normalizedKey": "POST /contract-number-rules",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10734,9 +10571,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10896,8 +10733,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10906,9 +10743,7 @@
           "path": "/contract-template-versions/:param/clone",
           "normalizedKey": "POST /contract-template-versions/:param/clone",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10916,9 +10751,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10942,8 +10777,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10952,9 +10787,7 @@
           "path": "/contract-template-versions/:param/discard",
           "normalizedKey": "POST /contract-template-versions/:param/discard",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -10962,9 +10795,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -10987,8 +10820,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -10997,9 +10830,7 @@
           "path": "/contract-template-versions/:param/publication",
           "normalizedKey": "POST /contract-template-versions/:param/publication",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -11007,9 +10838,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -11075,8 +10906,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -11085,45 +10916,18 @@
           "path": "/contract-template-versions/:param/stop",
           "normalizedKey": "POST /contract-template-versions/:param/stop",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "contract-template.risk-stop",
-          "bindingIndex": 0,
-          "identity": "contract-template.risk-stop\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000stopContractTemplateVersion\u0000POST\u0000POST /contract-template-versions/:param/stop\u00000",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "contractTemplateCapability.versions",
-            "key": "risk_stop",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "stopContractTemplateVersion",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
-      "blockerCodes": []
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": [
+        "ORPHAN_WRAPPER"
+      ]
     },
     {
       "route": {
@@ -11146,8 +10950,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -11156,9 +10960,7 @@
           "path": "/contract-template-versions/:param/submission",
           "normalizedKey": "POST /contract-template-versions/:param/submission",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -11166,9 +10968,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -11192,8 +10994,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -11202,9 +11004,7 @@
           "path": "/contract-templates",
           "normalizedKey": "POST /contract-templates",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -11212,9 +11012,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15143,9 +14943,7 @@
           "normalizedKey": "POST /files",
           "bodyKind": "form_data",
           "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -15324,10 +15122,9 @@
           "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "covered",
       "blockerCodes": [
-        "DUPLICATE_MUTATION_ROUTE",
-        "MUTATION_CONSUMER_UNCOVERED"
+        "DUPLICATE_MUTATION_ROUTE"
       ]
     },
     {
@@ -22015,8 +21812,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22025,17 +21822,15 @@
           "path": "/settlement-template-versions/:param/clone",
           "normalizedKey": "POST /settlement-template-versions/:param/clone",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22058,8 +21853,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22068,9 +21863,7 @@
           "path": "/settlement-template-versions/:param/discard",
           "normalizedKey": "POST /settlement-template-versions/:param/discard",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-template.api.test.ts"
           ]
@@ -22078,9 +21871,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22104,8 +21897,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22114,17 +21907,15 @@
           "path": "/settlement-template-versions/:param/inspection",
           "normalizedKey": "POST /settlement-template-versions/:param/inspection",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22148,8 +21939,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22158,17 +21949,15 @@
           "path": "/settlement-template-versions/:param/preview-generation",
           "normalizedKey": "POST /settlement-template-versions/:param/preview-generation",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22192,8 +21981,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22202,9 +21991,7 @@
           "path": "/settlement-template-versions/:param/preview-pdf/download-ticket",
           "normalizedKey": "POST /settlement-template-versions/:param/preview-pdf/download-ticket",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-template.api.test.ts"
           ]
@@ -22212,9 +21999,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22238,8 +22025,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22248,9 +22035,7 @@
           "path": "/settlement-template-versions/:param/preview-xlsx/download-ticket",
           "normalizedKey": "POST /settlement-template-versions/:param/preview-xlsx/download-ticket",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-template.api.test.ts"
           ]
@@ -22258,9 +22043,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22284,8 +22069,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22294,9 +22079,7 @@
           "path": "/settlement-template-versions/:param/publication",
           "normalizedKey": "POST /settlement-template-versions/:param/publication",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/settlement-template.api.test.ts"
           ]
@@ -22304,9 +22087,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22330,8 +22113,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22340,17 +22123,15 @@
           "path": "/settlement-template-versions/:param/stop",
           "normalizedKey": "POST /settlement-template-versions/:param/stop",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22374,8 +22155,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22384,17 +22165,15 @@
           "path": "/settlement-template-versions/:param/submission",
           "normalizedKey": "POST /settlement-template-versions/:param/submission",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -22418,8 +22197,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
@@ -22428,17 +22207,15 @@
           "path": "/settlement-templates",
           "normalizedKey": "POST /settlement-templates",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -26423,8 +26200,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -26433,9 +26210,7 @@
           "path": "/standard-clause-versions/:param/discard",
           "normalizedKey": "POST /standard-clause-versions/:param/discard",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -26443,9 +26218,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -26468,8 +26243,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -26478,9 +26253,7 @@
           "path": "/standard-clause-versions/:param/publication",
           "normalizedKey": "POST /standard-clause-versions/:param/publication",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -26488,9 +26261,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -26514,8 +26287,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -26524,9 +26297,7 @@
           "path": "/standard-clause-versions/:param/submission",
           "normalizedKey": "POST /standard-clause-versions/:param/submission",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -26534,9 +26305,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -26560,8 +26331,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -26570,9 +26341,7 @@
           "path": "/standard-clauses",
           "normalizedKey": "POST /standard-clauses",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
@@ -26580,9 +26349,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {

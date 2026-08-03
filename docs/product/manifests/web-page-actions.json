@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 243,
-    "pageActionCount": 46,
+    "registeredActionCount": 241,
+    "pageActionCount": 44,
     "backgroundActionCount": 197,
     "reachableVueFileCount": 131,
     "routeRootCount": 47,
-    "totalVueFileCount": 135,
-    "parsedVueFileCount": 135,
-    "reachableProductionModuleCount": 233,
-    "templateEventDirectiveCount": 949,
-    "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 233,
-    "candidateProductionMutationConsumerCount": 233,
-    "acceptedProductionMutationConsumerCount": 233,
-    "productionMutationConsumerPairCount": 282,
-    "blockerCount": 52
+    "totalVueFileCount": 142,
+    "parsedVueFileCount": 142,
+    "reachableProductionModuleCount": 232,
+    "templateEventDirectiveCount": 873,
+    "propCallbackDirectiveCount": 7,
+    "coveredProductionMutationConsumerCount": 231,
+    "candidateProductionMutationConsumerCount": 231,
+    "acceptedProductionMutationConsumerCount": 231,
+    "productionMutationConsumerPairCount": 243,
+    "blockerCount": 15
   },
   "evidence": {
-    "totalProductionModuleCount": 241,
-    "reachableProductionModuleCount": 233,
-    "totalVueFileCount": 135,
-    "parsedVueFileCount": 135
+    "totalProductionModuleCount": 248,
+    "reachableProductionModuleCount": 232,
+    "totalVueFileCount": 142,
+    "parsedVueFileCount": 142
   },
   "actions": [
     {
@@ -6154,73 +6154,6 @@
       ]
     },
     {
-      "id": "contract-template.risk-stop",
-      "usage": "page_action",
-      "routePaths": [
-        "/合同模板库/:templateId"
-      ],
-      "ownerRoutePaths": [
-        "/合同模板库/:templateId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "stopSelectedVersion",
-        "kind": "event",
-        "sourceLine": 419,
-        "sourceColumn": 6
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "contractTemplateCapability.versions",
-        "key": "risk_stop",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "stopContractTemplateVersion",
-          "method": "POST",
-          "path": "/contract-template-versions/:param/stop",
-          "normalizedKey": "POST /contract-template-versions/:param/stop",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-template-versions/:versionId/stop",
-            "normalizedKey": "POST /contract-template-versions/:param/stop",
-            "controller": "ContractTemplateController",
-            "handler": "stopVersion",
-            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "positions",
-            "isPublic": false,
-            "requiredPositions": [
-              "contract_director"
-            ],
-            "requiredProjectAction": null
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "stopSelectedVersion",
-              "stopContractTemplateVersion"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "contract-workbench.apply-type-change",
       "usage": "background",
       "routePaths": [
@@ -7885,73 +7818,6 @@
             "localCallChain": [
               "submitExpenseClaimWithCapability",
               "submitExpenseClaim"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "layout-template.risk-stop",
-      "usage": "page_action",
-      "routePaths": [
-        "/合同模板库/版式/:layoutTemplateId"
-      ],
-      "ownerRoutePaths": [
-        "/合同模板库/版式/:layoutTemplateId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "stopCurrentVersion",
-        "kind": "event",
-        "sourceLine": 236,
-        "sourceColumn": 6
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "layoutTemplateCapability.versions",
-        "key": "risk_stop",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "stopLayoutTemplateVersion",
-          "method": "POST",
-          "path": "/contract-layout-template-versions/:param/stop",
-          "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-layout-template-versions/:versionId/stop",
-            "normalizedKey": "POST /contract-layout-template-versions/:param/stop",
-            "controller": "ContractTemplateController",
-            "handler": "stopLayout",
-            "sourceFile": "services/api/src/contract-template/contract-template.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "positions",
-            "isPublic": false,
-            "requiredPositions": [
-              "contract_director"
-            ],
-            "requiredProjectAction": null
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "stopCurrentVersion",
-              "stopLayoutTemplateVersion"
             ]
           },
           "ticketFollowups": []
@@ -17103,240 +16969,6 @@
     "uncoveredMutationWrappers": [
       {
         "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractNumberRule",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue",
-        "normalizedKeys": [
-          "POST /contract-number-rules"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractNumberRule",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue",
-        "normalizedKeys": [
-          "POST /contract-number-rules/:param/stop"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractNumberRule",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-number-rules/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractBusinessScenario",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "POST /contract-business-scenarios"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractScenarioMapping",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "POST /contract-business-scenarios/:param/template-mappings"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractBusinessScenario",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-business-scenarios/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractScenarioMapping",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-scenario-template-mappings/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneContractTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/clone"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardContractTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/discard"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishContractTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/publication"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-template-versions/:param/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-template-versions/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractTemplate",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue",
-        "normalizedKeys": [
-          "POST /contract-templates"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneLayoutTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/clone"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createLayoutTemplate",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-templates"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardLayoutTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/discard"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "inspectLayoutTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/inspection"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishLayoutTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/publication"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueLayoutTemplatePreview",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/preview-generation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitLayoutTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /contract-layout-template-versions/:param/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateLayoutTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "PATCH /contract-layout-template-versions/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createStandardClause",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clauses"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardStandardClauseVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clause-versions/:param/discard"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishStandardClauseVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clause-versions/:param/publication"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitStandardClauseVersion",
-        "sourceFile": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "normalizedKeys": [
-          "POST /standard-clause-versions/:param/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "copyAbandonedContractDraft",
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
@@ -17441,106 +17073,6 @@
         "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
         "normalizedKeys": [
           "POST /organization/users"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "cloneSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/clone"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "createSettlementTemplate",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-templates"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "discardSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/discard"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "downloadSettlementTemplatePreview",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/preview-pdf/download-ticket",
-          "POST /settlement-template-versions/:param/preview-xlsx/download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "generateSettlementTemplatePreview",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/preview-generation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "inspectSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/inspection"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "publishSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/publication"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "stopSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/stop"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "submitSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-template-versions/:param/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "updateSettlementTemplateVersion",
-        "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "PATCH /settlement-template-versions/:param"
         ]
       }
     ],

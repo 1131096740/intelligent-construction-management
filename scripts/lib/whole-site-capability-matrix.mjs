@@ -586,7 +586,9 @@ function classifyOrphan(wrapper) {
     classification:
       wrapper.testConsumers.length > 0
         ? "test_only"
-        : "unreferenced"
+        : wrapper.unreachableConsumers.length > 0
+          ? "unreachable_only"
+          : "unreferenced"
   };
 }
 
@@ -722,7 +724,9 @@ function validateWebSummary(manifest) {
       (wrapper) => wrapper.testConsumers.length > 0
     ).length,
     unreferencedWrapperCount: orphanWrappers.filter(
-      (wrapper) => wrapper.testConsumers.length === 0
+      (wrapper) =>
+        wrapper.testConsumers.length === 0 &&
+        wrapper.unreachableConsumers.length === 0
     ).length,
     duplicateNormalizedRouteGroupCount:
       manifest.duplicateNormalizedRoutes.length,
@@ -2037,11 +2041,15 @@ export function buildWholeSiteCapabilityMatrix({
     "CAPABILITY_MATRIX_USAGE_EVIDENCE_SUMMARY_DRIFT"
   );
   const ticketEvidence = webManifest.wrappers.flatMap((wrapper) =>
-    wrapper.requests
-      .filter((request) => request.kind === "ticket_followup")
-      .map((request) =>
-        selectedTicketEvidence(wrapper, request)
-      )
+    wrapper.productionConsumers.length > 0
+      ? wrapper.requests
+          .filter(
+            (request) => request.kind === "ticket_followup"
+          )
+          .map((request) =>
+            selectedTicketEvidence(wrapper, request)
+          )
+      : []
   );
   assert(
     usageManifest.evidence.productionTicketFollowupCount ===

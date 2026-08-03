@@ -404,6 +404,68 @@ test("fails closed when an exit candidate regains a production consumer", async 
   );
 });
 
+test("does not treat an unreachable legacy page as a production consumer", async () => {
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contracts")
+        export class ExampleController {
+          @Post(":contractVersionId/approval-submission")
+          submitLegacy() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": `
+        export function submitLegacy(id) {
+          return postJson(\`/contracts/\${id}/approval-submission\`, {});
+        }
+      `,
+      "apps/web-admin/src/api/core-flow-read.api.ts": "",
+      "apps/web-admin/src/pages/contracts/LegacyPage.vue": `
+        <script setup>
+        import { submitLegacy } from "../../api/contract-workbench.api";
+        const submit = () => submitLegacy("c-1");
+        </script>
+      `
+    },
+    async (root) => {
+      const report = await inspectCapabilityProject({
+        root,
+        exitCandidates: [
+          {
+            normalizedKey:
+              "POST /contracts/:param/approval-submission",
+            usage: "exit_candidate",
+            consumerSurface: "none",
+            productionConsumers: [],
+            deletionAuthorized: false
+          }
+        ],
+        liveWebManifest: {
+          wrappers: [
+            {
+              apiFile:
+                "apps/web-admin/src/api/contract-workbench.api.ts",
+              name: "submitLegacy",
+              productionConsumers: [],
+              unreachableConsumers: [
+                "apps/web-admin/src/pages/contracts/LegacyPage.vue"
+              ]
+            }
+          ]
+        }
+      });
+
+      const candidate = report.capabilities.find(
+        (item) =>
+          item.route ===
+          "/contracts/:param/approval-submission"
+      );
+      assert.equal(candidate?.classification, "exit_candidate");
+      assert.deepEqual(candidate?.consumers, []);
+    }
+  );
+});
+
 test("rejects invalid or deletion-authorized exit candidate input", async () => {
   await withFixture({}, async (root) => {
     for (const exitCandidates of [

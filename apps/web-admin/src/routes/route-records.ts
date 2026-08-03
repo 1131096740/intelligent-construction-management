@@ -273,11 +273,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "合同模板库",
-        component: () => import("../pages/contract-templates/ContractTemplateListPage.vue")
+        component: () => import("../pages/contract-templates/ContractTemplateReadonlyListPage.vue")
       },
       {
         path: "合同业务场景",
-        component: () => import("../pages/contract-templates/ContractScenarioGovernancePage.vue"),
+        component: () => import("../pages/contract-templates/ContractScenarioReadonlyPage.vue"),
         meta: {
           requiredGlobalRoleKeys: contractScenarioAdminRoleKeys,
           title: "合同业务场景"
@@ -285,19 +285,19 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "合同模板库/:templateId",
-        component: () => import("../pages/contract-templates/ContractTemplateEditorPage.vue")
+        component: () => import("../pages/contract-templates/ContractTemplateReadonlyDetailPage.vue")
       },
       {
         path: "合同模板库/版式/:layoutTemplateId",
-        component: () => import("../pages/contract-templates/LayoutTemplateEditorPage.vue")
+        component: () => import("../pages/contract-templates/LayoutTemplateReadonlyPage.vue")
       },
       {
         path: "合同模板库/标准条款",
-        component: () => import("../pages/contract-templates/StandardClauseLibraryPage.vue")
+        component: () => import("../pages/contract-templates/StandardClauseReadonlyPage.vue")
       },
       {
         path: "合同模板库/编号规则",
-        component: () => import("../pages/contract-templates/ContractNumberRulePage.vue")
+        component: () => import("../pages/contract-templates/ContractNumberRuleReadonlyPage.vue")
       },
       {
         path: "合作单位档案",
@@ -329,12 +329,12 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "结算模板库/新建",
-        component: () => import("../pages/settlement-templates/SettlementTemplateEditorPage.vue"),
+        component: () => import("../pages/settlement-templates/SettlementTemplateReadonlyPage.vue"),
         meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "新建结算模板" }
       },
       {
         path: "结算模板库/:templateId",
-        component: () => import("../pages/settlement-templates/SettlementTemplateEditorPage.vue"),
+        component: () => import("../pages/settlement-templates/SettlementTemplateReadonlyPage.vue"),
         meta: { requiredGlobalRoleKeys: settlementTemplateAdminRoleKeys, title: "结算模板治理" }
       },
       {

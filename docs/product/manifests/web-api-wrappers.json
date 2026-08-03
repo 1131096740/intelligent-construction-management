@@ -14,16 +14,16 @@
     "mainRequestBindingCount": 452,
     "ticketFollowupCount": 2,
     "requestEdgeCount": 451,
-    "productionConsumerCount": 390,
-    "orphanWrapperCount": 42,
-    "testOnlyWrapperCount": 41,
+    "productionConsumerCount": 351,
+    "orphanWrapperCount": 81,
+    "testOnlyWrapperCount": 74,
     "unreferencedWrapperCount": 1,
     "duplicateNormalizedRouteGroupCount": 12,
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 241,
-    "reachableProductionModuleCount": 233
+    "productionModuleCount": 248,
+    "reachableProductionModuleCount": 232
   },
   "wrappers": [
     {
@@ -482,10 +482,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createContractScenarioMapping",
@@ -513,10 +513,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "listAvailableContractBusinessScenarios",
@@ -573,10 +573,12 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/ContractScenarioReadonlyPage.vue"
+      ]
     },
     {
       "name": "recommendContractScenarioTemplates",
@@ -634,10 +636,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "updateContractScenarioMapping",
@@ -665,10 +667,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-scenario.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "abandonContractTaxFactRevision",
@@ -1052,10 +1054,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "cloneLayoutTemplateVersion",
@@ -1082,10 +1084,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "confirmContractBillTransitions",
@@ -1228,10 +1230,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createContractTemplate",
@@ -1258,10 +1260,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createDraftCheckpoint",
@@ -1316,10 +1318,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createStandardClause",
@@ -1346,10 +1348,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createWorkbenchDraft",
@@ -1493,10 +1495,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "discardLayoutTemplateVersion",
@@ -1523,10 +1525,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "discardStandardClauseVersion",
@@ -1553,10 +1555,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "downloadBillExcelTemplate",
@@ -1985,10 +1987,12 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/ContractTemplateReadonlyDetailPage.vue"
+      ]
     },
     {
       "name": "getLatestLayoutTemplatePreview",
@@ -2015,10 +2019,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "getLayoutTemplate",
@@ -2045,10 +2049,12 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/LayoutTemplateReadonlyPage.vue"
+      ]
     },
     {
       "name": "heartbeatContractDraftEditLease",
@@ -2106,10 +2112,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "listBusinessParties",
@@ -2224,10 +2230,12 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/ContractNumberRuleReadonlyPage.vue"
+      ]
     },
     {
       "name": "listPublishedContractTemplates",
@@ -2254,12 +2262,15 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue",
-        "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue",
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+        "apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/ContractScenarioReadonlyPage.vue",
+        "apps/web-admin/src/pages/contract-templates/ContractTemplateReadonlyListPage.vue",
+        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+      ]
     },
     {
       "name": "listPublishedLayoutTemplates",
@@ -2317,11 +2328,13 @@
         "apps/web-admin/src/api/contract-workbench.api.test.ts",
         "apps/web-admin/src/pages/contracts/workbench/ContractClausesSection.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractClausesSection.vue"
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contract-templates/StandardClauseReadonlyPage.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractClausesSection.vue"
+      ]
     },
     {
       "name": "listStandardClauseHistory",
@@ -2348,10 +2361,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "previewContractDraftBillExcelImport",
@@ -2438,10 +2451,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "publishLayoutTemplateVersion",
@@ -2468,10 +2481,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "publishStandardClauseVersion",
@@ -2498,10 +2511,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "queueContractDocument",
@@ -2589,10 +2602,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "releaseContractDraftEditLease",
@@ -2937,10 +2950,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "stopContractTemplateVersion",
@@ -2967,10 +2980,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "stopLayoutTemplateVersion",
@@ -2997,10 +3010,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "submitContractDraft",
@@ -3058,10 +3071,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "submitLayoutTemplateVersion",
@@ -3088,10 +3101,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "submitStandardClauseVersion",
@@ -3118,10 +3131,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "takeOverContractDraftEditLease",
@@ -3237,10 +3250,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "updateContractTemplateVersion",
@@ -3267,10 +3280,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "updateLayoutTemplateVersion",
@@ -3297,10 +3310,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "uploadContractFormalApprovalFile",
@@ -8872,12 +8885,13 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+      ]
     },
     {
       "name": "uploadProjectAffiliateBusinessPrivateFile",
@@ -11333,11 +11347,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "createSettlementTemplate",
@@ -11361,11 +11375,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "discardSettlementTemplateVersion",
@@ -11392,10 +11406,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "downloadSettlementTemplatePreview",
@@ -11449,10 +11463,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchSettlementTemplateRecommendations",
@@ -11506,11 +11520,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "getSettlementTemplate",
@@ -11537,10 +11551,12 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlement-templates/SettlementTemplateReadonlyPage.vue"
+      ]
     },
     {
       "name": "inspectSettlementTemplateVersion",
@@ -11564,11 +11580,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "listSettlementTemplates",
@@ -11625,10 +11641,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "stopSettlementTemplateVersion",
@@ -11652,11 +11668,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "submitSettlementTemplateVersion",
@@ -11680,11 +11696,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "updateSettlementTemplateVersion",
@@ -11711,10 +11727,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "applySettlementImport",
@@ -13823,6 +13839,26 @@
         "classification": "test_only"
       },
       {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "createContractBusinessScenario",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "createContractScenarioMapping",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "updateContractBusinessScenario",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+        "wrapper": "updateContractScenarioMapping",
+        "classification": "test_only"
+      },
+      {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "abandonContractDraft",
         "classification": "test_only"
@@ -13830,6 +13866,16 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "addBillRow",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "cloneContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "cloneLayoutTemplateVersion",
         "classification": "test_only"
       },
       {
@@ -13844,7 +13890,27 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createContractNumberRule",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createContractTemplate",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "createDraftCheckpoint",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createLayoutTemplate",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createStandardClause",
         "classification": "test_only"
       },
       {
@@ -13859,12 +13925,62 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "discardContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "discardLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "discardStandardClauseVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "fetchContractWorkbench",
         "classification": "test_only"
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "getLatestLayoutTemplatePreview",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "inspectLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "listContractDrafts",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "listStandardClauseHistory",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "publishContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "publishLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "publishStandardClauseVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "queueLayoutTemplatePreview",
         "classification": "test_only"
       },
       {
@@ -13899,7 +14015,52 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "stopContractNumberRule",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "stopContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "stopLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "submitContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "submitLayoutTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "submitStandardClauseVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "updateBillRow",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "updateContractNumberRule",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "updateContractTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "updateLayoutTemplateVersion",
         "classification": "test_only"
       },
       {
@@ -14010,6 +14171,56 @@
       {
         "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
         "wrapper": "abandonSettlementDraftRecord",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "cloneSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "createSettlementTemplate",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "discardSettlementTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "downloadSettlementTemplatePreview",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "generateSettlementTemplatePreview",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "inspectSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "publishSettlementTemplateVersion",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "stopSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "submitSettlementTemplateVersion",
+        "classification": "unreachable_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+        "wrapper": "updateSettlementTemplateVersion",
         "classification": "test_only"
       },
       {

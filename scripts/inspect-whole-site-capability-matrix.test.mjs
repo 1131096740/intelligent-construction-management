@@ -124,6 +124,7 @@ function wrapper(
       "apps/web-admin/src/pages/FixturePage.vue"
     ],
     testConsumers = [],
+    unreachableConsumers = [],
     sourceLine = 10,
     localCallChains = [[name]]
   } = {}
@@ -147,7 +148,7 @@ function wrapper(
     ],
     productionConsumers,
     testConsumers,
-    unreachableConsumers: []
+    unreachableConsumers
   };
 }
 
@@ -175,7 +176,9 @@ function webManifest(
       classification:
         item.testConsumers.length > 0
           ? "test_only"
-          : "unreferenced"
+          : item.unreachableConsumers.length > 0
+            ? "unreachable_only"
+            : "unreferenced"
     }))
     .sort((left, right) =>
       `${left.apiFile}\u0000${left.wrapper}`.localeCompare(
@@ -949,6 +952,77 @@ test("blocks an orphan wrapper even when its route exists", () => {
   );
   const matrix = build(input);
   assert.equal(matrix.summary.orphanWrapperCount, 1);
+});
+
+test("accepts an unreachable-only orphan classification", () => {
+  const input = fixture();
+  const orphanRoute = route("GET", "/legacy", "Legacy");
+  const orphan = wrapper("GET", "/legacy", {
+    name: "legacyRequest",
+    productionConsumers: [],
+    unreachableConsumers: [
+      "apps/web-admin/src/pages/LegacyPage.vue"
+    ]
+  });
+  input.nestManifest.routes.push(orphanRoute);
+  input.webManifest = webManifest([
+    ...input.webManifest.wrappers,
+    orphan
+  ]);
+  input.pageManifest = pageManifest(input.webManifest, []);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  const matrix = build(input);
+
+  assert.equal(matrix.summary.orphanWrapperCount, 1);
+  assert.deepEqual(input.webManifest.blockers.orphanWrappers, [
+    {
+      apiFile: orphan.apiFile,
+      wrapper: orphan.name,
+      classification: "unreachable_only"
+    }
+  ]);
+});
+
+test("ignores ticket followups from unreachable-only wrappers", () => {
+  const input = fixture();
+  const legacyRoute = route("GET", "/legacy", "Legacy");
+  const legacy = wrapper("GET", "/legacy", {
+    name: "legacyDownload",
+    productionConsumers: [],
+    unreachableConsumers: [
+      "apps/web-admin/src/pages/LegacyPage.vue"
+    ]
+  });
+  legacy.requests.push({
+    kind: "ticket_followup",
+    sourceLine: 11,
+    method: "GET",
+    ticketField: "downloadUrl",
+    bodyKind: "none",
+    localCallChains: [[legacy.name]]
+  });
+  input.nestManifest.routes.push(legacyRoute);
+  input.webManifest = webManifest([
+    ...input.webManifest.wrappers,
+    legacy
+  ]);
+  input.pageManifest = pageManifest(input.webManifest, []);
+  input.usageManifest = usageManifest(
+    input.nestManifest.routes,
+    input.webManifest
+  );
+
+  const matrix = build(input);
+
+  assert.equal(matrix.summary.orphanWrapperCount, 1);
+  assert.equal(
+    input.usageManifest.evidence.productionTicketFollowupCount,
+    0
+  );
 });
 
 test("blocks duplicate mutation wrappers", () => {
