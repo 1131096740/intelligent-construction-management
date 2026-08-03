@@ -402,6 +402,7 @@ export interface PaymentDetailReadModel {
   evidenceFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  availableActionKeys: string[];
   primaryAction: string | null;
   disabledReasons: string[];
   traceRules: string[];

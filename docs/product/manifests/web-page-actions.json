@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 161,
-    "pageActionCount": 49,
-    "backgroundActionCount": 112,
+    "registeredActionCount": 171,
+    "pageActionCount": 48,
+    "backgroundActionCount": 123,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 234,
     "templateEventDirectiveCount": 960,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 148,
-    "candidateProductionMutationConsumerCount": 151,
-    "acceptedProductionMutationConsumerCount": 148,
+    "coveredProductionMutationConsumerCount": 160,
+    "candidateProductionMutationConsumerCount": 162,
+    "acceptedProductionMutationConsumerCount": 160,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 138
+    "blockerCount": 124
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -6911,6 +6911,692 @@
       ]
     },
     {
+      "id": "payment-detail.abandon",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "abandonPaymentRequestWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2032,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "abandon_application",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "abandonPaymentRequest",
+          "method": "POST",
+          "path": "/payments/:param/abandonment",
+          "normalizedKey": "POST /payments/:param/abandonment",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/abandonment",
+            "normalizedKey": "POST /payments/:param/abandonment",
+            "controller": "PaymentController",
+            "handler": "abandonRequest",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "abandonPaymentRequestWithCapability",
+              "abandonPaymentRequest"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.approval-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPaymentApprovalFormWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2056,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "download_approval_form",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "method": "POST",
+          "path": "/approval-forms/:param/:param/download",
+          "normalizedKey": "POST /approval-forms/:param/:param/download",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/approval-forms/:businessType/:businessId/download",
+            "normalizedKey": "POST /approval-forms/:param/:param/download",
+            "controller": "ApprovalFormController",
+            "handler": "download",
+            "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPaymentApprovalFormWithCapability",
+              "downloadApprovalFormRequest"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "delegatePaymentApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2044,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "delegate_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "delegatePaymentApproval",
+          "method": "POST",
+          "path": "/payments/:param/approval-delegation",
+          "normalizedKey": "POST /payments/:param/approval-delegation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/approval-delegation",
+            "normalizedKey": "POST /payments/:param/approval-delegation",
+            "controller": "PaymentController",
+            "handler": "delegateApproval",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "delegatePaymentApprovalWithCapability",
+              "delegatePaymentApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.file-download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPaymentPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2138,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadPaymentPrivateFileWithCapability",
+              "createPrivateFileDownloadTicket"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.finance-record",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordPaymentFinanceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2079,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_finance",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentFinance",
+          "method": "POST",
+          "path": "/payments/:param/finance-records",
+          "normalizedKey": "POST /payments/:param/finance-records",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/finance-records",
+            "normalizedKey": "POST /payments/:param/finance-records",
+            "controller": "PaymentController",
+            "handler": "recordFinance",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.finance_record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordPaymentFinanceWithCapability",
+              "recordPaymentFinance"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.pdf-archive",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordPaymentPdfArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2091,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "archive_pdf",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentPdfArchive",
+          "method": "POST",
+          "path": "/payments/:param/pdf-archive",
+          "normalizedKey": "POST /payments/:param/pdf-archive",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/pdf-archive",
+            "normalizedKey": "POST /payments/:param/pdf-archive",
+            "controller": "PaymentController",
+            "handler": "recordPdfArchive",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.pdf_archive"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordPaymentPdfArchiveWithCapability",
+              "recordPaymentPdfArchive"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPaymentPdfArchivePrivateFile",
+          "method": "POST",
+          "path": "/payments/:param/pdf-archive-file-uploads",
+          "normalizedKey": "POST /payments/:param/pdf-archive-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/pdf-archive-file-uploads",
+            "normalizedKey": "POST /payments/:param/pdf-archive-file-uploads",
+            "controller": "PaymentController",
+            "handler": "uploadPdfArchivePrivateFile",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.pdf_archive"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordPaymentPdfArchiveWithCapability",
+              "uploadPaymentPdfArchivePrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.pdf-generation",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generatePaymentPdfArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2070,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "archive_pdf",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "generatePaymentPdfArchive",
+          "method": "POST",
+          "path": "/payments/:param/pdf-generation",
+          "normalizedKey": "POST /payments/:param/pdf-generation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/pdf-generation",
+            "normalizedKey": "POST /payments/:param/pdf-generation",
+            "controller": "PaymentController",
+            "handler": "generatePdfArchive",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.pdf_archive"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "generatePaymentPdfArchiveWithCapability",
+              "generatePaymentPdfArchive"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.remind",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "remindPaymentApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2108,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "remind_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "remindPaymentApproval",
+          "method": "POST",
+          "path": "/payments/:param/approval-reminder",
+          "normalizedKey": "POST /payments/:param/approval-reminder",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/approval-reminder",
+            "normalizedKey": "POST /payments/:param/approval-reminder",
+            "controller": "PaymentController",
+            "handler": "remindApproval",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "remindPaymentApprovalWithCapability",
+              "remindPaymentApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferPaymentApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2117,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "transfer_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "transferPaymentApproval",
+          "method": "POST",
+          "path": "/payments/:param/approval-transfer",
+          "normalizedKey": "POST /payments/:param/approval-transfer",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/approval-transfer",
+            "normalizedKey": "POST /payments/:param/approval-transfer",
+            "controller": "PaymentController",
+            "handler": "transferApproval",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "transferPaymentApprovalWithCapability",
+              "transferPaymentApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.withdraw",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawPaymentApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2129,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawPaymentApproval",
+          "method": "POST",
+          "path": "/payments/:param/approval-withdrawal",
+          "normalizedKey": "POST /payments/:param/approval-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/approval-withdrawal",
+            "normalizedKey": "POST /payments/:param/approval-withdrawal",
+            "controller": "PaymentController",
+            "handler": "withdrawApproval",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawPaymentApprovalWithCapability",
+              "withdrawPaymentApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "payment-execution.record",
       "usage": "page_action",
       "routePaths": [
@@ -7049,7 +7735,7 @@
     },
     {
       "id": "payment-request.create-local-form",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/付款工作台"
       ],
@@ -7058,19 +7744,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "submitCreatePayment",
-        "kind": "event",
-        "sourceLine": 277,
-        "sourceColumn": 8
+        "element": "module",
+        "event": "call",
+        "handler": "createPaymentRequestWithCapability",
+        "kind": "background_call",
+        "sourceLine": 751,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "none",
-        "source": "submitDisabledReason",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_payment",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -7097,11 +7784,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitCreatePayment"
+              "createPaymentRequestWithCapability",
+              "createPaymentRequest"
             ]
           },
           "ticketFollowups": []
@@ -11680,13 +12370,6 @@
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "payment-request.create-local-form",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPaymentRequest"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "project-expense.create-local-role",
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -11694,14 +12377,7 @@
       }
     ],
     "unresolvedRoutes": [],
-    "writeWithoutServerCapability": [
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "payment-request.create-local-form",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
-        "reason": "capability_none"
-      }
-    ],
+    "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [
       {
         "code": "CLIENT_ROLE_OR_STATUS_GATE",
@@ -12246,114 +12922,6 @@
         "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
         "normalizedKeys": [
           "POST /organization/users"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "abandonPaymentRequest",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/abandonment"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "delegatePaymentApproval",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/approval-delegation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "generatePaymentPdfArchive",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/pdf-generation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentFinance",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/finance-records"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentPdfArchive",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/pdf-archive"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "remindPaymentApproval",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/approval-reminder"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "transferPaymentApproval",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/approval-transfer"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawPaymentApproval",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /payments/:param/approval-withdrawal"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPaymentRequest",
-        "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /payments"
         ]
       },
       {

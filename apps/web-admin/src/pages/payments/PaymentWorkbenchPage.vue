@@ -300,6 +300,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   createPaymentRequest,
   fetchContractPaymentApplication,
+  fetchPaymentCreateCapability,
   fetchPaymentContractOptions,
   fetchProjects,
   type ProjectOptionReadModel
@@ -747,12 +748,25 @@ async function loadPaymentContracts() {
   }
 }
 
+async function createPaymentRequestWithCapability(
+  projectId: string,
+  payload: Parameters<typeof createPaymentRequest>[0]
+) {
+  const capability = await fetchPaymentCreateCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("付款项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("create_payment");
+  if (!operationAllowed) throw new Error("当前用户不能在该项目新建付款申请");
+  return createPaymentRequest(payload);
+}
+
 async function submitCreatePayment() {
   if (submitDisabledReason.value) return;
   createBusy.value = true;
   message.value = "";
   try {
-    const payment = await createPaymentRequest(
+    const payment = await createPaymentRequestWithCapability(
+      createForm.projectId,
       buildPaymentCreatePayload(selectedContract.value, selectedSettlement.value, createForm)
     );
     allowNavigation.value = true;

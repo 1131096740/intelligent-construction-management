@@ -481,6 +481,7 @@ describe("PaymentController authorization wiring", () => {
 
   it.each([
     ["create", "payment.create"],
+    ["createCapability", "payment.create"],
     ["contractApplication", "payment.create"],
     ["reviewApproval", "payment.approve"],
     ["transferApproval", "payment.approve"],
@@ -488,6 +489,7 @@ describe("PaymentController authorization wiring", () => {
     ["recordExecution", "payment.execution"],
     ["recordFinance", "payment.finance_record"],
     ["recordPdfArchive", "payment.pdf_archive"],
+    ["uploadPdfArchivePrivateFile", "payment.pdf_archive"],
     ["generatePdfArchive", "payment.pdf_archive"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (PaymentController.prototype as unknown as Record<string, object>)[method];
@@ -523,6 +525,105 @@ describe("PaymentController authorization wiring", () => {
       contract: { contractVersionId: "contract-version-1" }
     });
     expect(paymentRead.getContractApplication).toHaveBeenCalledWith("contract-version-1");
+  });
+
+  it("returns a project-scoped payment create capability", () => {
+    const controller = new PaymentController({} as never, {} as never, {} as never);
+
+    expect(controller.createCapability("project-1")).toEqual({
+      projectId: "project-1",
+      availableActions: ["create_payment"]
+    });
+  });
+
+  it("returns fresh payment actions for a visible payment", async () => {
+    const paymentRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        id: "FK-2026-011",
+        availableActionKeys: ["record_finance"]
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
+
+    await expect(
+      controller.capability("FK-2026-011", { id: "user-1" } as never)
+    ).resolves.toEqual({
+      paymentId: "FK-2026-011",
+      availableActions: ["record_finance"]
+    });
+    expect(paymentRead.getDetail).toHaveBeenCalledWith(
+      "FK-2026-011",
+      ["project-1"],
+      "user-1"
+    );
+  });
+
+  it("uploads a payment PDF through the scoped file service after a fresh action check", async () => {
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }) };
+    const paymentRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        id: "FK-2026-011",
+        availableActionKeys: ["archive_pdf"]
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(
+      paymentRead as never,
+      {} as never,
+      projectVisibility as never,
+      files as never
+    );
+    const file = {
+      originalname: "付款归档.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("payment")
+    };
+
+    await expect(
+      controller.uploadPdfArchivePrivateFile(
+        "FK-2026-011",
+        file,
+        { id: "finance-1" } as never,
+        "upload-1"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadedByUserId: "finance-1", idempotencyKey: "upload-1" })
+    );
+  });
+
+  it("rejects payment PDF uploads before storage when the action is unavailable", async () => {
+    const files = { uploadPrivateFile: jest.fn() };
+    const paymentRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        id: "FK-2026-011",
+        availableActionKeys: []
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(
+      paymentRead as never,
+      {} as never,
+      projectVisibility as never,
+      files as never
+    );
+    const file = {
+      originalname: "付款归档.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("payment")
+    };
+
+    await expect(
+      controller.uploadPdfArchivePrivateFile(
+        "FK-2026-011",
+        file,
+        { id: "finance-1" } as never
+      )
+    ).rejects.toThrow("当前付款状态或操作权限不允许上传财务归档");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
   it("forwards visible project ids to payment detail reads", async () => {

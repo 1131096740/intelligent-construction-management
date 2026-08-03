@@ -934,6 +934,7 @@ describe("PaymentReadService", () => {
 
     expect(projectVisibility.effectiveRoleKeys).toHaveBeenCalledWith("user-cashier", "project-1");
     expect(detail.primaryAction).toBe("record_execution");
+    expect(detail.availableActionKeys).toContain("record_execution");
     expect(detail.availableActions).toContainEqual({
       key: "record_execution",
       label: "登记实际付款",

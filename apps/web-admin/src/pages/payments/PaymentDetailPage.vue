@@ -727,15 +727,17 @@ import {
   downloadApprovalForm as downloadApprovalFormRequest,
   executePaymentApprovalReviewAction,
   fetchApprovalDelegationUserOptions,
+  fetchPaymentActionCapability,
   fetchPaymentDetail,
   generatePaymentPdfArchive,
+  getPrivateFileDownloadTicketCapability,
   preparePaymentApprovalReviewAction,
   recordPaymentExecutionWithUpload,
   recordPaymentFinance,
   recordPaymentPdfArchive,
   remindPaymentApproval,
   transferPaymentApproval,
-  uploadPrivateFile,
+  uploadPaymentPdfArchivePrivateFile,
   withdrawPaymentApproval,
   type PaymentApprovalReviewActionContext,
   type PaymentApprovalReviewActionDecision,
@@ -1096,7 +1098,7 @@ async function executePaymentDraftAction(request: BusinessDraftActionRequest) {
   const reason = request.reason.trim();
   if (!reason) throw new Error("请填写放弃申请原因");
   const succeeded = await runPaymentAction("abandonApplication", () =>
-    abandonPaymentRequest(detail.id, {
+    abandonPaymentRequestWithCapability(detail.id, {
       expectedUpdatedAt: detail.lifecycleUpdatedAt as string,
       reason
     })
@@ -1978,12 +1980,12 @@ async function executeSensitiveAction(values: { reason: string; password: string
         break;
       case "pdfGenerate":
         succeeded = await runPaymentAction("pdfGenerate", () =>
-          generatePaymentPdfArchive(currentPaymentId())
+          generatePaymentPdfArchiveWithCapability(currentPaymentId())
         );
         break;
       case "withdrawal":
         succeeded = await runPaymentAction("withdrawApproval", () =>
-          withdrawPaymentApproval(currentPaymentId())
+          withdrawPaymentApprovalWithCapability(currentPaymentId())
         );
         break;
       case "transfer":
@@ -2027,9 +2029,127 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   }
 }
 
+async function abandonPaymentRequestWithCapability(
+  paymentId: string,
+  body: Parameters<typeof abandonPaymentRequest>[1]
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("abandon_application");
+  if (!operationAllowed) throw new Error("当前用户不能放弃该付款申请");
+  return abandonPaymentRequest(paymentId, body);
+}
+
+async function delegatePaymentApprovalWithCapability(
+  paymentId: string,
+  toUserId: string
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("delegate_approval");
+  if (!operationAllowed) throw new Error("当前用户不能委托该付款审批");
+  return delegatePaymentApproval(paymentId, { toUserId });
+}
+
+async function downloadPaymentApprovalFormWithCapability(
+  paymentId: string,
+  body: { confirmationPassword: string; downloadReason: string }
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "download_approval_form"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能下载该付款审批单");
+  return downloadApprovalFormRequest("payment_request", paymentId, body);
+}
+
+async function generatePaymentPdfArchiveWithCapability(paymentId: string) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("archive_pdf");
+  if (!operationAllowed) throw new Error("当前用户不能生成该付款 PDF 归档");
+  return generatePaymentPdfArchive(paymentId);
+}
+
+async function recordPaymentFinanceWithCapability(
+  paymentId: string,
+  body: Parameters<typeof recordPaymentFinance>[1]
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("record_finance");
+  if (!operationAllowed) throw new Error("当前用户不能登记该付款财务入账");
+  return recordPaymentFinance(paymentId, body);
+}
+
+async function recordPaymentPdfArchiveWithCapability(
+  paymentId: string,
+  file: File
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("archive_pdf");
+  if (!operationAllowed) throw new Error("当前用户不能登记该付款财务归档");
+  const uploadedFile = await uploadPaymentPdfArchivePrivateFile(
+    paymentId,
+    file,
+    file.name
+  );
+  return recordPaymentPdfArchive(paymentId, { fileId: uploadedFile.id });
+}
+
+async function remindPaymentApprovalWithCapability(paymentId: string) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("remind_approval");
+  if (!operationAllowed) throw new Error("当前用户不能催办该付款审批");
+  return remindPaymentApproval(paymentId);
+}
+
+async function transferPaymentApprovalWithCapability(
+  paymentId: string,
+  toUserId: string
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("transfer_approval");
+  if (!operationAllowed) throw new Error("当前用户不能转交该付款审批");
+  return transferPaymentApproval(paymentId, { toUserId });
+}
+
+async function withdrawPaymentApprovalWithCapability(paymentId: string) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("withdraw_approval");
+  if (!operationAllowed) throw new Error("当前用户不能撤回该付款审批");
+  return withdrawPaymentApproval(paymentId);
+}
+
+async function downloadPaymentPrivateFileWithCapability(
+  fileId: string,
+  body: { confirmationPassword: string; downloadReason: string }
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("文件下载权限已变化，请刷新详情后重试");
+  return createPrivateFileDownloadTicket(fileId, body);
+}
+
 function performApprovalFormDownload(values: { reason: string; password: string }) {
   return runPaymentAction("approvalForm", () =>
-    downloadApprovalFormRequest("payment_request", currentPaymentId(), {
+    downloadPaymentApprovalFormWithCapability(currentPaymentId(), {
       confirmationPassword: values.password,
       downloadReason: values.reason
     })
@@ -2038,7 +2158,7 @@ function performApprovalFormDownload(values: { reason: string; password: string 
 
 function performFinance(password: string) {
   return runPaymentAction("finance", () =>
-    recordPaymentFinance(currentPaymentId(), {
+    recordPaymentFinanceWithCapability(currentPaymentId(), {
       amountCents: parseYuanAmount(paymentActionForm.financeAmountYuan, "入账金额"),
       occurredAt: toIsoDatetime(paymentActionForm.occurredAt, "入账时间"),
       confirmationPassword: password
@@ -2050,30 +2170,31 @@ function performPdfArchive() {
   const file = selectedPaymentPdfArchiveFile.value;
   if (!file) throw new Error("财务归档 PDF 不能为空");
   return runPaymentAction("pdfArchive", async () => {
-    const uploadedFile = await uploadPrivateFile(file, file.name);
-    const result = await recordPaymentPdfArchive(currentPaymentId(), { fileId: uploadedFile.id });
+    const result = await recordPaymentPdfArchiveWithCapability(currentPaymentId(), file);
     paymentPdfArchiveFiles.value = [];
     return result;
   });
 }
 
 async function submitPaymentReminder() {
-  await runPaymentAction("remindApproval", () => remindPaymentApproval(currentPaymentId()));
+  await runPaymentAction("remindApproval", () =>
+    remindPaymentApprovalWithCapability(currentPaymentId())
+  );
 }
 
 function performPaymentAssignment(kind: "transfer" | "delegate") {
   const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
   return runPaymentAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
-      ? transferPaymentApproval(currentPaymentId(), { toUserId })
-      : delegatePaymentApproval(currentPaymentId(), { toUserId })
+      ? transferPaymentApprovalWithCapability(currentPaymentId(), toUserId)
+      : delegatePaymentApprovalWithCapability(currentPaymentId(), toUserId)
   );
 }
 
 function performPaymentFileDownload(values: { reason: string; password: string }) {
   const fileId = requiredText(paymentActionForm.downloadFileId, "付款文件");
   return runPaymentAction("download", async () => {
-    const ticket = await createPrivateFileDownloadTicket(fileId, {
+    const ticket = await downloadPaymentPrivateFileWithCapability(fileId, {
       confirmationPassword: values.password,
       downloadReason: values.reason
     });

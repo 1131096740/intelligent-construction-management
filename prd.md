@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.9
+> 版本：v1.10
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；C-P0-03 结算修复流已本地清零，下一步执行 C-P0-04 付款修复流
+> 状态：执行中；C-P0-04 付款修复流已本地清零，下一步执行 C-P0-05 项目费用与项目资金修复流
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 411 routes、0 unclassified、175 raw blockers、129 uncovered pairs、3 unresolved bindings；C-P0-01 至 C-P0-03 已清零，累计关闭 118 个 pair 和 17 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-04 付款修复流 |
+| Task 11 能力矩阵 | 阶段 D 当前为 414 routes、0 unclassified、162 raw blockers、117 uncovered pairs、2 unresolved bindings；C-P0-01 至 C-P0-04 已清零，累计关闭 130 个 pair 和 18 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-05 项目费用与项目资金修复流 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -440,6 +440,17 @@
 > 为 411 routes、0 unclassified、0 blocker。整站仍 blocked，下一步只能执行 `C-P0-04`
 > 付款申请、审批、实付、凭证、财务与 PDF 修复流。完整证据见
 > `docs/progress/2026-08-03-five-package-stage-d-c-p0-03-settlement-workflows.md`。
+
+> 2026-08-03 后续执行记录：`C-P0-04` 付款申请、审批、实付、凭证、财务与 PDF 修复流
+> 已本地清零。新建付款在 POST 前重新读取受 `payment.create` 保护的项目 capability；付款
+> 详情复用原后端状态、有效岗位和当前审批节点计算，新增仅含 enabled 动作键的精确 capability。
+> 放弃、审批单下载、催办、撤回、转审、委托、财务入账、PDF 生成/登记和文件下载均在写前
+> 执行 fresh GET、精确付款或文件坐标和动作键校验。财务归档文件退出通用 `/files`，改用受
+> `payment.pdf_archive` 保护的付款域上传路由，并在文件落盘前二次校验 `archive_pdf`。
+> uncovered pair 129→117、unresolved binding 3→2、raw blocker 175→162，`C-P0-04` 自身
+> 剩余 0 pair / 0 unresolved；route usage 为 414 routes、0 unclassified、0 blocker。整站
+> 仍 blocked，下一步只能执行 `C-P0-05` 项目费用、项目资金/垫资、上游资金与挂靠事实修复流。
+> 完整证据见 `docs/progress/2026-08-03-five-package-stage-d-c-p0-04-payment-workflows.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

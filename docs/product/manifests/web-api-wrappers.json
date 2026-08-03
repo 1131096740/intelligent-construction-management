@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 421,
-    "transportWrapperCount": 401,
+    "exportedFunctionCount": 424,
+    "transportWrapperCount": 404,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 421,
+    "mainRequestBindingCount": 424,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 420,
-    "productionConsumerCount": 364,
+    "requestEdgeCount": 423,
+    "productionConsumerCount": 367,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -4755,7 +4755,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6717,
+          "sourceLine": 6756,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4785,7 +4785,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6701,
+          "sourceLine": 6740,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4815,7 +4815,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6701,
+          "sourceLine": 6740,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4845,7 +4845,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5107,
+          "sourceLine": 5146,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4874,7 +4874,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6701,
+          "sourceLine": 6740,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4964,7 +4964,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6744,
+          "sourceLine": 6783,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4993,7 +4993,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6731,
+          "sourceLine": 6770,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5022,7 +5022,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6759,
+          "sourceLine": 6798,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5051,7 +5051,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6701,
+          "sourceLine": 6740,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -5722,6 +5722,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchPaymentActionCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/payments/:param/capability",
+          "normalizedPath": "/payments/:param/capability",
+          "normalizedKey": "GET /payments/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentActionCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchPaymentContractOptions",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -5749,6 +5777,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchPaymentCreateCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/payments/create-capability?projectId=:param",
+          "normalizedPath": "/payments/create-capability",
+          "normalizedKey": "GET /payments/create-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchPaymentCreateCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6530,6 +6586,7 @@
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
@@ -8544,6 +8601,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "uploadPaymentPdfArchivePrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/payments/:param/pdf-archive-file-uploads",
+          "normalizedPath": "/payments/:param/pdf-archive-file-uploads",
+          "normalizedKey": "POST /payments/:param/pdf-archive-file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadPaymentPdfArchivePrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "uploadPrivateFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -8573,7 +8658,6 @@
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-        "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",

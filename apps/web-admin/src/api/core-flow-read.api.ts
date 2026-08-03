@@ -354,6 +354,28 @@ export function fetchPaymentDetail(paymentId: string) {
   return readJson<PaymentLifecycleDetailReadModel>(`/payments/${encodeURIComponent(paymentId)}`);
 }
 
+export interface PaymentCreateCapabilityReadModel {
+  projectId: string;
+  availableActions: string[];
+}
+
+export function fetchPaymentCreateCapability(projectId: string) {
+  return readJson<PaymentCreateCapabilityReadModel>(
+    `/payments/create-capability?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
+export interface PaymentActionCapabilityReadModel {
+  paymentId: string;
+  availableActions: string[];
+}
+
+export function fetchPaymentActionCapability(paymentId: string) {
+  return readJson<PaymentActionCapabilityReadModel>(
+    `/payments/${encodeURIComponent(paymentId)}/capability`
+  );
+}
+
 export interface PaymentReviewApprovalContext {
   expectedPaymentUpdatedAt: string;
   expectedApprovalInstanceId: string;
@@ -3605,6 +3627,23 @@ export function uploadSettlementRecoveryPrivateFile(
     file,
     fileName,
     idempotencyKey
+  );
+}
+
+export function uploadPaymentPdfArchivePrivateFile(
+  paymentId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<PrivateFileReadModel>(
+    `/payments/${encodeURIComponent(paymentId)}/pdf-archive-file-uploads`,
+    form
   );
 }
 

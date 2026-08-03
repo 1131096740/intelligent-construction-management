@@ -1198,6 +1198,9 @@ export class PaymentReadService {
       evidenceFiles,
       approvalTimeline,
       availableActions,
+      availableActionKeys: availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key),
       reviewApprovalContext,
       executionContext,
       lifecycleKind,
@@ -1866,6 +1869,7 @@ export class PaymentReadService {
       evidenceFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      availableActionKeys: [],
       reviewApprovalContext: null,
       executionContext: null,
       lifecycleKind: "formal_record",
