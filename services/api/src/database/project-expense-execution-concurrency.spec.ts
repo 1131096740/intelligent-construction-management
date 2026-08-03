@@ -335,6 +335,31 @@ async function seedFixture(client: PrismaClientType, fixture: Fixture) {
       status: "approved"
     }
   });
+  await client.approvalInstance.create({
+    data: {
+      id: `${fixture.prefix}_split_quota_approval`,
+      flowType: "project_financing_quota.approve",
+      businessType: "project_financing_quota",
+      businessId: fixture.splitQuotaId,
+      status: "approved",
+      currentNodeIndex: 2,
+      frozenNodes: [
+        {
+          name: "财务主管",
+          mode: "any",
+          roleKeys: ["finance_director"],
+          approvedRoleKeys: ["finance_director"]
+        },
+        {
+          name: "董事长/总经理",
+          mode: "any",
+          roleKeys: ["chairman", "general_manager"],
+          approvedRoleKeys: ["chairman"]
+        }
+      ],
+      applicantUserId: fixture.actorUserId
+    }
+  });
 }
 
 function fileFact(fileId: string, actorUserId: string, prefix: string) {

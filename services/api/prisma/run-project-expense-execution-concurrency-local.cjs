@@ -358,14 +358,11 @@ function retainedFixtureSql(
       );
       INSERT INTO "ProjectFinancingQuota" (
         "id", "projectId", "amountCents", "reason", "attachmentFileId",
-        "attachmentFileSha256Snapshot", "requestedByRoleKey",
-        "requestIdempotencyKey", "requestFingerprint",
         "requestedByUserId", "approvedByUserId", "approvedAt", "status",
         "updatedAt"
       ) VALUES (
         '${prefix}_other_quota', '${prefix}_other_project', 1000,
         '跨项目垫资负向迁移夹具', '${prefix}_quota_attachment',
-        '${"c".repeat(64)}', 'finance_staff', '${randomUUID()}', '${"d".repeat(64)}',
         '${prefix}_executor', '${prefix}_executor', CURRENT_TIMESTAMP,
         'approved', CURRENT_TIMESTAMP
       );
