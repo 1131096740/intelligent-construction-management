@@ -449,7 +449,7 @@ describe("project financing quota PostgreSQL evidence", () => {
           [generalManager, "general_manager"]
         ] as const) {
           await seedActor(clients[0]!, fixture.projectId, actorId, role);
-          await seedSignature(clients[0]!, actorId, `${role}-${marker}`, SHA_A);
+          await seedSignature(clients[0]!, actorId, `${actorId}-${marker}`, SHA_A);
         }
         const financeServices = clients.map((client) => projectService(client!));
         const initialCapability =
