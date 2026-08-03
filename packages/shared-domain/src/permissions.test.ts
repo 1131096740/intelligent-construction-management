@@ -227,6 +227,16 @@ describe("role-specific gates", () => {
     expect(canPerform("contract.takeover.payment_evidence.upload", ["super_admin"])).toBe(false);
   });
 
+  it("limits historical takeover file preparation to the four takeover roles", () => {
+    expect(ACTION_REQUIRED_ROLES["contract.takeover.file.upload"]).toEqual([
+      "contract_staff",
+      "contract_director",
+      "finance_staff",
+      "finance_director"
+    ]);
+    expect(canPerform("contract.takeover.file.upload", ["super_admin"])).toBe(false);
+  });
+
   it("splits historical takeover contract and finance fact duties by department", () => {
     expect(ACTION_REQUIRED_ROLES["contract.takeover.contract_facts.edit"]).toEqual([
       "contract_staff",

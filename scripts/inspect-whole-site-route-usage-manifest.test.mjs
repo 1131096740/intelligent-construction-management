@@ -997,7 +997,7 @@ test("renders deterministically without wall-clock evidence", () => {
   assert.doesNotMatch(rendered, /generatedAt|timestamp/i);
 });
 
-test("locks the repository baseline to 40 plus 19 external routes and no blockers", async () => {
+test("locks the repository baseline to 42 plus 19 external routes and no blockers", async () => {
   const manifest = await inspectWholeSiteRouteUsageManifest({
     root: REPOSITORY_ROOT
   });
@@ -1025,7 +1025,7 @@ test("locks the repository baseline to 40 plus 19 external routes and no blocker
 
   assert.equal(manifest.status, "ready");
   assert.deepEqual(externalByController, {
-    ContractTakeoverController: 40,
+    ContractTakeoverController: 42,
     ProjectController: 19
   });
   assert.deepEqual(
@@ -1123,11 +1123,11 @@ test("locks the repository baseline to 40 plus 19 external routes and no blocker
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 404);
-  assert.equal(manifest.summary.classificationOverrideCount, 108);
+  assert.equal(manifest.summary.routeCount, 406);
+  assert.equal(manifest.summary.classificationOverrideCount, 110);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f"
+    "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
@@ -1135,12 +1135,12 @@ test("locks the repository baseline to 40 plus 19 external routes and no blocker
   );
   assert.equal(manifest.summary.derivedProductionPageCount, 296);
   assert.equal(manifest.summary.pageRouteCount, 299);
-  assert.equal(manifest.summary.externalTakeoverCount, 59);
+  assert.equal(manifest.summary.externalTakeoverCount, 61);
   assert.equal(manifest.summary.exitCandidateCount, 43);
   assert.equal(manifest.summary.internalTaskCount, 3);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 346,
+    web_api_wrapper: 348,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 2,

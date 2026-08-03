@@ -4960,6 +4960,69 @@ export function listContractTakeovers(projectId: string) {
   );
 }
 
+export type ContractTakeoverProjectAction =
+  | "create_takeover"
+  | "precheck_import"
+  | "create_import_drafts"
+  | "preview_excel_import"
+  | "apply_excel_import"
+  | "preview_batch_abandonment"
+  | "apply_batch_abandonment"
+  | "review_import_batch"
+  | "upload_takeover_file"
+  | "update_takeover"
+  | "abandon_takeover"
+  | "submit_review"
+  | "confirm_takeover"
+  | "return_for_supplement"
+  | "confirm_change_baseline"
+  | "attach_contract_evidence"
+  | "attach_payment_voucher"
+  | "save_contract_side"
+  | "save_finance_side"
+  | "confirm_contract_side"
+  | "confirm_finance_side"
+  | "withdraw_contract_side_confirmation"
+  | "withdraw_finance_side_confirmation"
+  | "submit_correction"
+  | "review_correction"
+  | "submit_company_entity_correction"
+  | "review_company_entity_correction"
+  | "create_tax_fact_revision"
+  | "update_tax_fact_revision"
+  | "submit_tax_fact_finance_review"
+  | "review_tax_fact_by_finance"
+  | "confirm_tax_fact_by_contract"
+  | "abandon_tax_fact_revision";
+
+export interface ContractTakeoverProjectCapabilityReadModel {
+  projectId: string;
+  availableActions: ContractTakeoverProjectAction[];
+}
+
+export function fetchContractTakeoverProjectCapability(projectId: string) {
+  return readJson<ContractTakeoverProjectCapabilityReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/capability`
+  );
+}
+
+export function uploadContractTakeoverPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/contract-takeovers/files`,
+    form
+  );
+}
+
 export function listHistoricalCompanyEntityCandidates(projectId: string) {
   return readJson<HistoricalCompanyEntityCandidateReadModel[]>(
     `/projects/${encodeURIComponent(projectId)}/contract-takeovers/company-entity-candidates`

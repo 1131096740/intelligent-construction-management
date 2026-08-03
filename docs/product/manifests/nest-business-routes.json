@@ -1402,6 +1402,29 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/contract-takeovers/capability",
+      "normalizedKey": "GET /projects/:param/contract-takeovers/capability",
+      "controller": "ContractTakeoverController",
+      "handler": "capability",
+      "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "contract_director",
+        "contract_staff",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/contract-takeovers/company-entity-candidates",
       "normalizedKey": "GET /projects/:param/contract-takeovers/company-entity-candidates",
       "controller": "ContractTakeoverController",
@@ -5340,7 +5363,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "contract.takeover.finance_facts.edit",
+      "requiredProjectAction": "contract.takeover.payment_evidence.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false
@@ -5460,6 +5483,23 @@
       "isPublic": false,
       "requiredPositions": [],
       "requiredProjectAction": "contract.tax_fact.supplement",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/files",
+      "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+      "controller": "ContractTakeoverController",
+      "handler": "uploadPrivateFile",
+      "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.takeover.file.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false

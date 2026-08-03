@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 414,
-    "transportWrapperCount": 394,
+    "exportedFunctionCount": 416,
+    "transportWrapperCount": 396,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 414,
+    "mainRequestBindingCount": 416,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 413,
-    "productionConsumerCount": 357,
+    "requestEdgeCount": 415,
+    "productionConsumerCount": 359,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -4755,7 +4755,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6601,
+          "sourceLine": 6664,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4785,7 +4785,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6585,
+          "sourceLine": 6648,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4815,7 +4815,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6585,
+          "sourceLine": 6648,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4845,7 +4845,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4991,
+          "sourceLine": 5054,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4874,7 +4874,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6585,
+          "sourceLine": 6648,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4964,7 +4964,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6628,
+          "sourceLine": 6691,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4993,7 +4993,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6615,
+          "sourceLine": 6678,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5022,7 +5022,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6643,
+          "sourceLine": 6706,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5051,7 +5051,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6585,
+          "sourceLine": 6648,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -5600,6 +5600,35 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractTakeoverProjectCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/projects/:param/contract-takeovers/capability",
+          "normalizedPath": "/projects/:param/contract-takeovers/capability",
+          "normalizedKey": "GET /projects/:param/contract-takeovers/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractTakeoverProjectCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+        "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6470,6 +6499,7 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
       ],
       "unreachableConsumers": []
@@ -8424,6 +8454,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "uploadContractTakeoverPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/files",
+          "normalizedPath": "/projects/:param/contract-takeovers/files",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadContractTakeoverPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+        "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "uploadMutuallySignedContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -8482,8 +8541,6 @@
         "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",

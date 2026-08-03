@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "60132712137443ef2008ccb5bf7d74762b5370d8a9d3704e6cde5f98f0263a80",
+      "sha256": "6324f24462a5de9ef774ebf4c02e6384b5a9d4a09bb35955ff771b3a20f117a2",
       "status": "ready",
       "summary": {
-        "routeCount": 404
+        "routeCount": 406
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "adb758530db969dcf1001270e2bd6d484b93bebb6a73d7d038ae9871eaf2b5df",
+      "sha256": "61fbca73b3aa907b1f4a65a83486f3b12c957438fcd75c3794aaa0fed79f0539",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 414,
-        "transportWrapperCount": 394,
+        "exportedFunctionCount": 416,
+        "transportWrapperCount": 396,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 414,
+        "mainRequestBindingCount": 416,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 413,
-        "productionConsumerCount": 357,
+        "requestEdgeCount": 415,
+        "productionConsumerCount": 359,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,12 +42,12 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "70e21a44686ce86b4db58a9b3a6cf52a72bf9e4896dc94ef9e7a38e7039e9277",
+      "sha256": "ae7c663388ce1179adb2388e4e8fcebd778b98f36c3b75f9814541c2c3f08be8",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 107,
-        "pageActionCount": 55,
-        "backgroundActionCount": 52,
+        "registeredActionCount": 139,
+        "pageActionCount": 52,
+        "backgroundActionCount": 87,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
@@ -55,33 +55,33 @@
         "reachableProductionModuleCount": 234,
         "templateEventDirectiveCount": 960,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 84,
-        "candidateProductionMutationConsumerCount": 96,
-        "acceptedProductionMutationConsumerCount": 84,
+        "coveredProductionMutationConsumerCount": 119,
+        "candidateProductionMutationConsumerCount": 128,
+        "acceptedProductionMutationConsumerCount": 119,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 218
+        "blockerCount": 177
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "1bd36db3e725fdf26e408419dba4573d6c6b84a82187bb34c7d256168c159812",
+      "sha256": "c093733c038c42425cf525ac31ad4c69623844c414fbdb8c8fd82e1f6dca8421",
       "status": "ready",
       "summary": {
-        "routeCount": 404,
-        "exactRouteCount": 404,
-        "normalizedRouteCount": 404,
-        "classificationOverrideCount": 108,
+        "routeCount": 406,
+        "exactRouteCount": 406,
+        "normalizedRouteCount": 406,
+        "classificationOverrideCount": 110,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f",
+        "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
         "derivedProductionPageCount": 296,
         "pageRouteCount": 299,
-        "externalTakeoverCount": 59,
+        "externalTakeoverCount": 61,
         "exitCandidateCount": 43,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 346,
+          "web_api_wrapper": 348,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,25 +93,25 @@
     }
   },
   "summary": {
-    "routeCount": 404,
+    "routeCount": 406,
     "pageRouteCount": 299,
-    "externalTakeoverRouteCount": 59,
+    "externalTakeoverRouteCount": 61,
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 414,
+    "mainRequestBindingCount": 416,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 107,
-    "actionBindingCount": 132,
-    "acceptedActionBindingCount": 101,
-    "unresolvedActionBindingCount": 12,
+    "registeredActionCount": 139,
+    "actionBindingCount": 164,
+    "acceptedActionBindingCount": 136,
+    "unresolvedActionBindingCount": 9,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 84,
-    "uncoveredProductionMutationConsumerPairCount": 193,
-    "blockerCount": 248
+    "coveredProductionMutationConsumerPairCount": 119,
+    "uncoveredProductionMutationConsumerPairCount": 158,
+    "blockerCount": 210
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -433,54 +433,6 @@
         ]
       },
       {
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "abandonContractTaxFactRevision",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "confirmContractTaxFactRevision",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "createContractTaxFactRevision",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "reviewContractTaxFactRevisionByFinance",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "submitContractTaxFactRevisionForFinanceReview",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "updateContractTaxFactRevision",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param"
-        ]
-      },
-      {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "cloneContractTemplateVersion",
         "consumer": "apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue",
@@ -666,82 +618,10 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "abandonContractTakeover",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "abandonPaymentRequest",
         "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
           "POST /payments/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "applyContractTakeoverBatchAbandonment",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "applyContractTakeoverExcelImport",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/imports/apply"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "attachContractTakeoverEvidenceFile",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/evidence-files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "attachHistoricalPaymentVoucher",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/payment-evidence-files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeover",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeoverChangeBaseline",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/change-baseline-confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeoverContractSide",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeoverFinanceSide",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation"
         ]
       },
       {
@@ -810,34 +690,10 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractTakeover",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractTakeoverDraftsFromImport",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-drafts"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createPaymentRequest",
         "consumer": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "normalizedKeys": [
           "POST /payments"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
         ]
       },
       {
@@ -962,30 +818,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "precheckContractTakeoverImport",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-precheck"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "previewContractTakeoverBatchAbandonment",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "previewContractTakeoverExcelImport",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/imports/preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "recordPaymentFinance",
         "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
@@ -1074,38 +906,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "returnContractTakeoverForSupplement",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/supplement-return"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractTakeoverCompanyEntityCorrection",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractTakeoverCorrection",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/corrections/:param/review"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractTakeoverImportBatch",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "reviewSettlementApproval",
         "consumer": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "normalizedKeys": [
@@ -1118,46 +918,6 @@
         "consumer": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
         "normalizedKeys": [
           "DELETE /approval-delegations/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "saveContractTakeoverContractSide",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PUT /projects/:param/contract-takeovers/:param/contract-side"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "saveContractTakeoverFinanceSide",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PUT /projects/:param/contract-takeovers/:param/finance-side"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverCompanyEntityCorrection",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/company-entity-corrections"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverCorrection",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/corrections"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverReview",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/review-submission"
         ]
       },
       {
@@ -1186,14 +946,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "updateContractTakeover",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/contract-takeovers/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "updateProject",
         "consumer": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "normalizedKeys": [
@@ -1212,22 +964,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
           "POST /files"
         ]
@@ -1350,22 +1086,6 @@
         "consumer": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/expense-requests/:param/voiding"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawContractTakeoverContractSideConfirmation",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawContractTakeoverFinanceSideConfirmation",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal"
         ]
       },
       {
@@ -1923,48 +1643,6 @@
       }
     ],
     "unresolvedActions": [
-      {
-        "actionId": "contract-takeover.create-local-role",
-        "bindingIndex": 0,
-        "identity": "contract-takeover.create-local-role\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createContractTakeover\u0000POST\u0000POST /projects/:param/contract-takeovers\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractTakeover",
-        "normalizedKey": "POST /projects/:param/contract-takeovers",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-takeover.submit-review-local-role-status",
-        "bindingIndex": 0,
-        "identity": "contract-takeover.submit-review-local-role-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000submitContractTakeoverReview\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/review-submission\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverReview",
-        "normalizedKey": "POST /projects/:param/contract-takeovers/:param/review-submission",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-takeover.update-local-role-status",
-        "bindingIndex": 0,
-        "identity": "contract-takeover.update-local-role-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000updateContractTakeover\u0000PATCH\u0000PATCH /projects/:param/contract-takeovers/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "updateContractTakeover",
-        "normalizedKey": "PATCH /projects/:param/contract-takeovers/:param",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
       {
         "actionId": "expense-claim.submit-local-status",
         "bindingIndex": 0,
@@ -4542,6 +4220,7 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
           ],
           "testConsumers": [
@@ -5425,6 +5104,52 @@
           "testConsumers": [
             "apps/web-admin/src/api/contract-tax-facts.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/contract-takeovers/capability",
+        "normalizedKey": "GET /projects/:param/contract-takeovers/capability",
+        "controller": "ContractTakeoverController",
+        "handler": "capability",
+        "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "contract_director",
+          "contract_staff",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchContractTakeoverProjectCapability",
+          "method": "GET",
+          "path": "/projects/:param/contract-takeovers/capability",
+          "normalizedKey": "GET /projects/:param/contract-takeovers/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -8606,39 +8331,34 @@
       "authTransports": [],
       "actions": [
         {
-          "actionId": "contract-takeover.update-local-role-status",
+          "actionId": "contract-takeover.update",
           "bindingIndex": 0,
-          "identity": "contract-takeover.update-local-role-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000updateContractTakeover\u0000PATCH\u0000PATCH /projects/:param/contract-takeovers/:param\u00000",
-          "usage": "page_action",
+          "identity": "contract-takeover.update\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000updateContractTakeover\u0000PATCH\u0000PATCH /projects/:param/contract-takeovers/:param\u00000",
+          "usage": "background",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
           "capability": {
-            "kind": "client_role_or_status",
-            "source": "canManageTakeovers && canEditTakeover(row.takeover)",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "update_takeover",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "updateContractTakeover",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8677,11 +8397,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-tax-fact.update-revision",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.update-revision\u0000apps/web-admin/src/api/contract-tax-facts.api.ts\u0000updateContractTaxFactRevision\u0000PATCH\u0000PATCH /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "update_tax_fact_revision",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "updateContractTaxFactRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8720,11 +8465,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.review-import-batch",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.review-import-batch\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewContractTakeoverImportBatch\u0000PATCH\u0000PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "review_import_batch",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewContractTakeoverImportBatch",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14747,6 +14517,32 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "contract-takeover.file-download-ticket",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.file-download-ticket\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "uncovered",
@@ -14828,8 +14624,6 @@
             "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
             "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
@@ -16793,11 +16587,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.abandon",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.abandon\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000abandonContractTakeover\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/abandonment\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "abandon_takeover",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "abandonContractTakeover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16836,11 +16655,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.confirm-change-baseline",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.confirm-change-baseline\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmContractTakeoverChangeBaseline\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/change-baseline-confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_change_baseline",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeoverChangeBaseline",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16879,11 +16723,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.review-company-entity-correction",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.review-company-entity-correction\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewContractTakeoverCompanyEntityCorrection\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "review_company_entity_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewContractTakeoverCompanyEntityCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16922,11 +16791,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.submit-company-entity-correction",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.submit-company-entity-correction\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000submitContractTakeoverCompanyEntityCorrection\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/company-entity-corrections\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "submit_company_entity_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "submitContractTakeoverCompanyEntityCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16965,11 +16859,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.confirm",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.confirm\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmContractTakeover\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_takeover",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17008,11 +16927,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.withdraw-contract-side-confirmation",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.withdraw-contract-side-confirmation\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000withdrawContractTakeoverContractSideConfirmation\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "withdraw_contract_side_confirmation",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawContractTakeoverContractSideConfirmation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17051,11 +16995,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.confirm-contract-side",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.confirm-contract-side\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmContractTakeoverContractSide\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/contract-side/confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_contract_side",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeoverContractSide",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17094,11 +17063,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.review-correction",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.review-correction\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000reviewContractTakeoverCorrection\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/corrections/:param/review\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "review_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewContractTakeoverCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17149,11 +17143,37 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
+      "actions": [
+        {
+          "actionId": "contract-takeover.submit-correction",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.submit-correction\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000submitContractTakeoverCorrection\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/corrections\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "submit_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "submitContractTakeoverCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": [
         "DUPLICATE_MUTATION_ROUTE",
-        "MUTATION_CONSUMER_UNCOVERED",
         "ORPHAN_WRAPPER"
       ]
     },
@@ -17194,11 +17214,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.attach-contract-evidence",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.attach-contract-evidence\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000attachContractTakeoverEvidenceFile\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/evidence-files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "attach_contract_evidence",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "attachContractTakeoverEvidenceFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17237,11 +17282,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.withdraw-finance-side-confirmation",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.withdraw-finance-side-confirmation\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000withdrawContractTakeoverFinanceSideConfirmation\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "withdraw_finance_side_confirmation",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawContractTakeoverFinanceSideConfirmation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17280,11 +17350,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.confirm-finance-side",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.confirm-finance-side\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmContractTakeoverFinanceSide\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/finance-side/confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_finance_side",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeoverFinanceSide",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17299,7 +17394,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "contract.takeover.finance_facts.edit",
+        "requiredProjectAction": "contract.takeover.payment_evidence.upload",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -17323,11 +17418,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.attach-payment-voucher",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.attach-payment-voucher\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000attachHistoricalPaymentVoucher\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/payment-evidence-files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "attach_payment_voucher",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "attachHistoricalPaymentVoucher",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17368,39 +17488,34 @@
       "authTransports": [],
       "actions": [
         {
-          "actionId": "contract-takeover.submit-review-local-role-status",
+          "actionId": "contract-takeover.submit-review",
           "bindingIndex": 0,
-          "identity": "contract-takeover.submit-review-local-role-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000submitContractTakeoverReview\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/review-submission\u00000",
-          "usage": "page_action",
+          "identity": "contract-takeover.submit-review\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000submitContractTakeoverReview\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/review-submission\u00000",
+          "usage": "background",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
           "capability": {
-            "kind": "client_role_or_status",
-            "source": "canSubmitTakeovers && canSubmitTakeoverReview(row.takeover)",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "submit_review",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "submitContractTakeoverReview",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17439,11 +17554,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.return-for-supplement",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.return-for-supplement\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000returnContractTakeoverForSupplement\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/supplement-return\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "return_for_supplement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "returnContractTakeoverForSupplement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17482,11 +17622,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-tax-fact.abandon-revision",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.abandon-revision\u0000apps/web-admin/src/api/contract-tax-facts.api.ts\u0000abandonContractTaxFactRevision\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "abandon_tax_fact_revision",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "abandonContractTaxFactRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17525,11 +17690,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-tax-fact.contract-confirm",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.contract-confirm\u0000apps/web-admin/src/api/contract-tax-facts.api.ts\u0000confirmContractTaxFactRevision\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_tax_fact_by_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "confirmContractTaxFactRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17568,11 +17758,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-tax-fact.submit-finance-review",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.submit-finance-review\u0000apps/web-admin/src/api/contract-tax-facts.api.ts\u0000submitContractTaxFactRevisionForFinanceReview\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "submit_tax_fact_finance_review",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "submitContractTaxFactRevisionForFinanceReview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17611,11 +17826,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-tax-fact.finance-review",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.finance-review\u0000apps/web-admin/src/api/contract-tax-facts.api.ts\u0000reviewContractTaxFactRevisionByFinance\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "review_tax_fact_by_finance",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "reviewContractTaxFactRevisionByFinance",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17654,11 +17894,131 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-tax-fact.create-revision",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.create-revision\u0000apps/web-admin/src/api/contract-tax-facts.api.ts\u0000createContractTaxFactRevision\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/tax-fact-revisions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_tax_fact_revision",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "createContractTaxFactRevision",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/contract-takeovers/files",
+        "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+        "controller": "ContractTakeoverController",
+        "handler": "uploadPrivateFile",
+        "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "contract.takeover.file.upload",
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractTakeoverPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/files",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "contract-takeover.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.upload-file\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadContractTakeoverPrivateFile\u0000POST\u0000POST /projects/:param/contract-takeovers/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "upload_takeover_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractTakeoverPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-tax-fact.upload-evidence",
+          "bindingIndex": 0,
+          "identity": "contract-tax-fact.upload-evidence\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadContractTakeoverPrivateFile\u0000POST\u0000POST /projects/:param/contract-takeovers/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "upload_takeover_file",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractTakeoverPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17697,11 +18057,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.apply-batch-abandonment",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.apply-batch-abandonment\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000applyContractTakeoverBatchAbandonment\u0000POST\u0000POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "apply_batch_abandonment",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "applyContractTakeoverBatchAbandonment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17740,11 +18125,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.preview-batch-abandonment",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.preview-batch-abandonment\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000previewContractTakeoverBatchAbandonment\u0000POST\u0000POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "preview_batch_abandonment",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "previewContractTakeoverBatchAbandonment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17783,11 +18193,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.create-import-drafts",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.create-import-drafts\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createContractTakeoverDraftsFromImport\u0000POST\u0000POST /projects/:param/contract-takeovers/import-drafts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_import_drafts",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createContractTakeoverDraftsFromImport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17826,11 +18261,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.precheck-import",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.precheck-import\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000precheckContractTakeoverImport\u0000POST\u0000POST /projects/:param/contract-takeovers/import-precheck\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "precheck_import",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "precheckContractTakeoverImport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17869,11 +18329,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.apply-excel-import",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.apply-excel-import\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000applyContractTakeoverExcelImport\u0000POST\u0000POST /projects/:param/contract-takeovers/imports/apply\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "apply_excel_import",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "applyContractTakeoverExcelImport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17912,11 +18397,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.preview-excel-import",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.preview-excel-import\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000previewContractTakeoverExcelImport\u0000POST\u0000POST /projects/:param/contract-takeovers/imports/preview\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "preview_excel_import",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "previewContractTakeoverExcelImport",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -17957,39 +18467,34 @@
       "authTransports": [],
       "actions": [
         {
-          "actionId": "contract-takeover.create-local-role",
+          "actionId": "contract-takeover.create",
           "bindingIndex": 0,
-          "identity": "contract-takeover.create-local-role\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createContractTakeover\u0000POST\u0000POST /projects/:param/contract-takeovers\u00000",
-          "usage": "page_action",
+          "identity": "contract-takeover.create\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createContractTakeover\u0000POST\u0000POST /projects/:param/contract-takeovers\u00000",
+          "usage": "background",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
           "capability": {
-            "kind": "client_role_or_status",
-            "source": "canManageTakeovers",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_takeover",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "createContractTakeover",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -23174,11 +23679,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.save-contract-side",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.save-contract-side\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000saveContractTakeoverContractSide\u0000PUT\u0000PUT /projects/:param/contract-takeovers/:param/contract-side\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "save_contract_side",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "saveContractTakeoverContractSide",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -23217,11 +23747,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-takeover.save-finance-side",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.save-finance-side\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000saveContractTakeoverFinanceSide\u0000PUT\u0000PUT /projects/:param/contract-takeovers/:param/finance-side\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "save_finance_side",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "saveContractTakeoverFinanceSide",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     }
   ]
 }

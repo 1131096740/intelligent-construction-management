@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `60132712137443ef2008ccb5bf7d74762b5370d8a9d3704e6cde5f98f0263a80` |
-| webApiWrappers | blocked | `adb758530db969dcf1001270e2bd6d484b93bebb6a73d7d038ae9871eaf2b5df` |
-| webPageActions | blocked | `70e21a44686ce86b4db58a9b3a6cf52a72bf9e4896dc94ef9e7a38e7039e9277` |
-| routeUsage | ready | `1bd36db3e725fdf26e408419dba4573d6c6b84a82187bb34c7d256168c159812` |
+| nestRoutes | ready | `6324f24462a5de9ef774ebf4c02e6384b5a9d4a09bb35955ff771b3a20f117a2` |
+| webApiWrappers | blocked | `61fbca73b3aa907b1f4a65a83486f3b12c957438fcd75c3794aaa0fed79f0539` |
+| webPageActions | blocked | `ae7c663388ce1179adb2388e4e8fcebd778b98f36c3b75f9814541c2c3f08be8` |
+| routeUsage | ready | `c093733c038c42425cf525ac31ad4c69623844c414fbdb8c8fd82e1f6dca8421` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 404 |
+| routeCount | 406 |
 | pageRouteCount | 299 |
-| externalTakeoverRouteCount | 59 |
+| externalTakeoverRouteCount | 61 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 414 |
+| mainRequestBindingCount | 416 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 107 |
-| actionBindingCount | 132 |
-| acceptedActionBindingCount | 101 |
-| unresolvedActionBindingCount | 12 |
+| registeredActionCount | 139 |
+| actionBindingCount | 164 |
+| acceptedActionBindingCount | 136 |
+| unresolvedActionBindingCount | 9 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 84 |
-| uncoveredProductionMutationConsumerPairCount | 193 |
-| blockerCount | 248 |
+| coveredProductionMutationConsumerPairCount | 119 |
+| uncoveredProductionMutationConsumerPairCount | 158 |
+| blockerCount | 210 |
 
 ## 路由矩阵
 
@@ -110,6 +110,7 @@
 | GET | /projects/:projectId/contract-takeovers/:takeoverId/detail-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverDetailExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getContractTakeover | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#fetchContractTaxFactRevisions | — | not_applicable | — |
+| GET | /projects/:projectId/contract-takeovers/capability | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractTakeoverProjectCapability | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/company-entity-candidates | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listHistoricalCompanyEntityCandidates | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/import-batches | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeoverImportBatches | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/import-template | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverImportTemplate | — | not_applicable | — |
@@ -168,9 +169,9 @@
 | PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /organization/departments/:departmentId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /organization/users/:userId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update-local-role-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update | covered | — |
+| PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
+| PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.save-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /settlement-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#updateSettlementTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -278,7 +279,7 @@
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-ticket | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | affiliate-company-contract.record<br>contract-archive.upload-file<br>contract-final.upload-file<br>payment-execution.record<br>project-expense.execution-local-status<br>project-financing-quota.request<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |
@@ -313,33 +314,34 @@
 | POST | /projects/:projectId/affiliate-payment-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliatePaymentFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-settlement-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateSettlementFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/affiliate-settlement-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateSettlementFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/abandonment | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonContractTakeover | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverChangeBaseline | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCompanyEntityCorrection | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeover | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverContractSideConfirmation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverContractSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCorrection | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/corrections | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordContractTakeoverCorrection<br>apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCorrection | — | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED<br>ORPHAN_WRAPPER |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/evidence-files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#attachContractTakeoverEvidenceFile | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverFinanceSideConfirmation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverFinanceSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#attachHistoricalPaymentVoucher | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/review-submission | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverReview | contract-takeover.submit-review-local-role-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/supplement-return | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnContractTakeoverForSupplement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/abandonment | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#abandonContractTaxFactRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/contract-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#confirmContractTaxFactRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review-submission | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#submitContractTaxFactRevisionForFinanceReview | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#reviewContractTaxFactRevisionByFinance | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#createContractTaxFactRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-apply | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverBatchAbandonment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverBatchAbandonment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/import-drafts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeoverDraftsFromImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/import-precheck | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#precheckContractTakeoverImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/imports/apply | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverExcelImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers/imports/preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover | contract-takeover.create-local-role | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/abandonment | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonContractTakeover | contract-takeover.abandon | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverChangeBaseline | contract-takeover.confirm-change-baseline | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection | contract-takeover.review-company-entity-correction | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCompanyEntityCorrection | contract-takeover.submit-company-entity-correction | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeover | contract-takeover.confirm | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverContractSideConfirmation | contract-takeover.withdraw-contract-side-confirmation | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverContractSide | contract-takeover.confirm-contract-side | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCorrection | contract-takeover.review-correction | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/corrections | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordContractTakeoverCorrection<br>apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCorrection | contract-takeover.submit-correction | covered | DUPLICATE_MUTATION_ROUTE<br>ORPHAN_WRAPPER |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/evidence-files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#attachContractTakeoverEvidenceFile | contract-takeover.attach-contract-evidence | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverFinanceSideConfirmation | contract-takeover.withdraw-finance-side-confirmation | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverFinanceSide | contract-takeover.confirm-finance-side | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#attachHistoricalPaymentVoucher | contract-takeover.attach-payment-voucher | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/review-submission | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverReview | contract-takeover.submit-review | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/supplement-return | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnContractTakeoverForSupplement | contract-takeover.return-for-supplement | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/abandonment | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#abandonContractTaxFactRevision | contract-tax-fact.abandon-revision | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/contract-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#confirmContractTaxFactRevision | contract-tax-fact.contract-confirm | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review-submission | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#submitContractTaxFactRevisionForFinanceReview | contract-tax-fact.submit-finance-review | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#reviewContractTaxFactRevisionByFinance | contract-tax-fact.finance-review | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#createContractTaxFactRevision | contract-tax-fact.create-revision | covered | — |
+| POST | /projects/:projectId/contract-takeovers/files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadContractTakeoverPrivateFile | contract-takeover.upload-file<br>contract-tax-fact.upload-evidence | covered | — |
+| POST | /projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-apply | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverBatchAbandonment | contract-takeover.apply-batch-abandonment | covered | — |
+| POST | /projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverBatchAbandonment | contract-takeover.preview-batch-abandonment | covered | — |
+| POST | /projects/:projectId/contract-takeovers/import-drafts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeoverDraftsFromImport | contract-takeover.create-import-drafts | covered | — |
+| POST | /projects/:projectId/contract-takeovers/import-precheck | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#precheckContractTakeoverImport | contract-takeover.precheck-import | covered | — |
+| POST | /projects/:projectId/contract-takeovers/imports/apply | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverExcelImport | contract-takeover.apply-excel-import | covered | — |
+| POST | /projects/:projectId/contract-takeovers/imports/preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport | contract-takeover.preview-excel-import | covered | — |
+| POST | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover | contract-takeover.create | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-pdf-download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseApprovalPdf | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseWithdrawalAction | project-expense.withdraw | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseApprovalReviewAction | project-expense.review-approve<br>project-expense.review-reject | covered | — |
@@ -441,8 +443,8 @@
 | PUT | /contract-bills/:billId/rows | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | covered | — |
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | contract-bill-transition.save | covered | — |
-| PUT | /projects/:projectId/contract-takeovers/:takeoverId/contract-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverContractSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| PUT | /projects/:projectId/contract-takeovers/:takeoverId/finance-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverFinanceSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| PUT | /projects/:projectId/contract-takeovers/:takeoverId/contract-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverContractSide | contract-takeover.save-contract-side | covered | — |
+| PUT | /projects/:projectId/contract-takeovers/:takeoverId/finance-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverFinanceSide | contract-takeover.save-finance-side | covered | — |
 
 ## 阻塞附录
 
@@ -503,12 +505,6 @@
 - apps/web-admin/src/api/contract-scenario.api.ts#createContractScenarioMapping → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
 - apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
 - apps/web-admin/src/api/contract-scenario.api.ts#updateContractScenarioMapping → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
-- apps/web-admin/src/api/contract-tax-facts.api.ts#abandonContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-tax-facts.api.ts#confirmContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-tax-facts.api.ts#createContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-tax-facts.api.ts#reviewContractTaxFactRevisionByFinance → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-tax-facts.api.ts#submitContractTaxFactRevisionForFinanceReview → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty → apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue
@@ -532,16 +528,7 @@
 - apps/web-admin/src/api/contract-workbench.api.ts#updateContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#abandonContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverBatchAbandonment → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverExcelImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#attachContractTakeoverEvidenceFile → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#attachHistoricalPaymentVoucher → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverChangeBaseline → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverContractSide → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverFinanceSide → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateContractFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliatePaymentFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateSettlementFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -550,10 +537,7 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft → apps/web-admin/src/pages/contracts/ContractListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft → apps/web-admin/src/pages/settlements/SettlementListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeoverDraftsFromImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest → apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
@@ -569,9 +553,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#generateSettlementPdfArchive → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#precheckContractTakeoverImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverBatchAbandonment → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -583,26 +564,14 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#retrySettlementSignedDocumentGeneration → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#returnContractTakeoverForSupplement → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverContractSide → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverFinanceSide → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCompanyEntityCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCorrection → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverReview → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#supplementProjectAffiliateBusinessEvidence → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#updateProject → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -618,8 +587,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#voidProjectExpenseRequest → apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverContractSideConfirmation → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverFinanceSideConfirmation → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
@@ -692,9 +659,6 @@
 
 ### 未解决动作绑定
 
-- contract-takeover.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-takeover.submit-review-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-takeover.update-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

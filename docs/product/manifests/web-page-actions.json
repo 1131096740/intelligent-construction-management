@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 107,
-    "pageActionCount": 55,
-    "backgroundActionCount": 52,
+    "registeredActionCount": 139,
+    "pageActionCount": 52,
+    "backgroundActionCount": 87,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 234,
     "templateEventDirectiveCount": 960,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 84,
-    "candidateProductionMutationConsumerCount": 96,
-    "acceptedProductionMutationConsumerCount": 84,
+    "coveredProductionMutationConsumerCount": 119,
+    "candidateProductionMutationConsumerCount": 128,
+    "acceptedProductionMutationConsumerCount": 119,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 218
+    "blockerCount": 177
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -3877,8 +3877,8 @@
       ]
     },
     {
-      "id": "contract-takeover.create-local-role",
-      "usage": "page_action",
+      "id": "contract-takeover.abandon",
+      "usage": "background",
       "routePaths": [
         "/历史合同接管"
       ],
@@ -3887,19 +3887,605 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "startCreate",
-        "kind": "event",
-        "sourceLine": 33,
-        "sourceColumn": 10
+        "element": "module",
+        "event": "call",
+        "handler": "abandonContractTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2098,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canManageTakeovers",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "abandon_takeover",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "abandonContractTakeover",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/abandonment",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/abandonment",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/abandonment",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/abandonment",
+            "controller": "ContractTakeoverController",
+            "handler": "abandonDraft",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "abandonContractTakeoverWithCapability",
+              "abandonContractTakeover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.apply-batch-abandonment",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2057,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_batch_abandonment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "applyContractTakeoverBatchAbandonment",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-apply",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply",
+            "controller": "ContractTakeoverController",
+            "handler": "applyBatchAbandonment",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyContractTakeoverBatchAbandonmentWithCapability",
+              "applyContractTakeoverBatchAbandonment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.apply-excel-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTakeoverExcelImportWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2018,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_excel_import",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "applyContractTakeoverExcelImport",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/imports/apply",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/imports/apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/imports/apply",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/imports/apply",
+            "controller": "ContractTakeoverController",
+            "handler": "applyExcelImport",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyContractTakeoverExcelImportWithCapability",
+              "applyContractTakeoverExcelImport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.attach-contract-evidence",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attachContractTakeoverEvidenceFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2162,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attach_contract_evidence",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "attachContractTakeoverEvidenceFile",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/evidence-files",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/evidence-files",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/evidence-files",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/evidence-files",
+            "controller": "ContractTakeoverController",
+            "handler": "attachEvidence",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.contract_facts.edit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attachContractTakeoverEvidenceFileWithCapability",
+              "attachContractTakeoverEvidenceFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.attach-payment-voucher",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attachHistoricalPaymentVoucherWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2175,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attach_payment_voucher",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "attachHistoricalPaymentVoucher",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/payment-evidence-files",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/payment-evidence-files",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/payment-evidence-files",
+            "controller": "ContractTakeoverController",
+            "handler": "attachHistoricalPaymentVoucher",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.payment_evidence.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attachHistoricalPaymentVoucherWithCapability",
+              "attachHistoricalPaymentVoucher"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2123,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_takeover",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeover",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/confirmation",
+            "controller": "ContractTakeoverController",
+            "handler": "confirm",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractTakeoverWithCapability",
+              "confirmContractTakeover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.confirm-change-baseline",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractTakeoverChangeBaselineWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2149,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_change_baseline",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeoverChangeBaseline",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/change-baseline-confirmation",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/change-baseline-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/change-baseline-confirmation",
+            "controller": "ContractTakeoverController",
+            "handler": "confirmChangeBaseline",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractTakeoverChangeBaselineWithCapability",
+              "confirmContractTakeoverChangeBaseline"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.confirm-contract-side",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractTakeoverContractSideWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2214,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_contract_side",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeoverContractSide",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/contract-side/confirmation",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation",
+            "controller": "ContractTakeoverController",
+            "handler": "confirmContractSide",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.contract_facts.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractTakeoverContractSideWithCapability",
+              "confirmContractTakeoverContractSide"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.confirm-finance-side",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractTakeoverFinanceSideWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2227,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_finance_side",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractTakeoverFinanceSide",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/finance-side/confirmation",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation",
+            "controller": "ContractTakeoverController",
+            "handler": "confirmFinanceSide",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.finance_facts.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractTakeoverFinanceSideWithCapability",
+              "confirmContractTakeoverFinanceSide"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.create",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1970,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_takeover",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -3926,11 +4512,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "startCreate"
+              "createContractTakeoverWithCapability",
+              "createContractTakeover"
             ]
           },
           "ticketFollowups": []
@@ -3938,8 +4527,8 @@
       ]
     },
     {
-      "id": "contract-takeover.submit-review-local-role-status",
-      "usage": "page_action",
+      "id": "contract-takeover.create-import-drafts",
+      "usage": "background",
       "routePaths": [
         "/历史合同接管"
       ],
@@ -3948,19 +4537,865 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
       "trigger": {
-        "element": "t-link",
-        "event": "click",
-        "handler": "submitReview",
-        "kind": "event",
-        "sourceLine": 906,
-        "sourceColumn": 18
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverDraftsFromImportWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1994,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canSubmitTakeovers && canSubmitTakeoverReview(row.takeover)",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_import_drafts",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createContractTakeoverDraftsFromImport",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/import-drafts",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/import-drafts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/import-drafts",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/import-drafts",
+            "controller": "ContractTakeoverController",
+            "handler": "createDraftsFromImport",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createContractTakeoverDraftsFromImportWithCapability",
+              "createContractTakeoverDraftsFromImport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.file-download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverFileDownloadTicketWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2333,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createContractTakeoverFileDownloadTicketWithCapability",
+              "createPrivateFileDownloadTicket"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.precheck-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "precheckContractTakeoverImportWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1982,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "precheck_import",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "precheckContractTakeoverImport",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/import-precheck",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/import-precheck",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/import-precheck",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/import-precheck",
+            "controller": "ContractTakeoverController",
+            "handler": "precheckImport",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "precheckContractTakeoverImportWithCapability",
+              "precheckContractTakeoverImport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.preview-batch-abandonment",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2043,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_batch_abandonment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "previewContractTakeoverBatchAbandonment",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-preview",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview",
+            "controller": "ContractTakeoverController",
+            "handler": "previewBatchAbandonment",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewContractTakeoverBatchAbandonmentWithCapability",
+              "previewContractTakeoverBatchAbandonment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.preview-excel-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTakeoverExcelImportWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2006,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_excel_import",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "previewContractTakeoverExcelImport",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/imports/preview",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/imports/preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/imports/preview",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/imports/preview",
+            "controller": "ContractTakeoverController",
+            "handler": "previewExcelImport",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewContractTakeoverExcelImportWithCapability",
+              "previewContractTakeoverExcelImport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.return-for-supplement",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnContractTakeoverForSupplementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2136,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "return_for_supplement",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "returnContractTakeoverForSupplement",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/supplement-return",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/supplement-return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/supplement-return",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/supplement-return",
+            "controller": "ContractTakeoverController",
+            "handler": "returnForSupplement",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnContractTakeoverForSupplementWithCapability",
+              "returnContractTakeoverForSupplement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.review-company-entity-correction",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2312,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_company_entity_correction",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewContractTakeoverCompanyEntityCorrection",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review",
+            "controller": "ContractTakeoverController",
+            "handler": "reviewCompanyEntityCorrection",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
+              "reviewContractTakeoverCompanyEntityCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.review-correction",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewContractTakeoverCorrectionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2283,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_correction",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewContractTakeoverCorrection",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/corrections/:param/review",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections/:param/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections/:param/review",
+            "controller": "ContractTakeoverController",
+            "handler": "reviewCorrection",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.correction.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewContractTakeoverCorrectionWithCapability",
+              "reviewContractTakeoverCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.review-import-batch",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewContractTakeoverImportBatchWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2030,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_import_batch",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewContractTakeoverImportBatch",
+          "method": "PATCH",
+          "path": "/projects/:param/contract-takeovers/import-batches/:param/review-result",
+          "normalizedKey": "PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/review-result",
+            "normalizedKey": "PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result",
+            "controller": "ContractTakeoverController",
+            "handler": "reviewImportBatch",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewContractTakeoverImportBatchWithCapability",
+              "reviewContractTakeoverImportBatch"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.save-contract-side",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveContractTakeoverContractSideWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2188,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_contract_side",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "saveContractTakeoverContractSide",
+          "method": "PUT",
+          "path": "/projects/:param/contract-takeovers/:param/contract-side",
+          "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/contract-side",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PUT",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side",
+            "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/contract-side",
+            "controller": "ContractTakeoverController",
+            "handler": "saveContractFacts",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.contract_facts.edit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveContractTakeoverContractSideWithCapability",
+              "saveContractTakeoverContractSide"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.save-finance-side",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveContractTakeoverFinanceSideWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2201,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_finance_side",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "saveContractTakeoverFinanceSide",
+          "method": "PUT",
+          "path": "/projects/:param/contract-takeovers/:param/finance-side",
+          "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/finance-side",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PUT",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side",
+            "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/finance-side",
+            "controller": "ContractTakeoverController",
+            "handler": "saveFinanceFacts",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.finance_facts.edit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveContractTakeoverFinanceSideWithCapability",
+              "saveContractTakeoverFinanceSide"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.submit-company-entity-correction",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2297,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_company_entity_correction",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "submitContractTakeoverCompanyEntityCorrection",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/company-entity-corrections",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/company-entity-corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/company-entity-corrections",
+            "controller": "ContractTakeoverController",
+            "handler": "submitCompanyEntityCorrection",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitContractTakeoverCompanyEntityCorrectionWithCapability",
+              "submitContractTakeoverCompanyEntityCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.submit-correction",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractTakeoverCorrectionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2270,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_correction",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "submitContractTakeoverCorrection",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/corrections",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
+            "controller": "ContractTakeoverController",
+            "handler": "recordCorrection",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.correction.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitContractTakeoverCorrectionWithCapability",
+              "submitContractTakeoverCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.submit-review",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractTakeoverReviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2111,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_review",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -3987,11 +5422,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "submitReview"
+              "submitContractTakeoverReviewWithCapability",
+              "submitContractTakeoverReview"
             ]
           },
           "ticketFollowups": []
@@ -3999,8 +5437,8 @@
       ]
     },
     {
-      "id": "contract-takeover.update-local-role-status",
-      "usage": "page_action",
+      "id": "contract-takeover.update",
+      "usage": "background",
       "routePaths": [
         "/历史合同接管"
       ],
@@ -4009,19 +5447,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
       "trigger": {
-        "element": "t-link",
-        "event": "click",
-        "handler": "startEdit",
-        "kind": "event",
-        "sourceLine": 886,
-        "sourceColumn": 18
+        "element": "module",
+        "event": "call",
+        "handler": "updateContractTakeoverWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2085,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canManageTakeovers && canEditTakeover(row.takeover)",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_takeover",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -4048,11 +5487,666 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "startEdit"
+              "updateContractTakeoverWithCapability",
+              "updateContractTakeover"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractTakeoverPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2072,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "upload_takeover_file",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractTakeoverPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/files",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/files",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+            "controller": "ContractTakeoverController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.file.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadContractTakeoverPrivateFileWithCapability",
+              "uploadContractTakeoverPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.withdraw-contract-side-confirmation",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2240,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_contract_side_confirmation",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawContractTakeoverContractSideConfirmation",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal",
+            "controller": "ContractTakeoverController",
+            "handler": "withdrawContractSideConfirmation",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.confirmation.withdraw"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawContractTakeoverContractSideConfirmationWithCapability",
+              "withdrawContractTakeoverContractSideConfirmation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.withdraw-finance-side-confirmation",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2255,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_finance_side_confirmation",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawContractTakeoverFinanceSideConfirmation",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal",
+            "controller": "ContractTakeoverController",
+            "handler": "withdrawFinanceSideConfirmation",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.confirmation.withdraw"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
+              "withdrawContractTakeoverFinanceSideConfirmation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.abandon-revision",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "abandonContractTaxFactRevisionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 129,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "abandon_tax_fact_revision",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "abandonContractTaxFactRevision",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/abandonment",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment",
+            "controller": "ContractTakeoverController",
+            "handler": "abandonTaxFactRevision",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.tax_fact.supplement"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "abandonContractTaxFactRevisionWithCapability",
+              "abandonContractTaxFactRevision"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.contract-confirm",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractTaxFactRevisionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 115,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_tax_fact_by_contract",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "confirmContractTaxFactRevision",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/contract-confirmation",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation",
+            "controller": "ContractTakeoverController",
+            "handler": "confirmTaxFactsByContract",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.tax_fact.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractTaxFactRevisionWithCapability",
+              "confirmContractTaxFactRevision"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.create-revision",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTaxFactRevisionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 59,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_tax_fact_revision",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "createContractTaxFactRevision",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions",
+            "controller": "ContractTakeoverController",
+            "handler": "createTaxFactRevision",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.tax_fact.supplement"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createContractTaxFactRevisionWithCapability",
+              "createContractTaxFactRevision"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.finance-review",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewContractTaxFactRevisionByFinanceWithCapability",
+        "kind": "background_call",
+        "sourceLine": 101,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_tax_fact_by_finance",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "reviewContractTaxFactRevisionByFinance",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review",
+            "controller": "ContractTakeoverController",
+            "handler": "reviewTaxFactsByFinance",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.tax_fact.finance_review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewContractTaxFactRevisionByFinanceWithCapability",
+              "reviewContractTaxFactRevisionByFinance"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.submit-finance-review",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractTaxFactRevisionForFinanceReviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 86,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_tax_fact_finance_review",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "submitContractTaxFactRevisionForFinanceReview",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review-submission",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission",
+            "controller": "ContractTakeoverController",
+            "handler": "submitTaxFactFinanceReview",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.tax_fact.supplement"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitContractTaxFactRevisionForFinanceReviewWithCapability",
+              "submitContractTaxFactRevisionForFinanceReview"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.update-revision",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateContractTaxFactRevisionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 72,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_tax_fact_revision",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
+          "wrapper": "updateContractTaxFactRevision",
+          "method": "PATCH",
+          "path": "/projects/:param/contract-takeovers/:param/tax-fact-revisions/:param",
+          "normalizedKey": "PATCH /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId",
+            "normalizedKey": "PATCH /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param",
+            "controller": "ContractTakeoverController",
+            "handler": "updateTaxFactRevision",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.tax_fact.supplement"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateContractTaxFactRevisionWithCapability",
+              "updateContractTaxFactRevision"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-tax-fact.upload-evidence",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractTaxFactEvidenceFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 143,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "upload_takeover_file",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractTakeoverPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/files",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/contract-takeovers/files",
+            "normalizedKey": "POST /projects/:param/contract-takeovers/files",
+            "controller": "ContractTakeoverController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.takeover.file.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadContractTaxFactEvidenceFileWithCapability",
+              "uploadContractTakeoverPrivateFile"
             ]
           },
           "ticketFollowups": []
@@ -8008,27 +10102,6 @@
     "unresolvedWrappers": [
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "contract-takeover.create-local-role",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractTakeover"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "contract-takeover.submit-review-local-role-status",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverReview"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "contract-takeover.update-local-role-status",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "updateContractTakeover"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "expense-claim.submit-local-status",
         "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
         "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
@@ -8125,24 +10198,6 @@
       }
     ],
     "clientRoleOrStatusGates": [
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "contract-takeover.create-local-role",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "capabilitySource": "canManageTakeovers"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "contract-takeover.submit-review-local-role-status",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "capabilitySource": "canSubmitTakeovers && canSubmitTakeoverReview(row.takeover)"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "contract-takeover.update-local-role-status",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "capabilitySource": "canManageTakeovers && canEditTakeover(row.takeover)"
-      },
       {
         "code": "CLIENT_ROLE_OR_STATUS_GATE",
         "actionId": "expense-claim.submit-local-status",
@@ -8452,321 +10507,6 @@
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
         "normalizedKeys": [
           "POST /contracts/:param/copies"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "abandonContractTakeover",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/abandonment"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "applyContractTakeoverBatchAbandonment",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-apply"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "applyContractTakeoverExcelImport",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/imports/apply"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "attachContractTakeoverEvidenceFile",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/evidence-files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "attachHistoricalPaymentVoucher",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/payment-evidence-files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeover",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeoverChangeBaseline",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/change-baseline-confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeoverContractSide",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractTakeoverFinanceSide",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractTakeover",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractTakeoverDraftsFromImport",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-drafts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "precheckContractTakeoverImport",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-precheck"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "previewContractTakeoverBatchAbandonment",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/import-batches/:param/draft-abandonment-preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "previewContractTakeoverExcelImport",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/imports/preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "returnContractTakeoverForSupplement",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/supplement-return"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractTakeoverCompanyEntityCorrection",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractTakeoverCorrection",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/corrections/:param/review"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewContractTakeoverImportBatch",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/contract-takeovers/import-batches/:param/review-result"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "saveContractTakeoverContractSide",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PUT /projects/:param/contract-takeovers/:param/contract-side"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "saveContractTakeoverFinanceSide",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PUT /projects/:param/contract-takeovers/:param/finance-side"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverCompanyEntityCorrection",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/company-entity-corrections"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverCorrection",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/corrections"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "submitContractTakeoverReview",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/review-submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "updateContractTakeover",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/contract-takeovers/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawContractTakeoverContractSideConfirmation",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "withdrawContractTakeoverFinanceSideConfirmation",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation-withdrawal"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "abandonContractTaxFactRevision",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/abandonment"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "confirmContractTaxFactRevision",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/contract-confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "createContractTaxFactRevision",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "reviewContractTaxFactRevisionByFinance",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "submitContractTaxFactRevisionForFinanceReview",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param/finance-review-submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
-        "wrapper": "updateContractTaxFactRevision",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/contract-takeovers/:param/tax-fact-revisions/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
         ]
       },
       {

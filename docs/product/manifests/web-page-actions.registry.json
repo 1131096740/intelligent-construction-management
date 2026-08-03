@@ -1798,21 +1798,22 @@
       ]
     },
     {
-      "id": "contract-takeover.create-local-role",
-      "usage": "page_action",
+      "id": "contract-takeover.create",
+      "usage": "background",
       "routePaths": [
         "/历史合同接管"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "startCreate"
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canManageTakeovers"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_takeover"
       },
       "wrappers": [
         {
@@ -1822,21 +1823,222 @@
       ]
     },
     {
-      "id": "contract-takeover.update-local-role-status",
-      "usage": "page_action",
+      "id": "contract-takeover.precheck-import",
+      "usage": "background",
       "routePaths": [
         "/历史合同接管"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
       "trigger": {
-        "element": "t-link",
-        "event": "click",
-        "handler": "startEdit"
+        "element": "module",
+        "event": "call",
+        "handler": "precheckContractTakeoverImportWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canManageTakeovers && canEditTakeover(row.takeover)"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "precheck_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "precheckContractTakeoverImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.create-import-drafts",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverDraftsFromImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_import_drafts"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createContractTakeoverDraftsFromImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.preview-excel-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTakeoverExcelImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_excel_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "previewContractTakeoverExcelImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.apply-excel-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTakeoverExcelImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_excel_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "applyContractTakeoverExcelImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.review-import-batch",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewContractTakeoverImportBatchWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_import_batch"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviewContractTakeoverImportBatch"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.preview-batch-abandonment",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTakeoverBatchAbandonmentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_batch_abandonment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "previewContractTakeoverBatchAbandonment"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.apply-batch-abandonment",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTakeoverBatchAbandonmentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_batch_abandonment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "applyContractTakeoverBatchAbandonment"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractTakeoverPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "upload_takeover_file"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadContractTakeoverPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.update",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateContractTakeoverWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_takeover"
       },
       "wrappers": [
         {
@@ -1846,21 +2048,22 @@
       ]
     },
     {
-      "id": "contract-takeover.submit-review-local-role-status",
-      "usage": "page_action",
+      "id": "contract-takeover.submit-review",
+      "usage": "background",
       "routePaths": [
         "/历史合同接管"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
       "trigger": {
-        "element": "t-link",
-        "event": "click",
-        "handler": "submitReview"
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractTakeoverReviewWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canSubmitTakeovers && canSubmitTakeoverReview(row.takeover)"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_review"
       },
       "wrappers": [
         {
@@ -1868,6 +2071,246 @@
           "name": "submitContractTakeoverReview"
         }
       ]
+    },
+    {
+      "id": "contract-takeover.abandon",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonContractTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "abandon_takeover" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "abandonContractTakeover" }]
+    },
+    {
+      "id": "contract-takeover.confirm",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_takeover" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeover" }]
+    },
+    {
+      "id": "contract-takeover.return-for-supplement",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnContractTakeoverForSupplementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "return_for_supplement" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "returnContractTakeoverForSupplement" }]
+    },
+    {
+      "id": "contract-takeover.confirm-change-baseline",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverChangeBaselineWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_change_baseline" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeoverChangeBaseline" }]
+    },
+    {
+      "id": "contract-takeover.attach-contract-evidence",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachContractTakeoverEvidenceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_contract_evidence" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "attachContractTakeoverEvidenceFile" }]
+    },
+    {
+      "id": "contract-takeover.attach-payment-voucher",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachHistoricalPaymentVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_payment_voucher" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "attachHistoricalPaymentVoucher" }]
+    },
+    {
+      "id": "contract-takeover.save-contract-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "saveContractTakeoverContractSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "save_contract_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "saveContractTakeoverContractSide" }]
+    },
+    {
+      "id": "contract-takeover.save-finance-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "saveContractTakeoverFinanceSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "save_finance_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "saveContractTakeoverFinanceSide" }]
+    },
+    {
+      "id": "contract-takeover.confirm-contract-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverContractSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_contract_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeoverContractSide" }]
+    },
+    {
+      "id": "contract-takeover.confirm-finance-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverFinanceSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_finance_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeoverFinanceSide" }]
+    },
+    {
+      "id": "contract-takeover.withdraw-contract-side-confirmation",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "withdraw_contract_side_confirmation" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "withdrawContractTakeoverContractSideConfirmation" }]
+    },
+    {
+      "id": "contract-takeover.withdraw-finance-side-confirmation",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "withdraw_finance_side_confirmation" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "withdrawContractTakeoverFinanceSideConfirmation" }]
+    },
+    {
+      "id": "contract-takeover.submit-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitContractTakeoverCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "submitContractTakeoverCorrection" }]
+    },
+    {
+      "id": "contract-takeover.review-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewContractTakeoverCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "reviewContractTakeoverCorrection" }]
+    },
+    {
+      "id": "contract-takeover.submit-company-entity-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_company_entity_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "submitContractTakeoverCompanyEntityCorrection" }]
+    },
+    {
+      "id": "contract-takeover.review-company-entity-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_company_entity_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "reviewContractTakeoverCompanyEntityCorrection" }]
+    },
+    {
+      "id": "contract-takeover.file-download-ticket",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createContractTakeoverFileDownloadTicketWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_private_file_download_ticket" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }]
+    },
+    {
+      "id": "contract-tax-fact.create-revision",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_tax_fact_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "createContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.update-revision",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "update_tax_fact_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "updateContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.submit-finance-review",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitContractTaxFactRevisionForFinanceReviewWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_tax_fact_finance_review" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "submitContractTaxFactRevisionForFinanceReview" }]
+    },
+    {
+      "id": "contract-tax-fact.finance-review",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewContractTaxFactRevisionByFinanceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_tax_fact_by_finance" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "reviewContractTaxFactRevisionByFinance" }]
+    },
+    {
+      "id": "contract-tax-fact.contract-confirm",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_tax_fact_by_contract" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "confirmContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.abandon-revision",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "abandon_tax_fact_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "abandonContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.upload-evidence",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractTaxFactEvidenceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "upload_takeover_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadContractTakeoverPrivateFile" }]
     },
     {
       "id": "settlement-draft.save-local-gate",
