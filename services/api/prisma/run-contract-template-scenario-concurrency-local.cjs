@@ -221,6 +221,7 @@ async function main() {
       await dockerCommand(
         [
           "run",
+          "--pull=never",
           "--detach",
           "--rm",
           "--name",

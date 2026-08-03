@@ -49,7 +49,9 @@ const REQUEST_MIGRATION =
   "20260802010000_project_financing_quota_request_idempotency";
 const REQUEST_MIGRATION_CHECKSUM =
   "d3d0d07a6cc9a49da1cca1478822a873fad7c7324b9d189e2a55a4d3f57bfe61";
-const EXPECTED_MIGRATION_COUNT = 116;
+const EXPECTED_MIGRATION_COUNT = 118;
+const CURRENT_TERMINAL_MIGRATION =
+  "20260804031000_contract_takeover_allocation_zero_index";
 const TERMINAL_MIGRATION =
   "20260802020000_project_financing_quota_termination_idempotency";
 const TERMINAL_MIGRATION_CHECKSUM =
@@ -184,12 +186,12 @@ async function assertMigrationSource() {
     .sort();
   if (
     entries.length !== EXPECTED_MIGRATION_COUNT ||
-    entries.at(-1) !== TERMINAL_MIGRATION ||
+    entries.at(-1) !== CURRENT_TERMINAL_MIGRATION ||
     entries.at(PRE115_MIGRATION_COUNT - 1) !== PRE115_TERMINAL_MIGRATION ||
     entries.at(PRE115_MIGRATION_COUNT) !== REQUEST_MIGRATION
   ) {
     throw new Error(
-      `项目垫资额度并发门要求 ${EXPECTED_MIGRATION_COUNT} 个迁移且终点为 ${TERMINAL_MIGRATION}`
+      `项目垫资额度并发门要求 ${EXPECTED_MIGRATION_COUNT} 个迁移且终点为 ${CURRENT_TERMINAL_MIGRATION}`
     );
   }
   const migrationSql = await readFile(
@@ -1142,10 +1144,13 @@ async function main() {
       }
       const status = await runPrismaStatus({ databaseUrl, runtimeEnv });
       if (!/Database schema is up to date!?/u.test(status.stdout)) {
-        throw new Error("migrate status 未证明空库达到 #116 终点");
+        throw new Error("migrate status 未证明空库达到当前迁移终点");
       }
-      if (!firstDeploy.stdout.includes(TERMINAL_MIGRATION)) {
-        throw new Error("首次 migrate deploy 未显示 #116 终点迁移");
+      if (
+        !firstDeploy.stdout.includes(TERMINAL_MIGRATION) ||
+        !firstDeploy.stdout.includes(CURRENT_TERMINAL_MIGRATION)
+      ) {
+        throw new Error("首次 migrate deploy 未显示额度约束迁移或当前终点迁移");
       }
       await verifyMigrationProof(dockerCommand, DATABASE_NAME);
       await verifyPre115RetainedMigrations({
@@ -1198,6 +1203,7 @@ if (require.main === module) {
 
 module.exports = {
   DATABASE_NAME,
+  CURRENT_TERMINAL_MIGRATION,
   LEGACY_DATABASE_NAME,
   PRE115_MIGRATION_COUNT,
   PRE115_TERMINAL_MIGRATION,

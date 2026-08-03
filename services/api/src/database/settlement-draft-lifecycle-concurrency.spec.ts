@@ -13,7 +13,7 @@ import { SettlementSubmissionService } from "../settlement/settlement-submission
 
 const DATABASE_NAME =
   "jiangkong_settlement_draft_lifecycle_concurrency";
-const EXPECTED_MIGRATION_COUNT = 116;
+const EXPECTED_MIGRATION_COUNT = 118;
 
 describe("settlement draft lifecycle database concurrency", () => {
   const integrationTest =

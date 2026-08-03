@@ -86,7 +86,7 @@ async function main() {
   try {
     const endpoint = await run(docker, ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]).then((value) => value.trim());
     assertLocalDockerEndpoint(endpoint);
-    await run(docker, ["run", "--detach", "--rm", "--name", containerName,
+    await run(docker, ["run", "--pull=never", "--detach", "--rm", "--name", containerName,
       "--env", "POSTGRES_USER=jiangkong", "--env", "POSTGRES_PASSWORD", "--env", `POSTGRES_DB=${databaseName}`,
       "--publish", `127.0.0.1:${port}:5432`, "postgres:16"], {
       env: { PATH: runtimeEnv.PATH, HOME: runtimeEnv.HOME, POSTGRES_PASSWORD: password }

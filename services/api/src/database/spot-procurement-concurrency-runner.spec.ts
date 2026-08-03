@@ -66,19 +66,19 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
     expect(runner).toContain("extraEnv: { POSTGRES_PASSWORD: databasePassword }");
   });
 
-  it("runs an idempotent second deploy and proves all 115 migrations finished", () => {
+  it("runs an idempotent second deploy and proves all 118 migrations finished", () => {
     const runner = readFileSync(
       join(process.cwd(), "prisma/run-spot-procurement-concurrency-local.cjs"),
       "utf8"
     );
 
-    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 116");
+    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 118");
     expect(
       runner.match(/"migrate",\s*"deploy"/gu) ?? []
     ).toHaveLength(2);
     expect(runner).toContain("_prisma_migrations");
     expect(runner).toContain(
-      "20260802020000_project_financing_quota_termination_idempotency"
+      "20260804031000_contract_takeover_allocation_zero_index"
     );
     expect(runner).toContain("appliedMigrationCount");
     expect(runner).toContain("terminalMigrationCount");
