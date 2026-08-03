@@ -343,7 +343,14 @@ export class ContractTakeoverActivationService {
 
     const contractVersionUpdated = await tx.contractVersion.updateMany({
       where: { id: takeover.contractVersionId },
-      data: { status: "effective", effectiveAt: activatedAt }
+      data: {
+        status: "effective",
+        effectiveAt: activatedAt,
+        settlementMode: isSettlementContract ? "settlement_required" : "direct_payment",
+        settlementModeSource: "contract_takeover",
+        settlementModeConfirmedByUserId: actorUserId,
+        settlementModeConfirmedAt: activatedAt
+      }
     });
     const paymentTermsUpdated =
       await tx.paymentTermsVersion.updateMany({

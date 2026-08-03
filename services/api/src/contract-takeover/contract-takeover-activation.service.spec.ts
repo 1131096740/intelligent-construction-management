@@ -153,6 +153,17 @@ describe("ContractTakeoverActivationService", () => {
       }),
       select: { id: true }
     });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: {
+        status: "effective",
+        effectiveAt: expect.any(Date),
+        settlementMode: "settlement_required",
+        settlementModeSource: "contract_takeover",
+        settlementModeConfirmedByUserId: "finance-director",
+        settlementModeConfirmedAt: expect.any(Date)
+      }
+    });
     expect(tx).not.toHaveProperty("paymentRequest");
     expect(tx).not.toHaveProperty("paymentExecution");
   });
