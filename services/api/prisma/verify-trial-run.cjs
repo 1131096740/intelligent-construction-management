@@ -1895,8 +1895,17 @@ function userFacingErrorMessage(error) {
     return `验证器抛出了${String(error)}，而不是 Error 实例`;
   }
   const rawMessage = error?.message;
+  const errorStack = error?.stack;
+  if (!rawMessage && (error?.name || error?.code || error?.meta)) {
+    return [
+      error.name || "PrismaError",
+      error.code ? `code=${error.code}` : "",
+      error.meta ? `meta=${JSON.stringify(error.meta)}` : "",
+      errorStack ? `stack=${errorStack}` : ""
+    ].filter(Boolean).join(" ");
+  }
   const raw = String(
-    rawMessage || (error instanceof Error ? error.stack : error) || "未知错误"
+    rawMessage || errorStack || error?.name || error || "未知错误"
   );
 
   if (error?.code === "P1001" || raw.includes("Can't reach database server")) {
@@ -1907,7 +1916,8 @@ function userFacingErrorMessage(error) {
     return `无法访问 API 服务（${baseUrl}）。请先启动 @jiangkong/api 服务后重试。`;
   }
 
-  return raw.split("\n")[0] || `验证器抛出了空错误对象（${Object.prototype.toString.call(error)}）`;
+  if (raw.trim()) return raw.split("\n")[0];
+  return `验证器抛出了空错误对象（${error?.name || Object.prototype.toString.call(error)}，code=${error?.code || "-"}，meta=${JSON.stringify(error?.meta || {})}）`;
 }
 
 async function main() {
