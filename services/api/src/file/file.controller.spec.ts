@@ -329,6 +329,7 @@ describe("FileController authorization wiring", () => {
   it("derives private file download capability from the authenticated account", async () => {
     const files = {
       getDownloadTicketCapability: jest.fn().mockResolvedValue({
+        availableActions: ["create_private_file_download_ticket"],
         action: {
           key: "create_private_file_download_ticket",
           enabled: true

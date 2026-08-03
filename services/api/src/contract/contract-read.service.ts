@@ -1406,6 +1406,9 @@ export class ContractReadService {
       signingMaterialChangeContext,
       approvalTimeline,
       availableActions,
+      availableActionKeys: availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key),
       reviewApprovalContext,
       withdrawApprovalContext,
       lifecycleKind: draftLifecycle.lifecycleKind,
@@ -1497,6 +1500,7 @@ export class ContractReadService {
       archiveFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      availableActionKeys: [],
       reviewApprovalContext: null,
       withdrawApprovalContext: null,
       primaryAction: null,

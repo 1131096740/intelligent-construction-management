@@ -71,11 +71,25 @@ describe("contract change UI state", () => {
       .toBeNull();
     expect(normalizeChangeEligibility({
       eligible: true,
+      availableActions: ["create_contract_change_draft"],
       reason: null,
       currentEffective: projection({ id: "v1", versionNo: 1, changeType: "original", status: "effective", amountCents: "1000", baseVersionId: null, changeReason: null, changeDirection: null, changeAmountCents: null, originalBaseAmountCents: null }),
       activeChange: null
     }, "v1")?.eligible).toBe(true);
-    expect(normalizeChangeEligibility({ eligible: true, reason: null, currentEffective: projection(), activeChange: null }, "v1")).toBeNull();
+    expect(normalizeChangeEligibility({
+      eligible: true,
+      availableActions: ["create_contract_change_draft"],
+      reason: null,
+      currentEffective: projection(),
+      activeChange: null
+    }, "v1")).toBeNull();
+    expect(normalizeChangeEligibility({
+      eligible: true,
+      availableActions: [],
+      reason: null,
+      currentEffective: projection({ id: "v1", status: "effective" }),
+      activeChange: null
+    }, "v1")).toBeNull();
   });
 
   it("fails closed for missing/unknown policy and accepts only schema-known whitelist keys", () => {

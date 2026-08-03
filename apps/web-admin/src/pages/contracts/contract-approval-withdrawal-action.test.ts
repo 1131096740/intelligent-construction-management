@@ -104,6 +104,7 @@ type ContractPageBindings = {
   clearContractActionTransientState: () => void;
   confirmContractWithdrawal: () => Promise<boolean>;
   contractDetail: MutableValue<unknown>;
+  contractLifecycleAvailableActionKeys: MutableValue<string[] | null>;
   contractWithdrawalActionEnabled: () => boolean;
   contractReviewCapability: MutableValue<unknown>;
   reloadContractDetail: () => Promise<boolean>;
@@ -409,6 +410,7 @@ function setupWithdrawalPage() {
   if (!bindings) throw new Error("contract detail setup failed");
   const detail = withdrawalDetail();
   bindings.contractDetail.value = structuredClone(detail);
+  bindings.contractLifecycleAvailableActionKeys.value = detail.availableActionKeys;
   bindings.contractReviewCapability.value = detail;
   return { bindings, scope };
 }
@@ -476,6 +478,9 @@ function withdrawalDetail(
           },
     reviewApprovalContext: null,
     availableActions: overrides.duplicateAction ? [action, { ...action }] : [action],
+    availableActionKeys: overrides.actionEnabled === false
+      ? []
+      : ["withdraw_approval"],
     meta: [],
     baseInfo: [],
     effectivenessSteps: [],

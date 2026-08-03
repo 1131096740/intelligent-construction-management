@@ -304,6 +304,7 @@ export interface ContractChangeVersionProjection {
 
 export interface ContractChangeEligibilityReadModel {
   eligible: boolean;
+  availableActions: Array<"create_contract_change_draft">;
   reason: string | null;
   currentEffective: ContractChangeVersionProjection | null;
   activeChange: ContractChangeVersionProjection | null;
@@ -4932,6 +4933,7 @@ export interface CreatePrivateFileDownloadTicketPayload {
 
 export function getPrivateFileDownloadTicketCapability(fileId: string) {
   return readJson<{
+    availableActions: Array<"create_private_file_download_ticket">;
     action: {
       key: "create_private_file_download_ticket";
       enabled: boolean;

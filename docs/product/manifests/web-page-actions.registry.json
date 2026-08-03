@@ -788,8 +788,8 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "report_signing_material_change"
       },
       "wrappers": [
@@ -813,8 +813,8 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "review_approval"
       },
       "wrappers": [
@@ -839,8 +839,8 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "review_approval"
       },
       "wrappers": [
@@ -865,14 +865,439 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "withdraw_approval"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "executeContractApprovalWithdrawalAction"
+        }
+      ]
+    },
+    {
+      "id": "contract-change.create-draft",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractChangeDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_contract_change_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createContractChangeDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.download-form",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadContractApprovalFormWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "download_approval_form"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadApprovalForm"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.remind",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "remindContractApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "remind_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "remindContractApproval"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferContractApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "transfer_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "transferContractApproval"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "delegateContractApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "delegate_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "delegateContractApproval"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.approve-legacy",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveLegacyContractSealWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "approve_seal"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "approveContractSeal"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.approve-governed",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveGovernedContractSealWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "approve_seal"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "approveGovernedContractSeal"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.complete",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "completeContractSealWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "complete_seal"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "completeContractSeal"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractFinalPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.associate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "associateContractFinalFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadMutuallySignedContract"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.return",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnContractFinalFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "return_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "returnMutuallySignedContractForCorrection"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractFinalFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "confirm_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmMutuallySignedContract"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractArchivePrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.associate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "associateContractArchiveFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadContractArchiveFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "confirm_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmContractArchive"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.generate-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateContractPdfArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "generate_pdf_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "generateContractPdfArchive"
+        }
+      ]
+    },
+    {
+      "id": "contract-file.download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractFileDownloadTicketWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createPrivateFileDownloadTicket"
         }
       ]
     },

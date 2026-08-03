@@ -1118,6 +1118,7 @@ export class FileService {
       }
       await this.assertCanDownloadFileObject(tx, file, actorUserId);
       return {
+        availableActions: ["create_private_file_download_ticket" as const],
         action: {
           key: "create_private_file_download_ticket" as const,
           enabled: true as const

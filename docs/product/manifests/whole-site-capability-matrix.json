@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "b8ce31d75a9720d704ace5134aa0bf5366dcde55ed5deb997a7123e76c179a3e",
+      "sha256": "adb758530db969dcf1001270e2bd6d484b93bebb6a73d7d038ae9871eaf2b5df",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
@@ -42,30 +42,30 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "3f488b7825d72bb7b11e93e0b62a0ab12440bb13413e48ba0de8dcdef9126358",
+      "sha256": "70e21a44686ce86b4db58a9b3a6cf52a72bf9e4896dc94ef9e7a38e7039e9277",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 90,
+        "registeredActionCount": 107,
         "pageActionCount": 55,
-        "backgroundActionCount": 35,
+        "backgroundActionCount": 52,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
         "parsedVueFileCount": 135,
         "reachableProductionModuleCount": 234,
-        "templateEventDirectiveCount": 951,
+        "templateEventDirectiveCount": 960,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 68,
-        "candidateProductionMutationConsumerCount": 80,
-        "acceptedProductionMutationConsumerCount": 68,
+        "coveredProductionMutationConsumerCount": 84,
+        "candidateProductionMutationConsumerCount": 96,
+        "acceptedProductionMutationConsumerCount": 84,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 234
+        "blockerCount": 218
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "5b19f38f7368048a0af8c23961d8fe944712773ff5c31d996af9edb90bc8880a",
-      "status": "blocked",
+      "sha256": "1bd36db3e725fdf26e408419dba4573d6c6b84a82187bb34c7d256168c159812",
+      "status": "ready",
       "summary": {
         "routeCount": 404,
         "exactRouteCount": 404,
@@ -88,7 +88,7 @@
           "operator_endpoint": 1,
           "none": 49
         },
-        "blockerCount": 4
+        "blockerCount": 0
       }
     }
   },
@@ -104,14 +104,14 @@
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 90,
-    "actionBindingCount": 115,
-    "acceptedActionBindingCount": 84,
+    "registeredActionCount": 107,
+    "actionBindingCount": 132,
+    "acceptedActionBindingCount": 101,
     "unresolvedActionBindingCount": 12,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 68,
-    "uncoveredProductionMutationConsumerPairCount": 209,
-    "blockerCount": 265
+    "coveredProductionMutationConsumerPairCount": 84,
+    "uncoveredProductionMutationConsumerPairCount": 193,
+    "blockerCount": 248
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -121,10 +121,6 @@
       },
       {
         "input": "web_page_actions",
-        "status": "blocked"
-      },
-      {
-        "input": "route_usage",
         "status": "blocked"
       }
     ],
@@ -702,22 +698,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "approveContractSeal",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/seal-approval"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "approveGovernedContractSeal",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/seal/approve"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "attachContractTakeoverEvidenceFile",
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
@@ -730,22 +710,6 @@
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/contract-takeovers/:param/payment-evidence-files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "completeContractSeal",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/seal/complete"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractArchive",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/archive-confirmation"
         ]
       },
       {
@@ -778,14 +742,6 @@
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/contract-takeovers/:param/finance-side/confirmation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmMutuallySignedContract",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final/confirmation"
         ]
       },
       {
@@ -854,14 +810,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractChangeDraft",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/change-drafts"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createContractTakeover",
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
@@ -882,14 +830,6 @@
         "consumer": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "normalizedKeys": [
           "POST /payments"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
         ]
       },
       {
@@ -942,14 +882,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "delegateContractApproval",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-delegation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "delegatePaymentApproval",
         "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
@@ -962,14 +894,6 @@
         "consumer": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "normalizedKeys": [
           "POST /settlements/:param/approval-delegation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
         ]
       },
       {
@@ -1018,14 +942,6 @@
         "consumer": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
         "normalizedKeys": [
           "POST /settlements/:param/approval-pdf/latest"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "generateContractPdfArchive",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/pdf-generation"
         ]
       },
       {
@@ -1134,14 +1050,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "remindContractApproval",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-reminder"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "remindPaymentApproval",
         "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
@@ -1170,14 +1078,6 @@
         "consumer": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "normalizedKeys": [
           "POST /projects/:param/contract-takeovers/:param/supplement-return"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "returnMutuallySignedContractForCorrection",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final/return"
         ]
       },
       {
@@ -1270,14 +1170,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "transferContractApproval",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-transfer"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "transferPaymentApproval",
         "consumer": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "normalizedKeys": [
@@ -1310,22 +1202,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadContractArchiveFile",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/archive-files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadMutuallySignedContract",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "consumer": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
         "normalizedKeys": [
@@ -1344,14 +1220,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "consumer": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "normalizedKeys": [
           "POST /files"
         ]
@@ -4120,8 +3988,8 @@
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "contractReviewCapability.availableActions",
+            "kind": "available_action_string",
+            "source": "contractLifecycleAvailableActionKeys",
             "key": "report_signing_material_change",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -4673,6 +4541,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
           ],
           "testConsumers": [
@@ -9301,7 +9170,34 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "contract-approval.download-form",
+          "bindingIndex": 0,
+          "identity": "contract-approval.download-form\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadApprovalForm\u0000POST\u0000POST /approval-forms/:param/:param/download\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "download_approval_form",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "uncovered",
       "blockerCodes": [
         "MUTATION_CONSUMER_UNCOVERED"
@@ -12632,11 +12528,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-approval.delegate",
+          "bindingIndex": 0,
+          "identity": "contract-approval.delegate\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000delegateContractApproval\u0000POST\u0000POST /contracts/:param/approval-delegation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "delegate_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "delegateContractApproval",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12675,11 +12596,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-approval.remind",
+          "bindingIndex": 0,
+          "identity": "contract-approval.remind\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000remindContractApproval\u0000POST\u0000POST /contracts/:param/approval-reminder\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "remind_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "remindContractApproval",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12744,11 +12690,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-approval.transfer",
+          "bindingIndex": 0,
+          "identity": "contract-approval.transfer\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000transferContractApproval\u0000POST\u0000POST /contracts/:param/approval-transfer\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "transfer_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "transferContractApproval",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12796,8 +12767,8 @@
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "contractReviewCapability.availableActions",
+            "kind": "available_action_string",
+            "source": "contractLifecycleAvailableActionKeys",
             "key": "withdraw_approval",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -12864,8 +12835,8 @@
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "contractReviewCapability.availableActions",
+            "kind": "available_action_string",
+            "source": "contractLifecycleAvailableActionKeys",
             "key": "review_approval",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -12890,8 +12861,8 @@
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "contractReviewCapability.availableActions",
+            "kind": "available_action_string",
+            "source": "contractLifecycleAvailableActionKeys",
             "key": "review_approval",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -12949,11 +12920,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-archive.confirm",
+          "bindingIndex": 0,
+          "identity": "contract-archive.confirm\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmContractArchive\u0000POST\u0000POST /contracts/:param/archive-confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "confirm_archive",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractArchive",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12992,11 +12988,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-archive.associate",
+          "bindingIndex": 0,
+          "identity": "contract-archive.associate\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadContractArchiveFile\u0000POST\u0000POST /contracts/:param/archive-files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "upload_archive",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractArchiveFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13103,11 +13124,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-change.create-draft",
+          "bindingIndex": 0,
+          "identity": "contract-change.create-draft\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createContractChangeDraft\u0000POST\u0000POST /contracts/:param/change-drafts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_contract_change_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createContractChangeDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13257,11 +13303,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-final.confirm",
+          "bindingIndex": 0,
+          "identity": "contract-final.confirm\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmMutuallySignedContract\u0000POST\u0000POST /contracts/:param/formal-files/final/confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "confirm_final_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmMutuallySignedContract",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13300,11 +13371,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-final.associate",
+          "bindingIndex": 0,
+          "identity": "contract-final.associate\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadMutuallySignedContract\u0000POST\u0000POST /contracts/:param/formal-files/final\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "upload_final_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadMutuallySignedContract",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13343,11 +13439,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-final.return",
+          "bindingIndex": 0,
+          "identity": "contract-final.return\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000returnMutuallySignedContractForCorrection\u0000POST\u0000POST /contracts/:param/formal-files/final/return\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "return_final_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "returnMutuallySignedContractForCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13386,11 +13507,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-archive.generate-pdf",
+          "bindingIndex": 0,
+          "identity": "contract-archive.generate-pdf\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000generateContractPdfArchive\u0000POST\u0000POST /contracts/:param/pdf-generation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "generate_pdf_archive",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "generateContractPdfArchive",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13497,11 +13643,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-seal.approve-legacy",
+          "bindingIndex": 0,
+          "identity": "contract-seal.approve-legacy\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000approveContractSeal\u0000POST\u0000POST /contracts/:param/seal-approval\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "approve_seal",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "approveContractSeal",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13540,11 +13711,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-seal.approve-governed",
+          "bindingIndex": 0,
+          "identity": "contract-seal.approve-governed\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000approveGovernedContractSeal\u0000POST\u0000POST /contracts/:param/seal/approve\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "approve_seal",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "approveGovernedContractSeal",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13583,11 +13779,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-seal.complete",
+          "bindingIndex": 0,
+          "identity": "contract-seal.complete\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000completeContractSeal\u0000POST\u0000POST /contracts/:param/seal/complete\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "complete_seal",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "completeContractSeal",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13635,8 +13856,8 @@
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "contractReviewCapability.availableActions",
+            "kind": "available_action_string",
+            "source": "contractLifecycleAvailableActionKeys",
             "key": "report_signing_material_change",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -14500,6 +14721,32 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "contract-file.download-ticket",
+          "bindingIndex": 0,
+          "identity": "contract-file.download-ticket\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "uncovered",
@@ -14639,6 +14886,58 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-archive.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-archive.upload-file\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "upload_archive",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "contract-final.upload-file",
+          "bindingIndex": 0,
+          "identity": "contract-final.upload-file\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActionKeys",
+            "key": "upload_final_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

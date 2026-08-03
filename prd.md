@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.6
+> 版本：v1.7
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；C-P0-02 第 3/6 子组已本地清零，下一步执行第 4 子组
+> 状态：执行中；C-P0-02 第 4/6 子组已本地清零，下一步执行第 5 子组
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 404 routes、0 unclassified、265 raw blockers、209 uncovered pairs、12 unresolved bindings；C-P0-01 已清零，C-P0-02 前 3 子组累计关闭 34 个 pair 和 8 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-02 第 4 子组 |
+| Task 11 能力矩阵 | 阶段 D 当前为 404 routes、0 unclassified、248 raw blockers、193 uncovered pairs、12 unresolved bindings；C-P0-01 已清零，C-P0-02 前 4 子组累计关闭 50 个 pair 和 8 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-02 第 5 子组 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -408,6 +408,15 @@
 > 286→265，`C-P0-02` 自身剩余 51 pair / 3 unresolved。下一步只能执行第 4 组审批、用印、
 > 归档与合同变更生命周期。完整证据见
 > `docs/progress/2026-08-03-five-package-stage-d-c-p0-02c-contract-files-documents.md`。
+
+> 2026-08-03 后续执行记录：`C-P0-02` 第 4 组审批、用印、归档与合同变更生命周期
+> 已本地清零。合同详情、合同变更 eligibility 与文件 ACL capability 发布精确服务端动作，
+> 16 个目标生产写 pair 均按 fresh GET、精确合同/版本或文件坐标、动作键校验后再 mutation；
+> 两条用印路径和上传/关联分别登记后形成 17 个 accepted binding。同步修复前三组新增路由后
+> 未更新的 route usage 锁定基线，route usage 恢复为 404 routes、0 unclassified、0 blocker。
+> uncovered pair 209→193、unresolved binding 保持 12、raw blocker 265→248；`C-P0-02`
+> 自身剩余 35 pair / 3 unresolved。下一步只能执行第 5 组历史合同接管主流程。完整证据见
+> `docs/progress/2026-08-03-five-package-stage-d-c-p0-02d-contract-lifecycle.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

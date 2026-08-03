@@ -1123,27 +1123,27 @@ test("locks the repository baseline to 40 plus 19 external routes and no blocker
       "PUT /contract-bills/:billId/rows": "exit_candidate"
     }
   );
-  assert.equal(manifest.summary.routeCount, 398);
-  assert.equal(manifest.summary.classificationOverrideCount, 107);
+  assert.equal(manifest.summary.routeCount, 404);
+  assert.equal(manifest.summary.classificationOverrideCount, 108);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01"
+    "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
-    "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2"
+    "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 291);
-  assert.equal(manifest.summary.pageRouteCount, 294);
+  assert.equal(manifest.summary.derivedProductionPageCount, 296);
+  assert.equal(manifest.summary.pageRouteCount, 299);
   assert.equal(manifest.summary.externalTakeoverCount, 59);
   assert.equal(manifest.summary.exitCandidateCount, 43);
-  assert.equal(manifest.summary.internalTaskCount, 2);
+  assert.equal(manifest.summary.internalTaskCount, 3);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 341,
+    web_api_wrapper: 346,
     auth_store: 5,
     signed_ticket_delivery: 1,
-    machine_probe: 1,
+    machine_probe: 2,
     operator_endpoint: 1,
     none: 49
   });

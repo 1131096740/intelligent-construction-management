@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 90,
+    "registeredActionCount": 107,
     "pageActionCount": 55,
-    "backgroundActionCount": 35,
+    "backgroundActionCount": 52,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
     "reachableProductionModuleCount": 234,
-    "templateEventDirectiveCount": 951,
+    "templateEventDirectiveCount": 960,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 68,
-    "candidateProductionMutationConsumerCount": 80,
-    "acceptedProductionMutationConsumerCount": 68,
+    "coveredProductionMutationConsumerCount": 84,
+    "candidateProductionMutationConsumerCount": 96,
+    "acceptedProductionMutationConsumerCount": 84,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 234
+    "blockerCount": 218
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -264,6 +264,201 @@
       ]
     },
     {
+      "id": "contract-approval.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "delegateContractApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1345,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "delegate_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "delegateContractApproval",
+          "method": "POST",
+          "path": "/contracts/:param/approval-delegation",
+          "normalizedKey": "POST /contracts/:param/approval-delegation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/approval-delegation",
+            "normalizedKey": "POST /contracts/:param/approval-delegation",
+            "controller": "ContractController",
+            "handler": "delegateApproval",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "delegateContractApprovalWithCapability",
+              "delegateContractApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.download-form",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadContractApprovalFormWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1301,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "download_approval_form",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "method": "POST",
+          "path": "/approval-forms/:param/:param/download",
+          "normalizedKey": "POST /approval-forms/:param/:param/download",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/approval-forms/:businessType/:businessId/download",
+            "normalizedKey": "POST /approval-forms/:param/:param/download",
+            "controller": "ApprovalFormController",
+            "handler": "download",
+            "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadContractApprovalFormWithCapability",
+              "requestApprovalFormDownload"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.remind",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "remindContractApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1316,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "remind_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "remindContractApproval",
+          "method": "POST",
+          "path": "/contracts/:param/approval-reminder",
+          "normalizedKey": "POST /contracts/:param/approval-reminder",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/approval-reminder",
+            "normalizedKey": "POST /contracts/:param/approval-reminder",
+            "controller": "ContractController",
+            "handler": "remindApproval",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "remindContractApprovalWithCapability",
+              "remindContractApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-approval.review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -283,8 +478,8 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "review_approval",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -349,8 +544,8 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "review_approval",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -396,6 +591,71 @@
       ]
     },
     {
+      "id": "contract-approval.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferContractApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1330,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "transfer_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "transferContractApproval",
+          "method": "POST",
+          "path": "/contracts/:param/approval-transfer",
+          "normalizedKey": "POST /contracts/:param/approval-transfer",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/approval-transfer",
+            "normalizedKey": "POST /contracts/:param/approval-transfer",
+            "controller": "ContractController",
+            "handler": "transferApproval",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "transferContractApprovalWithCapability",
+              "transferContractApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-approval.withdraw",
       "usage": "page_action",
       "routePaths": [
@@ -415,8 +675,8 @@
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "withdraw_approval",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -454,6 +714,266 @@
             "localCallChain": [
               "confirmContractWithdrawal",
               "executeContractApprovalWithdrawalAction"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.associate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "associateContractArchiveFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1420,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadContractArchiveFile",
+          "method": "POST",
+          "path": "/contracts/:param/archive-files",
+          "normalizedKey": "POST /contracts/:param/archive-files",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/archive-files",
+            "normalizedKey": "POST /contracts/:param/archive-files",
+            "controller": "ContractController",
+            "handler": "uploadArchiveFile",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "associateContractArchiveFileWithCapability",
+              "uploadContractArchiveFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1435,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "confirm_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmContractArchive",
+          "method": "POST",
+          "path": "/contracts/:param/archive-confirmation",
+          "normalizedKey": "POST /contracts/:param/archive-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/archive-confirmation",
+            "normalizedKey": "POST /contracts/:param/archive-confirmation",
+            "controller": "ContractController",
+            "handler": "confirmArchiveFile",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractArchiveWithCapability",
+              "confirmContractArchive"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.generate-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateContractPdfArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1450,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "generate_pdf_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "generateContractPdfArchive",
+          "method": "POST",
+          "path": "/contracts/:param/pdf-generation",
+          "normalizedKey": "POST /contracts/:param/pdf-generation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/pdf-generation",
+            "normalizedKey": "POST /contracts/:param/pdf-generation",
+            "controller": "ContractController",
+            "handler": "generatePdfArchive",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "generateContractPdfArchiveWithCapability",
+              "generateContractPdfArchive"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractArchivePrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1404,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadContractArchivePrivateFileWithCapability",
+              "uploadPrivateFile"
             ]
           },
           "ticketFollowups": []
@@ -1019,6 +1539,71 @@
             "localCallChain": [
               "executeFocusedBillRemainderCancellation",
               "executeContractBillRemainderCancellation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-change.create-draft",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractChangeDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1525,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_contract_change_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createContractChangeDraft",
+          "method": "POST",
+          "path": "/contracts/:param/change-drafts",
+          "normalizedKey": "POST /contracts/:param/change-drafts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/change-drafts",
+            "normalizedKey": "POST /contracts/:param/change-drafts",
+            "controller": "ContractController",
+            "handler": "createChangeDraft",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createContractChangeDraftWithCapability",
+              "createContractChangeDraft"
             ]
           },
           "ticketFollowups": []
@@ -2104,6 +2689,331 @@
       ]
     },
     {
+      "id": "contract-file.download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractFileDownloadTicketWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1546,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createContractFileDownloadTicketWithCapability",
+              "createPrivateFileDownloadTicket"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-final.associate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "associateContractFinalFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1480,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_final_contract",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadMutuallySignedContract",
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/final",
+          "normalizedKey": "POST /contracts/:param/formal-files/final",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/formal-files/final",
+            "normalizedKey": "POST /contracts/:param/formal-files/final",
+            "controller": "ContractController",
+            "handler": "uploadMutuallySignedFinal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "associateContractFinalFileWithCapability",
+              "uploadMutuallySignedContract"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-final.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractFinalFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1510,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "confirm_final_contract",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmMutuallySignedContract",
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/final/confirmation",
+          "normalizedKey": "POST /contracts/:param/formal-files/final/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/formal-files/final/confirmation",
+            "normalizedKey": "POST /contracts/:param/formal-files/final/confirmation",
+            "controller": "ContractController",
+            "handler": "confirmMutuallySignedFinal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractFinalFileWithCapability",
+              "confirmMutuallySignedContract"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-final.return",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnContractFinalFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1495,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "return_final_contract",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "returnMutuallySignedContractForCorrection",
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/final/return",
+          "normalizedKey": "POST /contracts/:param/formal-files/final/return",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/formal-files/final/return",
+            "normalizedKey": "POST /contracts/:param/formal-files/final/return",
+            "controller": "ContractController",
+            "handler": "returnMutuallySignedFinal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "returnContractFinalFileWithCapability",
+              "returnMutuallySignedContractForCorrection"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-final.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractFinalPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1464,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_final_contract",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPrivateFile",
+          "method": "POST",
+          "path": "/files",
+          "normalizedKey": "POST /files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files",
+            "normalizedKey": "POST /files",
+            "controller": "FileController",
+            "handler": "upload",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadContractFinalPrivateFileWithCapability",
+              "uploadPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-formal-document.associate-approval",
       "usage": "background",
       "routePaths": [
@@ -2772,6 +3682,201 @@
       ]
     },
     {
+      "id": "contract-seal.approve-governed",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveGovernedContractSealWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1374,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "approve_seal",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "approveGovernedContractSeal",
+          "method": "POST",
+          "path": "/contracts/:param/seal/approve",
+          "normalizedKey": "POST /contracts/:param/seal/approve",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/seal/approve",
+            "normalizedKey": "POST /contracts/:param/seal/approve",
+            "controller": "ContractController",
+            "handler": "approveGovernedSeal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.seal"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "approveGovernedContractSealWithCapability",
+              "approveGovernedContractSeal"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.approve-legacy",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveLegacyContractSealWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1360,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "approve_seal",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "approveContractSeal",
+          "method": "POST",
+          "path": "/contracts/:param/seal-approval",
+          "normalizedKey": "POST /contracts/:param/seal-approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/seal-approval",
+            "normalizedKey": "POST /contracts/:param/seal-approval",
+            "controller": "ContractController",
+            "handler": "approveSeal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.seal"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "approveLegacyContractSealWithCapability",
+              "approveContractSeal"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.complete",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "completeContractSealWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1389,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "complete_seal",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "completeContractSeal",
+          "method": "POST",
+          "path": "/contracts/:param/seal/complete",
+          "normalizedKey": "POST /contracts/:param/seal/complete",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/seal/complete",
+            "normalizedKey": "POST /contracts/:param/seal/complete",
+            "controller": "ContractController",
+            "handler": "completeGovernedSeal",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "completeContractSealWithCapability",
+              "completeContractSeal"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-takeover.create-local-role",
       "usage": "page_action",
       "routePaths": [
@@ -3367,13 +4472,13 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1026,
+        "sourceLine": 1142,
         "sourceColumn": 6
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "detail_action",
-        "source": "contractReviewCapability.availableActions",
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
         "key": "report_signing_material_change",
         "serverDerived": true,
         "dominatesTrigger": true
@@ -7338,150 +8443,6 @@
         "sourceFile": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
         "normalizedKeys": [
           "POST /standard-clause-versions/:param/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "approveContractSeal",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/seal-approval"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "approveGovernedContractSeal",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/seal/approve"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "completeContractSeal",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/seal/complete"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmContractArchive",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/archive-confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmMutuallySignedContract",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final/confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractChangeDraft",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/change-drafts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "delegateContractApproval",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-delegation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "generateContractPdfArchive",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/pdf-generation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "remindContractApproval",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-reminder"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "returnMutuallySignedContractForCorrection",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final/return"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "transferContractApproval",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/approval-transfer"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadContractArchiveFile",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/archive-files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadMutuallySignedContract",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
         ]
       },
       {

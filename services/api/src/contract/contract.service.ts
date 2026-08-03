@@ -1632,6 +1632,7 @@ export class ContractService {
       currentEffective?.id === effectiveVersionId && !activeChange && !sourceBlocker;
     return {
       eligible,
+      availableActions: eligible ? ["create_contract_change_draft"] : [],
       reason: eligible
         ? null
         : activeChange

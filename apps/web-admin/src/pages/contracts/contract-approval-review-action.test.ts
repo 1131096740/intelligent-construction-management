@@ -98,6 +98,7 @@ type ContractPageBindings = {
     ownerContractRiskConfirmed: boolean;
   };
   contractDetail: MutableValue<unknown>;
+  contractLifecycleAvailableActionKeys: MutableValue<string[] | null>;
   contractReviewCapability: MutableValue<unknown>;
   reloadContractDetail: () => Promise<boolean>;
   requestContractReview: (decision: ReviewDecision) => void;
@@ -152,6 +153,7 @@ describe("contract approval review page ownership", () => {
     const view = structuredClone(authoritative);
     view.availableActions[0]!.enabled = false;
     bindings.contractDetail.value = view;
+    bindings.contractLifecycleAvailableActionKeys.value = authoritative.availableActionKeys;
     bindings.contractReviewCapability.value = authoritative;
 
     try {
@@ -238,6 +240,7 @@ describe("contract approval review page ownership", () => {
     const { bindings, scope } = setupPage();
     const detail = contractDetail({ ownerContractRisk: contractOwnerRisk() });
     bindings.contractDetail.value = structuredClone(detail);
+    bindings.contractLifecycleAvailableActionKeys.value = detail.availableActionKeys;
     bindings.contractReviewCapability.value = detail;
 
     try {
@@ -300,6 +303,7 @@ function setupReviewPage() {
   const page = setupPage();
   const detail = contractDetail();
   page.bindings.contractDetail.value = structuredClone(detail);
+  page.bindings.contractLifecycleAvailableActionKeys.value = detail.availableActionKeys;
   page.bindings.contractReviewCapability.value = detail;
   return page;
 }
@@ -350,6 +354,9 @@ function contractDetail(
       requiredRoles: [],
       requiresSelfReviewConfirmation: false
     }],
+    availableActionKeys: overrides.actionEnabled === false
+      ? []
+      : ["review_approval"],
     ownerContractRisk: overrides.ownerContractRisk,
     meta: [],
     baseInfo: [],

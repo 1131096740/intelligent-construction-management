@@ -4682,6 +4682,7 @@ describe("FileService", () => {
     await expect(
       service.getDownloadTicketCapability("file-1", "finance-1")
     ).resolves.toEqual({
+      availableActions: ["create_private_file_download_ticket"],
       action: {
         key: "create_private_file_download_ticket",
         enabled: true

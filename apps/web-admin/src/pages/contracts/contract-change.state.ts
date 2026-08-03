@@ -55,6 +55,7 @@ export interface NormalizedChangeVersion {
 
 export interface NormalizedChangeEligibility {
   eligible: boolean;
+  availableActions: Array<"create_contract_change_draft">;
   reason: string | null;
   currentEffective: NormalizedChangeVersion | null;
   activeChange: NormalizedChangeVersion | null;
@@ -260,6 +261,10 @@ export function normalizeChangeEligibility(
 ): NormalizedChangeEligibility | null {
   const source = record(value);
   if (!source || typeof source["eligible"] !== "boolean") return null;
+  const availableActions = source["availableActions"];
+  if (!Array.isArray(availableActions) || availableActions.some(
+    (action) => action !== "create_contract_change_draft"
+  )) return null;
   const current = source["currentEffective"] === null ? null : normalizeChangeVersion(source["currentEffective"]);
   const active = source["activeChange"] === null ? null : normalizeChangeVersion(source["activeChange"]);
   const reason = source["reason"] === null ? null : id(source["reason"]);
@@ -267,8 +272,15 @@ export function normalizeChangeEligibility(
   if (active === null && source["activeChange"] !== null) return null;
   if (reason === undefined || (current && current.status !== "effective")) return null;
   if (source["eligible"] && (!current || current.id !== requestedVersionId || active || reason !== null)) return null;
+  if (source["eligible"] !== availableActions.includes("create_contract_change_draft")) return null;
   if (current && active && current.contractId !== active.contractId) return null;
-  return { eligible: source["eligible"], reason, currentEffective: current, activeChange: active };
+  return {
+    eligible: source["eligible"],
+    availableActions: [...availableActions],
+    reason,
+    currentEffective: current,
+    activeChange: active
+  };
 }
 
 function normalizeArchiveEffect(value: unknown): NormalizedArchiveEffect | null {

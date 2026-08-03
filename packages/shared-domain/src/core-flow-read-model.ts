@@ -255,6 +255,7 @@ export interface ContractDetailReadModel {
   signingMaterialChangeContext?: ContractSigningMaterialChangeContextReadModel | null;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  availableActionKeys: string[];
   reviewApprovalContext: ContractApprovalReviewContextReadModel | null;
   withdrawApprovalContext: ContractApprovalWithdrawalContextReadModel | null;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -31,7 +31,7 @@
       "operator_endpoint": 1,
       "none": 49
     },
-    "blockerCount": 4
+    "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
@@ -2241,6 +2241,7 @@
             "normalizedKey": "GET /files/:param/download-ticket-capability",
             "productionConsumers": [
               "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
             ]
           }
@@ -16500,28 +16501,7 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [
-      {
-        "field": "consumerSurfaceCounts.web_api_wrapper",
-        "expected": 343,
-        "actual": 346
-      },
-      {
-        "field": "derivedProductionPageCount",
-        "expected": 293,
-        "actual": 296
-      },
-      {
-        "field": "routeCount",
-        "expected": 401,
-        "actual": 404
-      },
-      {
-        "field": "usageCounts.page",
-        "expected": 296,
-        "actual": 299
-      }
-    ],
+    "expectationMismatches": [],
     "unclassifiedRoutes": []
   }
 }

@@ -1401,6 +1401,7 @@ describe("ContractReadService", () => {
       requiredAction: "contract.archive.confirm",
       requiresPassword: true
     });
+    expect(detail.availableActionKeys).toContain("confirm_archive");
     expect(detail.disabledReasons).toEqual([]);
   });
 
@@ -2603,5 +2604,6 @@ describe("ContractReadService", () => {
         })
       ])
     );
+    expect(detail.availableActionKeys).toContain("abandon_application");
   });
 });
