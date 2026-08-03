@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.1
+> 版本：v1.2
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；阶段 B 已完成，下一步进入阶段 C 能力矩阵风险分级
+> 状态：执行中；阶段 C 已完成，下一步进入阶段 D 风险优先补齐业务缺口
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,12 +114,12 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 398 routes、388 wrappers/408 bindings、59 actions/84 bindings、20 unresolved actions、37 orphan wrappers、3 duplicate mutation routes、247 uncovered mutation pairs、310 blockers | 整站严格完成门仍未通过 |
-| 全量测试 | Shared 全绿；Web 1748 项断言通过但错误收集 Playwright 文件导致退出 1；API 5616 项断言通过但 verifier 依赖 `dist` 导致 runner suite 失败 | 必须修复测试入口，不能以“断言大部分通过”替代总门全绿 |
-| 浏览器门 | 历史精确候选共 16 项，7 通过、9 失败 | 旧证据不可复用，新 SHA 必须重跑 |
-| CI/CD | 只有手动生产部署工作流；workflow 与部署脚本的 SHA 确认参数不一致；无 PR/push CI | 上线前必须修复确定性部署链 |
-| 安全 | HSTS、登录/刷新限流、私有数据库已具备；缺 CSP，API 暴露 `X-Powered-By`；依赖审计有 5 high、5 moderate、1 low | 可达高危必须清零或关闭受影响能力 |
-| 健康检查 | 当前 `/health` 主要返回静态 `ok` | 不能证明数据库、对象存储或任务依赖可用 |
+| Task 11 能力矩阵 | 399 routes、0 unclassified；310 个原始 blocker 已分为 P0 212、P1 55、P2 43，并归并为 7 个 P0 修复流、4 个 P1 隔离组和 3 个 P2 治理组 | 阶段 C 已完成；整站严格完成门仍未通过，下一步按唯一 P0 队列执行阶段 D |
+| 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
+| 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
+| CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
+| 安全 | 依赖 high 已从 5 降为 0，剩余 4 moderate 已完成当前可达性分诊；已移除 `X-Powered-By` 并通过 CSP Report-Only 生产等价门 | 阶段 E 复核最终依赖、CSP 报告和全站安全头 |
+| 健康检查 | 已区分 liveness 与 readiness，readiness 检查 API、数据库和必要配置 | 阶段 F/G 在生产等价与生产部署后复核 |
 
 ## 5. 五个实施包完成度
 
@@ -352,6 +352,13 @@
 退出条件：标准门禁在明确依赖和缓存状态下可以重复执行；CI 对同一 SHA 可重复得到一致结果；错误 SHA 和缺失确认参数不会改变生产。
 
 ### 阶段 C：能力矩阵风险分级
+
+> 2026-08-03 执行记录：已在阶段 B 最终候选 `97a372fa…` 上确定性重生六份
+> manifest。399 条路由全部分类；310 个原始 blocker 已完整对账为 P0 212、P1 55、
+> P2 43。去除上游汇总和重叠后，P0 为 194 条唯一证据记录并收敛为 7 个依赖有序的
+> 修复流；P1 为 4 个可只读隔离组；P2 为 3 个退出/工具治理组。阶段 C 完成不表示
+> P0 或 Task 11 已完成，下一步严格进入阶段 D。完整证据与关闭方案见
+> `docs/progress/2026-08-03-five-package-stage-c-capability-risk-classification.md`。
 
 对阶段 B 的精确 SHA 重新生成全部 machine-readable manifest 和整站能力矩阵。310 项历史 blocker 不能逐项等同于业务缺陷，必须按可达性、动作风险和共享根因重新分级：
 
