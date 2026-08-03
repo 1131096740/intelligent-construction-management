@@ -347,7 +347,7 @@ export class ContractTakeoverActivationService {
         status: "effective",
         effectiveAt: activatedAt,
         settlementMode: isSettlementContract ? "settlement_required" : "direct_payment",
-        settlementModeSource: "contract_takeover",
+        settlementModeSource: "backfill",
         settlementModeConfirmedByUserId: actorUserId,
         settlementModeConfirmedAt: activatedAt
       }

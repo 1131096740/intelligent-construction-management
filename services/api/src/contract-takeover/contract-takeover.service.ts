@@ -2939,7 +2939,7 @@ export class ContractTakeoverService {
             contract?.contractTypeKey === "generic_contract"
               ? "direct_payment"
               : "settlement_required",
-          settlementModeSource: "contract_takeover",
+          settlementModeSource: "backfill",
           settlementModeConfirmedByUserId: actorUserId,
           settlementModeConfirmedAt: confirmedAt
         }

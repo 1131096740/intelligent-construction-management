@@ -5305,7 +5305,7 @@ describe("ContractTakeoverService", () => {
         status: "effective",
         effectiveAt: expect.any(Date),
         settlementMode: "direct_payment",
-        settlementModeSource: "contract_takeover",
+        settlementModeSource: "backfill",
         settlementModeConfirmedByUserId: "director-1",
         settlementModeConfirmedAt: expect.any(Date)
       }
