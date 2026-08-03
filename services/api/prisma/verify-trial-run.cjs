@@ -1891,7 +1891,10 @@ async function assertAuditActions(input) {
 }
 
 function userFacingErrorMessage(error) {
-  const raw = String(error?.message ?? error ?? "未知错误");
+  const rawMessage = error?.message;
+  const raw = String(
+    rawMessage || (error instanceof Error ? error.stack : error) || "未知错误"
+  );
 
   if (error?.code === "P1001" || raw.includes("Can't reach database server")) {
     return "无法连接本地 PostgreSQL（默认 localhost:5432）。请先启动 services/api/docker-compose.yml 中的 postgres，完成 migrate/seed 后重试。";
