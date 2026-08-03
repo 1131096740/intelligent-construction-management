@@ -83,8 +83,14 @@
 <script setup lang="ts">
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import { computed, ref, watch } from "vue";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
-import { attachSettlementDraftLineFile, invalidateSettlementDraftLineAttachment, listSettlementDraftLineAttachments, type SettlementLineAttachmentReadModel } from "../../../api/settlement-drafts.api";
+import {
+  attachSettlementDraftLineFile,
+  fetchSettlementProjectCapability,
+  invalidateSettlementDraftLineAttachment,
+  listSettlementDraftLineAttachments,
+  uploadSettlementDraftPrivateFile,
+  type SettlementLineAttachmentReadModel
+} from "../../../api/settlement-drafts.api";
 
 const props = defineProps<{ projectId: string; draftId: string; revision: number; lines: Array<{ lineKey: string; label: string }>; disabledReason?: string }>();
 const emit = defineEmits<{ updated: [revision: number] }>();
@@ -99,8 +105,73 @@ const columns: PrimaryTableCol<SettlementLineAttachmentReadModel>[] = [
 watch(() => [props.projectId, props.draftId], () => void load(), { immediate: true });
 async function load() { if (!props.projectId || !props.draftId) return; loading.value = true; try { attachments.value = await listSettlementDraftLineAttachments(props.projectId, props.draftId); } catch (error) { setMessage(error instanceof Error ? error.message : "读取结算明细附件失败", "error"); } finally { loading.value = false; } }
 function selectFile(event: Event) { const file = (event.target as HTMLInputElement).files?.[0]; if (file) void uploadAndAttach(file); if (fileInput.value) fileInput.value.value = ""; }
-async function uploadAndAttach(file: File) { if (props.disabledReason || !lineKey.value || !purpose.value.trim()) return; uploading.value = true; try { const uploaded = await uploadPrivateFile(file, file.name); const result = await attachSettlementDraftLineFile(props.projectId, props.draftId, lineKey.value, { fileId: uploaded.id, purpose: purpose.value.trim(), expectedRevision: props.revision }); purpose.value = ""; emit("updated", result.revision); await load(); setMessage("附件已关联；请按新修订号重新生成冻结结算单。", "success"); } catch (error) { setMessage(error instanceof Error ? error.message : "附件关联失败", "error"); } finally { uploading.value = false; } }
-async function invalidate(attachmentId: string) { if (props.disabledReason) return; try { const result = await invalidateSettlementDraftLineAttachment(props.projectId, props.draftId, attachmentId, props.revision); emit("updated", result.revision); await load(); setMessage("附件已作废；请按新修订号重新生成冻结结算单。", "success"); } catch (error) { setMessage(error instanceof Error ? error.message : "作废附件失败", "error"); } }
+
+async function attachSettlementLineFileWithCapability(file: File) {
+  const capability = await fetchSettlementProjectCapability(props.projectId);
+  const matchesRequestedProject = capability.projectId === props.projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("attach_line_file");
+  if (!operationAllowed) throw new Error("当前用户不能上传结算明细附件");
+  const uploaded = await uploadSettlementDraftPrivateFile(
+    props.projectId,
+    file,
+    file.name
+  );
+  return attachSettlementDraftLineFile(
+    props.projectId,
+    props.draftId,
+    lineKey.value,
+    {
+      fileId: uploaded.id,
+      purpose: purpose.value.trim(),
+      expectedRevision: props.revision
+    }
+  );
+}
+
+async function invalidateSettlementLineAttachmentWithCapability(attachmentId: string) {
+  const capability = await fetchSettlementProjectCapability(props.projectId);
+  const matchesRequestedProject = capability.projectId === props.projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "invalidate_line_attachment"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能作废结算明细附件");
+  return invalidateSettlementDraftLineAttachment(
+    props.projectId,
+    props.draftId,
+    attachmentId,
+    props.revision
+  );
+}
+
+async function uploadAndAttach(file: File) {
+  if (props.disabledReason || !lineKey.value || !purpose.value.trim()) return;
+  uploading.value = true;
+  try {
+    const result = await attachSettlementLineFileWithCapability(file);
+    purpose.value = "";
+    emit("updated", result.revision);
+    await load();
+    setMessage("附件已关联；请按新修订号重新生成冻结结算单。", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "附件关联失败", "error");
+  } finally {
+    uploading.value = false;
+  }
+}
+
+async function invalidate(attachmentId: string) {
+  if (props.disabledReason) return;
+  try {
+    const result = await invalidateSettlementLineAttachmentWithCapability(attachmentId);
+    emit("updated", result.revision);
+    await load();
+    setMessage("附件已作废；请按新修订号重新生成冻结结算单。", "success");
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : "作废附件失败", "error");
+  }
+}
 function setMessage(next: string, tone: "success" | "error" | "info") { message.value = next; messageTone.value = tone; }
 </script>
 

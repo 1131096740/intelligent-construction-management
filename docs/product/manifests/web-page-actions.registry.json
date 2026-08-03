@@ -2314,26 +2314,40 @@
     },
     {
       "id": "settlement-draft.save-local-gate",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/结算工作台/新建"
       ],
       "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "saveDraft"
-      },
+      "trigger": { "element": "module", "event": "call", "handler": "saveSettlementDraftWithCapability" },
       "semantic": "business_write",
       "capability": {
-        "kind": "none",
-        "source": "saveDisabledReason"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_draft"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
           "name": "createSettlementDraftRecord"
-        },
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.update-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_draft"
+      },
+      "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
           "name": "updateSettlementDraftRecord"
@@ -2342,25 +2356,22 @@
     },
     {
       "id": "settlement-import.preview-local-gate",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/结算工作台/新建"
       ],
       "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "trigger": {
-        "element": "t-upload",
-        "event": "change",
-        "handler": "selectImportFile"
-      },
+      "trigger": { "element": "module", "event": "call", "handler": "previewSettlementImportWithCapability" },
       "semantic": "technical_write",
       "capability": {
-        "kind": "none",
-        "source": "draftSubmissionBlockingReason"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_import"
       },
       "wrappers": [
         {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "uploadPrivateFile"
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "uploadSettlementDraftPrivateFile"
         },
         {
           "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
@@ -2375,39 +2386,12 @@
         "/结算工作台/新建"
       ],
       "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "schedulePreview"
-      },
+      "trigger": { "element": "module", "event": "call", "handler": "previewSettlementLinesWithCapability" },
       "semantic": "technical_write",
       "capability": {
-        "kind": "none",
-        "source": "draftSubmissionBlockingReason && validationErrors"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-          "name": "previewSettlementLines"
-        }
-      ]
-    },
-    {
-      "id": "settlement-preview.manual-local-gate",
-      "usage": "page_action",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestCanonicalPreview"
-      },
-      "semantic": "technical_write",
-      "capability": {
-        "kind": "none",
-        "source": "validationErrors && templateReady"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_lines"
       },
       "wrappers": [
         {
@@ -2823,6 +2807,274 @@
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
           "name": "executeSpotProcurementWithdrawalAction"
         }
+      ]
+    },
+    {
+      "id": "settlement-detail.review",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "reviewSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.transfer",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "transferSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "transfer_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "transferSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.delegate",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "delegateSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "delegate_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "delegateSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.remind",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "remindSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "remind_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "remindSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.approval-pdf",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSettlementApprovalPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "download_approval_form" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadSettlementLatestApprovalPdf" }
+      ]
+    },
+    {
+      "id": "settlement-detail.archive-upload",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSettlementArchiveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "upload_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementArchivePrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementArchiveFile" }
+      ]
+    },
+    {
+      "id": "settlement-detail.archive-confirm-or-regenerate",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmSettlementArchiveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmSettlementArchive" }
+      ]
+    },
+    {
+      "id": "settlement-detail.signed-document-regenerate",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "regenerateSettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "regenerateSettlementSignedDocument" }
+      ]
+    },
+    {
+      "id": "settlement-detail.generation-retry",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "retrySettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "retry_signed_document_generation" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "retrySettlementSignedDocumentGeneration" }
+      ]
+    },
+    {
+      "id": "settlement-detail.pdf-generation",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateSettlementPdfArchiveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_pdf_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "generateSettlementPdfArchive" }
+      ]
+    },
+    {
+      "id": "settlement-detail.file-download-ticket",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSettlementPrivateFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_private_file_download_ticket" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }
+      ]
+    },
+    {
+      "id": "settlement-import.apply",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "applySettlementImportWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "apply_import" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts", "name": "applySettlementImport" }
+      ]
+    },
+    {
+      "id": "settlement-draft.generate-frozen-document",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateSettlementFrozenDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_frozen_document" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "generateSettlementFrozenDocument" }
+      ]
+    },
+    {
+      "id": "settlement-draft.upload-signed-document",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "link_counterparty_signed_document" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "uploadSettlementDraftPrivateFile" }
+      ]
+    },
+    {
+      "id": "settlement-draft.link-signed-document",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "linkSettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "link_counterparty_signed_document" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "linkSettlementCounterpartySignedDocument" }
+      ]
+    },
+    {
+      "id": "settlement-draft.submit",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitSettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "submitSettlementDraftRecord" }
+      ]
+    },
+    {
+      "id": "settlement-draft.file-download-ticket",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSettlementDraftFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_private_file_download_ticket" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }
+      ]
+    },
+    {
+      "id": "settlement-list.copy-abandoned-draft",
+      "usage": "background",
+      "routePaths": ["/结算工作台"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "copySettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "copy_abandoned_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "copyAbandonedSettlementDraft" }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.attach",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachSettlementLineFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_line_file" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "uploadSettlementDraftPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "attachSettlementDraftLineFile" }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.invalidate",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "invalidateSettlementLineAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "invalidate_line_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "invalidateSettlementDraftLineAttachment" }
+      ]
+    },
+    {
+      "id": "settlement-recovery.record",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordSettlementRecoveryWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_recovery" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementRecoveryPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts", "name": "recordSettlementRecovery" }
+      ]
+    },
+    {
+      "id": "settlement-recovery.reverse",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reverseSettlementRecoveryWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "reverse_recovery" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementRecoveryPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts", "name": "reverseSettlementRecovery" }
       ]
     }
   ]

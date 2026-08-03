@@ -339,6 +339,17 @@ export function fetchSettlementDetail(settlementId: string) {
   );
 }
 
+export interface SettlementActionCapabilityReadModel {
+  settlementId: string;
+  availableActions: string[];
+}
+
+export function fetchSettlementActionCapability(settlementId: string) {
+  return readJson<SettlementActionCapabilityReadModel>(
+    `/settlements/${encodeURIComponent(settlementId)}/capability`
+  );
+}
+
 export function fetchPaymentDetail(paymentId: string) {
   return readJson<PaymentLifecycleDetailReadModel>(`/payments/${encodeURIComponent(paymentId)}`);
 }
@@ -3553,6 +3564,48 @@ export function uploadPrivateFile(
   }
 
   return postForm<PrivateFileReadModel>("/files", form);
+}
+
+function uploadSettlementPrivateFile(
+  path: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<PrivateFileReadModel>(path, form);
+}
+
+export function uploadSettlementArchivePrivateFile(
+  settlementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSettlementPrivateFile(
+    `/settlements/${encodeURIComponent(settlementId)}/archive-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSettlementRecoveryPrivateFile(
+  settlementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSettlementPrivateFile(
+    `/settlements/${encodeURIComponent(settlementId)}/recovery-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
 }
 
 export function createPaymentExecutionRecordAttemptState(): PaymentExecutionRecordAttemptState {

@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 416,
-    "transportWrapperCount": 396,
+    "exportedFunctionCount": 421,
+    "transportWrapperCount": 401,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 416,
+    "mainRequestBindingCount": 421,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 415,
-    "productionConsumerCount": 359,
+    "requestEdgeCount": 420,
+    "productionConsumerCount": 364,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -4755,7 +4755,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6664,
+          "sourceLine": 6717,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4785,7 +4785,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6648,
+          "sourceLine": 6701,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4815,7 +4815,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6648,
+          "sourceLine": 6701,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4845,7 +4845,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5054,
+          "sourceLine": 5107,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4874,7 +4874,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6648,
+          "sourceLine": 6701,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4964,7 +4964,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6691,
+          "sourceLine": 6744,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4993,7 +4993,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6678,
+          "sourceLine": 6731,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5022,7 +5022,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6706,
+          "sourceLine": 6759,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5051,7 +5051,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6648,
+          "sourceLine": 6701,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -6082,6 +6082,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchSettlementActionCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/settlements/:param/capability",
+          "normalizedPath": "/settlements/:param/capability",
+          "normalizedKey": "GET /settlements/:param/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementActionCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+        "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchSettlementContractOptions",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -6500,7 +6529,9 @@
         "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+        "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -8546,10 +8577,6 @@
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-        "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
@@ -8585,6 +8612,64 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadSettlementArchivePrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/settlements/:param/archive-file-uploads",
+          "normalizedPath": "/settlements/:param/archive-file-uploads",
+          "normalizedKey": "POST /settlements/:param/archive-file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadSettlementArchivePrivateFile",
+              "uploadSettlementPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadSettlementRecoveryPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/settlements/:param/recovery-file-uploads",
+          "normalizedPath": "/settlements/:param/recovery-file-uploads",
+          "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadSettlementRecoveryPrivateFile",
+              "uploadSettlementPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -10023,7 +10108,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/abandonment",
@@ -10051,7 +10136,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
@@ -10081,7 +10166,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts",
           "normalizedPath": "/projects/:param/settlement-drafts",
@@ -10111,7 +10196,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -10128,7 +10213,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/abandonment",
@@ -10160,7 +10245,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -10190,7 +10275,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param/final-preparation",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/final-preparation",
@@ -10211,6 +10296,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchSettlementProjectCapability",
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 663,
+          "method": "GET",
+          "path": "/projects/:param/settlement-drafts/capability",
+          "normalizedPath": "/projects/:param/settlement-drafts/capability",
+          "normalizedKey": "GET /projects/:param/settlement-drafts/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSettlementProjectCapability",
+              "requestDraft"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "generateSettlementFrozenDocument",
       "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
       "kind": "transport",
@@ -10218,7 +10333,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/frozen-document",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/frozen-document",
@@ -10248,7 +10363,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
@@ -10278,7 +10393,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
@@ -10308,7 +10423,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param/line-attachments",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/line-attachments",
@@ -10338,7 +10453,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts",
           "normalizedPath": "/projects/:param/settlement-drafts",
@@ -10368,7 +10483,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/approval-submission",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/approval-submission",
@@ -10398,7 +10513,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 612,
+          "sourceLine": 663,
           "method": "PATCH",
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -10418,6 +10533,35 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadSettlementDraftPrivateFile",
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 663,
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/files",
+          "normalizedPath": "/projects/:param/settlement-drafts/files",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadSettlementDraftPrivateFile",
+              "requestDraft"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

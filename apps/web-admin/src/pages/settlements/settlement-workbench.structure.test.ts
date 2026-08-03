@@ -168,7 +168,7 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain('theme="file-input"');
     expect(page).toContain(':auto-upload="false"');
     expect(page).not.toContain("native-file-input");
-    expect(page).toContain("uploadPrivateFile");
+    expect(page).toContain("uploadSettlementDraftPrivateFile");
     expect(page).toContain("previewSettlementImport");
     expect(page).toContain("importApplyDisabledReason");
     expect(page).toContain("applyImportedSettlementLines");

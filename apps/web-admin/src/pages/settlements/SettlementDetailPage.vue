@@ -757,7 +757,9 @@ import {
   downloadSettlementLatestApprovalPdf,
   executeSettlementApprovalWithdrawalAction,
   fetchApprovalDelegationUserOptions,
+  fetchSettlementActionCapability,
   fetchSettlementDetail,
+  getPrivateFileDownloadTicketCapability,
   generateSettlementPdfArchive,
   remindSettlementApproval,
   prepareSettlementApprovalWithdrawalAction,
@@ -765,7 +767,7 @@ import {
   retrySettlementSignedDocumentGeneration,
   reviewSettlementApproval,
   transferSettlementApproval,
-  uploadPrivateFile,
+  uploadSettlementArchivePrivateFile,
   uploadSettlementArchiveFile
 } from "../../api/core-flow-read.api";
 import type {
@@ -1240,13 +1242,158 @@ async function runArchiveAction(key: string, action: () => Promise<unknown>) {
   }
 }
 
+async function reviewSettlementApprovalWithCapability(
+  settlementId: string,
+  body: Parameters<typeof reviewSettlementApproval>[1]
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("review_approval");
+  if (!operationAllowed) throw new Error("当前用户不能审批该结算");
+  return reviewSettlementApproval(settlementId, body);
+}
+
+async function transferSettlementApprovalWithCapability(
+  settlementId: string,
+  toUserId: string
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("transfer_approval");
+  if (!operationAllowed) throw new Error("当前用户不能转交该结算审批");
+  return transferSettlementApproval(settlementId, { toUserId });
+}
+
+async function delegateSettlementApprovalWithCapability(
+  settlementId: string,
+  toUserId: string
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("delegate_approval");
+  if (!operationAllowed) throw new Error("当前用户不能委托该结算审批");
+  return delegateSettlementApproval(settlementId, { toUserId });
+}
+
+async function remindSettlementApprovalWithCapability(settlementId: string) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("remind_approval");
+  if (!operationAllowed) throw new Error("当前用户不能催办该结算审批");
+  return remindSettlementApproval(settlementId);
+}
+
+async function downloadSettlementApprovalPdfWithCapability(
+  settlementId: string,
+  body: {
+    confirmationPassword: string;
+    downloadReason: string;
+  }
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "download_approval_form"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能下载该结算审批单");
+  return downloadSettlementLatestApprovalPdf(settlementId, body);
+}
+
+async function uploadSettlementArchiveWithCapability(
+  settlementId: string,
+  file: File
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("upload_archive");
+  if (!operationAllowed) throw new Error("当前用户不能上传该结算归档文件");
+  const uploadedFile = await uploadSettlementArchivePrivateFile(
+    settlementId,
+    file,
+    file.name
+  );
+  return uploadSettlementArchiveFile(settlementId, { fileId: uploadedFile.id });
+}
+
+async function confirmSettlementArchiveWithCapability(
+  settlementId: string,
+  body: {
+    archiveFileId: string;
+    confirmationPassword: string;
+  }
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_archive");
+  if (!operationAllowed) throw new Error("当前用户不能确认该结算归档");
+  return confirmSettlementArchive(settlementId, body);
+}
+
+async function regenerateSettlementSignedDocumentWithCapability(
+  settlementId: string,
+  body: {
+    confirmPureRenderingIssue: true;
+    reason: string;
+    confirmationPassword: string;
+  }
+) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_archive");
+  if (!operationAllowed) throw new Error("当前用户不能重新生成该签章结算单");
+  return regenerateSettlementSignedDocument(settlementId, body);
+}
+
+async function retrySettlementSignedDocumentWithCapability(settlementId: string) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "retry_signed_document_generation"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能重试生成该签章结算单");
+  return retrySettlementSignedDocumentGeneration(settlementId);
+}
+
+async function generateSettlementPdfArchiveWithCapability(settlementId: string) {
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "generate_pdf_archive"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能生成该结算 PDF 归档");
+  return generateSettlementPdfArchive(settlementId);
+}
+
+async function downloadSettlementPrivateFileWithCapability(
+  fileId: string,
+  body: { confirmationPassword: string; downloadReason: string }
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("文件下载权限已变化，请刷新详情后重试");
+  return createPrivateFileDownloadTicket(fileId, body);
+}
+
 async function submitSettlementArchiveUpload() {
   await runArchiveAction("upload", async () => {
-    const settlementId = currentSettlementId();
     const file = selectedSettlementArchiveFile.value;
     if (!file) throw new Error("签章结算单文件不能为空");
-    const uploadedFile = await uploadPrivateFile(file, file.name);
-    const result = await uploadSettlementArchiveFile(settlementId, { fileId: uploadedFile.id });
+    const result = await uploadSettlementArchiveWithCapability(
+      currentSettlementId(),
+      file
+    );
     settlementArchiveForm.archiveFileId = returnedId(result);
     settlementArchiveUploadFiles.value = [];
   });
@@ -1271,7 +1418,7 @@ function requestSettlementArchiveConfirmation() {
 async function retrySettlementSignatureGeneration() {
   if (!isSettlementActionEnabled("retry_signed_document_generation")) return;
   await runArchiveAction("generationRetry", () =>
-    retrySettlementSignedDocumentGeneration(currentSettlementId())
+    retrySettlementSignedDocumentWithCapability(currentSettlementId())
   );
 }
 
@@ -1477,7 +1624,7 @@ async function executeSensitiveAction(values: { reason: string; password: string
         break;
       case "approvalFormDownload":
         succeeded = await runArchiveAction("approvalForm", () =>
-          downloadSettlementLatestApprovalPdf(currentSettlementId(), {
+          downloadSettlementApprovalPdfWithCapability(currentSettlementId(), {
             confirmationPassword: values.password,
             downloadReason: values.reason
           })
@@ -1485,7 +1632,7 @@ async function executeSensitiveAction(values: { reason: string; password: string
         break;
       case "archiveConfirm":
         succeeded = await runArchiveAction("confirm", () =>
-          confirmSettlementArchive(currentSettlementId(), {
+          confirmSettlementArchiveWithCapability(currentSettlementId(), {
             archiveFileId: requiredText(settlementArchiveForm.archiveFileId, "归档文件"),
             confirmationPassword: values.password
           })
@@ -1497,7 +1644,7 @@ async function executeSensitiveAction(values: { reason: string; password: string
         break;
       case "generationRegeneration":
         succeeded = await runArchiveAction("regeneration", () =>
-          regenerateSettlementSignedDocument(currentSettlementId(), {
+          regenerateSettlementSignedDocumentWithCapability(currentSettlementId(), {
             confirmPureRenderingIssue: true,
             reason: values.reason,
             confirmationPassword: values.password
@@ -1733,14 +1880,13 @@ async function performSettlementReview(decision: SettlementReviewDecision, passw
       confirmationPassword: password
     }
   );
-  const succeeded = await runArchiveAction("reviewApproval", () => reviewSettlementApproval(
-    currentSettlementId(),
-    {
+  const succeeded = await runArchiveAction("reviewApproval", () =>
+    reviewSettlementApprovalWithCapability(currentSettlementId(), {
       decision,
       comment: settlementArchiveForm.approvalComment.trim() || undefined,
       ...selfReviewPayload
-    }
-  ));
+    })
+  );
   if (succeeded) {
     settlementArchiveForm.approvalComment = "";
     settlementArchiveForm.selfReviewReason = "";
@@ -1752,15 +1898,15 @@ async function performSettlementAssignment(kind: "transfer" | "delegate") {
   const toUserId = requiredText(settlementArchiveForm.assignmentUserId, "目标处理人");
   return runArchiveAction(kind === "transfer" ? "transferApproval" : "delegateApproval", () =>
     kind === "transfer"
-      ? transferSettlementApproval(currentSettlementId(), { toUserId })
-      : delegateSettlementApproval(currentSettlementId(), { toUserId })
+      ? transferSettlementApprovalWithCapability(currentSettlementId(), toUserId)
+      : delegateSettlementApprovalWithCapability(currentSettlementId(), toUserId)
   );
 }
 
 async function performSettlementFileDownload(values: { reason: string; password: string }) {
   const fileId = requiredText(settlementArchiveForm.downloadFileId, "结算归档文件");
   return runArchiveAction("download", async () => {
-    const ticket = await createPrivateFileDownloadTicket(fileId, {
+    const ticket = await downloadSettlementPrivateFileWithCapability(fileId, {
       confirmationPassword: values.password,
       downloadReason: values.reason
     });
@@ -1769,11 +1915,15 @@ async function performSettlementFileDownload(values: { reason: string; password:
 }
 
 async function submitSettlementReminder() {
-  await runArchiveAction("remindApproval", () => remindSettlementApproval(currentSettlementId()));
+  await runArchiveAction("remindApproval", () =>
+    remindSettlementApprovalWithCapability(currentSettlementId())
+  );
 }
 
 async function submitSettlementPdfGeneration() {
-  await runArchiveAction("pdf", () => generateSettlementPdfArchive(currentSettlementId()));
+  await runArchiveAction("pdf", () =>
+    generateSettlementPdfArchiveWithCapability(currentSettlementId())
+  );
 }
 
 async function downloadSettlementDraft() {

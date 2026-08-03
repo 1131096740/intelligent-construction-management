@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 139,
-    "pageActionCount": 52,
-    "backgroundActionCount": 87,
+    "registeredActionCount": 161,
+    "pageActionCount": 49,
+    "backgroundActionCount": 112,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 234,
     "templateEventDirectiveCount": 960,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 119,
-    "candidateProductionMutationConsumerCount": 128,
-    "acceptedProductionMutationConsumerCount": 119,
+    "coveredProductionMutationConsumerCount": 148,
+    "candidateProductionMutationConsumerCount": 151,
+    "acceptedProductionMutationConsumerCount": 148,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 177
+    "blockerCount": 138
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -8381,6 +8381,757 @@
       ]
     },
     {
+      "id": "settlement-detail.approval-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadSettlementApprovalPdfWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1290,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "download_approval_form",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadSettlementLatestApprovalPdf",
+          "method": "POST",
+          "path": "/settlements/:param/approval-pdf/latest",
+          "normalizedKey": "POST /settlements/:param/approval-pdf/latest",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/approval-pdf/latest",
+            "normalizedKey": "POST /settlements/:param/approval-pdf/latest",
+            "controller": "SettlementController",
+            "handler": "downloadLatestApprovalPdf",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadSettlementApprovalPdfWithCapability",
+              "downloadSettlementLatestApprovalPdf"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.archive-confirm-or-regenerate",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmSettlementArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1324,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmSettlementArchive",
+          "method": "POST",
+          "path": "/settlements/:param/archive-confirmation",
+          "normalizedKey": "POST /settlements/:param/archive-confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/archive-confirmation",
+            "normalizedKey": "POST /settlements/:param/archive-confirmation",
+            "controller": "SettlementController",
+            "handler": "confirmArchiveFile",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmSettlementArchiveWithCapability",
+              "confirmSettlementArchive"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.archive-upload",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSettlementArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1307,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "upload_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadSettlementArchiveFile",
+          "method": "POST",
+          "path": "/settlements/:param/archive-files",
+          "normalizedKey": "POST /settlements/:param/archive-files",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/archive-files",
+            "normalizedKey": "POST /settlements/:param/archive-files",
+            "controller": "SettlementController",
+            "handler": "uploadArchiveFile",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSettlementArchiveWithCapability",
+              "uploadSettlementArchiveFile"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadSettlementArchivePrivateFile",
+          "method": "POST",
+          "path": "/settlements/:param/archive-file-uploads",
+          "normalizedKey": "POST /settlements/:param/archive-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/archive-file-uploads",
+            "normalizedKey": "POST /settlements/:param/archive-file-uploads",
+            "controller": "SettlementController",
+            "handler": "uploadArchivePrivateFile",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSettlementArchiveWithCapability",
+              "uploadSettlementArchivePrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "delegateSettlementApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1269,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "delegate_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "delegateSettlementApproval",
+          "method": "POST",
+          "path": "/settlements/:param/approval-delegation",
+          "normalizedKey": "POST /settlements/:param/approval-delegation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/approval-delegation",
+            "normalizedKey": "POST /settlements/:param/approval-delegation",
+            "controller": "SettlementController",
+            "handler": "delegateApproval",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "delegateSettlementApprovalWithCapability",
+              "delegateSettlementApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.file-download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadSettlementPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1377,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadSettlementPrivateFileWithCapability",
+              "createPrivateFileDownloadTicket"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.generation-retry",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "retrySettlementSignedDocumentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1355,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "retry_signed_document_generation",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "retrySettlementSignedDocumentGeneration",
+          "method": "POST",
+          "path": "/settlements/:param/signed-document-generation-retry",
+          "normalizedKey": "POST /settlements/:param/signed-document-generation-retry",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/signed-document-generation-retry",
+            "normalizedKey": "POST /settlements/:param/signed-document-generation-retry",
+            "controller": "SettlementController",
+            "handler": "retrySignedDocumentGeneration",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "retrySettlementSignedDocumentWithCapability",
+              "retrySettlementSignedDocumentGeneration"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.pdf-generation",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateSettlementPdfArchiveWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1366,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "generate_pdf_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "generateSettlementPdfArchive",
+          "method": "POST",
+          "path": "/settlements/:param/pdf-generation",
+          "normalizedKey": "POST /settlements/:param/pdf-generation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/pdf-generation",
+            "normalizedKey": "POST /settlements/:param/pdf-generation",
+            "controller": "SettlementController",
+            "handler": "generatePdfArchive",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "generateSettlementPdfArchiveWithCapability",
+              "generateSettlementPdfArchive"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.remind",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "remindSettlementApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1281,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "remind_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "remindSettlementApproval",
+          "method": "POST",
+          "path": "/settlements/:param/approval-reminder",
+          "normalizedKey": "POST /settlements/:param/approval-reminder",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/approval-reminder",
+            "normalizedKey": "POST /settlements/:param/approval-reminder",
+            "controller": "SettlementController",
+            "handler": "remindApproval",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "remindSettlementApprovalWithCapability",
+              "remindSettlementApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.review",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewSettlementApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1245,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "reviewSettlementApproval",
+          "method": "POST",
+          "path": "/settlements/:param/approval",
+          "normalizedKey": "POST /settlements/:param/approval",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/approval",
+            "normalizedKey": "POST /settlements/:param/approval",
+            "controller": "SettlementController",
+            "handler": "reviewApproval",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewSettlementApprovalWithCapability",
+              "reviewSettlementApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.signed-document-regenerate",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "regenerateSettlementSignedDocumentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1339,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_archive",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "regenerateSettlementSignedDocument",
+          "method": "POST",
+          "path": "/settlements/:param/signed-document-regeneration",
+          "normalizedKey": "POST /settlements/:param/signed-document-regeneration",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/signed-document-regeneration",
+            "normalizedKey": "POST /settlements/:param/signed-document-regeneration",
+            "controller": "SettlementController",
+            "handler": "regenerateSignedDocument",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.archive.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "regenerateSettlementSignedDocumentWithCapability",
+              "regenerateSettlementSignedDocument"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-detail.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferSettlementApprovalWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1257,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "transfer_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "transferSettlementApproval",
+          "method": "POST",
+          "path": "/settlements/:param/approval-transfer",
+          "normalizedKey": "POST /settlements/:param/approval-transfer",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/approval-transfer",
+            "normalizedKey": "POST /settlements/:param/approval-transfer",
+            "controller": "SettlementController",
+            "handler": "transferApproval",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.approve"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "transferSettlementApprovalWithCapability",
+              "transferSettlementApproval"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "settlement-draft.abandon-application",
       "usage": "page_action",
       "routePaths": [
@@ -8587,8 +9338,8 @@
       ]
     },
     {
-      "id": "settlement-draft.save-local-gate",
-      "usage": "page_action",
+      "id": "settlement-draft.file-download-ticket",
+      "usage": "background",
       "routePaths": [
         "/结算工作台/新建"
       ],
@@ -8597,19 +9348,215 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "saveDraft",
-        "kind": "event",
-        "sourceLine": 41,
-        "sourceColumn": 10
+        "element": "module",
+        "event": "call",
+        "handler": "downloadSettlementDraftFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1400,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "none",
-        "source": "saveDisabledReason",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadSettlementDraftFileWithCapability",
+              "createPrivateFileDownloadTicket"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.generate-frozen-document",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateSettlementFrozenDocumentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1341,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "generate_frozen_document",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "generateSettlementFrozenDocument",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/frozen-document",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/frozen-document",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/:draftId/frozen-document",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/:param/frozen-document",
+            "controller": "SettlementDraftController",
+            "handler": "generateFrozenDocument",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "generateSettlementFrozenDocumentWithCapability",
+              "generateSettlementFrozenDocument"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.link-signed-document",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "linkSettlementSignedDocumentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1377,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "link_counterparty_signed_document",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "linkSettlementCounterpartySignedDocument",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/counterparty-signed-documents",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/:param/counterparty-signed-documents",
+            "controller": "SettlementDraftController",
+            "handler": "linkCounterpartySignedDocument",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "linkSettlementSignedDocumentWithCapability",
+              "linkSettlementCounterpartySignedDocument"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.save-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveSettlementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1236,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -8636,15 +9583,112 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "saveDraft"
+              "saveSettlementDraftWithCapability",
+              "createSettlementDraftRecord"
             ]
           },
           "ticketFollowups": []
-        },
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.submit",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitSettlementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1327,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "submitSettlementDraftRecord",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/approval-submission",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/approval-submission",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/:draftId/approval-submission",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/:param/approval-submission",
+            "controller": "SettlementDraftController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitSettlementDraftWithCapability",
+              "submitSettlementDraftRecord"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.update-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSettlementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1252,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
           "wrapper": "updateSettlementDraftRecord",
@@ -8669,11 +9713,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "saveDraft"
+              "updateSettlementDraftWithCapability",
+              "updateSettlementDraftRecord"
             ]
           },
           "ticketFollowups": []
@@ -8681,8 +9728,8 @@
       ]
     },
     {
-      "id": "settlement-import.preview-local-gate",
-      "usage": "page_action",
+      "id": "settlement-draft.upload-signed-document",
+      "usage": "background",
       "routePaths": [
         "/结算工作台/新建"
       ],
@@ -8691,51 +9738,188 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
       "trigger": {
-        "element": "t-upload",
-        "event": "change",
-        "handler": "selectImportFile",
-        "kind": "event",
-        "sourceLine": 285,
-        "sourceColumn": 12
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSettlementSignedDocumentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1361,
+        "sourceColumn": 0
       },
-      "semantic": "technical_write",
+      "semantic": "business_write",
       "capability": {
-        "kind": "none",
-        "source": "draftSubmissionBlockingReason",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "link_counterparty_signed_document",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "uploadPrivateFile",
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "uploadSettlementDraftPrivateFile",
           "method": "POST",
-          "path": "/files",
-          "normalizedKey": "POST /files",
+          "path": "/projects/:param/settlement-drafts/files",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/files",
           "bodyKind": "form_data",
           "nestRoute": {
             "method": "POST",
-            "path": "/files",
-            "normalizedKey": "POST /files",
-            "controller": "FileController",
-            "handler": "upload",
-            "sourceFile": "services/api/src/file/file.controller.ts",
+            "path": "/projects/:projectId/settlement-drafts/files",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+            "controller": "SettlementDraftController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "authenticated_only",
+            "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": null
+            "requiredProjectAction": "settlement.create"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
             "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "selectImportFile"
+              "uploadSettlementSignedDocumentWithCapability",
+              "uploadSettlementDraftPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-import.apply",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applySettlementImportWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1313,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_import",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+          "wrapper": "applySettlementImport",
+          "method": "POST",
+          "path": "/settlement-workbench/projects/:param/imports/:param/apply",
+          "normalizedKey": "POST /settlement-workbench/projects/:param/imports/:param/apply",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlement-workbench/projects/:projectId/imports/:importId/apply",
+            "normalizedKey": "POST /settlement-workbench/projects/:param/imports/:param/apply",
+            "controller": "SettlementImportController",
+            "handler": "apply",
+            "sourceFile": "services/api/src/settlement/settlement-import.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applySettlementImportWithCapability",
+              "applySettlementImport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-import.preview-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewSettlementImportWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1274,
+        "sourceColumn": 0
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_import",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "uploadSettlementDraftPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/files",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/files",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+            "controller": "SettlementDraftController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewSettlementImportWithCapability",
+              "uploadSettlementDraftPrivateFile"
             ]
           },
           "ticketFollowups": []
@@ -8764,11 +9948,245 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "selectImportFile"
+              "previewSettlementImportWithCapability",
+              "previewSettlementImport"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.attach",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attachSettlementLineFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 109,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "attach_line_file",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "attachSettlementDraftLineFile",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments",
+            "controller": "SettlementDraftController",
+            "handler": "attachLineFile",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attachSettlementLineFileWithCapability",
+              "attachSettlementDraftLineFile"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "uploadSettlementDraftPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/files",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/files",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+            "controller": "SettlementDraftController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attachSettlementLineFileWithCapability",
+              "uploadSettlementDraftPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.invalidate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "invalidateSettlementLineAttachmentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 132,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "invalidate_line_attachment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "wrapper": "invalidateSettlementDraftLineAttachment",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
+            "controller": "SettlementDraftController",
+            "handler": "invalidateLineAttachment",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "invalidateSettlementLineAttachmentWithCapability",
+              "invalidateSettlementDraftLineAttachment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-list.copy-abandoned-draft",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台"
+      ],
+      "ownerRoutePaths": [
+        "/结算工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "copySettlementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 412,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "copy_abandoned_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "copyAbandonedSettlementDraft",
+          "method": "POST",
+          "path": "/projects/:param/settlement-drafts/:param/copies",
+          "normalizedKey": "POST /projects/:param/settlement-drafts/:param/copies",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/settlement-drafts/:draftId/copies",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/:param/copies",
+            "controller": "SettlementDraftController",
+            "handler": "copyAbandoned",
+            "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "settlement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "copySettlementDraftWithCapability",
+              "copyAbandonedSettlementDraft"
             ]
           },
           "ticketFollowups": []
@@ -8788,17 +10206,18 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "schedulePreview",
+        "handler": "previewSettlementLinesWithCapability",
         "kind": "background_call",
-        "sourceLine": 2016,
+        "sourceLine": 1298,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
       "capability": {
-        "kind": "none",
-        "source": "draftSubmissionBlockingReason && validationErrors",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_lines",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -8825,11 +10244,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "schedulePreview"
+              "previewSettlementLinesWithCapability",
+              "previewSettlementLines"
             ]
           },
           "ticketFollowups": []
@@ -8837,60 +10259,209 @@
       ]
     },
     {
-      "id": "settlement-preview.manual-local-gate",
-      "usage": "page_action",
+      "id": "settlement-recovery.record",
+      "usage": "background",
       "routePaths": [
-        "/结算工作台/新建"
+        "/结算管理/:settlementId"
       ],
       "ownerRoutePaths": [
-        "/结算工作台/新建"
+        "/结算管理/:settlementId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestCanonicalPreview",
-        "kind": "event",
-        "sourceLine": 470,
-        "sourceColumn": 10
+        "element": "module",
+        "event": "call",
+        "handler": "recordSettlementRecoveryWithCapability",
+        "kind": "background_call",
+        "sourceLine": 335,
+        "sourceColumn": 0
       },
-      "semantic": "technical_write",
+      "semantic": "business_write",
       "capability": {
-        "kind": "none",
-        "source": "validationErrors && templateReady",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_recovery",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
-          "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-          "wrapper": "previewSettlementLines",
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadSettlementRecoveryPrivateFile",
           "method": "POST",
-          "path": "/settlement-workbench/contract-versions/:param/preview",
-          "normalizedKey": "POST /settlement-workbench/contract-versions/:param/preview",
+          "path": "/settlements/:param/recovery-file-uploads",
+          "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/recovery-file-uploads",
+            "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
+            "controller": "SettlementController",
+            "handler": "uploadRecoveryFile",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordSettlementRecoveryWithCapability",
+              "uploadSettlementRecoveryPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
+          "wrapper": "recordSettlementRecovery",
+          "method": "POST",
+          "path": "/settlements/:param/recovery-entries",
+          "normalizedKey": "POST /settlements/:param/recovery-entries",
           "bodyKind": "json",
           "nestRoute": {
             "method": "POST",
-            "path": "/settlement-workbench/contract-versions/:contractVersionId/preview",
-            "normalizedKey": "POST /settlement-workbench/contract-versions/:param/preview",
-            "controller": "SettlementWorkbenchController",
-            "handler": "preview",
-            "sourceFile": "services/api/src/settlement/settlement-workbench.controller.ts",
+            "path": "/settlements/:settlementId/recovery-entries",
+            "normalizedKey": "POST /settlements/:param/recovery-entries",
+            "controller": "SettlementController",
+            "handler": "recordRecovery",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "project_action",
+            "guardAuthorization": "positions",
             "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "settlement.create"
+            "requiredPositions": [
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "requestCanonicalPreview"
+              "recordSettlementRecoveryWithCapability",
+              "recordSettlementRecovery"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "settlement-recovery.reverse",
+      "usage": "background",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "ownerRoutePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reverseSettlementRecoveryWithCapability",
+        "kind": "background_call",
+        "sourceLine": 358,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "reverse_recovery",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadSettlementRecoveryPrivateFile",
+          "method": "POST",
+          "path": "/settlements/:param/recovery-file-uploads",
+          "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/recovery-file-uploads",
+            "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
+            "controller": "SettlementController",
+            "handler": "uploadRecoveryFile",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reverseSettlementRecoveryWithCapability",
+              "uploadSettlementRecoveryPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
+          "wrapper": "reverseSettlementRecovery",
+          "method": "POST",
+          "path": "/settlements/:param/recovery-entries/:param/reversal",
+          "normalizedKey": "POST /settlements/:param/recovery-entries/:param/reversal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/settlements/:settlementId/recovery-entries/:entryId/reversal",
+            "normalizedKey": "POST /settlements/:param/recovery-entries/:param/reversal",
+            "controller": "SettlementController",
+            "handler": "reverseRecovery",
+            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "positions",
+            "isPublic": false,
+            "requiredPositions": [
+              "finance_staff"
+            ],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reverseSettlementRecoveryWithCapability",
+              "reverseSettlementRecovery"
             ]
           },
           "ticketFollowups": []
@@ -10120,48 +11691,6 @@
         "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createProjectExpenseRequest"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "settlement-draft.save-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "createSettlementDraftRecord"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "settlement-draft.save-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "updateSettlementDraftRecord"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "settlement-import.preview-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "settlement-import.preview-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-        "wrapper": "previewSettlementImport"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "settlement-preview.background-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-        "wrapper": "previewSettlementLines"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "settlement-preview.manual-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-        "wrapper": "previewSettlementLines"
       }
     ],
     "unresolvedRoutes": [],
@@ -10170,30 +11699,6 @@
         "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
         "actionId": "payment-request.create-local-form",
         "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
-        "reason": "capability_none"
-      },
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "settlement-draft.save-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "reason": "capability_none"
-      },
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "settlement-import.preview-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "reason": "capability_none"
-      },
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "settlement-preview.background-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "reason": "capability_none"
-      },
-      {
-        "code": "WRITE_WITHOUT_SERVER_CAPABILITY",
-        "actionId": "settlement-preview.manual-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "reason": "capability_none"
       }
     ],
@@ -11111,267 +12616,6 @@
         "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
         "normalizedKeys": [
           "PATCH /settlement-template-versions/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmSettlementArchive",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/archive-confirmation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "delegateSettlementApproval",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval-delegation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadSettlementLatestApprovalPdf",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval-pdf/latest"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "generateSettlementPdfArchive",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/pdf-generation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "regenerateSettlementSignedDocument",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/signed-document-regeneration"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "remindSettlementApproval",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval-reminder"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "retrySettlementSignedDocumentGeneration",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/signed-document-generation-retry"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewSettlementApproval",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "transferSettlementApproval",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/approval-transfer"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadSettlementArchiveFile",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/archive-files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "copyAbandonedSettlementDraft",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/copies"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "createSettlementDraftRecord",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "generateSettlementFrozenDocument",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/frozen-document"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "linkSettlementCounterpartySignedDocument",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/counterparty-signed-documents"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "submitSettlementDraftRecord",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/approval-submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "updateSettlementDraftRecord",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "PATCH /projects/:param/settlement-drafts/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-        "wrapper": "applySettlementImport",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-workbench/projects/:param/imports/:param/apply"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-        "wrapper": "previewSettlementImport",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-workbench/contract-versions/:param/imports/preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
-        "wrapper": "previewSettlementLines",
-        "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /settlement-workbench/contract-versions/:param/preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "attachSettlementDraftLineFile",
-        "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "invalidateSettlementDraftLineAttachment",
-        "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-        "normalizedKeys": [
-          "POST /projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
-        "wrapper": "recordSettlementRecovery",
-        "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/recovery-entries"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts",
-        "wrapper": "reverseSettlementRecovery",
-        "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
-        "normalizedKeys": [
-          "POST /settlements/:param/recovery-entries/:param/reversal"
         ]
       },
       {

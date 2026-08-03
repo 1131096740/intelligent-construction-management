@@ -970,7 +970,7 @@ import {
   createPrivateFileDownloadTicket,
   fetchProjects,
   fetchSettlementContractOptions,
-  uploadPrivateFile,
+  getPrivateFileDownloadTicketCapability,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import {
@@ -978,11 +978,13 @@ import {
   executeSettlementDraftLifecycleAction,
   fetchSettlementDraftRecord,
   fetchSettlementFinalPreparation,
+  fetchSettlementProjectCapability,
   generateSettlementFrozenDocument,
   linkSettlementCounterpartySignedDocument,
   listSettlementDraftRecords,
   submitSettlementDraftRecord,
   updateSettlementDraftRecord,
+  uploadSettlementDraftPrivateFile,
   type ExecuteSettlementDraftLifecycleActionResult,
   type SaveSettlementDraftPayload,
   type SettlementDraftLifecycleAction,
@@ -1230,6 +1232,182 @@ let settlementDraftLifecycleOperationId = 0;
 const settlementDraftLifecyclePendingOperations = new Set<number>();
 let settlementWorkbenchComponentAlive = true;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function saveSettlementDraftWithCapability(
+  projectId: string,
+  payload: SaveSettlementDraftPayload
+) {
+  const projectSelected = projectId !== "";
+  if (!projectSelected) throw new Error("请先选择结算项目");
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("save_draft");
+  if (!operationAllowed) throw new Error("当前用户不能新建结算草稿");
+  return createSettlementDraftRecord(projectId, payload);
+}
+
+async function updateSettlementDraftWithCapability(
+  projectId: string,
+  payload: SaveSettlementDraftPayload,
+  draft: SettlementDraftReadModel
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const matchesDraftProject = draft.projectId === projectId;
+  if (!matchesDraftProject) throw new Error("结算草稿已变化，请刷新工作台后重试");
+  const draftEditable = draft.status === "draft";
+  if (!draftEditable) throw new Error("该结算草稿当前不可编辑，请刷新工作台后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("save_draft");
+  if (!operationAllowed) throw new Error("当前用户不能修改结算草稿");
+  return updateSettlementDraftRecord(projectId, draft.id, {
+    ...payload,
+    expectedRevision: draft.revision
+  });
+}
+
+async function previewSettlementImportWithCapability(
+  projectId: string,
+  contractVersionId: string,
+  file: File,
+  settlementTemplateVersionId: string
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("preview_import");
+  if (!operationAllowed) throw new Error("当前用户不能导入结算明细");
+  const uploaded = await uploadSettlementDraftPrivateFile(
+    projectId,
+    file,
+    file.name
+  );
+  return previewSettlementImport(contractVersionId, {
+    fileId: uploaded.id,
+    settlementTemplateVersionId
+  });
+}
+
+async function previewSettlementLinesWithCapability(
+  projectId: string,
+  contractVersionId: string,
+  body: Parameters<typeof previewSettlementLines>[1]
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("preview_lines");
+  if (!operationAllowed) throw new Error("当前用户不能预览结算明细");
+  return previewSettlementLines(contractVersionId, body);
+}
+
+async function applySettlementImportWithCapability(
+  projectId: string,
+  importId: string
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("apply_import");
+  if (!operationAllowed) throw new Error("当前用户不能应用结算导入结果");
+  return applySettlementImport(projectId, importId);
+}
+
+async function submitSettlementDraftWithCapability(
+  draft: SettlementDraftReadModel
+) {
+  const projectId = draft.projectId;
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("submit_draft");
+  if (!operationAllowed) throw new Error("当前用户不能提交结算草稿");
+  return submitSettlementDraftRecord(projectId, draft.id, draft.revision);
+}
+
+async function generateSettlementFrozenDocumentWithCapability(
+  draft: SettlementDraftReadModel
+) {
+  const projectId = draft.projectId;
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "generate_frozen_document"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能生成结算冻结文件");
+  return generateSettlementFrozenDocument(
+    projectId,
+    draft.id,
+    draft.revision
+  );
+}
+
+async function uploadSettlementSignedDocumentWithCapability(
+  projectId: string,
+  file: File
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "link_counterparty_signed_document"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传对方签章结算单");
+  return uploadSettlementDraftPrivateFile(projectId, file, file.name);
+}
+
+async function linkSettlementSignedDocumentWithCapability(
+  draft: SettlementDraftReadModel,
+  frozen: SettlementFrozenDocumentSummary,
+  declaration: SettlementCounterpartyDeclaration
+) {
+  const projectId = draft.projectId;
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "link_counterparty_signed_document"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能关联对方签章结算单");
+  return linkSettlementCounterpartySignedDocument(projectId, draft.id, {
+    expectedRevision: draft.revision,
+    frozenDocumentId: frozen.id,
+    uploadedFileId: stagedUploadedFileId.value,
+    declaration
+  });
+}
+
+async function downloadSettlementDraftFileWithCapability(
+  fileId: string,
+  body: Parameters<typeof createPrivateFileDownloadTicket>[1]
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("文件下载权限已变化，请刷新工作台后重试");
+  return createPrivateFileDownloadTicket(fileId, body);
+}
 
 const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
   { colKey: "adjustmentKind", title: "调整类型", width: 150 },
@@ -1740,17 +1918,12 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
   partialImportId.value = "";
   pageMessage.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    if (
-      requestId !== importRequestId ||
-      contractVersionId !== selectedContractVersionId.value
-    ) {
-      return;
-    }
-    const result = await previewSettlementImport(contractVersionId, {
-      fileId: uploaded.id,
+    const result = await previewSettlementImportWithCapability(
+      form.projectId,
+      contractVersionId,
+      file,
       settlementTemplateVersionId
-    });
+    );
     if (
       requestId === importRequestId &&
       contractVersionId === selectedContractVersionId.value &&
@@ -1822,7 +1995,7 @@ async function confirmApplyImport() {
   importApplyBusy.value = true;
   pageMessage.value = "";
   try {
-    const applied = await applySettlementImport(projectId, importId);
+    const applied = await applySettlementImportWithCapability(projectId, importId);
     if (
       !canApplySettlementImportResponse(
         requestId,
@@ -2044,10 +2217,14 @@ async function requestCanonicalPreview() {
   previewBusy.value = true;
   pageMessage.value = "";
   try {
-    const result = await previewSettlementLines(contractVersionId, {
+    const result = await previewSettlementLinesWithCapability(
+      form.projectId,
+      contractVersionId,
+      {
       isFinal: form.isFinal,
       settlementLines: payload
-    });
+      }
+    );
     if (
       canApplySettlementPreviewResponse(
         requestId,
@@ -2326,19 +2503,13 @@ async function persistDraft(showSuccessMessage: boolean) {
   pageMessage.value = "";
   try {
     const payload = settlementDraftPayload();
-    const saved =
-      activeDraft.value &&
-      activeDraft.value.projectId === form.projectId &&
-      activeDraft.value.status === "draft"
-        ? await updateSettlementDraftRecord(
-            form.projectId,
-            activeDraft.value.id,
-            {
-              ...payload,
-              expectedRevision: activeDraft.value.revision
-            }
-          )
-        : await createSettlementDraftRecord(form.projectId, payload);
+    const saved = activeDraft.value
+      ? await updateSettlementDraftWithCapability(
+          form.projectId,
+          payload,
+          activeDraft.value
+        )
+      : await saveSettlementDraftWithCapability(form.projectId, payload);
     const previousRevision = activeDraft.value?.revision ?? 0;
     invalidateSettlementDraftLifecycleCapability();
     activeDraft.value = saved;
@@ -2610,11 +2781,7 @@ async function generateFrozenDocument() {
   frozenDocumentBusy.value = true;
   pageMessage.value = "";
   try {
-    const result = await generateSettlementFrozenDocument(
-      draft.projectId,
-      draft.id,
-      draft.revision
-    );
+    const result = await generateSettlementFrozenDocumentWithCapability(draft);
     const sameFrozenDocument = frozenDocument.value?.id === result.id;
     frozenDocument.value = toFrozenDocumentSummary(result);
     if (!sameFrozenDocument) {
@@ -2650,7 +2817,10 @@ async function uploadCounterpartySignedPdf(file: File) {
   counterpartyUploadBusy.value = true;
   pageMessage.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadSettlementSignedDocumentWithCapability(
+      activeDraft.value?.projectId ?? form.projectId,
+      file
+    );
     stagedUploadedFileId.value = uploaded.id;
     stagedUploadedFileName.value = file.name;
     linkedOriginalDocumentId.value = "";
@@ -2695,15 +2865,10 @@ async function linkCounterpartySignedPdf(declaration: SettlementCounterpartyDecl
   counterpartyLinkBusy.value = true;
   pageMessage.value = "";
   try {
-    const linked = await linkSettlementCounterpartySignedDocument(
-      draft.projectId,
-      draft.id,
-      {
-        expectedRevision: draft.revision,
-        frozenDocumentId: frozen.id,
-        uploadedFileId: stagedUploadedFileId.value,
-        declaration
-      }
+    const linked = await linkSettlementSignedDocumentWithCapability(
+      draft,
+      frozen,
+      declaration
     );
     linkedOriginalDocumentId.value = linked.id;
     linkedOriginalDeclaration.value = { ...declaration };
@@ -2739,12 +2904,12 @@ async function preparePdfReview(values: { reason: string; password: string }) {
   pdfReviewTicketError.value = "";
   try {
     const [frozenTicket, originalTicket] = await Promise.all([
-      createPrivateFileDownloadTicket(frozen.fileId, {
+      downloadSettlementDraftFileWithCapability(frozen.fileId, {
         confirmationPassword: values.password,
         downloadReason: values.reason,
         accessMode: "preview"
       }),
-      createPrivateFileDownloadTicket(originalFileId, {
+      downloadSettlementDraftFileWithCapability(originalFileId, {
         confirmationPassword: values.password,
         downloadReason: values.reason,
         accessMode: "preview"
@@ -2767,7 +2932,7 @@ async function downloadFrozenDocument(values: { reason: string; password: string
   frozenDownloadBusy.value = true;
   frozenDownloadError.value = "";
   try {
-    const ticket = await createPrivateFileDownloadTicket(document.fileId, {
+    const ticket = await downloadSettlementDraftFileWithCapability(document.fileId, {
       confirmationPassword: values.password,
       downloadReason: values.reason
     });
@@ -2818,11 +2983,7 @@ async function submitSettlement() {
       pageMessageTone.value = "warning";
       return;
     }
-    const settlement = await submitSettlementDraftRecord(
-      saved.projectId,
-      saved.id,
-      saved.revision
-    );
+    const settlement = await submitSettlementDraftWithCapability(saved);
     clearCurrentLocalRecovery();
     localRecoveryState.value = "clean";
     allowNavigation.value = true;

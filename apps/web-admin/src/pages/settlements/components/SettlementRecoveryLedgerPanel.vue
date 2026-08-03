@@ -261,7 +261,10 @@
 <script setup lang="ts">
 import type { PrimaryTableCol, UploadFile } from "tdesign-vue-next";
 import { onMounted, reactive, ref, watch } from "vue";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import {
+  fetchSettlementActionCapability,
+  uploadSettlementRecoveryPrivateFile
+} from "../../../api/core-flow-read.api";
 import {
   fetchSettlementRecovery,
   recordSettlementRecovery,
@@ -329,18 +332,63 @@ function openReverse(entryId: string) { reverseEntryId.value = entryId; dialogEr
 function resetRecord() { recordFiles.value = []; Object.assign(recordForm, { entryType: "refund", amountYuan: "", occurredOn: today(), relatedPaymentId: "", reason: "", confirmationPassword: "" }); dialogError.value = ""; }
 function resetReverse() { reverseEntryId.value = ""; reverseFiles.value = []; Object.assign(reverseForm, { reason: "", confirmationPassword: "" }); dialogError.value = ""; }
 
+async function recordSettlementRecoveryWithCapability(
+  file: File,
+  body: Omit<Parameters<typeof recordSettlementRecovery>[1], "evidenceFileId">
+) {
+  const settlementId = props.settlementId;
+  const hasSettlement = settlementId !== "";
+  if (!hasSettlement) throw new Error("结算编号不能为空");
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("record_recovery");
+  if (!operationAllowed) throw new Error("当前用户不能登记该结算回收款");
+  const uploaded = await uploadSettlementRecoveryPrivateFile(
+    settlementId,
+    file,
+    file.name
+  );
+  return recordSettlementRecovery(settlementId, {
+    ...body,
+    evidenceFileId: uploaded.id
+  });
+}
+
+async function reverseSettlementRecoveryWithCapability(
+  entryId: string,
+  file: File,
+  body: Omit<Parameters<typeof reverseSettlementRecovery>[2], "evidenceFileId">
+) {
+  const settlementId = props.settlementId;
+  const hasSettlement = settlementId !== "";
+  if (!hasSettlement) throw new Error("结算编号不能为空");
+  const capability = await fetchSettlementActionCapability(settlementId);
+  const matchesRequestedSettlement = capability.settlementId === settlementId;
+  if (!matchesRequestedSettlement) throw new Error("结算已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.includes("reverse_recovery");
+  if (!operationAllowed) throw new Error("当前用户不能冲销该结算回收款");
+  const uploaded = await uploadSettlementRecoveryPrivateFile(
+    settlementId,
+    file,
+    file.name
+  );
+  return reverseSettlementRecovery(settlementId, entryId, {
+    ...body,
+    evidenceFileId: uploaded.id
+  });
+}
+
 async function submitRecord() {
   try {
     const file = selectedFile(recordFiles.value);
     if (!file) throw new Error("请上传回收凭证");
     submitting.value = true; dialogError.value = "";
-    const uploaded = await uploadPrivateFile(file, file.name);
-    await recordSettlementRecovery(props.settlementId, {
+    await recordSettlementRecoveryWithCapability(file, {
       entryType: recordForm.entryType,
       amountCents: centsFromYuan(recordForm.amountYuan),
       occurredOn: required(recordForm.occurredOn, "发生日期"),
       relatedPaymentId: recordForm.entryType === "offset" ? required(recordForm.relatedPaymentId, "关联付款申请") : undefined,
-      evidenceFileId: uploaded.id,
       reason: required(recordForm.reason, "回收原因"),
       idempotencyKey: nextKey("settlement-recovery"),
       confirmationPassword: required(recordForm.confirmationPassword, "当前登录密码")
@@ -355,13 +403,15 @@ async function submitReverse() {
     const file = selectedFile(reverseFiles.value);
     if (!file) throw new Error("请上传更正凭证");
     submitting.value = true; dialogError.value = "";
-    const uploaded = await uploadPrivateFile(file, file.name);
-    await reverseSettlementRecovery(props.settlementId, required(reverseEntryId.value, "待更正回收登记"), {
-      evidenceFileId: uploaded.id,
+    await reverseSettlementRecoveryWithCapability(
+      required(reverseEntryId.value, "待更正回收登记"),
+      file,
+      {
       reason: required(reverseForm.reason, "更正原因"),
       idempotencyKey: nextKey("settlement-recovery-reversal"),
       confirmationPassword: required(reverseForm.confirmationPassword, "当前登录密码")
-    });
+      }
+    );
     reverseVisible.value = false; resetReverse(); await load();
   } catch (cause) { dialogError.value = cause instanceof Error ? cause.message : "登记反向更正失败"; }
   finally { submitting.value = false; }

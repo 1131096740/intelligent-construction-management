@@ -468,6 +468,7 @@ describe("SettlementController authorization wiring", () => {
     ["uploadArchiveFile", "settlement.archive.upload"],
     ["confirmArchiveFile", "settlement.archive.confirm"],
     ["generatePdfArchive", "settlement.archive.upload"],
+    ["uploadArchivePrivateFile", "settlement.archive.upload"],
     ["downloadDraftExcel", "settlement.archive.upload"],
     ["downloadAttachmentTemplate", "settlement.archive.upload"]
   ])("guards %s with the %s action", (method, action) => {
@@ -504,6 +505,122 @@ describe("SettlementController authorization wiring", () => {
     expect(
       Reflect.getMetadata(ANY_PROJECT_POSITION_SCOPE_KEY, SettlementController.prototype.detail)
     ).toBeUndefined();
+  });
+
+  it("limits settlement recovery writes and evidence uploads to finance staff", () => {
+    for (const method of ["recordRecovery", "reverseRecovery", "uploadRecoveryFile"] as const) {
+      expect(
+        Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype[method])
+      ).toEqual(["finance_staff"]);
+    }
+  });
+
+  it("uploads archive and recovery evidence through the settlement-scoped file service", async () => {
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }) };
+    const settlementRead = {
+      getDetail: jest
+        .fn()
+        .mockResolvedValueOnce({
+          settlementId: "settlement-1",
+          availableActionKeys: ["upload_archive"]
+        })
+        .mockResolvedValueOnce({
+          settlementId: "settlement-1",
+          availableActionKeys: ["record_recovery", "reverse_recovery"]
+        })
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never,
+      undefined,
+      undefined,
+      files as never
+    );
+    const file = {
+      originalname: "结算依据.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("settlement")
+    };
+
+    await expect(
+      controller.uploadArchivePrivateFile(
+        "settlement-1",
+        file,
+        { id: "contract-1" } as never,
+        "upload-1"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+    await expect(
+      controller.uploadRecoveryFile(
+        "settlement-1",
+        file,
+        { id: "finance-1" } as never,
+        "upload-2"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+
+    expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ uploadedByUserId: "contract-1", idempotencyKey: "upload-1" })
+    );
+    expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ uploadedByUserId: "finance-1", idempotencyKey: "upload-2" })
+    );
+    expect(projectVisibility.visibleProjectIds).toHaveBeenNthCalledWith(1, "contract-1");
+    expect(projectVisibility.visibleProjectIds).toHaveBeenNthCalledWith(2, "finance-1");
+  });
+
+  it("rejects settlement evidence uploads before storage when the action is unavailable", async () => {
+    const files = { uploadPrivateFile: jest.fn() };
+    const settlementRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        settlementId: "settlement-1",
+        availableActionKeys: []
+      })
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never,
+      undefined,
+      undefined,
+      files as never
+    );
+    const file = {
+      originalname: "结算依据.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("settlement")
+    };
+
+    await expect(
+      controller.uploadArchivePrivateFile(
+        "settlement-1",
+        file,
+        { id: "contract-1" } as never
+      )
+    ).rejects.toThrow("当前结算状态或操作权限不允许上传归档资料");
+    await expect(
+      controller.uploadRecoveryFile(
+        "settlement-1",
+        file,
+        { id: "finance-1" } as never
+      )
+    ).rejects.toThrow("当前结算状态或操作权限不允许上传回收凭证");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
   it("limits settlement ledger export to the approved contract, finance and comprehensive positions", () => {
@@ -555,6 +672,48 @@ describe("SettlementController authorization wiring", () => {
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
     expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"], "user-1");
+  });
+
+  it("returns settlement action capability for any authenticated visible-project user", async () => {
+    const settlementRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        settlementId: "settlement-1",
+        availableActionKeys: ["review_approval"]
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never
+    );
+
+    await expect(
+      controller.capability("JS-2026-031", { id: "user-1" } as never)
+    ).resolves.toEqual({
+      settlementId: "settlement-1",
+      availableActions: ["review_approval"]
+    });
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(settlementRead.getDetail).toHaveBeenCalledWith(
+      "JS-2026-031",
+      ["project-1"],
+      "user-1"
+    );
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        SettlementController.prototype.capability
+      )
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        SettlementController.prototype.capability
+      )
+    ).toBeUndefined();
   });
 
   it("forwards all four withdrawal coordinates to the settlement service", async () => {
@@ -609,7 +768,7 @@ describe("SettlementController authorization wiring", () => {
     expect(legacy.create).not.toHaveBeenCalled();
   });
 
-  it.each(["create", "list", "detail", "update", "abandon", "submit", "linkCounterpartySignedDocument"] as const)(
+  it.each(["capability", "uploadPrivateFile", "create", "list", "detail", "update", "abandon", "submit", "linkCounterpartySignedDocument"] as const)(
     "protects settlement draft %s with settlement.create",
     (method) => {
       expect(
@@ -620,6 +779,44 @@ describe("SettlementController authorization wiring", () => {
       ).toBe("settlement.create");
     }
   );
+
+  it("returns settlement project actions and uploads draft evidence through the scoped controller", async () => {
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-2" }) };
+    const controller = new SettlementDraftController(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      files as never
+    );
+    const file = {
+      originalname: "结算明细附件.pdf",
+      mimetype: "application/pdf",
+      size: 18,
+      buffer: Buffer.from("draft-evidence")
+    };
+
+    expect(controller.capability("project-1")).toEqual(
+      expect.objectContaining({
+        projectId: "project-1",
+        availableActions: expect.arrayContaining([
+          "save_draft",
+          "preview_import",
+          "attach_line_file"
+        ])
+      })
+    );
+    await expect(
+      controller.uploadPrivateFile(file, { id: "contract-1" } as never, "draft-upload-1")
+    ).resolves.toEqual({ id: "file-2" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uploadedByUserId: "contract-1",
+        idempotencyKey: "draft-upload-1"
+      })
+    );
+  });
 
   it("uses a validated DTO for settlement draft abandonment", async () => {
     const paramTypes = Reflect.getMetadata(

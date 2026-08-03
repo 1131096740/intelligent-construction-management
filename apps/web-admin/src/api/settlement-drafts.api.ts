@@ -88,6 +88,31 @@ export interface SettlementLineAttachmentMutationReadModel {
   idempotent?: boolean;
 }
 
+export type SettlementProjectAction =
+  | "save_draft"
+  | "copy_abandoned_draft"
+  | "submit_draft"
+  | "preview_lines"
+  | "preview_import"
+  | "apply_import"
+  | "generate_frozen_document"
+  | "link_counterparty_signed_document"
+  | "attach_line_file"
+  | "invalidate_line_attachment"
+  | "upload_settlement_file";
+
+export interface SettlementProjectCapabilityReadModel {
+  projectId: string;
+  availableActions: SettlementProjectAction[];
+}
+
+export interface SettlementUploadedPrivateFileReadModel {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export interface AbandonSettlementDraftPayload {
   expectedRevision: number;
   action: "delete_pristine_draft" | "abandon_application";
@@ -585,6 +610,32 @@ export function generateSettlementFrozenDocument(
       body: JSON.stringify({ expectedRevision })
     },
     "生成冻结结算单失败"
+  );
+}
+
+export function fetchSettlementProjectCapability(projectId: string) {
+  return requestDraft<SettlementProjectCapabilityReadModel>(
+    `${draftCollectionPath(projectId)}/capability`,
+    { method: "GET" },
+    "读取结算项目操作权限失败"
+  );
+}
+
+export function uploadSettlementDraftPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return requestDraft<SettlementUploadedPrivateFileReadModel>(
+    `${draftCollectionPath(projectId)}/files`,
+    { method: "POST", body: form },
+    "上传结算资料失败"
   );
 }
 

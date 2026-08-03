@@ -1021,6 +1021,9 @@ export class SettlementReadService {
       archiveFiles,
       approvalTimeline,
       availableActions,
+      availableActionKeys: availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key),
       withdrawApprovalContext,
       lifecycleUpdatedAt: settlement.updatedAt.toISOString(),
       primaryAction: primaryActionKey(availableActions),
@@ -1132,6 +1135,7 @@ export class SettlementReadService {
       archiveFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      availableActionKeys: [],
       withdrawApprovalContext: null,
       lifecycleUpdatedAt: new Date(0).toISOString(),
       primaryAction: null,
@@ -1559,7 +1563,27 @@ export class SettlementReadService {
               requiredAction: "settlement.archive.upload",
               enabled: Boolean(status)
             })
-          ])
+          ]),
+      ...(roleKeys.includes("finance_staff")
+        ? [
+            detailAction({
+              key: "record_recovery",
+              label: "登记结算退款或抵扣",
+              kind: "normal",
+              roleKeys,
+              skipRoleCheck: true,
+              enabled: status === "effective"
+            }),
+            detailAction({
+              key: "reverse_recovery",
+              label: "反向更正结算回收登记",
+              kind: "normal",
+              roleKeys,
+              skipRoleCheck: true,
+              enabled: status === "effective"
+            })
+          ]
+        : [])
     ];
 
     if (status === "approval_pending") {

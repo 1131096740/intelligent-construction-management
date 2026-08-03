@@ -366,6 +366,7 @@ export interface SettlementDetailReadModel {
   archiveFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  availableActionKeys: string[];
   lifecycleUpdatedAt: string;
   withdrawApprovalContext: SettlementApprovalWithdrawalContextReadModel | null;
   primaryAction: string | null;

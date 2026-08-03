@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.8
+> 版本：v1.9
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；C-P0-02 六个子组已本地清零，下一步执行 C-P0-03 结算修复流
+> 状态：执行中；C-P0-03 结算修复流已本地清零，下一步执行 C-P0-04 付款修复流
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 406 routes、0 unclassified、210 raw blockers、158 uncovered pairs、9 unresolved bindings；C-P0-01 与 C-P0-02 已清零，合同修复流累计关闭 85 个 pair 和 11 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-03 结算修复流 |
+| Task 11 能力矩阵 | 阶段 D 当前为 411 routes、0 unclassified、175 raw blockers、129 uncovered pairs、3 unresolved bindings；C-P0-01 至 C-P0-03 已清零，累计关闭 118 个 pair 和 17 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-04 付款修复流 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -428,6 +428,18 @@
 > 自身剩余 0 pair / 0 unresolved。整站仍 blocked，下一步只能执行 `C-P0-03` 结算修复流。
 > 完整证据见
 > `docs/progress/2026-08-03-five-package-stage-d-c-p0-02ef-contract-takeover-tax-facts.md`。
+
+> 2026-08-03 后续执行记录：`C-P0-03` 结算草稿、导入/预览、审批、归档与回收事实
+> 已本地清零。新增项目级结算 capability、结算实例 action capability，以及草稿、归档和
+> 回收凭证三条业务域私有上传路由；29 个目标生产写 pair 均在 mutation 前执行 fresh GET、
+> 精确项目/结算/文件坐标和动作键校验。结算详情继续保留对象化动作，同时增加仅含 enabled
+> 动作键的服务端投影；审批、催办、转审、委托、审批 PDF、归档、签章文件恢复、PDF 归档、
+> 回收登记/冲销和下载均形成可证明的失败关闭因果链；归档与回收凭证还会在服务端文件落盘前
+> 重新校验当前结算可见性、状态和精确动作，无动作请求不会调用文件服务。uncovered pair 158→129、unresolved
+> binding 9→3、raw blocker 210→175，`C-P0-03` 自身剩余 0 pair / 0 unresolved；route usage
+> 为 411 routes、0 unclassified、0 blocker。整站仍 blocked，下一步只能执行 `C-P0-04`
+> 付款申请、审批、实付、凭证、财务与 PDF 修复流。完整证据见
+> `docs/progress/2026-08-03-five-package-stage-d-c-p0-03-settlement-workflows.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

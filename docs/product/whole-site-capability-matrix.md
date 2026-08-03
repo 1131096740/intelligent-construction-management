@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `6324f24462a5de9ef774ebf4c02e6384b5a9d4a09bb35955ff771b3a20f117a2` |
-| webApiWrappers | blocked | `61fbca73b3aa907b1f4a65a83486f3b12c957438fcd75c3794aaa0fed79f0539` |
-| webPageActions | blocked | `ae7c663388ce1179adb2388e4e8fcebd778b98f36c3b75f9814541c2c3f08be8` |
-| routeUsage | ready | `c093733c038c42425cf525ac31ad4c69623844c414fbdb8c8fd82e1f6dca8421` |
+| nestRoutes | ready | `435af874c948130955516b60a66d466239670987fe8c606df67669882f93b40f` |
+| webApiWrappers | blocked | `e328f590a2af4f995e4eb0e6ad2c24c485e6647819efa0650363011f4799d25f` |
+| webPageActions | blocked | `ca1d31c303ed8909becd40834afc9b547a5133ca31c9587e4f55ecf2614331c1` |
+| routeUsage | ready | `025153aca7c1471ac75ab31d083c5c645d5e832f0556b1f277df7060eaa1f6b1` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 406 |
-| pageRouteCount | 299 |
+| routeCount | 411 |
+| pageRouteCount | 304 |
 | externalTakeoverRouteCount | 61 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 416 |
+| mainRequestBindingCount | 421 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 139 |
-| actionBindingCount | 164 |
-| acceptedActionBindingCount | 136 |
-| unresolvedActionBindingCount | 9 |
+| registeredActionCount | 161 |
+| actionBindingCount | 189 |
+| acceptedActionBindingCount | 167 |
+| unresolvedActionBindingCount | 3 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 119 |
-| uncoveredProductionMutationConsumerPairCount | 158 |
-| blockerCount | 210 |
+| coveredProductionMutationConsumerPairCount | 148 |
+| uncoveredProductionMutationConsumerPairCount | 129 |
+| blockerCount | 175 |
 
 ## 路由矩阵
 
@@ -125,6 +125,7 @@
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | not_applicable | — |
+| GET | /projects/:projectId/settlement-drafts/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementProjectCapability | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftRecords | — | not_applicable | — |
 | GET | /projects/affiliate-mapping-report | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateMappingReport | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /projects/contract-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractCreateProjects | — | not_applicable | — |
@@ -139,6 +140,7 @@
 | GET | /settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportErrors | — | not_applicable | — |
 | GET | /settlement-workbench/projects/:projectId/imports/:importId/result.xlsx | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportResult | — | not_applicable | — |
 | GET | /settlements/:settlementId/attachment-templates/:templateKey/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementAttachmentTemplate | — | not_applicable | — |
+| GET | /settlements/:settlementId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementActionCapability | — | not_applicable | — |
 | GET | /settlements/:settlementId/draft-excel | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementDraftExcel | — | not_applicable | — |
 | GET | /settlements/:settlementId/recovery | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#fetchSettlementRecovery | — | not_applicable | — |
 | GET | /settlements/:settlementId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareSettlementApprovalWithdrawalAction | — | not_applicable | — |
@@ -173,7 +175,7 @@
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.save-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.update-local-gate | covered | — |
 | PATCH | /settlement-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#updateSettlementTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /spot-procurement-payments/:paymentId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /spot-procurement-payments/:paymentId/payer | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentPayer | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -279,8 +281,8 @@
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | affiliate-company-contract.record<br>contract-archive.upload-file<br>contract-final.upload-file<br>payment-execution.record<br>project-expense.execution-local-status<br>project-financing-quota.request<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | affiliate-company-contract.record<br>contract-archive.upload-file<br>contract-final.upload-file<br>payment-execution.record<br>project-expense.execution-local-status<br>project-financing-quota.request | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
@@ -360,13 +362,14 @@
 | POST | /projects/:projectId/proxy-payments | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/receipts | exit_candidate | none | — | — | not_applicable | — |
 | POST | /projects/:projectId/settlement-drafts/:draftId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord<br>apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | covered | ORPHAN_WRAPPER |
-| POST | /projects/:projectId/settlement-drafts/:draftId/approval-submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#submitSettlementDraftRecord | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/settlement-drafts/:draftId/copies | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#linkSettlementCounterpartySignedDocument | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/settlement-drafts/:draftId/frozen-document | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#invalidateSettlementDraftLineAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | settlement-draft.save-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/settlement-drafts/:draftId/approval-submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#submitSettlementDraftRecord | settlement-draft.submit | covered | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/copies | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft | settlement-list.copy-abandoned-draft | covered | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#linkSettlementCounterpartySignedDocument | settlement-draft.link-signed-document | covered | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/frozen-document | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument | settlement-draft.generate-frozen-document | covered | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#invalidateSettlementDraftLineAttachment | settlement-line-attachment.invalidate | covered | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile | settlement-line-attachment.attach | covered | — |
+| POST | /projects/:projectId/settlement-drafts/files | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#uploadSettlementDraftPrivateFile | settlement-draft.upload-signed-document<br>settlement-import.preview-local-gate<br>settlement-line-attachment.attach | covered | — |
+| POST | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | settlement-draft.save-local-gate | covered | — |
 | POST | /projects/:projectId/settlement-exception-quotas/:quotaId/approval | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/settlement-exception-quotas | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamFundFact | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -384,22 +387,24 @@
 | POST | /settlement-template-versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#stopSettlementTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /settlement-template-versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#submitSettlementTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /settlement-templates | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#createSettlementTemplate | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlement-workbench/contract-versions/:contractVersionId/imports/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport | settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlement-workbench/contract-versions/:contractVersionId/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines | settlement-preview.background-local-gate<br>settlement-preview.manual-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlement-workbench/projects/:projectId/imports/:importId/apply | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/approval-pdf/latest | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /settlement-workbench/contract-versions/:contractVersionId/imports/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport | settlement-import.preview-local-gate | covered | — |
+| POST | /settlement-workbench/contract-versions/:contractVersionId/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines | settlement-preview.background-local-gate | covered | — |
+| POST | /settlement-workbench/projects/:projectId/imports/:importId/apply | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport | settlement-import.apply | covered | — |
+| POST | /settlements/:settlementId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateSettlementApproval | settlement-detail.delegate | covered | — |
+| POST | /settlements/:settlementId/approval-pdf/latest | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf | settlement-detail.approval-pdf | covered | — |
+| POST | /settlements/:settlementId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | settlement-detail.remind | covered | — |
+| POST | /settlements/:settlementId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval | settlement-detail.transfer | covered | — |
 | POST | /settlements/:settlementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeSettlementApprovalWithdrawalAction | settlement-approval.withdraw | covered | — |
-| POST | /settlements/:settlementId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmSettlementArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generateSettlementPdfArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/recovery-entries/:entryId/reversal | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#reverseSettlementRecovery | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/recovery-entries | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#recordSettlementRecovery | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/signed-document-generation-retry | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#retrySettlementSignedDocumentGeneration | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /settlements/:settlementId/signed-document-regeneration | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#regenerateSettlementSignedDocument | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /settlements/:settlementId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval | settlement-detail.review | covered | — |
+| POST | /settlements/:settlementId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmSettlementArchive | settlement-detail.archive-confirm-or-regenerate | covered | — |
+| POST | /settlements/:settlementId/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchivePrivateFile | settlement-detail.archive-upload | covered | — |
+| POST | /settlements/:settlementId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile | settlement-detail.archive-upload | covered | — |
+| POST | /settlements/:settlementId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generateSettlementPdfArchive | settlement-detail.pdf-generation | covered | — |
+| POST | /settlements/:settlementId/recovery-entries/:entryId/reversal | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#reverseSettlementRecovery | settlement-recovery.reverse | covered | — |
+| POST | /settlements/:settlementId/recovery-entries | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#recordSettlementRecovery | settlement-recovery.record | covered | — |
+| POST | /settlements/:settlementId/recovery-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementRecoveryPrivateFile | settlement-recovery.record<br>settlement-recovery.reverse | covered | — |
+| POST | /settlements/:settlementId/signed-document-generation-retry | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#retrySettlementSignedDocumentGeneration | settlement-detail.generation-retry | covered | — |
+| POST | /settlements/:settlementId/signed-document-regeneration | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#regenerateSettlementSignedDocument | settlement-detail.signed-document-regenerate | covered | — |
 | POST | /settlements | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createSettlementDraft | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /spot-procurement-payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementPaymentDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /spot-procurement-payments/:paymentId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#withdrawSpotProcurementPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -533,26 +538,19 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliatePaymentFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateSettlementFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamFundFact → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#confirmSettlementArchive → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft → apps/web-admin/src/pages/contracts/ContractListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft → apps/web-admin/src/pages/settlements/SettlementListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest → apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createProject → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createProjectExpenseRequest → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#delegateSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseApprovalPdf → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseAttachment → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#generateSettlementPdfArchive → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentFinance → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
@@ -560,15 +558,10 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateSettlementFact → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpensePurchaseExecution → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#regenerateSettlementSignedDocument → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#retrySettlementSignedDocumentGeneration → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#supplementProjectAffiliateBusinessEvidence → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#transferPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#updateProject → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
@@ -577,15 +570,10 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#voidProjectExpenseRequest → apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentApproval → apps/web-admin/src/pages/payments/PaymentDetailPage.vue
 - apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
@@ -611,15 +599,6 @@
 - apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch → apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue
 - apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
 - apps/web-admin/src/api/organization.api.ts#updateOrganizationUser → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile → apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#invalidateSettlementDraftLineAttachment → apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#linkSettlementCounterpartySignedDocument → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#submitSettlementDraftRecord → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-recovery.api.ts#recordSettlementRecovery → apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue
-- apps/web-admin/src/api/settlement-recovery.api.ts#reverseSettlementRecovery → apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue
 - apps/web-admin/src/api/settlement-template.api.ts#cloneSettlementTemplateVersion → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/settlement-template.api.ts#createSettlementTemplate → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/settlement-template.api.ts#discardSettlementTemplateVersion → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
@@ -630,9 +609,6 @@
 - apps/web-admin/src/api/settlement-template.api.ts#stopSettlementTemplateVersion → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/settlement-template.api.ts#submitSettlementTemplateVersion → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/settlement-template.api.ts#updateSettlementTemplateVersion → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
-- apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
-- apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines → apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#abandonSpotProcurementPaymentDraft → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/spot-procurement.api.ts#attachSpotProcurementReceiptPhoto → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
@@ -662,9 +638,3 @@
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-draft.save-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-draft.save-local-gate#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-import.preview-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-import.preview-local-gate#1 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-preview.background-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- settlement-preview.manual-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 406,
-    "exactRouteCount": 406,
-    "normalizedRouteCount": 406,
+    "routeCount": 411,
+    "exactRouteCount": 411,
+    "normalizedRouteCount": 411,
     "classificationOverrideCount": 110,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 296,
-    "pageRouteCount": 299,
+    "derivedProductionPageCount": 301,
+    "pageRouteCount": 304,
     "externalTakeoverCount": 61,
     "exitCandidateCount": 43,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 348,
+      "web_api_wrapper": 353,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 348,
+    "productionWrapperRouteCount": 353,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -2243,7 +2243,9 @@
               "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
+              "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+              "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
             ]
           }
         ],
@@ -3905,6 +3907,48 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/capability",
+      "normalizedKey": "GET /projects/:param/settlement-drafts/capability",
+      "controller": "SettlementDraftController",
+      "handler": "capability",
+      "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "settlement.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+            "wrapper": "fetchSettlementProjectCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/settlement-drafts/capability",
+            "normalizedKey": "GET /projects/:param/settlement-drafts/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+              "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+              "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects/affiliate-mapping-report",
       "normalizedKey": "GET /projects/affiliate-mapping-report",
       "controller": "ProjectController",
@@ -4490,6 +4534,47 @@
             "normalizedKey": "GET /settlements/:param/attachment-templates/:param/download",
             "productionConsumers": [
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/settlements/:settlementId/capability",
+      "normalizedKey": "GET /settlements/:param/capability",
+      "controller": "SettlementController",
+      "handler": "capability",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchSettlementActionCapability",
+            "method": "GET",
+            "normalizedPath": "/settlements/:param/capability",
+            "normalizedKey": "GET /settlements/:param/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+              "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
             ]
           }
         ],
@@ -10053,10 +10138,6 @@
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
               "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-              "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-              "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-              "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
@@ -13593,6 +13674,47 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/files",
+      "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+      "controller": "SettlementDraftController",
+      "handler": "uploadPrivateFile",
+      "sourceFile": "services/api/src/settlement/settlement-draft.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "settlement.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+            "wrapper": "uploadSettlementDraftPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/settlement-drafts/files",
+            "normalizedKey": "POST /projects/:param/settlement-drafts/files",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+              "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/settlement-exception-quotas",
       "normalizedKey": "POST /projects/:param/settlement-exception-quotas",
       "controller": "ProjectController",
@@ -14661,6 +14783,46 @@
     },
     {
       "method": "POST",
+      "path": "/settlements/:settlementId/archive-file-uploads",
+      "normalizedKey": "POST /settlements/:param/archive-file-uploads",
+      "controller": "SettlementController",
+      "handler": "uploadArchivePrivateFile",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "settlement.archive.upload",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadSettlementArchivePrivateFile",
+            "method": "POST",
+            "normalizedPath": "/settlements/:param/archive-file-uploads",
+            "normalizedKey": "POST /settlements/:param/archive-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/settlements/:settlementId/archive-files",
       "normalizedKey": "POST /settlements/:param/archive-files",
       "controller": "SettlementController",
@@ -14811,6 +14973,48 @@
             "method": "POST",
             "normalizedPath": "/settlements/:param/recovery-entries/:param/reversal",
             "normalizedKey": "POST /settlements/:param/recovery-entries/:param/reversal",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/recovery-file-uploads",
+      "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
+      "controller": "SettlementController",
+      "handler": "uploadRecoveryFile",
+      "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "uploadSettlementRecoveryPrivateFile",
+            "method": "POST",
+            "normalizedPath": "/settlements/:param/recovery-file-uploads",
+            "normalizedKey": "POST /settlements/:param/recovery-file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"
             ]

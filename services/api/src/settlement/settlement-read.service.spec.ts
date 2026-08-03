@@ -861,7 +861,7 @@ describe("SettlementReadService", () => {
     });
   });
 
-  it("exposes enabled payment creation action for effective settlements", async () => {
+  it("exposes enabled payment and finance recovery actions for effective settlements", async () => {
     const prisma = {
       settlement: {
         findFirst: jest.fn().mockResolvedValue({
@@ -917,6 +917,16 @@ describe("SettlementReadService", () => {
       disabledReason: null,
       requiredAction: "payment.create"
     });
+    expect(detail.availableActionKeys).toContain("create_payment");
+    projectVisibility.effectiveRoleKeys.mockResolvedValue(["finance_staff"]);
+    const financeDetail = await service.getDetail(
+      "JS-2026-031",
+      undefined,
+      "user-finance"
+    );
+    expect(financeDetail.availableActionKeys).toEqual(
+      expect.arrayContaining(["record_recovery", "reverse_recovery"])
+    );
     expect(detail.disabledReasons).toEqual([]);
   });
 
