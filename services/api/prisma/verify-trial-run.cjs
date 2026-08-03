@@ -1631,9 +1631,17 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
 async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
   const voucherFile = await uploadPrivateFile(`${CODES.payment}-voucher.pdf`, tokens.cashier);
   const paidAt = new Date().toISOString();
+  const detail = await readJson(
+    `/payments/${payment.id}`,
+    tokens.cashier,
+    "出纳读取 UAT 付款实付坐标"
+  );
+  assert(detail.executionContext, "出纳未获得 UAT 付款实付坐标");
   const execution = await postJson(
     `/payments/${payment.id}/executions`,
     {
+      ...detail.executionContext,
+      idempotencyKey: randomUUID(),
       amountCents: "1000000",
       paidAt,
       voucherFileId: voucherFile.id,
