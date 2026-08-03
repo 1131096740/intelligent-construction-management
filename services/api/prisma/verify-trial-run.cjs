@@ -1916,7 +1916,8 @@ function userFacingErrorMessage(error) {
     return `无法访问 API 服务（${baseUrl}）。请先启动 @jiangkong/api 服务后重试。`;
   }
 
-  if (raw.trim()) return raw.split("\n")[0];
+  const firstNonEmptyLine = raw.split("\n").find((line) => line.trim());
+  if (firstNonEmptyLine) return firstNonEmptyLine;
   return `验证器抛出了空错误对象（${error?.name || Object.prototype.toString.call(error)}，code=${error?.code || "-"}，meta=${JSON.stringify(error?.meta || {})}）`;
 }
 
