@@ -89,6 +89,7 @@ import {
   previewContractTakeoverBatchAbandonment,
   previewContractTakeoverExcelImport,
   createPrivateFileDownloadTicket,
+  getPrivateFileDownloadTicketCapability,
   createSettlementDraft,
   confirmContractTakeover,
   confirmContractTakeoverContractSide,
@@ -120,6 +121,11 @@ import {
   remindSettlementApproval,
   reviewSettlementApproval,
   uploadContractArchiveFile,
+  uploadCanvasSignature,
+  createCanvasSignatureHandoff,
+  getCanvasSignatureCapabilities,
+  getCanvasSignatureHandoff,
+  completeCanvasSignatureHandoff,
   uploadPrivateFile,
   uploadSettlementArchiveFile,
   recordPaymentExecution,
@@ -4060,6 +4066,46 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password", downloadReason: "合同归档复核" })
     );
+  });
+
+  it("reads private file download capability from the authenticated backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        action: {
+          key: "create_private_file_download_ticket",
+          enabled: true
+        }
+      })
+    } as Response);
+
+    await getPrivateFileDownloadTicketCapability("file/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/files/file%2F1/download-ticket-capability"
+    ]);
+  });
+
+  it("uses authenticated backend capabilities for every canvas signature mutation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ availableActions: [] })
+    } as Response);
+    const file = new Blob(["signature"], { type: "image/png" });
+
+    await getCanvasSignatureCapabilities();
+    await createCanvasSignatureHandoff();
+    await getCanvasSignatureHandoff("opaque/token");
+    await uploadCanvasSignature(file);
+    await completeCanvasSignatureHandoff("opaque/token", file);
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? "GET"])).toEqual([
+      ["/api/me/signature/canvas-capabilities", "GET"],
+      ["/api/me/signature/canvas-handoffs", "POST"],
+      ["/api/me/signature/canvas-handoffs/opaque%2Ftoken", "GET"],
+      ["/api/me/signature/canvas", "POST"],
+      ["/api/me/signature/canvas-handoffs/opaque%2Ftoken/complete", "POST"]
+    ]);
   });
 
   it("downloads settlement attachment templates through the backend", async () => {

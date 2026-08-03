@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `e04c32dfd251a3f1d106bf62100fca5793fc70e30f586fc43d06bfe4cfc2df66` |
-| webApiWrappers | blocked | `43a1f4ecc10d2432b887b0101933e1fdcb630ff9eb59aa193e8e8e1aa8af28d5` |
-| webPageActions | blocked | `47cbf1cad9ffb9a9a44147aacf750b2bdb1f6ba1d85e2aeb75d3416793c165d3` |
-| routeUsage | ready | `ccf5e8c8048095fa8fbc3cc1c03767cf7886b2d10f6e027d12f0eb851e049c2f` |
+| nestRoutes | ready | `e5ff7d30413c1b086b9e92a71510e6a258bef5104b9e9861224b5bffc24bc4ad` |
+| webApiWrappers | blocked | `f6502e985344fb1c6323640d53954c317847128e6281c2c974cf32e616a331ab` |
+| webPageActions | blocked | `d2b0a41e3d185eaaaf1dbe68723736f5c8647c9166968ea2a539ac6f9c7c09dc` |
+| routeUsage | ready | `f153effff170da219b504e1a83f4597b2980388fab90e41b39dd4669f6ce419a` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 399 |
-| pageRouteCount | 294 |
+| routeCount | 401 |
+| pageRouteCount | 296 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 408 |
+| mainRequestBindingCount | 410 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 59 |
-| actionBindingCount | 84 |
-| acceptedActionBindingCount | 45 |
+| registeredActionCount | 63 |
+| actionBindingCount | 88 |
+| acceptedActionBindingCount | 49 |
 | unresolvedActionBindingCount | 20 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 30 |
-| uncoveredProductionMutationConsumerPairCount | 247 |
-| blockerCount | 310 |
+| coveredProductionMutationConsumerPairCount | 34 |
+| uncoveredProductionMutationConsumerPairCount | 243 |
+| blockerCount | 306 |
 
 ## 路由矩阵
 
@@ -88,10 +88,12 @@
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
+| GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | — | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /health/readiness | internal_task | machine_probe | — | — | not_applicable | — |
+| GET | /me/signature/canvas-capabilities | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureCapabilities | — | not_applicable | — |
 | GET | /me/signature/canvas-handoffs/:token | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureHandoff | — | not_applicable | — |
 | GET | /me/signature/ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getSignatureTicket | — | not_applicable | — |
 | GET | /me/work-items | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItems | — | not_applicable | — |
@@ -273,12 +275,12 @@
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | affiliate-company-contract.record<br>payment-execution.record<br>project-expense.execution-local-status<br>project-financing-quota.request<br>settlement-import.preview-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
-| POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |
+| POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
+| POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | signature.upload-canvas | covered | — |
 | POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
 | POST | /organization/departments | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /organization/role-additions/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -562,7 +564,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#approveGovernedContractSeal → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#attachContractTakeoverEvidenceFile → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#attachHistoricalPaymentVoucher → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff → apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#completeContractSeal → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmContractArchive → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
@@ -578,12 +579,10 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft → apps/web-admin/src/pages/contracts/ContractListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft → apps/web-admin/src/pages/settlements/SettlementListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff → apps/web-admin/src/components/JgSignatureHandoff.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeoverDraftsFromImport → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest → apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/archives/ArchiveListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket → apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue
@@ -638,7 +637,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval → apps/web-admin/src/pages/settlements/SettlementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover → apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#updateProject → apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature → apps/web-admin/src/pages/settings/SettingsPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadContractArchiveFile → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue

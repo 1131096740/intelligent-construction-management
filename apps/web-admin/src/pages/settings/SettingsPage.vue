@@ -105,16 +105,16 @@
       :bordered="true"
       class="settings-card"
     >
+      <JgSignatureHandoff
+        v-if="desktopSignatureMode"
+        @completed="loadSignature"
+      />
       <JgSignaturePanel
-        v-if="!desktopSignatureMode"
+        v-else-if="signatureActionEnabled('upload_canvas_signature')"
         :preview-url="signaturePreviewUrl"
         :preview-source="signatureSource"
         :busy="signatureBusy"
         @save="submitCanvasSignature"
-      />
-      <JgSignatureHandoff
-        v-else
-        @completed="loadSignature"
       />
       <div
         v-if="signatureMessage"
@@ -282,11 +282,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import {
   fetchDraftRetentionPreview,
+  getCanvasSignatureCapabilities,
   getSignatureTicket,
   uploadCanvasSignature,
   type DraftRetentionPreviewReadModel
@@ -338,6 +339,10 @@ const desktopSignatureMode = ref(false);
 const signatureBusy = ref(false);
 const signatureMessage = ref("");
 const signatureTone = ref<"success" | "danger">("success");
+const signatureAvailableActions = shallowRef<Array<
+  "upload_canvas_signature" | "create_canvas_signature_handoff"
+> | null>(null);
+let canvasSignaturePromise: Promise<void> | null = null;
 
 const profileForm = reactive({
   name: auth.user?.name ?? "",
@@ -368,10 +373,34 @@ async function loadSignature() {
   }
 }
 
+async function loadSignatureCapabilities() {
+  try {
+    const capability = await getCanvasSignatureCapabilities();
+    signatureAvailableActions.value = capability.availableActions;
+  } catch (error) {
+    signatureAvailableActions.value = null;
+    signatureTone.value = "danger";
+    signatureMessage.value = error instanceof Error
+      ? error.message
+      : "读取手写签名权限失败";
+  }
+}
+
+function signatureActionEnabled(
+  key: "upload_canvas_signature" | "create_canvas_signature_handoff"
+) {
+  return signatureAvailableActions.value !== null
+    && signatureAvailableActions.value.includes(key);
+}
+
 onMounted(async () => {
   updateSignatureMode();
   window.addEventListener("resize", updateSignatureMode);
-  await Promise.all([loadSignature(), loadRetentionPreview()]);
+  await Promise.all([
+    loadSignature(),
+    loadSignatureCapabilities(),
+    loadRetentionPreview()
+  ]);
 });
 onBeforeUnmount(() => window.removeEventListener("resize", updateSignatureMode));
 
@@ -468,20 +497,26 @@ async function submitLogout() {
   await router.replace("/login");
 }
 
-async function submitCanvasSignature(signature: File) {
+function submitCanvasSignature(signature: File) {
+  if (canvasSignaturePromise) return canvasSignaturePromise;
   signatureBusy.value = true;
   signatureMessage.value = "";
-  try {
-    await uploadCanvasSignature(signature);
-    signatureTone.value = "success";
-    signatureMessage.value = "手写签名已保存，将用于之后的审批。";
-    await loadSignature();
-  } catch (error) {
-    signatureTone.value = "danger";
-    signatureMessage.value = error instanceof Error ? error.message : "保存手写签名失败";
-  } finally {
-    signatureBusy.value = false;
-  }
+  const request = uploadCanvasSignature(signature);
+  canvasSignaturePromise = request
+    .then(async () => {
+      signatureTone.value = "success";
+      signatureMessage.value = "手写签名已保存，将用于之后的审批。";
+      await loadSignature();
+    })
+    .catch((error: unknown) => {
+      signatureTone.value = "danger";
+      signatureMessage.value = error instanceof Error ? error.message : "保存手写签名失败";
+    })
+    .finally(() => {
+      signatureBusy.value = false;
+      canvasSignaturePromise = null;
+    });
+  return canvasSignaturePromise;
 }
 
 </script>

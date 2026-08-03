@@ -151,6 +151,7 @@
     </t-card>
 
     <t-dialog
+      v-if="archiveDownloadAction && archiveDownloadAction.enabled"
       v-model:visible="downloadDialogVisible"
       header="授权下载资料"
       :confirm-btn="downloadConfirmButtonProps"
@@ -171,20 +172,26 @@
           />
           <small v-if="downloadDisabledReason">{{ downloadDisabledReason }}</small>
         </label>
+        <label>
+          <span>下载原因</span>
+          <t-input
+            v-model="downloadReason"
+            placeholder="请填写本次下载用途"
+          />
+        </label>
       </div>
     </t-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { reactive } from "vue";
+import { computed, onMounted, reactive, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   createPrivateFileDownloadTicket,
-  fetchArchives
+  fetchArchives,
+  getPrivateFileDownloadTicketCapability
 } from "../../api/core-flow-read.api";
-import { confirmSensitiveAction, promptSensitiveActionReason } from "../confirm-sensitive-action";
 import type { ArchiveLedgerRow, ArchiveTone } from "./archive-list.config";
 import {
   archiveAccessStatusOptions,
@@ -193,7 +200,6 @@ import {
   archiveRules,
   archiveSummaryItems,
   archiveDownloadActionDisabledReason,
-  archiveDownloadConfirmMessage,
   archiveDownloadDisabledReason,
   archiveDownloadSuccessMessage,
   emptyArchiveLedgerFilters,
@@ -209,7 +215,15 @@ const archiveRows = ref<ArchiveLedgerRow[]>([]);
 const downloadDialogVisible = ref(false);
 const downloadBusy = ref(false);
 const downloadTarget = ref<ArchiveLedgerRow | null>(null);
+const downloadTargetFileId = ref("");
+const archiveDownloadAction = shallowRef<{
+  key: "create_private_file_download_ticket";
+  enabled: boolean;
+} | null>(null);
 const downloadPassword = ref("");
+const downloadReason = ref("");
+let downloadTicketPromise: Promise<void> | null = null;
+let downloadCapabilityRequestId = 0;
 const archiveFilters = reactive(emptyArchiveLedgerFilters());
 const summary = ref({
   total: 0,
@@ -235,6 +249,9 @@ const downloadConfirmButtonProps = computed(() => ({
   content: "生成下载链接",
   loading: downloadBusy.value,
   disabled: Boolean(downloadDisabledReason.value)
+    || !downloadTargetFileId.value
+    || !downloadReason.value.trim()
+    || archiveDownloadAction.value?.enabled !== true
 }));
 
 onMounted(() => {
@@ -292,59 +309,67 @@ async function loadArchives() {
   }
 }
 
-function openDownloadDialog(row: ArchiveLedgerRow) {
+async function openDownloadDialog(row: ArchiveLedgerRow) {
   if (!row.canDownload) {
     showNotice(row.disabledReason ?? "当前资料暂不可下载。");
     return;
   }
-  downloadTarget.value = row;
-  downloadPassword.value = "";
-  downloadDialogVisible.value = true;
+  const capabilityRequestId = ++downloadCapabilityRequestId;
+  archiveDownloadAction.value = null;
+  try {
+    const capability = await getPrivateFileDownloadTicketCapability(row.fileId);
+    if (capabilityRequestId !== downloadCapabilityRequestId) return;
+    archiveDownloadAction.value = capability.action;
+    if (!archiveDownloadAction.value.enabled) {
+      showNotice(row.disabledReason ?? "当前资料暂不可下载。");
+      return;
+    }
+    downloadTarget.value = row;
+    downloadTargetFileId.value = row.fileId;
+    downloadPassword.value = "";
+    downloadReason.value = "";
+    downloadDialogVisible.value = true;
+  } catch (error) {
+    if (capabilityRequestId !== downloadCapabilityRequestId) return;
+    showNotice(error instanceof Error ? error.message : "读取资料下载权限失败");
+  }
 }
 
 function closeDownloadDialog() {
+  downloadCapabilityRequestId += 1;
   downloadDialogVisible.value = false;
   downloadTarget.value = null;
+  downloadTargetFileId.value = "";
   downloadPassword.value = "";
+  downloadReason.value = "";
+  archiveDownloadAction.value = null;
 }
 
-async function confirmDownload() {
-  const target = downloadTarget.value;
-  if (!target) {
-    return;
-  }
+function confirmDownload() {
+  if (downloadTicketPromise) return downloadTicketPromise;
   const password = downloadPassword.value.trim();
-  if (downloadDisabledReason.value) {
-    message.value = downloadDisabledReason.value;
-    messageTone.value = "danger";
-    return;
-  }
-  if (!confirmSensitiveAction(archiveDownloadConfirmMessage())) {
-    return;
-  }
-  const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
-  if (!downloadReason) {
-    message.value = "请填写下载原因。";
-    messageTone.value = "danger";
-    return;
-  }
-
+  const reason = downloadReason.value.trim();
   downloadBusy.value = true;
-  try {
-    const ticket = await createPrivateFileDownloadTicket(target.fileId, {
-      confirmationPassword: password,
-      downloadReason
+  const request = createPrivateFileDownloadTicket(downloadTargetFileId.value, {
+    confirmationPassword: password,
+    downloadReason: reason
+  });
+  downloadTicketPromise = request
+    .then((ticket) => {
+      window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+      message.value = archiveDownloadSuccessMessage();
+      messageTone.value = "success";
+      closeDownloadDialog();
+    })
+    .catch((error: unknown) => {
+      message.value = error instanceof Error ? error.message : "生成下载链接失败";
+      messageTone.value = "danger";
+    })
+    .finally(() => {
+      downloadBusy.value = false;
+      downloadTicketPromise = null;
     });
-    window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
-    message.value = archiveDownloadSuccessMessage();
-    messageTone.value = "success";
-    closeDownloadDialog();
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "生成下载链接失败";
-    messageTone.value = "danger";
-  } finally {
-    downloadBusy.value = false;
-  }
+  return downloadTicketPromise;
 }
 
 function apiDownloadUrl(url: string) {

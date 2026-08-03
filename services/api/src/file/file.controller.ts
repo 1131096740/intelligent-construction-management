@@ -90,6 +90,14 @@ export class FileController {
     });
   }
 
+  @Get(":fileId/download-ticket-capability")
+  downloadTicketCapability(
+    @Param("fileId") fileId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.files.getDownloadTicketCapability(fileId, user.id);
+  }
+
   // 下载走短时效票据（expiresAt + token），用于可直接打开的链接，因此不强制 Bearer。
   @Public()
   @Get(":fileId/download")

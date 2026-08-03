@@ -1107,6 +1107,25 @@ export class FileService {
     });
   }
 
+  async getDownloadTicketCapability(fileId: string, actorUserId: string) {
+    if (!actorUserId.trim()) {
+      throw new Error("下载人信息缺失，请重新登录后再下载资料");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const file = await tx.fileObject.findUnique({ where: { id: fileId } });
+      if (!file) {
+        throw new Error("资料文件不存在或已被移除");
+      }
+      await this.assertCanDownloadFileObject(tx, file, actorUserId);
+      return {
+        action: {
+          key: "create_private_file_download_ticket" as const,
+          enabled: true as const
+        }
+      };
+    });
+  }
+
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {
     if (!input.actorUserId.trim()) {
       throw new BadRequestException("下载人信息缺失，请重新登录后再下载资料");

@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 408,
-    "transportWrapperCount": 388,
+    "exportedFunctionCount": 410,
+    "transportWrapperCount": 390,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 408,
+    "mainRequestBindingCount": 410,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 407,
-    "productionConsumerCount": 351,
+    "requestEdgeCount": 409,
+    "productionConsumerCount": 353,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -3559,10 +3559,12 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -4173,10 +4175,12 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/components/JgSignatureHandoff.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -4619,7 +4623,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6588,
+          "sourceLine": 6599,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4649,7 +4653,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6572,
+          "sourceLine": 6583,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4679,7 +4683,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6572,
+          "sourceLine": 6583,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4709,7 +4713,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4978,
+          "sourceLine": 4989,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4738,7 +4742,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6572,
+          "sourceLine": 6583,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4828,7 +4832,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6615,
+          "sourceLine": 6626,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4857,7 +4861,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6602,
+          "sourceLine": 6613,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -4886,7 +4890,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6630,
+          "sourceLine": 6641,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -4915,7 +4919,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6572,
+          "sourceLine": 6583,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -6215,6 +6219,37 @@
       "unreachableConsumers": []
     },
     {
+      "name": "getCanvasSignatureCapabilities",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/me/signature/canvas-capabilities",
+          "normalizedPath": "/me/signature/canvas-capabilities",
+          "normalizedKey": "GET /me/signature/canvas-capabilities",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getCanvasSignatureCapabilities",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/components/JgSignatureHandoff.vue",
+        "apps/web-admin/src/pages/settings/SettingsPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "getCanvasSignatureHandoff",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -6236,11 +6271,13 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/components/JgSignatureHandoff.vue",
         "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6270,6 +6307,36 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "getPrivateFileDownloadTicketCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedPath": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getPrivateFileDownloadTicketCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -8184,10 +8251,12 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/pages/settings/SettingsPage.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

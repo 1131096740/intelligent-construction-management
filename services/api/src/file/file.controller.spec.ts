@@ -326,6 +326,28 @@ describe("FileController authorization wiring", () => {
     });
   });
 
+  it("derives private file download capability from the authenticated account", async () => {
+    const files = {
+      getDownloadTicketCapability: jest.fn().mockResolvedValue({
+        action: {
+          key: "create_private_file_download_ticket",
+          enabled: true
+        }
+      })
+    };
+    const controller = new FileController(files as never, {} as never);
+
+    await controller.downloadTicketCapability(
+      "file-1",
+      { id: "user-1" } as never
+    );
+
+    expect(files.getDownloadTicketCapability).toHaveBeenCalledWith(
+      "file-1",
+      "user-1"
+    );
+  });
+
   it("forwards the explicit preview mode only after password confirmation", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })

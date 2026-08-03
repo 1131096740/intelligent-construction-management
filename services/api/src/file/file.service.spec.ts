@@ -4651,6 +4651,45 @@ describe("FileService", () => {
     });
   });
 
+  it("publishes a download-ticket capability only after the same file ACL check", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          bucket: "private-local",
+          objectKey: "uploads/file-1.pdf",
+          originalName: "盖章合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "finance-1"
+        })
+      },
+      contractArchiveFile: { findFirst: jest.fn() },
+      settlementArchiveFile: { findFirst: jest.fn() },
+      paymentExecution: { findFirst: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    await expect(
+      service.getDownloadTicketCapability("file-1", "finance-1")
+    ).resolves.toEqual({
+      action: {
+        key: "create_private_file_download_ticket",
+        enabled: true
+      }
+    });
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("authorizes an offline-revision preview by the current contract owner, not the former uploader", async () => {
     const tx = {
       fileObject: {

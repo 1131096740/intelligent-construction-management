@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "e04c32dfd251a3f1d106bf62100fca5793fc70e30f586fc43d06bfe4cfc2df66",
+      "sha256": "e5ff7d30413c1b086b9e92a71510e6a258bef5104b9e9861224b5bffc24bc4ad",
       "status": "ready",
       "summary": {
-        "routeCount": 399
+        "routeCount": 401
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "43a1f4ecc10d2432b887b0101933e1fdcb630ff9eb59aa193e8e8e1aa8af28d5",
+      "sha256": "f6502e985344fb1c6323640d53954c317847128e6281c2c974cf32e616a331ab",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 408,
-        "transportWrapperCount": 388,
+        "exportedFunctionCount": 410,
+        "transportWrapperCount": 390,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 408,
+        "mainRequestBindingCount": 410,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 407,
-        "productionConsumerCount": 351,
+        "requestEdgeCount": 409,
+        "productionConsumerCount": 353,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "47cbf1cad9ffb9a9a44147aacf750b2bdb1f6ba1d85e2aeb75d3416793c165d3",
+      "sha256": "d2b0a41e3d185eaaaf1dbe68723736f5c8647c9166968ea2a539ac6f9c7c09dc",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 59,
-        "pageActionCount": 53,
+        "registeredActionCount": 63,
+        "pageActionCount": 57,
         "backgroundActionCount": 6,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
         "parsedVueFileCount": 135,
         "reachableProductionModuleCount": 234,
-        "templateEventDirectiveCount": 948,
+        "templateEventDirectiveCount": 949,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 30,
-        "candidateProductionMutationConsumerCount": 49,
-        "acceptedProductionMutationConsumerCount": 30,
+        "coveredProductionMutationConsumerCount": 34,
+        "candidateProductionMutationConsumerCount": 53,
+        "acceptedProductionMutationConsumerCount": 34,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 293
+        "blockerCount": 289
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "ccf5e8c8048095fa8fbc3cc1c03767cf7886b2d10f6e027d12f0eb851e049c2f",
+      "sha256": "f153effff170da219b504e1a83f4597b2980388fab90e41b39dd4669f6ce419a",
       "status": "ready",
       "summary": {
-        "routeCount": 399,
-        "exactRouteCount": 399,
-        "normalizedRouteCount": 399,
+        "routeCount": 401,
+        "exactRouteCount": 401,
+        "normalizedRouteCount": 401,
         "classificationOverrideCount": 108,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 291,
-        "pageRouteCount": 294,
+        "derivedProductionPageCount": 293,
+        "pageRouteCount": 296,
         "externalTakeoverCount": 59,
         "exitCandidateCount": 43,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 341,
+          "web_api_wrapper": 343,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,25 +93,25 @@
     }
   },
   "summary": {
-    "routeCount": 399,
-    "pageRouteCount": 294,
+    "routeCount": 401,
+    "pageRouteCount": 296,
     "externalTakeoverRouteCount": 59,
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 408,
+    "mainRequestBindingCount": 410,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 59,
-    "actionBindingCount": 84,
-    "acceptedActionBindingCount": 45,
+    "registeredActionCount": 63,
+    "actionBindingCount": 88,
+    "acceptedActionBindingCount": 49,
     "unresolvedActionBindingCount": 20,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 30,
-    "uncoveredProductionMutationConsumerPairCount": 247,
-    "blockerCount": 310
+    "coveredProductionMutationConsumerPairCount": 34,
+    "uncoveredProductionMutationConsumerPairCount": 243,
+    "blockerCount": 306
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -946,14 +946,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "completeCanvasSignatureHandoff",
-        "consumer": "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue",
-        "normalizedKeys": [
-          "POST /me/signature/canvas-handoffs/:param/complete"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "completeContractSeal",
         "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "normalizedKeys": [
@@ -1074,14 +1066,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createCanvasSignatureHandoff",
-        "consumer": "apps/web-admin/src/components/JgSignatureHandoff.vue",
-        "normalizedKeys": [
-          "POST /me/signature/canvas-handoffs"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createContractChangeDraft",
         "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "normalizedKeys": [
@@ -1110,14 +1094,6 @@
         "consumer": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "normalizedKeys": [
           "POST /payments"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "consumer": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
         ]
       },
       {
@@ -1550,14 +1526,6 @@
         "consumer": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "normalizedKeys": [
           "PATCH /projects/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadCanvasSignature",
-        "consumer": "apps/web-admin/src/pages/settings/SettingsPage.vue",
-        "normalizedKeys": [
-          "POST /me/signature/canvas"
         ]
       },
       {
@@ -4935,6 +4903,47 @@
     {
       "route": {
         "method": "GET",
+        "path": "/files/:fileId/download-ticket-capability",
+        "normalizedKey": "GET /files/:param/download-ticket-capability",
+        "controller": "FileController",
+        "handler": "downloadTicketCapability",
+        "sourceFile": "services/api/src/file/file.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "getPrivateFileDownloadTicketCapability",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/files/:fileId/download",
         "normalizedKey": "GET /files/:param/download",
         "controller": "FileController",
@@ -5058,6 +5067,48 @@
     {
       "route": {
         "method": "GET",
+        "path": "/me/signature/canvas-capabilities",
+        "normalizedKey": "GET /me/signature/canvas-capabilities",
+        "controller": "MeController",
+        "handler": "canvasSignatureCapabilities",
+        "sourceFile": "services/api/src/me/me.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "getCanvasSignatureCapabilities",
+          "method": "GET",
+          "path": "/me/signature/canvas-capabilities",
+          "normalizedKey": "GET /me/signature/canvas-capabilities",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/JgSignatureHandoff.vue",
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/me/signature/canvas-handoffs/:token",
         "normalizedKey": "GET /me/signature/canvas-handoffs/:param",
         "controller": "MeController",
@@ -5087,7 +5138,9 @@
             "apps/web-admin/src/components/JgSignatureHandoff.vue",
             "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -14020,7 +14073,34 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
+      "actions": [
+        {
+          "actionId": "archive.create-private-file-download-ticket",
+          "bindingIndex": 0,
+          "identity": "archive.create-private-file-download-ticket\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "archiveDownloadAction",
+            "key": "create_private_file_download_ticket",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "uncovered",
       "blockerCodes": [
         "MUTATION_CONSUMER_UNCOVERED"
@@ -14340,15 +14420,42 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "signature.complete-canvas-handoff",
+          "bindingIndex": 0,
+          "identity": "signature.complete-canvas-handoff\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000completeCanvasSignatureHandoff\u0000POST\u0000POST /me/signature/canvas-handoffs/:param/complete\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "handoffAvailableActions",
+            "key": "complete_canvas_signature_handoff",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "completeCanvasSignatureHandoff",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14381,15 +14488,42 @@
           "productionConsumers": [
             "apps/web-admin/src/components/JgSignatureHandoff.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "signature.create-canvas-handoff",
+          "bindingIndex": 0,
+          "identity": "signature.create-canvas-handoff\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createCanvasSignatureHandoff\u0000POST\u0000POST /me/signature/canvas-handoffs\u00000",
+          "usage": "page_action",
+          "semantic": "technical_write",
+          "sourceFile": "apps/web-admin/src/components/JgSignatureHandoff.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "signatureAvailableActions",
+            "key": "create_canvas_signature_handoff",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createCanvasSignatureHandoff",
+          "productionConsumers": [
+            "apps/web-admin/src/components/JgSignatureHandoff.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/JgSignatureHandoff.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14422,15 +14556,42 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/settings/SettingsPage.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "signature.upload-canvas",
+          "bindingIndex": 0,
+          "identity": "signature.upload-canvas\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadCanvasSignature\u0000POST\u0000POST /me/signature/canvas\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "signatureAvailableActions",
+            "key": "upload_canvas_signature",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadCanvasSignature",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

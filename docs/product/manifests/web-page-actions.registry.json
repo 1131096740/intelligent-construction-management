@@ -2,6 +2,106 @@
   "schemaVersion": 1,
   "actions": [
     {
+      "id": "archive.create-private-file-download-ticket",
+      "usage": "page_action",
+      "routePaths": [
+        "/资料库"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDownload"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "archiveDownloadAction",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createPrivateFileDownloadTicket"
+        }
+      ]
+    },
+    {
+      "id": "signature.upload-canvas",
+      "usage": "page_action",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+      "trigger": {
+        "element": "jg-signature-panel",
+        "event": "save",
+        "handler": "submitCanvasSignature"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "signatureAvailableActions",
+        "key": "upload_canvas_signature"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadCanvasSignature"
+        }
+      ]
+    },
+    {
+      "id": "signature.create-canvas-handoff",
+      "usage": "page_action",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/JgSignatureHandoff.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createAuthorizedCanvasSignatureHandoff"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "signatureAvailableActions",
+        "key": "create_canvas_signature_handoff"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createCanvasSignatureHandoff"
+        }
+      ]
+    },
+    {
+      "id": "signature.complete-canvas-handoff",
+      "usage": "page_action",
+      "routePaths": [
+        "/手写签名"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue",
+      "trigger": {
+        "element": "jg-signature-panel",
+        "event": "save",
+        "handler": "complete"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "handoffAvailableActions",
+        "key": "complete_canvas_signature_handoff"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "completeCanvasSignatureHandoff"
+        }
+      ]
+    },
+    {
       "id": "affiliate-company-contract.record",
       "usage": "page_action",
       "routePaths": [

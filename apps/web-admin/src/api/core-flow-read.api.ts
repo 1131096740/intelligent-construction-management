@@ -4930,6 +4930,17 @@ export interface CreatePrivateFileDownloadTicketPayload {
   accessMode?: "download" | "preview";
 }
 
+export function getPrivateFileDownloadTicketCapability(fileId: string) {
+  return readJson<{
+    action: {
+      key: "create_private_file_download_ticket";
+      enabled: boolean;
+    };
+  }>(
+    `/files/${encodeURIComponent(fileId)}/download-ticket-capability`
+  );
+}
+
 export function createPrivateFileDownloadTicket(
   fileId: string,
   body: CreatePrivateFileDownloadTicketPayload
@@ -6646,10 +6657,23 @@ export function uploadCanvasSignature(file: Blob) {
   return postForm<{ signatureFileId: string; signatureVersionId: string }>("/me/signature/canvas", form);
 }
 
+export interface CanvasSignatureCapabilitiesReadModel {
+  availableActions: Array<
+    "upload_canvas_signature" | "create_canvas_signature_handoff"
+  >;
+}
+
+export function getCanvasSignatureCapabilities() {
+  return readJson<CanvasSignatureCapabilitiesReadModel>(
+    "/me/signature/canvas-capabilities"
+  );
+}
+
 export interface CanvasSignatureHandoffReadModel {
   expiresAt: string;
   completedAt: string | null;
   signatureVersionId: string | null;
+  availableActions: Array<"complete_canvas_signature_handoff">;
 }
 
 export function createCanvasSignatureHandoff() {

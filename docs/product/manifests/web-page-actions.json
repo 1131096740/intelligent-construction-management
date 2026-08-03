@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 59,
-    "pageActionCount": 53,
+    "registeredActionCount": 63,
+    "pageActionCount": 57,
     "backgroundActionCount": 6,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
     "reachableProductionModuleCount": 234,
-    "templateEventDirectiveCount": 948,
+    "templateEventDirectiveCount": 949,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 30,
-    "candidateProductionMutationConsumerCount": 49,
-    "acceptedProductionMutationConsumerCount": 30,
+    "coveredProductionMutationConsumerCount": 34,
+    "candidateProductionMutationConsumerCount": 53,
+    "acceptedProductionMutationConsumerCount": 34,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 293
+    "blockerCount": 289
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -192,6 +192,71 @@
             "localCallChain": [
               "submitRecord",
               "recordProjectAffiliateCompanyContractWithUpload"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "archive.create-private-file-download-ticket",
+      "usage": "page_action",
+      "routePaths": [
+        "/资料库"
+      ],
+      "ownerRoutePaths": [
+        "/资料库"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDownload",
+        "kind": "event",
+        "sourceLine": 160,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "archiveDownloadAction",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createPrivateFileDownloadTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmDownload",
+              "createPrivateFileDownloadTicket"
             ]
           },
           "ticketFollowups": []
@@ -3810,6 +3875,201 @@
       ]
     },
     {
+      "id": "signature.complete-canvas-handoff",
+      "usage": "page_action",
+      "routePaths": [
+        "/手写签名"
+      ],
+      "ownerRoutePaths": [
+        "/手写签名"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue",
+      "trigger": {
+        "element": "jg-signature-panel",
+        "event": "save",
+        "handler": "complete",
+        "kind": "event",
+        "sourceLine": 16,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "handoffAvailableActions",
+        "key": "complete_canvas_signature_handoff",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "completeCanvasSignatureHandoff",
+          "method": "POST",
+          "path": "/me/signature/canvas-handoffs/:param/complete",
+          "normalizedKey": "POST /me/signature/canvas-handoffs/:param/complete",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/me/signature/canvas-handoffs/:token/complete",
+            "normalizedKey": "POST /me/signature/canvas-handoffs/:param/complete",
+            "controller": "MeController",
+            "handler": "completeCanvasSignatureHandoff",
+            "sourceFile": "services/api/src/me/me.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "complete",
+              "completeCanvasSignatureHandoff"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "signature.create-canvas-handoff",
+      "usage": "page_action",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "ownerRoutePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/JgSignatureHandoff.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createAuthorizedCanvasSignatureHandoff",
+        "kind": "event",
+        "sourceLine": 11,
+        "sourceColumn": 6
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "signatureAvailableActions",
+        "key": "create_canvas_signature_handoff",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createCanvasSignatureHandoff",
+          "method": "POST",
+          "path": "/me/signature/canvas-handoffs",
+          "normalizedKey": "POST /me/signature/canvas-handoffs",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/me/signature/canvas-handoffs",
+            "normalizedKey": "POST /me/signature/canvas-handoffs",
+            "controller": "MeController",
+            "handler": "createCanvasSignatureHandoff",
+            "sourceFile": "services/api/src/me/me.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/components/JgSignatureHandoff.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/JgSignatureHandoff.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createAuthorizedCanvasSignatureHandoff",
+              "createCanvasSignatureHandoff"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "signature.upload-canvas",
+      "usage": "page_action",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "ownerRoutePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+      "trigger": {
+        "element": "jg-signature-panel",
+        "event": "save",
+        "handler": "submitCanvasSignature",
+        "kind": "event",
+        "sourceLine": 117,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "signatureAvailableActions",
+        "key": "upload_canvas_signature",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadCanvasSignature",
+          "method": "POST",
+          "path": "/me/signature/canvas",
+          "normalizedKey": "POST /me/signature/canvas",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/me/signature/canvas",
+            "normalizedKey": "POST /me/signature/canvas",
+            "controller": "MeController",
+            "handler": "uploadCanvasSignature",
+            "sourceFile": "services/api/src/me/me.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/settings/SettingsPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitCanvasSignature",
+              "uploadCanvasSignature"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement-payment.legacy-review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -5103,24 +5363,6 @@
       }
     ],
     "uncoveredMutationWrappers": [
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createCanvasSignatureHandoff",
-        "sourceFile": "apps/web-admin/src/components/JgSignatureHandoff.vue",
-        "normalizedKeys": [
-          "POST /me/signature/canvas-handoffs"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createPrivateFileDownloadTicket",
-        "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
-        "normalizedKeys": [
-          "POST /files/:param/download-ticket"
-        ]
-      },
       {
         "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -6685,24 +6927,6 @@
         "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
         "normalizedKeys": [
           "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "completeCanvasSignatureHandoff",
-        "sourceFile": "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue",
-        "normalizedKeys": [
-          "POST /me/signature/canvas-handoffs/:param/complete"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadCanvasSignature",
-        "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
-        "normalizedKeys": [
-          "POST /me/signature/canvas"
         ]
       },
       {
