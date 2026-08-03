@@ -8711,7 +8711,13 @@ function expressionHasCapability(
     return false;
   }
   if (capability.kind === "detail_action") {
-    return closureHasEnabledCheck(nodes);
+    const enabledIsChecked = closureHasEnabledCheck(nodes);
+    if (enabledIsChecked) {
+      for (const binding of sourceBindings) {
+        context.discoveredCapabilitySourceBindings?.add(binding);
+      }
+    }
+    return enabledIsChecked;
   }
   if (capability.kind === "available_action_string") {
     for (const binding of sourceBindings) {

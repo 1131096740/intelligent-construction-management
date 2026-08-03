@@ -4,13 +4,13 @@ import type { UploadFile } from "tdesign-vue-next";
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import {
   createSpotProcurementDraft,
   fetchSpotProcurementApplicationTextSuggestions,
   fetchSpotProcurementCapabilities,
   fetchSpotProcurementCreateProjectOptions,
   fetchSpotProcurements,
+  uploadSpotProcurementCreateFile,
   type SpotProcurementAttachmentPayload,
   type SpotProcurementApplicationTextSuggestionReadModel,
   type SpotProcurementCapabilitiesReadModel,
@@ -344,19 +344,26 @@ async function saveDraft() {
   createBusy.value = true;
   createError.value = "";
   try {
+    const projectId = requiredText(createForm.projectId, "项目");
     const attachments: SpotProcurementAttachmentPayload[] = [];
     for (const file of selectedUploadFiles(quotationFiles.value)) {
       assertQuotationFile(file);
-      const uploaded = await uploadPrivateFile(file, file.name);
+      const uploaded = await uploadSpotProcurementCreateFileWithCapability(
+        projectId,
+        file
+      );
       attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
     for (const file of selectedUploadFiles(referencePhotoFiles.value)) {
       assertReferencePhotoFile(file);
-      const uploaded = await uploadPrivateFile(file, file.name);
+      const uploaded = await uploadSpotProcurementCreateFileWithCapability(
+        projectId,
+        file
+      );
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
-    const result = await createSpotProcurementDraft({
-      projectId: requiredText(createForm.projectId, "项目"),
+    const result = await createSpotProcurementDraftWithCapability(projectId, {
+      projectId,
       applicationDepartment: requiredText(createForm.applicationDepartment, "申请部门"),
       applicationName: requiredText(createForm.applicationName, "申请人"),
       requestedArrivalAt: createForm.requestedArrivalAt,
@@ -380,6 +387,34 @@ async function saveDraft() {
   } finally {
     createBusy.value = false;
   }
+}
+
+async function createSpotProcurementDraftWithCapability(
+  projectId: string,
+  body: Parameters<typeof createSpotProcurementDraft>[0]
+) {
+  const capability = await fetchSpotProcurementCapabilities(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目坐标已变化，请重新选择后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "create_spot_procurement"
+  );
+  if (!operationAllowed) throw new Error("当前项目不可创建零星采购");
+  return createSpotProcurementDraft(body);
+}
+
+async function uploadSpotProcurementCreateFileWithCapability(
+  projectId: string,
+  file: File
+) {
+  const capability = await fetchSpotProcurementCapabilities(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目坐标已变化，请重新选择后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "create_spot_procurement"
+  );
+  if (!operationAllowed) throw new Error("当前项目不可上传零星采购附件");
+  return uploadSpotProcurementCreateFile(projectId, file, file.name);
 }
 
 function selectedUploadFiles(files: UploadFile[]) {

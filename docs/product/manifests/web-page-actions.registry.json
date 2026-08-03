@@ -3270,6 +3270,414 @@
       ]
     },
     {
+      "id": "spot-procurement.create",
+      "usage": "background",
+      "routePaths": ["/零星采购工作台"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createSpotProcurementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_spot_procurement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.create-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购工作台"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementCreateFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_spot_procurement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementCreateFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.update",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.delete-pristine",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "deletePristineSpotProcurementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "delete_pristine_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "abandonSpotProcurementDraft", "variant": "delete_pristine_draft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.abandon-application",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonSpotProcurementApplicationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "abandon_application" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "abandonSpotProcurementDraft", "variant": "abandon_application" }
+      ]
+    },
+    {
+      "id": "spot-procurement.payment-draft.recreate",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recreateSpotProcurementPaymentDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "create_payment_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "recreateSpotProcurementPaymentDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.version.create",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createSpotProcurementVersionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "create_version" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementVersion" }
+      ]
+    },
+    {
+      "id": "spot-procurement.void",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidSpotProcurementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "void_procurement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "voidSpotProcurement" }
+      ]
+    },
+    {
+      "id": "spot-procurement.application-pdf.download",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSpotProcurementApprovalFormWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "download_application_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadApprovalForm" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementDraftFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementDraftFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft.update",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementPaymentDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementPaymentDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.payer.update",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementPaymentPayerWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "manage_payer" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementPaymentPayer" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft.abandon",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonSpotProcurementPaymentDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "abandon_payment_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "abandonSpotProcurementPaymentDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.withdraw",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "withdrawSpotProcurementPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "withdraw_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "withdrawSpotProcurementPayment" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.execution.record",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordSpotProcurementPaymentExecutionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_execution" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "recordSpotProcurementPaymentExecution" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.submit",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitSpotProcurementPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "submit_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "submitSpotProcurementPayment" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.void",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidSpotProcurementPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "void_payment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "voidSpotProcurementPayment" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.pdf.download",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSpotProcurementPaymentApprovalFormWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "download_payment_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadApprovalForm" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementPaymentDraftFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementPaymentDraftFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.execution-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementExecutionVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_execution" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementExecutionVoucherFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.draft.update",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementReceiptDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementReceiptDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo.attach",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachSpotProcurementReceiptPhotoWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "append_receipt_photo" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "attachSpotProcurementReceiptPhoto" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo.remove",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "deleteSpotProcurementReceiptPhotoWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "remove_receipt_photo" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "deleteSpotProcurementReceiptPhoto" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.delegate",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createSpotProcurementReceiptDelegationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "delegate_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementReceiptDelegation" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.draft.reset",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "resetSpotProcurementReceiptDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "reset_receipt_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "resetSpotProcurementReceiptDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.review",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewSpotProcurementReceiptWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "review_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "reviewSpotProcurementReceipt" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.review.revoke",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "revokeSpotProcurementReceiptReviewWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "revoke_receipt_review" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "revokeSpotProcurementReceiptReview" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.submit",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitSpotProcurementReceiptWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "submit_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "submitSpotProcurementReceipt" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.discrepancy.initiate",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "initiateSpotProcurementDiscrepancyWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "initiate_discrepancy" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementDiscrepancy" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.discrepancy.confirm",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmSpotProcurementDiscrepancyWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "confirm_discrepancy" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementDiscrepancy" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.refund.record",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordSpotProcurementRefundWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_refund" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "recordSpotProcurementRefund" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementReceiptPhotoWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "append_receipt_photo" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementReceiptPhotoFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.refund-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementRefundVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_refund" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementRefundVoucherFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.invoice-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementInvoiceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "append_invoice" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementInvoiceFile" }
+      ]
+    },
+    {
       "id": "settlement-detail.review",
       "usage": "background",
       "routePaths": ["/结算管理/:settlementId"],

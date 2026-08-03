@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.12
+> 版本：v1.13
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；C-P0-06 员工费用修复流已本地清零，下一步执行 C-P0-07 零星采购修复流
+> 状态：执行中；C-P0-01 至 C-P0-07 首次上线 P0 队列已本地清零，下一步执行 C-P1-01 主体与相对方主数据只读隔离
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 435 routes、0 unclassified、127 raw blockers、84 uncovered pairs、0 unresolved binding；C-P0-01 至 C-P0-06 已清零，累计关闭 163 个阶段 C pair 和 20 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-07 零星采购申请、付款、收货、发票、退款与异常终止修复流 |
+| Task 11 能力矩阵 | 阶段 D 当前为 442 routes、0 unclassified、98 raw blockers、55 uncovered pairs、0 unresolved binding；C-P0-01 至 C-P0-07 已清零，累计关闭全部 192 个阶段 C P0 pair 和 20 个 unresolved binding | 首次上线 P0 队列已清零，但 Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P1-01 至 C-P1-04 只读/隐藏隔离 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -475,6 +475,17 @@
 > unclassified、0 blocker。整站仍 blocked，下一步只能执行 `C-P0-07` 零星采购申请、付款、
 > 收货、发票、退款与异常终止修复流。完整证据见
 > `docs/progress/2026-08-03-five-package-stage-d-c-p0-06-expense-claim-funds.md`。
+
+> 2026-08-03 后续执行记录：`C-P0-07` 零星采购申请、付款、收货、发票、退款与异常
+> 终止修复流已本地清零。项目、采购、付款和收货服务端 capability 支配 29 个阶段 C 目标
+> mutation pair；采购草稿、付款草稿、实付凭证、收货照片、退款凭证和发票改用 7 条业务域
+> 私有上传路由，并在文件落盘前复核精确动作。收货重置动作与写事务一致地检查复核、任意
+> PDF、差异、退款和发票/无票正式事实；放弃与少货处理的动态分支拆成精确触发链。uncovered
+> pair 84→55、unresolved binding 保持 0、raw blocker 127→98，`C-P0-07` 自身剩余 0 pair /
+> 0 unresolved；route usage 为 442 routes、0 unclassified、0 blocker。至此阶段 C 的 192 个
+> P0 pair 和 20 个 unresolved binding 全部清零，剩余 55 个 uncovered pair 与四组 P1 数量
+> 一致。整站仍 blocked，下一步只能执行 `C-P1-01` 主体与相对方主数据只读隔离。完整证据见
+> `docs/progress/2026-08-03-five-package-stage-d-c-p0-07-spot-procurement.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

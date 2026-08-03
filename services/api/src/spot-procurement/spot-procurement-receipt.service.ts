@@ -556,6 +556,56 @@ export class SpotProcurementReceiptService {
               { id: "asc" }
             ]
           });
+        const [
+          resetReview,
+          resetPdfDocument,
+          resetDiscrepancy,
+          resetRefund,
+          resetInvoiceAllocation,
+          resetNoInvoiceConfirmation,
+          resetInvoiceException
+        ] = await Promise.all([
+          tx.spotProcurementReceiptReview.findFirst({
+            where: { receiptId: receipt.id },
+            select: { id: true }
+          }),
+          tx.pdfDocument.findFirst({
+            where: {
+              businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
+              businessId: receipt.id
+            },
+            select: { id: true }
+          }),
+          tx.spotProcurementDiscrepancy.findFirst({
+            where: { receiptId: receipt.id },
+            select: { id: true }
+          }),
+          tx.spotProcurementRefund.findFirst({
+            where: { procurementId },
+            select: { id: true }
+          }),
+          tx.invoiceAllocation.findFirst({
+            where: { receiptId: receipt.id },
+            select: { id: true }
+          }),
+          tx.noInvoiceConfirmation.findFirst({
+            where: { receiptId: receipt.id },
+            select: { id: true }
+          }),
+          tx.invoiceExceptionConfirmation.findFirst({
+            where: { receiptId: receipt.id },
+            select: { id: true }
+          })
+        ]);
+        const hasResetFormalFact = Boolean(
+          resetReview ||
+            resetPdfDocument ||
+            resetDiscrepancy ||
+            resetRefund ||
+            resetInvoiceAllocation ||
+            resetNoInvoiceConfirmation ||
+            resetInvoiceException
+        );
 
         const userIds = [
           receipt.handlerUserId,
@@ -588,6 +638,32 @@ export class SpotProcurementReceiptService {
           })
             ? pdfDocuments[0]
             : null;
+        const availableActions = this.receiptActions({
+          actorUserId,
+          actorScope,
+          procurement,
+          version,
+          receipt,
+          revision,
+          delegation,
+          latestReview,
+          discrepancy,
+          firstActualPayment,
+          photos,
+          hasResetFormalFact
+        });
+        const removablePhotoIds = availableActions.some(
+          (action) => action.key === "remove_receipt_photo" && action.enabled
+        )
+          ? photos
+              .filter(
+                (photo) =>
+                  photo.receiptRevisionNo === receipt.currentRevisionNo &&
+                  photo.lockedAt === null &&
+                  photo.lockedAtFirstSubmission === false
+              )
+              .map((photo) => photo.id)
+          : [];
 
         return {
           receipt: {
@@ -723,18 +799,8 @@ export class SpotProcurementReceiptService {
                 status: "none",
                 nextStep: null
               },
-          availableActions: this.receiptActions({
-            actorUserId,
-            actorScope,
-            procurement,
-            version,
-            receipt,
-            revision,
-            delegation,
-            latestReview,
-            discrepancy,
-            firstActualPayment
-          })
+          availableActions,
+          removablePhotoIds
         };
       },
       {
@@ -742,6 +808,23 @@ export class SpotProcurementReceiptService {
           Prisma.TransactionIsolationLevel.RepeatableRead
       }
     );
+  }
+
+  async assertActionAvailable(
+    procurementId: string,
+    actorUserId: string,
+    actionKey: string
+  ) {
+    const detail = await this.getReceipt(procurementId, actorUserId);
+    if (
+      detail.receipt.procurementId !== procurementId ||
+      !detail.availableActions.some(
+        (action) => action.key === actionKey && action.enabled
+      )
+    ) {
+      throw new ForbiddenException("当前账号不能执行该零星采购收货操作");
+    }
+    return detail;
   }
 
   private receiptActions(input: {
@@ -777,6 +860,13 @@ export class SpotProcurementReceiptService {
     } | undefined;
     discrepancy: { status: string } | null;
     firstActualPayment: { id: string; paymentId: string; paidAt: Date } | null;
+    photos: Array<{
+      id: string;
+      receiptRevisionNo: number;
+      lockedAt: Date | null;
+      lockedAtFirstSubmission: boolean;
+    }>;
+    hasResetFormalFact: boolean;
   }): DetailActionReadModel[] {
     const action = (
       key: string,
@@ -875,11 +965,29 @@ export class SpotProcurementReceiptService {
       input.revision.procurementVersionId === input.version.id &&
       hasSubmissionCoordinates &&
       hasCurrentApprovedReview;
+    const removablePhotoIds = editable
+      ? input.photos.filter(
+          (photo) =>
+            photo.receiptRevisionNo === input.receipt.currentRevisionNo &&
+            photo.lockedAt === null &&
+            photo.lockedAtFirstSubmission === false
+        )
+      : [];
+    const canResetDraft =
+      businessOpen &&
+      canConfirm &&
+      input.receipt.status === "draft" &&
+      input.receipt.firstSubmittedAt === null &&
+      input.receipt.submittedAt === null &&
+      input.revision.submittedAt === null &&
+      !input.hasResetFormalFact;
 
     return [
       action("delegate_receipt", "委托收货办理", "normal", editable && isHandler, "仅当前采购经办人可在收货草稿阶段委托"),
       action("edit_receipt", "编辑收货草稿", "normal", editable, "仅当前采购经办人或有效受托人可编辑收货草稿"),
       action("append_receipt_photo", "上传收货照片", "normal", photoAppendable, "仅当前采购经办人或有效受托人可上传收货照片"),
+      action("remove_receipt_photo", "删除收货草稿照片", "danger", removablePhotoIds.length > 0, "只有当前收货草稿中未锁定的照片可以删除"),
+      action("reset_receipt_draft", "重置收货草稿", "danger", canResetDraft, "只能由当前采购经办人或有效受托人重置从未提交的收货草稿"),
       action("submit_receipt", "提交最终收货", "primary", editable, "仅当前采购经办人或有效受托人可提交最终收货"),
       action("review_receipt", "复核最终收货", "primary", businessOpen && isMaterialDirector && input.receipt.status === "submitted", "仅本项目物资主管可在待复核阶段办理"),
       action("revoke_receipt_review", "补货后重新确认收货", "danger", businessOpen && isMaterialDirector && input.receipt.status === "reviewed" && input.latestReview?.decision === "approved", "仅本项目物资主管可撤销当前有效复核"),

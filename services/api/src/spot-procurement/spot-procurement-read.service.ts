@@ -411,9 +411,55 @@ export class SpotProcurementReadService {
       enabled,
       canCreate,
       canExecutePayment,
+      availableActions: canCreate ? ["create_spot_procurement"] : [],
       unavailableReason,
       handlerOptions
     };
+  }
+
+  async assertCreateActionAvailable(
+    actorUserId: string,
+    projectId: string
+  ) {
+    const capability = await this.capabilities(actorUserId, projectId);
+    if (!capability.availableActions.includes("create_spot_procurement")) {
+      throw new ForbiddenException("当前账号不能在该项目新建零星采购");
+    }
+    return capability;
+  }
+
+  async assertProcurementActionAvailable(
+    procurementId: string,
+    actorUserId: string,
+    actionKey: string
+  ) {
+    const detail = await this.getProcurement(procurementId, actorUserId);
+    if (
+      detail.procurement.id !== procurementId ||
+      !detail.availableActions.some(
+        (action) => action.key === actionKey && action.enabled
+      )
+    ) {
+      throw new ForbiddenException("当前账号不能执行该零星采购操作");
+    }
+    return detail;
+  }
+
+  async assertPaymentActionAvailable(
+    paymentId: string,
+    actorUserId: string,
+    actionKey: string
+  ) {
+    const detail = await this.getPayment(paymentId, actorUserId);
+    if (
+      detail.payment.id !== paymentId ||
+      !detail.availableActions.some(
+        (action) => action.key === actionKey && action.enabled
+      )
+    ) {
+      throw new ForbiddenException("当前账号不能执行该零星采购付款操作");
+    }
+    return detail;
   }
 
   async createProjectOptions(actorUserId: string): Promise<ProjectSummary[]> {
@@ -1426,6 +1472,14 @@ export class SpotProcurementReadService {
       approval,
       roleKeys,
       actorUserId,
+      canManagePayer:
+        isRealPaymentForm(payment, version) &&
+        payerManagementReadModel({
+          payment,
+          approval,
+          roleKeys,
+          activeExecutionCount: activeExecutions.length
+        }).enabled,
       remainingCompanyPaymentAmountCents,
       isProjectFinanceStaff,
       paymentFactConsistent:
@@ -2494,6 +2548,14 @@ export class SpotProcurementReadService {
         approval,
         roleKeys: roleContext.effectiveRoleKeys,
         actorUserId,
+        canManagePayer:
+          realPayment &&
+          payerManagementReadModel({
+            payment: row,
+            approval,
+            roleKeys: roleContext.effectiveRoleKeys,
+            activeExecutionCount: rowExecutions.length
+          }).enabled,
         remainingCompanyPaymentAmountCents,
         isProjectFinanceStaff:
           roleContext.projectScopedRoleKeys.includes("finance_staff"),
@@ -2929,6 +2991,7 @@ export class SpotProcurementReadService {
     approval: ApprovalInstance | null;
     roleKeys: RoleKey[];
     actorUserId: string;
+    canManagePayer: boolean;
     remainingCompanyPaymentAmountCents: bigint;
     isProjectFinanceStaff: boolean;
     paymentFactConsistent: boolean;
@@ -2975,6 +3038,15 @@ export class SpotProcurementReadService {
         requiredAction: "spot_procurement.payment.submit",
         enabled: input.payment.status === "draft" && isHandler,
         disabledReason: "只有采购经办人可以编辑付款草稿"
+      }),
+      detailAction({
+        key: "manage_payer",
+        label: "维护付款主体",
+        kind: "normal",
+        roleKeys: input.roleKeys,
+        requiredAction: "spot_procurement.payment.facts.manage",
+        enabled: input.canManagePayer,
+        disabledReason: "当前付款主体维护资格或付款状态不允许调整"
       }),
       detailAction({
         key: "submit_approval",

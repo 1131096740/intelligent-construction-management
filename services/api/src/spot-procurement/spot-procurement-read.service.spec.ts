@@ -2243,8 +2243,27 @@ describe("SpotProcurementReadService", () => {
       enabled: true,
       canCreate: false,
       canExecutePayment: false,
+      availableActions: [],
       unavailableReason: "当前账号不是本项目物资员或物资主管",
       handlerOptions: []
+    });
+  });
+
+  it("publishes the create action only for a project-scoped material role", async () => {
+    const fixture = buildFixture();
+    fixture.visibility.effectiveRoleKeys.mockResolvedValue(["material_staff"]);
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never,
+      fixture.visibility as never,
+      fixture.access as never,
+      fixture.pilot as never
+    );
+
+    await expect(
+      service.assertCreateActionAvailable("handler-1", "project-1")
+    ).resolves.toMatchObject({
+      projectId: "project-1",
+      availableActions: ["create_spot_procurement"]
     });
   });
 

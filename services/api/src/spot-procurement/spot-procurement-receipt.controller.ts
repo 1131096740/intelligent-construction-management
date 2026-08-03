@@ -1,15 +1,22 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  Optional,
   Param,
   Patch,
-  Post
+  Post,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { FileService } from "../file/file.service";
+import { type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { AttachReceiptPhotoDto } from "./dto/attach-receipt-photo.dto";
 import { CreateReceiptDelegationDto } from "./dto/create-receipt-delegation.dto";
 import { ReviewReceiptDto } from "./dto/review-receipt.dto";
@@ -21,7 +28,8 @@ import { SpotProcurementReceiptService } from "./spot-procurement-receipt.servic
 @Controller("spot-procurements")
 export class SpotProcurementReceiptController {
   constructor(
-    private readonly receipts: SpotProcurementReceiptService
+    private readonly receipts: SpotProcurementReceiptService,
+    @Optional() private readonly files?: FileService
   ) {}
 
   @Get(":procurementId/receipt")
@@ -43,6 +51,75 @@ export class SpotProcurementReceiptController {
       procurementId,
       user.id,
       body
+    );
+  }
+
+  @Post(":procurementId/receipt-photo-file-uploads")
+  @RequireProjectRole("spot_procurement.receipt.confirm")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadReceiptPhotoFile(
+    @Param("procurementId") procurementId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      procurementId,
+      user.id,
+      "append_receipt_photo",
+      file,
+      idempotencyKey,
+      "收货照片"
+    );
+  }
+
+  @Post(":procurementId/refund-voucher-file-uploads")
+  @RequireProjectRole("spot_procurement.refund.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadRefundVoucherFile(
+    @Param("procurementId") procurementId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      procurementId,
+      user.id,
+      "record_refund",
+      file,
+      idempotencyKey,
+      "退款凭证"
+    );
+  }
+
+  @Post(":procurementId/invoice-file-uploads")
+  @RequireProjectRole("spot_procurement.invoice.append")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadInvoiceFile(
+    @Param("procurementId") procurementId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      procurementId,
+      user.id,
+      "append_invoice",
+      file,
+      idempotencyKey,
+      "采购发票"
     );
   }
 
@@ -143,5 +220,32 @@ export class SpotProcurementReceiptController {
       procurementId,
       user.id
     );
+  }
+
+  private async uploadPrivateFile(
+    procurementId: string,
+    actorUserId: string,
+    actionKey: string,
+    file: MemoryUploadedFile | undefined,
+    idempotencyKey: string | undefined,
+    label: string
+  ) {
+    await this.receipts.assertActionAvailable(
+      procurementId,
+      actorUserId,
+      actionKey
+    );
+    if (!file) throw new BadRequestException(`请选择要上传的${label}`);
+    if (!this.files) {
+      throw new BadRequestException("零星采购收货文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: actorUserId,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 }

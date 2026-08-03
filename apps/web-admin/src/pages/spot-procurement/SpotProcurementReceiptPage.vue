@@ -18,6 +18,9 @@ import {
   reviewSpotProcurementReceipt,
   revokeSpotProcurementReceiptReview,
   submitSpotProcurementReceipt,
+  uploadSpotProcurementInvoiceFile,
+  uploadSpotProcurementReceiptPhotoFile,
+  uploadSpotProcurementRefundVoucherFile,
   updateSpotProcurementReceiptDraft,
   type SpotProcurementDetailReadModel,
   type SpotProcurementInvoiceAppendActionContext,
@@ -26,7 +29,6 @@ import {
   type SpotProcurementReceiptDetailReadModel,
   type SpotProcurementReceiptLineReadModel
 } from "../../api/spot-procurement.api";
-import { uploadPrivateFile } from "../../api/core-flow-read.api";
 import BusinessDetailHeader from "../../components/BusinessDetailHeader.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import { CORE_ARCHIVE_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
@@ -326,7 +328,7 @@ function saveReceiptDraft() {
   return act(
     async (context) => {
       assertCurrentContext(context);
-      await updateSpotProcurementReceiptDraft(context.procurementId, {
+      await updateSpotProcurementReceiptDraftWithCapability(context.procurementId, {
       note: receipt.value?.receipt.note,
       lines: lines.value.map((line) => ({
         procurementLineId: line.procurementLineId,
@@ -352,7 +354,10 @@ async function resetReceiptDraft() {
   resetError.value = "";
   try {
     assertCurrentContext(context);
-    await resetSpotProcurementReceiptDraft(context.procurementId, action.expectedRevision);
+    await resetSpotProcurementReceiptDraftWithCapability(
+      context.procurementId,
+      action.expectedRevision
+    );
     assertCurrentContext(context);
     resetVisible.value = false;
     message.value = "未提交的收货填写已重置，收货单及历史证据未被删除。";
@@ -370,9 +375,12 @@ async function resetReceiptDraft() {
 
 async function uploadReceiptPhoto(payload: { file: File; source: "camera" | "album"; category: "material_scene" | "delivery_note"; note: string; appendReason: string }) {
   await act(async (context) => {
-    const file = await uploadPrivateFile(payload.file, payload.file.name);
+    const file = await uploadSpotProcurementReceiptPhotoWithCapability(
+      context.procurementId,
+      payload.file
+    );
     assertCurrentContext(context);
-    await attachSpotProcurementReceiptPhoto(context.procurementId, {
+    await attachSpotProcurementReceiptPhotoWithCapability(context.procurementId, {
       originalFileId: file.id,
       source: payload.source,
       category: payload.category,
@@ -386,7 +394,7 @@ async function uploadReceiptPhoto(payload: { file: File; source: "camera" | "alb
 function submitReceipt() {
   return act(async (context) => {
     assertCurrentContext(context);
-    await submitSpotProcurementReceipt(context.procurementId);
+    await submitSpotProcurementReceiptWithCapability(context.procurementId);
     assertCurrentContext(context);
   }, "已提交物资主管复核");
 }
@@ -395,7 +403,7 @@ function initiateDiscrepancy() {
   return act(
     async (context) => {
       assertCurrentContext(context);
-      await createSpotProcurementDiscrepancy(context.procurementId, {
+      await createSpotProcurementDiscrepancyWithCapability(context.procurementId, {
       operation: "initiate",
       resolutionType: discrepancyForm.resolutionType,
       ...(discrepancyForm.note.trim() ? { note: discrepancyForm.note.trim() } : {})
@@ -410,7 +418,10 @@ function confirmDiscrepancy() {
   return act(
     async (context) => {
       assertCurrentContext(context);
-      await createSpotProcurementDiscrepancy(context.procurementId, { operation: "confirm" });
+      await createSpotProcurementDiscrepancyWithCapability(
+        context.procurementId,
+        { operation: "confirm" }
+      );
       assertCurrentContext(context);
     },
     "少货差异已由物资主管确认"
@@ -430,12 +441,256 @@ async function recordRefund() {
           : null
       },
       file,
-      uploadPrivateFile
+      (uploadFile, fileName) =>
+        uploadSpotProcurementRefundVoucherWithCapability(
+          context.procurementId,
+          uploadFile,
+          fileName
+        )
     );
     assertCurrentContext(context);
-    await recordSpotProcurementRefund(context.procurementId, payload);
+    await recordSpotProcurementRefundWithCapability(
+      context.procurementId,
+      payload
+    );
     assertCurrentContext(context);
   }, "退款到账事实和凭证已登记");
+}
+
+async function updateSpotProcurementReceiptDraftWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof updateSpotProcurementReceiptDraft>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_receipt" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货草稿不可编辑");
+  return updateSpotProcurementReceiptDraft(procurementIdCoordinate, body);
+}
+
+async function attachSpotProcurementReceiptPhotoWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof attachSpotProcurementReceiptPhoto>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "append_receipt_photo" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货不可追加照片");
+  return attachSpotProcurementReceiptPhoto(procurementIdCoordinate, body);
+}
+
+async function deleteSpotProcurementReceiptPhotoWithCapability(
+  procurementIdCoordinate: string,
+  photoId: string
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "remove_receipt_photo" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货照片不可移除");
+  const matchesRequestedPhoto = capability.removablePhotoIds.includes(photoId);
+  if (!matchesRequestedPhoto) throw new Error("收货照片坐标已变化，请刷新后重试");
+  return deleteSpotProcurementReceiptPhoto(procurementIdCoordinate, photoId);
+}
+
+async function createSpotProcurementReceiptDelegationWithCapability(
+  procurementIdCoordinate: string,
+  delegateId: string
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "delegate_receipt" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货不可委托");
+  return createSpotProcurementReceiptDelegation(
+    procurementIdCoordinate,
+    delegateId
+  );
+}
+
+async function resetSpotProcurementReceiptDraftWithCapability(
+  procurementIdCoordinate: string,
+  expectedRevision: number
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "reset_receipt_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货草稿不可重置");
+  return resetSpotProcurementReceiptDraft(
+    procurementIdCoordinate,
+    expectedRevision
+  );
+}
+
+async function reviewSpotProcurementReceiptWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof reviewSpotProcurementReceipt>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "review_receipt" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货不可复核");
+  return reviewSpotProcurementReceipt(procurementIdCoordinate, body);
+}
+
+async function revokeSpotProcurementReceiptReviewWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof revokeSpotProcurementReceiptReview>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "revoke_receipt_review" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货复核不可撤销");
+  return revokeSpotProcurementReceiptReview(procurementIdCoordinate, body);
+}
+
+async function submitSpotProcurementReceiptWithCapability(
+  procurementIdCoordinate: string
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "submit_receipt" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货草稿不可提交");
+  return submitSpotProcurementReceipt(procurementIdCoordinate);
+}
+
+async function createSpotProcurementDiscrepancyWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof createSpotProcurementDiscrepancy>[1]
+) {
+  return body.operation === "initiate"
+    ? initiateSpotProcurementDiscrepancyWithCapability(procurementIdCoordinate, body)
+    : confirmSpotProcurementDiscrepancyWithCapability(procurementIdCoordinate, body);
+}
+
+async function initiateSpotProcurementDiscrepancyWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof createSpotProcurementDiscrepancy>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "initiate_discrepancy" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货不可发起差异处理");
+  return createSpotProcurementDiscrepancy(procurementIdCoordinate, {
+    operation: "initiate",
+    resolutionType: body.resolutionType,
+    note: body.note
+  });
+}
+
+async function confirmSpotProcurementDiscrepancyWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof createSpotProcurementDiscrepancy>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "confirm_discrepancy" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货差异不可确认");
+  return createSpotProcurementDiscrepancy(procurementIdCoordinate, {
+    operation: "confirm",
+    resolutionType: body.resolutionType,
+    note: body.note
+  });
+}
+
+async function recordSpotProcurementRefundWithCapability(
+  procurementIdCoordinate: string,
+  body: Parameters<typeof recordSpotProcurementRefund>[1]
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "record_refund" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可登记退款");
+  return recordSpotProcurementRefund(procurementIdCoordinate, body);
+}
+
+async function uploadSpotProcurementReceiptPhotoWithCapability(
+  procurementIdCoordinate: string,
+  file: File
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "append_receipt_photo" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购收货不可上传照片");
+  return uploadSpotProcurementReceiptPhotoFile(
+    procurementIdCoordinate,
+    file,
+    file.name
+  );
+}
+
+async function uploadSpotProcurementRefundVoucherWithCapability(
+  procurementIdCoordinate: string,
+  file: File,
+  fileName: string
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "record_refund" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可上传退款凭证");
+  return uploadSpotProcurementRefundVoucherFile(
+    procurementIdCoordinate,
+    file,
+    fileName
+  );
+}
+
+async function uploadSpotProcurementInvoiceFileWithCapability(
+  procurementIdCoordinate: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey: string
+) {
+  const capability = await fetchSpotProcurementReceipt(procurementIdCoordinate);
+  const matchesRequestedReceipt = capability.receipt.procurementId === procurementIdCoordinate;
+  if (!matchesRequestedReceipt) throw new Error("收货业务坐标已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "append_invoice" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可上传发票文件");
+  return uploadSpotProcurementInvoiceFile(
+    procurementIdCoordinate,
+    file,
+    fileName,
+    idempotencyKey
+  );
 }
 
 function captureInvoiceAppendOperation(): InvoiceAppendOperationContext | null {
@@ -580,7 +835,13 @@ function markInvoiceAppendStale(context: InvoiceAppendOperationContext) {
 function appendInvoice() {
   return executeSpotProcurementInvoiceAppend({
     capture: captureInvoiceAppendOperation,
-    upload: uploadPrivateFile,
+    upload: (file, fileName, idempotencyKey) =>
+      uploadSpotProcurementInvoiceFileWithCapability(
+        procurementId.value,
+        file,
+        fileName,
+        idempotencyKey
+      ),
     current: invoiceAppendContextIsCurrent,
     stale: markInvoiceAppendStale,
     complete: completeInvoiceAppend,
@@ -925,7 +1186,7 @@ onBeforeUnmount(() => {
           />
           <t-button
             :disabled="!delegateUserId"
-            @click="act(async context => { assertCurrentContext(context); await createSpotProcurementReceiptDelegation(context.procurementId, delegateUserId); assertCurrentContext(context); }, '收货委托已生效')"
+            @click="act(async context => { assertCurrentContext(context); await createSpotProcurementReceiptDelegationWithCapability(context.procurementId, delegateUserId); assertCurrentContext(context); }, '收货委托已生效')"
           >
             确认委托
           </t-button>
@@ -994,7 +1255,7 @@ onBeforeUnmount(() => {
           :readonly="!canAppendPhoto"
           :busy="busy"
           @upload="uploadReceiptPhoto"
-          @remove="id => act(async context => { assertCurrentContext(context); await deleteSpotProcurementReceiptPhoto(context.procurementId, id); assertCurrentContext(context); }, '照片已删除')"
+          @remove="id => act(async context => { assertCurrentContext(context); await deleteSpotProcurementReceiptPhotoWithCapability(context.procurementId, id); assertCurrentContext(context); }, '照片已删除')"
         />
       </t-card>
 
@@ -1006,14 +1267,14 @@ onBeforeUnmount(() => {
           <t-button
             theme="primary"
             :loading="busy"
-            @click="act(async context => { assertCurrentContext(context); await reviewSpotProcurementReceipt(context.procurementId, { decision: 'approved' }); assertCurrentContext(context); }, '收货复核已通过')"
+            @click="act(async context => { assertCurrentContext(context); await reviewSpotProcurementReceiptWithCapability(context.procurementId, { decision: 'approved' }); assertCurrentContext(context); }, '收货复核已通过')"
           >
             复核通过
           </t-button>
           <t-button
             variant="outline"
             :loading="busy"
-            @click="act(async context => { assertCurrentContext(context); await reviewSpotProcurementReceipt(context.procurementId, { decision: 'returned', comment: '请经办人核对最终收货事实' }); assertCurrentContext(context); }, '已退回经办人')"
+            @click="act(async context => { assertCurrentContext(context); await reviewSpotProcurementReceiptWithCapability(context.procurementId, { decision: 'returned', comment: '请经办人核对最终收货事实' }); assertCurrentContext(context); }, '已退回经办人')"
           >
             退回
           </t-button>
@@ -1029,7 +1290,7 @@ onBeforeUnmount(() => {
         <t-popconfirm
           v-if="actionEnabled('revoke_receipt_review') && latestApprovedReview"
           content="补货后需要重新确认最终收货事实。确认后将打开新的收货修订。"
-          @confirm="act(async context => { assertCurrentContext(context); await revokeSpotProcurementReceiptReview(context.procurementId, { targetReviewId: latestApprovedReview!.id, reason: '商户补货后重新确认最终收货', confirmReviewRevocation: true }); assertCurrentContext(context); }, '已打开新的收货修订')"
+          @confirm="act(async context => { assertCurrentContext(context); await revokeSpotProcurementReceiptReviewWithCapability(context.procurementId, { targetReviewId: latestApprovedReview!.id, reason: '商户补货后重新确认最终收货', confirmReviewRevocation: true }); assertCurrentContext(context); }, '已打开新的收货修订')"
         >
           <t-button
             theme="danger"

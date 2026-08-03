@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 209,
+    "registeredActionCount": 243,
     "pageActionCount": 46,
-    "backgroundActionCount": 163,
+    "backgroundActionCount": 197,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 234,
     "templateEventDirectiveCount": 960,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 201,
-    "candidateProductionMutationConsumerCount": 201,
-    "acceptedProductionMutationConsumerCount": 201,
-    "productionMutationConsumerPairCount": 285,
-    "blockerCount": 87
+    "coveredProductionMutationConsumerCount": 233,
+    "candidateProductionMutationConsumerCount": 233,
+    "acceptedProductionMutationConsumerCount": 233,
+    "productionMutationConsumerPairCount": 288,
+    "blockerCount": 58
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -13878,6 +13878,331 @@
       ]
     },
     {
+      "id": "spot-procurement-payment.draft-file.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementPaymentDraftFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1336,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "edit_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementPaymentDraftFile",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/draft-file-uploads",
+          "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/draft-file-uploads",
+            "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "uploadDraftFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementPaymentDraftFileWithCapability",
+              "uploadSpotProcurementPaymentDraftFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft.abandon",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "abandonSpotProcurementPaymentDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1252,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "abandon_payment_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "abandonSpotProcurementPaymentDraft",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/abandonment",
+          "normalizedKey": "POST /spot-procurement-payments/:param/abandonment",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/abandonment",
+            "normalizedKey": "POST /spot-procurement-payments/:param/abandonment",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "abandonDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "abandonSpotProcurementPaymentDraftWithCapability",
+              "abandonSpotProcurementPaymentDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementPaymentDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1224,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "edit_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementPaymentDraft",
+          "method": "PATCH",
+          "path": "/spot-procurement-payments/:param/draft",
+          "normalizedKey": "PATCH /spot-procurement-payments/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/spot-procurement-payments/:paymentId/draft",
+            "normalizedKey": "PATCH /spot-procurement-payments/:param/draft",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateSpotProcurementPaymentDraftWithCapability",
+              "updateSpotProcurementPaymentDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.execution-voucher.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementExecutionVoucherWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1355,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "record_execution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementExecutionVoucherFile",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /spot-procurement-payments/:param/execution-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/execution-voucher-file-uploads",
+            "normalizedKey": "POST /spot-procurement-payments/:param/execution-voucher-file-uploads",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "uploadExecutionVoucherFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.execute"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementExecutionVoucherWithCapability",
+              "uploadSpotProcurementExecutionVoucherFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.execution.record",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordSpotProcurementPaymentExecutionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1279,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "record_execution",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementPaymentExecution",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/executions",
+          "normalizedKey": "POST /spot-procurement-payments/:param/executions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/executions",
+            "normalizedKey": "POST /spot-procurement-payments/:param/executions",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "recordExecution",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.execute"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordSpotProcurementPaymentExecutionWithCapability",
+              "recordSpotProcurementPaymentExecution"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement-payment.legacy-review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -13892,7 +14217,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentApprove",
         "kind": "event",
-        "sourceLine": 1986,
+        "sourceLine": 2151,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -13958,7 +14283,7 @@
         "event": "confirm",
         "handler": "confirmLegacyPaymentReturn",
         "kind": "event",
-        "sourceLine": 2015,
+        "sourceLine": 2180,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -14010,6 +14335,136 @@
       ]
     },
     {
+      "id": "spot-procurement-payment.payer.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementPaymentPayerWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1238,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "manage_payer",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementPaymentPayer",
+          "method": "PATCH",
+          "path": "/spot-procurement-payments/:param/payer",
+          "normalizedKey": "PATCH /spot-procurement-payments/:param/payer",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/spot-procurement-payments/:paymentId/payer",
+            "normalizedKey": "PATCH /spot-procurement-payments/:param/payer",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "updatePayer",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.facts.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateSpotProcurementPaymentPayerWithCapability",
+              "updateSpotProcurementPaymentPayer"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.pdf.download",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadSpotProcurementPaymentApprovalFormWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1320,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "download_payment_pdf",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "method": "POST",
+          "path": "/approval-forms/:param/:param/download",
+          "normalizedKey": "POST /approval-forms/:param/:param/download",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/approval-forms/:businessType/:businessId/download",
+            "normalizedKey": "POST /approval-forms/:param/:param/download",
+            "controller": "ApprovalFormController",
+            "handler": "download",
+            "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadSpotProcurementPaymentApprovalFormWithCapability",
+              "downloadApprovalForm"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement-payment.review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -14024,7 +14479,7 @@
         "event": "approve",
         "handler": "confirmA5PaymentApprove",
         "kind": "event",
-        "sourceLine": 1956,
+        "sourceLine": 2121,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -14090,7 +14545,7 @@
         "event": "return-to-applicant",
         "handler": "confirmA5PaymentReturn",
         "kind": "event",
-        "sourceLine": 1957,
+        "sourceLine": 2122,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -14142,6 +14597,1111 @@
       ]
     },
     {
+      "id": "spot-procurement-payment.submit",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitSpotProcurementPaymentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1293,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "submit_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "submitSpotProcurementPayment",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/submission",
+          "normalizedKey": "POST /spot-procurement-payments/:param/submission",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/submission",
+            "normalizedKey": "POST /spot-procurement-payments/:param/submission",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitSpotProcurementPaymentWithCapability",
+              "submitSpotProcurementPayment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.void",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "voidSpotProcurementPaymentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1306,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "void_payment",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "voidSpotProcurementPayment",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/voiding",
+          "normalizedKey": "POST /spot-procurement-payments/:param/voiding",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/voiding",
+            "normalizedKey": "POST /spot-procurement-payments/:param/voiding",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "voidPayment",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.void"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "voidSpotProcurementPaymentWithCapability",
+              "voidSpotProcurementPayment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.withdraw",
+      "usage": "background",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawSpotProcurementPaymentWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1266,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "withdraw_approval",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "withdrawSpotProcurementPayment",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/approval-withdrawal",
+          "normalizedKey": "POST /spot-procurement-payments/:param/approval-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurement-payments/:paymentId/approval-withdrawal",
+            "normalizedKey": "POST /spot-procurement-payments/:param/approval-withdrawal",
+            "controller": "SpotProcurementPaymentController",
+            "handler": "withdrawApproval",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawSpotProcurementPaymentWithCapability",
+              "withdrawSpotProcurementPayment"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createSpotProcurementReceiptDelegationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 504,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "delegate_receipt",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementReceiptDelegation",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/delegations",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/delegations",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "createDelegation",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createSpotProcurementReceiptDelegationWithCapability",
+              "createSpotProcurementReceiptDelegation"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.discrepancy.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmSpotProcurementDiscrepancyWithCapability",
+        "kind": "background_call",
+        "sourceLine": 606,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "confirm_discrepancy",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementDiscrepancy",
+          "method": "POST",
+          "path": "/spot-procurements/:param/discrepancy",
+          "normalizedKey": "POST /spot-procurements/:param/discrepancy",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/discrepancy",
+            "normalizedKey": "POST /spot-procurements/:param/discrepancy",
+            "controller": "SpotProcurementController",
+            "handler": "createOrConfirmDiscrepancy",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.discrepancy.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmSpotProcurementDiscrepancyWithCapability",
+              "createSpotProcurementDiscrepancy"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.discrepancy.initiate",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "initiateSpotProcurementDiscrepancyWithCapability",
+        "kind": "background_call",
+        "sourceLine": 588,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "initiate_discrepancy",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementDiscrepancy",
+          "method": "POST",
+          "path": "/spot-procurements/:param/discrepancy",
+          "normalizedKey": "POST /spot-procurements/:param/discrepancy",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/discrepancy",
+            "normalizedKey": "POST /spot-procurements/:param/discrepancy",
+            "controller": "SpotProcurementController",
+            "handler": "createOrConfirmDiscrepancy",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.discrepancy.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "initiateSpotProcurementDiscrepancyWithCapability",
+              "createSpotProcurementDiscrepancy"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.draft.reset",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "resetSpotProcurementReceiptDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 521,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "reset_receipt_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "resetSpotProcurementReceiptDraft",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/draft-reset",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/draft-reset",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "resetDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "resetSpotProcurementReceiptDraftWithCapability",
+              "resetSpotProcurementReceiptDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementReceiptDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 460,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "edit_receipt",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementReceiptDraft",
+          "method": "PATCH",
+          "path": "/spot-procurements/:param/receipt/draft",
+          "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/spot-procurements/:procurementId/receipt/draft",
+            "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateSpotProcurementReceiptDraftWithCapability",
+              "updateSpotProcurementReceiptDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.invoice-file.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementInvoiceFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 675,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "append_invoice",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementInvoiceFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/invoice-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/invoice-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/invoice-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/invoice-file-uploads",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "uploadInvoiceFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.invoice.append"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementInvoiceFileWithCapability",
+              "uploadSpotProcurementInvoiceFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo-file.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementReceiptPhotoWithCapability",
+        "kind": "background_call",
+        "sourceLine": 638,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "append_receipt_photo",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementReceiptPhotoFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt-photo-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "uploadReceiptPhotoFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementReceiptPhotoWithCapability",
+              "uploadSpotProcurementReceiptPhotoFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo.attach",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "attachSpotProcurementReceiptPhotoWithCapability",
+        "kind": "background_call",
+        "sourceLine": 474,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "append_receipt_photo",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "attachSpotProcurementReceiptPhoto",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/photos",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/photos",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "attachPhoto",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "attachSpotProcurementReceiptPhotoWithCapability",
+              "attachSpotProcurementReceiptPhoto"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo.remove",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deleteSpotProcurementReceiptPhotoWithCapability",
+        "kind": "background_call",
+        "sourceLine": 488,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "remove_receipt_photo",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "deleteSpotProcurementReceiptPhoto",
+          "method": "DELETE",
+          "path": "/spot-procurements/:param/receipt/photos/:param",
+          "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "DELETE",
+            "path": "/spot-procurements/:procurementId/receipt/photos/:photoId",
+            "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "deleteDraftPhoto",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deleteSpotProcurementReceiptPhotoWithCapability",
+              "deleteSpotProcurementReceiptPhoto"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.refund-voucher.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementRefundVoucherWithCapability",
+        "kind": "background_call",
+        "sourceLine": 656,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "record_refund",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/refund-voucher-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/refund-voucher-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "uploadRefundVoucherFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.refund.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementRefundVoucherWithCapability",
+              "uploadSpotProcurementRefundVoucherFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.refund.record",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordSpotProcurementRefundWithCapability",
+        "kind": "background_call",
+        "sourceLine": 624,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "record_refund",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementRefund",
+          "method": "POST",
+          "path": "/spot-procurements/:param/refunds",
+          "normalizedKey": "POST /spot-procurements/:param/refunds",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/refunds",
+            "normalizedKey": "POST /spot-procurements/:param/refunds",
+            "controller": "SpotProcurementController",
+            "handler": "recordRefund",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.refund.record"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recordSpotProcurementRefundWithCapability",
+              "recordSpotProcurementRefund"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.review",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewSpotProcurementReceiptWithCapability",
+        "kind": "background_call",
+        "sourceLine": 538,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "review_receipt",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "reviewSpotProcurementReceipt",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/review",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/review",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/review",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/review",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "review",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.review"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "reviewSpotProcurementReceiptWithCapability",
+              "reviewSpotProcurementReceipt"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.review.revoke",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "revokeSpotProcurementReceiptReviewWithCapability",
+        "kind": "background_call",
+        "sourceLine": 552,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "revoke_receipt_review",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "revokeSpotProcurementReceiptReview",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/review-revocation",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/review-revocation",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "revokeReview",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.review_revoke"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "revokeSpotProcurementReceiptReviewWithCapability",
+              "revokeSpotProcurementReceiptReview"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.submit",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitSpotProcurementReceiptWithCapability",
+        "kind": "background_call",
+        "sourceLine": 566,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "submit_receipt",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "submitSpotProcurementReceipt",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt/submission",
+          "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/receipt/submission",
+            "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
+            "controller": "SpotProcurementReceiptController",
+            "handler": "submit",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.receipt.confirm"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "submitSpotProcurementReceiptWithCapability",
+              "submitSpotProcurementReceipt"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.abnormal-termination-confirm",
       "usage": "page_action",
       "routePaths": [
@@ -14156,7 +15716,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1970,
+        "sourceLine": 2137,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -14221,7 +15781,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 1957,
+        "sourceLine": 2124,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -14272,6 +15832,463 @@
       ]
     },
     {
+      "id": "spot-procurement.application-pdf.download",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadSpotProcurementApprovalFormWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1315,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "download_application_pdf",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "method": "POST",
+          "path": "/approval-forms/:param/:param/download",
+          "normalizedKey": "POST /approval-forms/:param/:param/download",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/approval-forms/:businessType/:businessId/download",
+            "normalizedKey": "POST /approval-forms/:param/:param/download",
+            "controller": "ApprovalFormController",
+            "handler": "download",
+            "sourceFile": "services/api/src/approval/approval-form.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadSpotProcurementApprovalFormWithCapability",
+              "downloadApprovalForm"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.create",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createSpotProcurementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 392,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_spot_procurement",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementDraft",
+          "method": "POST",
+          "path": "/spot-procurements",
+          "normalizedKey": "POST /spot-procurements",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements",
+            "normalizedKey": "POST /spot-procurements",
+            "controller": "SpotProcurementController",
+            "handler": "create",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createSpotProcurementDraftWithCapability",
+              "createSpotProcurementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.create-file.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购工作台"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementCreateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 406,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_spot_procurement",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementCreateFile",
+          "method": "POST",
+          "path": "/spot-procurements/projects/:param/draft-file-uploads",
+          "normalizedKey": "POST /spot-procurements/projects/:param/draft-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/projects/:projectId/draft-file-uploads",
+            "normalizedKey": "POST /spot-procurements/projects/:param/draft-file-uploads",
+            "controller": "SpotProcurementController",
+            "handler": "uploadCreateDraftFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementCreateFileWithCapability",
+              "uploadSpotProcurementCreateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft-file.upload",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadSpotProcurementDraftFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1333,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "edit_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementDraftFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/draft-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/draft-file-uploads",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/draft-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/draft-file-uploads",
+            "controller": "SpotProcurementController",
+            "handler": "uploadDraftFile",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadSpotProcurementDraftFileWithCapability",
+              "uploadSpotProcurementDraftFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.abandon-application",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "abandonSpotProcurementApplicationWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1265,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "abandon_application",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "abandonSpotProcurementDraft",
+          "method": "POST",
+          "path": "/spot-procurements/:param/abandonment",
+          "normalizedKey": "POST /spot-procurements/:param/abandonment",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/abandonment",
+            "normalizedKey": "POST /spot-procurements/:param/abandonment",
+            "controller": "SpotProcurementController",
+            "handler": "abandonDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "abandonSpotProcurementApplicationWithCapability",
+              "abandonSpotProcurementDraft"
+            ],
+            "variant": "abandon_application"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.delete-pristine",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "deletePristineSpotProcurementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1246,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "delete_pristine_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "abandonSpotProcurementDraft",
+          "method": "POST",
+          "path": "/spot-procurements/:param/abandonment",
+          "normalizedKey": "POST /spot-procurements/:param/abandonment",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/abandonment",
+            "normalizedKey": "POST /spot-procurements/:param/abandonment",
+            "controller": "SpotProcurementController",
+            "handler": "abandonDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "deletePristineSpotProcurementDraftWithCapability",
+              "abandonSpotProcurementDraft"
+            ],
+            "variant": "delete_pristine_draft"
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.update",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateSpotProcurementDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1205,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "edit_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementDraft",
+          "method": "PATCH",
+          "path": "/spot-procurements/:param/draft",
+          "normalizedKey": "PATCH /spot-procurements/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/spot-procurements/:procurementId/draft",
+            "normalizedKey": "PATCH /spot-procurements/:param/draft",
+            "controller": "SpotProcurementController",
+            "handler": "updateDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateSpotProcurementDraftWithCapability",
+              "updateSpotProcurementDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.invoice-append",
       "usage": "page_action",
       "routePaths": [
@@ -14286,7 +16303,7 @@
         "event": "click",
         "handler": "appendInvoice",
         "kind": "event",
-        "sourceLine": 1196,
+        "sourceLine": 1457,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -14423,7 +16440,7 @@
         "event": "confirm",
         "handler": "invalidateInvoice",
         "kind": "event",
-        "sourceLine": 1230,
+        "sourceLine": 1491,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -14474,6 +16491,71 @@
       ]
     },
     {
+      "id": "spot-procurement.payment-draft.recreate",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recreateSpotProcurementPaymentDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1284,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "create_payment_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recreateSpotProcurementPaymentDraft",
+          "method": "POST",
+          "path": "/spot-procurements/:param/payment-drafts",
+          "normalizedKey": "POST /spot-procurements/:param/payment-drafts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/payment-drafts",
+            "normalizedKey": "POST /spot-procurements/:param/payment-drafts",
+            "controller": "SpotProcurementController",
+            "handler": "recreatePaymentDraft",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.payment.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "recreateSpotProcurementPaymentDraftWithCapability",
+              "recreateSpotProcurementPaymentDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.receipt-pdf-refresh",
       "usage": "page_action",
       "routePaths": [
@@ -14488,7 +16570,7 @@
         "event": "confirm",
         "handler": "refreshReceiptPdf",
         "kind": "event",
-        "sourceLine": 1138,
+        "sourceLine": 1399,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -14553,7 +16635,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 1887,
+        "sourceLine": 2054,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -14619,7 +16701,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 1901,
+        "sourceLine": 2068,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -14685,7 +16767,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 1915,
+        "sourceLine": 2082,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -14751,7 +16833,7 @@
         "event": "click",
         "handler": "runSubmit",
         "kind": "event",
-        "sourceLine": 1634,
+        "sourceLine": 1801,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -14802,6 +16884,136 @@
       ]
     },
     {
+      "id": "spot-procurement.version.create",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createSpotProcurementVersionWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1221,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "create_version",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementVersion",
+          "method": "POST",
+          "path": "/spot-procurements/:param/versions",
+          "normalizedKey": "POST /spot-procurements/:param/versions",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/versions",
+            "normalizedKey": "POST /spot-procurements/:param/versions",
+            "controller": "SpotProcurementController",
+            "handler": "createVersion",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createSpotProcurementVersionWithCapability",
+              "createSpotProcurementVersion"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.void",
+      "usage": "background",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "ownerRoutePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "voidSpotProcurementWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1299,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "capability.availableActions",
+        "key": "void_procurement",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "voidSpotProcurement",
+          "method": "POST",
+          "path": "/spot-procurements/:param/voiding",
+          "normalizedKey": "POST /spot-procurements/:param/voiding",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/spot-procurements/:procurementId/voiding",
+            "normalizedKey": "POST /spot-procurements/:param/voiding",
+            "controller": "SpotProcurementController",
+            "handler": "voidProcurement",
+            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "spot_procurement.void"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "voidSpotProcurementWithCapability",
+              "voidSpotProcurement"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "spot-procurement.withdraw",
       "usage": "page_action",
       "routePaths": [
@@ -14816,7 +17028,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 1929,
+        "sourceLine": 2096,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -15383,267 +17595,6 @@
         "sourceFile": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
         "normalizedKeys": [
           "PATCH /settlement-template-versions/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "abandonSpotProcurementDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/abandonment"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementVersion",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/versions"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "recreateSpotProcurementPaymentDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/payment-drafts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurements/:param/draft"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "voidSpotProcurement",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/voiding"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "abandonSpotProcurementPaymentDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/abandonment"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "recordSpotProcurementPaymentExecution",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/executions"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "submitSpotProcurementPayment",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementPaymentDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurement-payments/:param/draft"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementPaymentPayer",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurement-payments/:param/payer"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "voidSpotProcurementPayment",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/voiding"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "withdrawSpotProcurementPayment",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/approval-withdrawal"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "attachSpotProcurementReceiptPhoto",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/photos"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementDiscrepancy",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/discrepancy"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementReceiptDelegation",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/delegations"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "deleteSpotProcurementReceiptPhoto",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "DELETE /spot-procurements/:param/receipt/photos/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "recordSpotProcurementRefund",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/refunds"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "resetSpotProcurementReceiptDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/draft-reset"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurementReceipt",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/review"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "revokeSpotProcurementReceiptReview",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/review-revocation"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "submitSpotProcurementReceipt",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/submission"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementReceiptDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurements/:param/receipt/draft"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementDraft",
-        "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements"
         ]
       }
     ],

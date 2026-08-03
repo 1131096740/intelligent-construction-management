@@ -254,6 +254,7 @@ describe("SpotProcurementReceiptService workflow", () => {
     hasReceiptPdf?: boolean;
     hasRefund?: boolean;
     hasInvoiceFact?: boolean;
+    resetBlocker?: "review" | "pdf" | "discrepancy" | "refund" | "invoice";
     paymentLinePrices?: Array<{
       procurementLineId: string;
       unitPrice: Prisma.Decimal;
@@ -557,7 +558,10 @@ describe("SpotProcurementReceiptService workflow", () => {
         create: jest.fn().mockResolvedValue({ id: "audit-1" })
       },
       pdfDocument: {
-        findMany: jest.fn().mockResolvedValue([])
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(
+          options?.resetBlocker === "pdf" ? { id: "pdf-1" } : null
+        )
       },
       user: {
         findUnique: jest.fn().mockImplementation(
@@ -650,6 +654,11 @@ describe("SpotProcurementReceiptService workflow", () => {
               ? [options.latestReview]
               : []
           ),
+        findFirst: jest.fn().mockResolvedValue(
+          options?.resetBlocker === "review"
+            ? { id: "review-reset-blocker" }
+            : null
+        ),
         create: jest.fn().mockImplementation(({ data }) =>
           Promise.resolve({
             id: `review-${data.decision}`,
@@ -661,22 +670,35 @@ describe("SpotProcurementReceiptService workflow", () => {
         )
       },
       spotProcurementDiscrepancy: {
-        findFirst: jest.fn().mockResolvedValue(
-          options?.activeDiscrepancy === true
-            ? {
-                id: "discrepancy-1",
-                status: "awaiting_refund",
-                resolutionType: "full_refund"
-              }
-            : options?.activeDiscrepancy
-              ? { id: "discrepancy-1", ...options.activeDiscrepancy }
-              : null
+        findFirst: jest.fn().mockImplementation(
+          ({ where }: { where: Record<string, unknown> }) =>
+            Promise.resolve(
+              where.receiptId && options?.resetBlocker === "discrepancy"
+                ? { id: "discrepancy-reset-blocker" }
+                : options?.activeDiscrepancy === true
+                  ? {
+                      id: "discrepancy-1",
+                      status: "awaiting_refund",
+                      resolutionType: "full_refund"
+                    }
+                  : options?.activeDiscrepancy
+                    ? { id: "discrepancy-1", ...options.activeDiscrepancy }
+                    : null
+            )
         ),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
+      spotProcurementRefund: {
+        findFirst: jest.fn().mockResolvedValue(
+          options?.resetBlocker === "refund" || options?.hasRefund
+            ? { id: "refund-1" }
+            : null
+        )
+      },
       invoiceAllocation: {
         findFirst: jest.fn().mockResolvedValue(
-          options?.activeTicketFact === "allocation"
+          options?.activeTicketFact === "allocation" ||
+            options?.resetBlocker === "invoice"
             ? { id: "allocation-1" }
             : null
         )
@@ -943,9 +965,12 @@ describe("SpotProcurementReceiptService workflow", () => {
       "delegate_receipt",
       "edit_receipt",
       "append_receipt_photo",
+      "remove_receipt_photo",
+      "reset_receipt_draft",
       "submit_receipt",
       "append_invoice"
     ]);
+    expect(handlerDetail.removablePhotoIds).toEqual(["photo-1"]);
     expect(
       handlerDetail.availableActions.find(
         (action) => action.key === "append_invoice"
@@ -986,6 +1011,8 @@ describe("SpotProcurementReceiptService workflow", () => {
     ).toEqual([
       "edit_receipt",
       "append_receipt_photo",
+      "remove_receipt_photo",
+      "reset_receipt_draft",
       "submit_receipt"
     ]);
 
@@ -997,6 +1024,30 @@ describe("SpotProcurementReceiptService workflow", () => {
       "employee-viewer"
     );
     expect(viewerDetail.availableActions.every((action) => !action.enabled)).toBe(true);
+  });
+
+  it.each([
+    ["review", "review"],
+    ["formal PDF", "pdf"],
+    ["discrepancy", "discrepancy"],
+    ["refund", "refund"],
+    ["invoice fact", "invoice"]
+  ] as const)("does not advertise receipt draft reset after a %s fact", async (_label, resetBlocker) => {
+    const harness = createHarness({
+      resetBlocker,
+      actionProjectRoleKeys: ["material_staff"]
+    });
+
+    const detail = await harness.service.getReceipt(
+      "procurement-1",
+      "handler-1"
+    );
+
+    expect(
+      detail.availableActions.find(
+        (action) => action.key === "reset_receipt_draft"
+      )
+    ).toMatchObject({ enabled: false });
   });
 
   it("keeps material review and project-finance refund actions mutually scoped", async () => {

@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 435,
-    "exactRouteCount": 435,
-    "normalizedRouteCount": 435,
+    "routeCount": 442,
+    "exactRouteCount": 442,
+    "normalizedRouteCount": 442,
     "classificationOverrideCount": 110,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 325,
-    "pageRouteCount": 328,
+    "derivedProductionPageCount": 332,
+    "pageRouteCount": 335,
     "externalTakeoverCount": 61,
     "exitCandidateCount": 43,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 377,
+      "web_api_wrapper": 384,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 377,
+    "productionWrapperRouteCount": 384,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -10821,11 +10821,7 @@
               "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
               "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+              "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
             ]
           },
           {
@@ -16222,6 +16218,86 @@
     },
     {
       "method": "POST",
+      "path": "/spot-procurement-payments/:paymentId/draft-file-uploads",
+      "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
+      "controller": "SpotProcurementPaymentController",
+      "handler": "uploadDraftFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.payment.submit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementPaymentDraftFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurement-payments/:param/draft-file-uploads",
+            "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurement-payments/:paymentId/execution-voucher-file-uploads",
+      "normalizedKey": "POST /spot-procurement-payments/:param/execution-voucher-file-uploads",
+      "controller": "SpotProcurementPaymentController",
+      "handler": "uploadExecutionVoucherFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.payment.execute",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementExecutionVoucherFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurement-payments/:param/execution-voucher-file-uploads",
+            "normalizedKey": "POST /spot-procurement-payments/:param/execution-voucher-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/spot-procurement-payments/:paymentId/executions",
       "normalizedKey": "POST /spot-procurement-payments/:param/executions",
       "controller": "SpotProcurementPaymentController",
@@ -16702,6 +16778,46 @@
     },
     {
       "method": "POST",
+      "path": "/spot-procurements/:procurementId/draft-file-uploads",
+      "normalizedKey": "POST /spot-procurements/:param/draft-file-uploads",
+      "controller": "SpotProcurementController",
+      "handler": "uploadDraftFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementDraftFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/draft-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/draft-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/spot-procurements/:procurementId/invoice-exceptions",
       "normalizedKey": "POST /spot-procurements/:param/invoice-exceptions",
       "controller": "InvoiceLedgerController",
@@ -16757,6 +16873,46 @@
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/invoice-file-uploads",
+      "normalizedKey": "POST /spot-procurements/:param/invoice-file-uploads",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "uploadInvoiceFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.invoice.append",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementInvoiceFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/invoice-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/invoice-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
     },
     {
       "method": "POST",
@@ -16875,6 +17031,46 @@
             "normalizedKey": "POST /spot-procurements/:param/payment-drafts",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
+      "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "uploadReceiptPhotoFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.receipt.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementReceiptPhotoFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/receipt-photo-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
             ]
           }
         ],
@@ -17167,6 +17363,46 @@
     },
     {
       "method": "POST",
+      "path": "/spot-procurements/:procurementId/refund-voucher-file-uploads",
+      "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "uploadRefundVoucherFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.refund.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementRefundVoucherFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/:param/refund-voucher-file-uploads",
+            "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/spot-procurements/:procurementId/refunds",
       "normalizedKey": "POST /spot-procurements/:param/refunds",
       "controller": "SpotProcurementController",
@@ -17344,6 +17580,46 @@
             "normalizedKey": "POST /spot-procurements/:param/voiding",
             "productionConsumers": [
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/projects/:projectId/draft-file-uploads",
+      "normalizedKey": "POST /spot-procurements/projects/:param/draft-file-uploads",
+      "controller": "SpotProcurementController",
+      "handler": "uploadCreateDraftFile",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "spot_procurement.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "uploadSpotProcurementCreateFile",
+            "method": "POST",
+            "normalizedPath": "/spot-procurements/projects/:param/draft-file-uploads",
+            "normalizedKey": "POST /spot-procurements/projects/:param/draft-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
             ]
           }
         ],

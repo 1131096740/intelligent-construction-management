@@ -163,6 +163,7 @@ export interface SpotProcurementReceiptDetailReadModel {
     nextStep: string | null;
   };
   availableActions: DetailActionReadModel[];
+  removablePhotoIds: string[];
 }
 
 export interface SpotProcurementInvoiceAppendActionContext {
@@ -262,6 +263,7 @@ export interface SpotProcurementCapabilitiesReadModel {
   enabled: boolean;
   canCreate: boolean;
   canExecutePayment: boolean;
+  availableActions: string[];
   unavailableReason: string | null;
   handlerOptions: SpotProcurementHandlerOptionReadModel[];
 }
@@ -1254,6 +1256,120 @@ export interface SpotProcurementPaymentExecutionWriteReadModel {
 export function fetchSpotProcurementCapabilities(projectId: string) {
   return readJson<SpotProcurementCapabilitiesReadModel>(
     `/spot-procurements/capabilities?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
+async function uploadSpotProcurementPrivateFile(
+  path: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  const response = await apiFetch(path, { method: "POST", body: form });
+  await ensureOk(response, "零星采购文件上传失败");
+  return response.json() as Promise<{ id: string }>;
+}
+
+export function uploadSpotProcurementCreateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/projects/${encodeURIComponent(projectId)}/draft-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementDraftFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/draft-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementPaymentDraftFile(
+  paymentId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/draft-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementExecutionVoucherFile(
+  paymentId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/execution-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementReceiptPhotoFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt-photo-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementRefundVoucherFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/refund-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementInvoiceFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/invoice-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
   );
 }
 

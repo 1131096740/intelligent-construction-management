@@ -773,6 +773,54 @@ void submit;
   );
 });
 
+test("accepts a local server-derived detail action preflight for a background mutation", async () => {
+  const action = registryAction({
+    id: "example.background-detail-action",
+    usage: "background",
+    trigger: {
+      element: "module",
+      event: "call",
+      handler: "submit"
+    },
+    capability: {
+      kind: "detail_action",
+      source: "operationCapabilities.availableActions",
+      key: "submit_approval"
+    }
+  });
+  const page = `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+async function submit() {
+  const operationCapabilities = await getExample("example-1");
+  const matchesRequestedExample = operationCapabilities.id === "example-1";
+  if (!matchesRequestedExample) {
+    throw new Error("operation changed");
+  }
+  const operationAllowed = operationCapabilities.availableActions.some(
+    (action) => action.key === "submit_approval" && action.enabled
+  );
+  if (!operationAllowed) {
+    throw new Error("operation unavailable");
+  }
+  return submitExample("example-1");
+}
+void submit;
+</script>
+<template><div /></template>
+`;
+  const root = await fixture({ actions: [action], page });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+});
+
 test("keeps approve and reject variants distinct while sharing one wrapper and action key", async () => {
   const approve = registryAction({
     id: "example.review.approve",

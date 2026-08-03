@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "8570fca409b5307cd3e23d21f33377ae80847206590a0ce412126dd133dc2c76",
+      "sha256": "8938ac6b3948b1bcf81598c88ff264b563a5ddc337da81746892a5f9e6d9918f",
       "status": "ready",
       "summary": {
-        "routeCount": 435
+        "routeCount": 442
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "27a89762ed733a534642c851a49779f7800e85e341283093bd79be0738684e8d",
+      "sha256": "a06f51744d671e3e468aafef0ca5bb47ef467956bd464b7cf29877847d07ca40",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 445,
-        "transportWrapperCount": 425,
+        "exportedFunctionCount": 452,
+        "transportWrapperCount": 432,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 445,
+        "mainRequestBindingCount": 452,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 444,
-        "productionConsumerCount": 388,
+        "requestEdgeCount": 451,
+        "productionConsumerCount": 395,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,12 +42,12 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "60350b8e6dfbddfc55d1e1a94b6fb0a57030acb330bda4b5587ef389e5ea422a",
+      "sha256": "8051332155b65781e8261808fe45ae6e8f6b11176ee77fbcdc9080e3f2a78bd3",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 209,
+        "registeredActionCount": 243,
         "pageActionCount": 46,
-        "backgroundActionCount": 163,
+        "backgroundActionCount": 197,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
@@ -55,33 +55,33 @@
         "reachableProductionModuleCount": 234,
         "templateEventDirectiveCount": 960,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 201,
-        "candidateProductionMutationConsumerCount": 201,
-        "acceptedProductionMutationConsumerCount": 201,
-        "productionMutationConsumerPairCount": 285,
-        "blockerCount": 87
+        "coveredProductionMutationConsumerCount": 233,
+        "candidateProductionMutationConsumerCount": 233,
+        "acceptedProductionMutationConsumerCount": 233,
+        "productionMutationConsumerPairCount": 288,
+        "blockerCount": 58
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "852e114a2c17970ac117f4b47959a6c3a9b885b5fcdce8deee0719eea4164c67",
+      "sha256": "1f5f84434d13a8fc011d5e5e8735c2bb0deddd44a20c7f49e81a3fc11a8332e2",
       "status": "ready",
       "summary": {
-        "routeCount": 435,
-        "exactRouteCount": 435,
-        "normalizedRouteCount": 435,
+        "routeCount": 442,
+        "exactRouteCount": 442,
+        "normalizedRouteCount": 442,
         "classificationOverrideCount": 110,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 325,
-        "pageRouteCount": 328,
+        "derivedProductionPageCount": 332,
+        "pageRouteCount": 335,
         "externalTakeoverCount": 61,
         "exitCandidateCount": 43,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 377,
+          "web_api_wrapper": 384,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,25 +93,25 @@
     }
   },
   "summary": {
-    "routeCount": 435,
-    "pageRouteCount": 328,
+    "routeCount": 442,
+    "pageRouteCount": 335,
     "externalTakeoverRouteCount": 61,
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 445,
+    "mainRequestBindingCount": 452,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 209,
-    "actionBindingCount": 239,
-    "acceptedActionBindingCount": 220,
+    "registeredActionCount": 243,
+    "actionBindingCount": 273,
+    "acceptedActionBindingCount": 254,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 285,
-    "coveredProductionMutationConsumerPairCount": 201,
-    "uncoveredProductionMutationConsumerPairCount": 84,
-    "blockerCount": 127
+    "productionMutationConsumerPairCount": 288,
+    "coveredProductionMutationConsumerPairCount": 233,
+    "uncoveredProductionMutationConsumerPairCount": 55,
+    "blockerCount": 98
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -634,22 +634,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "downloadApprovalForm",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /approval-forms/:param/:param/download"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "revokeApprovalDelegation",
         "consumer": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
         "normalizedKeys": [
@@ -676,38 +660,6 @@
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "uploadPrivateFile",
         "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
         "normalizedKeys": [
           "POST /files"
         ]
@@ -863,190 +815,6 @@
         "consumer": "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
         "normalizedKeys": [
           "PATCH /settlement-template-versions/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "abandonSpotProcurementDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "abandonSpotProcurementPaymentDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "attachSpotProcurementReceiptPhoto",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/photos"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementDiscrepancy",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/discrepancy"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementReceiptDelegation",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/delegations"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementVersion",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/versions"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "deleteSpotProcurementReceiptPhoto",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "DELETE /spot-procurements/:param/receipt/photos/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "recordSpotProcurementPaymentExecution",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/executions"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "recordSpotProcurementRefund",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/refunds"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "recreateSpotProcurementPaymentDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/payment-drafts"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "resetSpotProcurementReceiptDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/draft-reset"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "reviewSpotProcurementReceipt",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/review"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "revokeSpotProcurementReceiptReview",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/review-revocation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "submitSpotProcurementPayment",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "submitSpotProcurementReceipt",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/receipt/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurements/:param/draft"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementPaymentDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurement-payments/:param/draft"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementPaymentPayer",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurement-payments/:param/payer"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "updateSpotProcurementReceiptDraft",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-        "normalizedKeys": [
-          "PATCH /spot-procurements/:param/receipt/draft"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "voidSpotProcurement",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurements/:param/voiding"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "voidSpotProcurementPayment",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/voiding"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "withdrawSpotProcurementPayment",
-        "consumer": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-        "normalizedKeys": [
-          "POST /spot-procurement-payments/:param/approval-withdrawal"
         ]
       }
     ],
@@ -1376,11 +1144,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.photo.remove",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.photo.remove\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000deleteSpotProcurementReceiptPhoto\u0000DELETE\u0000DELETE /spot-procurements/:param/receipt/photos/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "remove_receipt_photo",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "deleteSpotProcurementReceiptPhoto",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8558,11 +8351,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.draft.update",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.draft.update\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000updateSpotProcurementPaymentDraft\u0000PATCH\u0000PATCH /spot-procurement-payments/:param/draft\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "edit_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementPaymentDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8601,11 +8419,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.payer.update",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.payer.update\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000updateSpotProcurementPaymentPayer\u0000PATCH\u0000PATCH /spot-procurement-payments/:param/payer\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "manage_payer",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementPaymentPayer",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8644,11 +8487,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.draft.update",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.draft.update\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000updateSpotProcurementDraft\u0000PATCH\u0000PATCH /spot-procurements/:param/draft\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "edit_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8685,11 +8553,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.draft.update",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.draft.update\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000updateSpotProcurementReceiptDraft\u0000PATCH\u0000PATCH /spot-procurements/:param/receipt/draft\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "edit_receipt",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "updateSpotProcurementReceiptDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8852,12 +8745,62 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement-payment.pdf.download",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.pdf.download\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadApprovalForm\u0000POST\u0000POST /approval-forms/:param/:param/download\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "download_payment_pdf",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement.application-pdf.download",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.application-pdf.download\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000downloadApprovalForm\u0000POST\u0000POST /approval-forms/:param/:param/download\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "download_application_pdf",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadApprovalForm",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15236,11 +15179,7 @@
             "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
             "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue",
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+            "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -23880,11 +23819,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.draft.abandon",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.draft.abandon\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000abandonSpotProcurementPaymentDraft\u0000POST\u0000POST /spot-procurement-payments/:param/abandonment\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "abandon_payment_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "abandonSpotProcurementPaymentDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -23923,11 +23887,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.withdraw",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.withdraw\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000withdrawSpotProcurementPayment\u0000POST\u0000POST /spot-procurement-payments/:param/approval-withdrawal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "withdraw_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "withdrawSpotProcurementPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24104,6 +24093,138 @@
     {
       "route": {
         "method": "POST",
+        "path": "/spot-procurement-payments/:paymentId/draft-file-uploads",
+        "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
+        "controller": "SpotProcurementPaymentController",
+        "handler": "uploadDraftFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.payment.submit",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementPaymentDraftFile",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/draft-file-uploads",
+          "normalizedKey": "POST /spot-procurement-payments/:param/draft-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.draft-file.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.draft-file.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementPaymentDraftFile\u0000POST\u0000POST /spot-procurement-payments/:param/draft-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "edit_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementPaymentDraftFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/spot-procurement-payments/:paymentId/execution-voucher-file-uploads",
+        "normalizedKey": "POST /spot-procurement-payments/:param/execution-voucher-file-uploads",
+        "controller": "SpotProcurementPaymentController",
+        "handler": "uploadExecutionVoucherFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.payment.execute",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementExecutionVoucherFile",
+          "method": "POST",
+          "path": "/spot-procurement-payments/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /spot-procurement-payments/:param/execution-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.execution-voucher.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.execution-voucher.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementExecutionVoucherFile\u0000POST\u0000POST /spot-procurement-payments/:param/execution-voucher-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementExecutionVoucherFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/spot-procurement-payments/:paymentId/executions",
         "normalizedKey": "POST /spot-procurement-payments/:param/executions",
         "controller": "SpotProcurementPaymentController",
@@ -24138,11 +24259,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.execution.record",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.execution.record\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000recordSpotProcurementPaymentExecution\u0000POST\u0000POST /spot-procurement-payments/:param/executions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementPaymentExecution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24317,11 +24463,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.submit",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.submit\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000submitSpotProcurementPayment\u0000POST\u0000POST /spot-procurement-payments/:param/submission\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "submit_approval",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "submitSpotProcurementPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24360,11 +24531,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-payment.void",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-payment.void\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000voidSpotProcurementPayment\u0000POST\u0000POST /spot-procurement-payments/:param/voiding\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "void_payment",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "voidSpotProcurementPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24403,11 +24599,62 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.draft.abandon-application",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.draft.abandon-application\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000abandonSpotProcurementDraft\u0000POST\u0000POST /spot-procurements/:param/abandonment\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "abandon_application",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "abandonSpotProcurementDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement.draft.delete-pristine",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.draft.delete-pristine\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000abandonSpotProcurementDraft\u0000POST\u0000POST /spot-procurements/:param/abandonment\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "delete_pristine_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "abandonSpotProcurementDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24770,11 +25017,128 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.discrepancy.confirm",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.discrepancy.confirm\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementDiscrepancy\u0000POST\u0000POST /spot-procurements/:param/discrepancy\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "confirm_discrepancy",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementDiscrepancy",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "spot-procurement-receipt.discrepancy.initiate",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.discrepancy.initiate\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementDiscrepancy\u0000POST\u0000POST /spot-procurements/:param/discrepancy\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "initiate_discrepancy",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementDiscrepancy",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/spot-procurements/:procurementId/draft-file-uploads",
+        "normalizedKey": "POST /spot-procurements/:param/draft-file-uploads",
+        "controller": "SpotProcurementController",
+        "handler": "uploadDraftFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementDraftFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/draft-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/draft-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement.draft-file.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.draft-file.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementDraftFile\u0000POST\u0000POST /spot-procurements/:param/draft-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "edit_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementDraftFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24826,6 +25190,72 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/spot-procurements/:procurementId/invoice-file-uploads",
+        "normalizedKey": "POST /spot-procurements/:param/invoice-file-uploads",
+        "controller": "SpotProcurementReceiptController",
+        "handler": "uploadInvoiceFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.invoice.append",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementInvoiceFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/invoice-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/invoice-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.invoice-file.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.invoice-file.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementInvoiceFile\u0000POST\u0000POST /spot-procurements/:param/invoice-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "append_invoice",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementInvoiceFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -24943,11 +25373,102 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.payment-draft.recreate",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.payment-draft.recreate\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000recreateSpotProcurementPaymentDraft\u0000POST\u0000POST /spot-procurements/:param/payment-drafts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "create_payment_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recreateSpotProcurementPaymentDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
+        "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
+        "controller": "SpotProcurementReceiptController",
+        "handler": "uploadReceiptPhotoFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.receipt.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementReceiptPhotoFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/receipt-photo-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.photo-file.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.photo-file.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementReceiptPhotoFile\u0000POST\u0000POST /spot-procurements/:param/receipt-photo-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "append_receipt_photo",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementReceiptPhotoFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -24984,11 +25505,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.delegate",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.delegate\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementReceiptDelegation\u0000POST\u0000POST /spot-procurements/:param/receipt/delegations\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "delegate_receipt",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementReceiptDelegation",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25027,11 +25573,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.draft.reset",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.draft.reset\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000resetSpotProcurementReceiptDraft\u0000POST\u0000POST /spot-procurements/:param/receipt/draft-reset\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "reset_receipt_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "resetSpotProcurementReceiptDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25136,11 +25707,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.photo.attach",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.photo.attach\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000attachSpotProcurementReceiptPhoto\u0000POST\u0000POST /spot-procurements/:param/receipt/photos\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "append_receipt_photo",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "attachSpotProcurementReceiptPhoto",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25177,11 +25773,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.review.revoke",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.review.revoke\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000revokeSpotProcurementReceiptReview\u0000POST\u0000POST /spot-procurements/:param/receipt/review-revocation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "revoke_receipt_review",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "revokeSpotProcurementReceiptReview",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25218,11 +25839,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.review",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.review\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000reviewSpotProcurementReceipt\u0000POST\u0000POST /spot-procurements/:param/receipt/review\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "review_receipt",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "reviewSpotProcurementReceipt",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25261,11 +25907,102 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.submit",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.submit\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000submitSpotProcurementReceipt\u0000POST\u0000POST /spot-procurements/:param/receipt/submission\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "submit_receipt",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "submitSpotProcurementReceipt",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/spot-procurements/:procurementId/refund-voucher-file-uploads",
+        "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+        "controller": "SpotProcurementReceiptController",
+        "handler": "uploadRefundVoucherFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.refund.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherFile",
+          "method": "POST",
+          "path": "/spot-procurements/:param/refund-voucher-file-uploads",
+          "normalizedKey": "POST /spot-procurements/:param/refund-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.refund-voucher.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.refund-voucher.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementRefundVoucherFile\u0000POST\u0000POST /spot-procurements/:param/refund-voucher-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "record_refund",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementRefundVoucherFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25304,11 +26041,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement-receipt.refund.record",
+          "bindingIndex": 0,
+          "identity": "spot-procurement-receipt.refund.record\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000recordSpotProcurementRefund\u0000POST\u0000POST /spot-procurements/:param/refunds\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "record_refund",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "recordSpotProcurementRefund",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25441,11 +26203,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.version.create",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.version.create\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementVersion\u0000POST\u0000POST /spot-procurements/:param/versions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "create_version",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementVersion",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25484,11 +26271,102 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.void",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.void\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000voidSpotProcurement\u0000POST\u0000POST /spot-procurements/:param/voiding\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "capability.availableActions",
+            "key": "void_procurement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "voidSpotProcurement",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/spot-procurements/projects/:projectId/draft-file-uploads",
+        "normalizedKey": "POST /spot-procurements/projects/:param/draft-file-uploads",
+        "controller": "SpotProcurementController",
+        "handler": "uploadCreateDraftFile",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "spot_procurement.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementCreateFile",
+          "method": "POST",
+          "path": "/spot-procurements/projects/:param/draft-file-uploads",
+          "normalizedKey": "POST /spot-procurements/projects/:param/draft-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "spot-procurement.create-file.upload",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.create-file.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementCreateFile\u0000POST\u0000POST /spot-procurements/projects/:param/draft-file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_spot_procurement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "uploadSpotProcurementCreateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -25527,11 +26405,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "spot-procurement.create",
+          "bindingIndex": 0,
+          "identity": "spot-procurement.create\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementDraft\u0000POST\u0000POST /spot-procurements\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "create_spot_procurement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "createSpotProcurementDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

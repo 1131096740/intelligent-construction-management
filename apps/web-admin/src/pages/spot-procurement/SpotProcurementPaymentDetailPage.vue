@@ -10,6 +10,8 @@ import {
   prepareSpotProcurementPaymentReviewAction,
   recordSpotProcurementPaymentExecution,
   submitSpotProcurementPayment,
+  uploadSpotProcurementExecutionVoucherFile,
+  uploadSpotProcurementPaymentDraftFile,
   updateSpotProcurementPaymentDraft,
   updateSpotProcurementPaymentPayer,
   voidSpotProcurementPayment,
@@ -24,7 +26,7 @@ import {
   fetchActiveCompanyEntities,
   type CompanyEntityModel
 } from "../../api/company-entity.api";
-import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
+import { downloadApprovalForm } from "../../api/core-flow-read.api";
 import { useAuthStore } from "../../auth/auth.store";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
@@ -428,13 +430,21 @@ async function saveApplicationDraft(
       operationUploadFiles,
       operationDraft.attachmentCategory,
       async (file, fileName) => {
-        const uploaded = await uploadPrivateFile(file, fileName);
+        const uploaded =
+          await uploadSpotProcurementPaymentDraftFileWithCapability(
+            operationPaymentId,
+            file,
+            fileName
+          );
         assertCurrentApplicationOperation(operationToken, operationPaymentId);
         return uploaded;
       }
     );
     assertCurrentApplicationOperation(operationToken, operationPaymentId);
-    await updateSpotProcurementPaymentDraft(operationPaymentId, payload);
+    await updateSpotProcurementPaymentDraftWithCapability(
+      operationPaymentId,
+      payload
+    );
     assertCurrentApplicationOperation(operationToken, operationPaymentId);
     clearLocalApplicationDraft(operationPaymentId);
     applicationLocalDraftNotice.value = "";
@@ -483,7 +493,7 @@ async function submitApplication(draftSnapshot: PaymentApplicationDraft) {
   actionBusy.value = true;
   try {
     assertCurrentApplicationOperation(operationToken, operationPaymentId);
-    await submitSpotProcurementPayment(operationPaymentId);
+    await submitSpotProcurementPaymentWithCapability(operationPaymentId);
     assertCurrentApplicationOperation(operationToken, operationPaymentId);
     applicationVisible.value = false;
     applicationOpenedPaymentId = null;
@@ -554,7 +564,7 @@ async function savePayer() {
     if (!payerForm.confirmed) throw new Error("请确认已知悉付款主体变更影响");
     if (!payerForm.paymentMethods.length) throw new Error("请至少选择一种拟付款方式");
     if (current.payment.payerManagement?.requiresReapproval && !payerForm.changeReason.trim()) throw new Error("财务主管调整付款主体时必须填写变更原因");
-    await updateSpotProcurementPaymentPayer(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
+    await updateSpotProcurementPaymentPayerWithCapability(current.payment.id, { companyEntityId: requiredText(payerForm.companyEntityId, "付款主体"), paymentMethods: payerForm.paymentMethods, ...(payerForm.changeReason.trim() ? { changeReason: payerForm.changeReason.trim() } : {}) });
     if (paymentId.value !== operationPaymentId) return;
     payerVisible.value = false;
     showSuccess(current.payment.payerManagement?.requiresReapproval ? "付款主体已调整，综合部、项目经理和财务主管将从综合部节点重新审批。" : "付款主体和拟付款方式已保存。");
@@ -1102,17 +1112,17 @@ async function confirmAction(values: { reason: string; password: string }) {
   let nextPaymentId: string | null = null;
   try {
     if (confirmation.kind === "withdraw") {
-      const result = await withdrawSpotProcurementPayment(current.payment.id); nextPaymentId = result.newDraftPaymentId ?? null; showSuccess("付款审批已撤回。");
+      const result = await withdrawSpotProcurementPaymentWithCapability(current.payment.id); nextPaymentId = result.newDraftPaymentId ?? null; showSuccess("付款审批已撤回。");
     } else if (confirmation.kind === "abandon_payment_draft") {
-      await abandonSpotProcurementPaymentDraft(current.payment.id, {
+      await abandonSpotProcurementPaymentDraftWithCapability(current.payment.id, {
         expectedUpdatedAt: current.payment.updatedAt,
         reason: values.reason
       });
       showSuccess("付款草稿已放弃。原记录继续保留，可从采购详情重新创建付款申请。");
     } else if (confirmation.kind === "void") {
-      await voidSpotProcurementPayment(current.payment.id, { reason: values.reason }); showSuccess("付款申请已作废。");
+      await voidSpotProcurementPaymentWithCapability(current.payment.id, { reason: values.reason }); showSuccess("付款申请已作废。");
     } else if (confirmation.kind === "download") {
-      await downloadApprovalForm(current.paymentPdf.businessType, current.paymentPdf.businessId, { confirmationPassword: values.password, downloadReason: values.reason }); showSuccess("付款审批单已开始下载。");
+      await downloadSpotProcurementPaymentApprovalFormWithCapability(current.payment.id, current.paymentPdf.businessType, current.paymentPdf.businessId, { confirmationPassword: values.password, downloadReason: values.reason }); showSuccess("付款审批单已开始下载。");
     }
     confirmation.visible = false;
     if (nextPaymentId) {
@@ -1140,7 +1150,12 @@ async function prepareExecutionAttempt(
         : null
     },
     payload.files,
-    uploadPrivateFile,
+    (file, fileName) =>
+      uploadSpotProcurementExecutionVoucherWithCapability(
+        paymentId.value,
+        file,
+        fileName
+      ),
     payload.paymentMethod === "cash" ? "请上传商家收据" : "请上传付款成功凭证"
   );
   return { ...prepared, amountYuan: payload.amountYuan, paidAtInput: payload.paidAt };
@@ -1178,7 +1193,7 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
       executionOpenedPaymentId !== operationPaymentId
     ) return;
     executionAttempt.value = attempt;
-    await recordSpotProcurementPaymentExecution(operationPaymentId, {
+    await recordSpotProcurementPaymentExecutionWithCapability(operationPaymentId, {
       idempotencyKey: attempt.idempotencyKey,
       amountCents: attempt.amountCents,
       paidAt: attempt.paidAt,
@@ -1204,6 +1219,156 @@ async function submitExecution(payload: PaymentExecutionSubmitPayload) {
   } finally {
     if (paymentId.value === operationPaymentId) actionBusy.value = false;
   }
+}
+
+async function updateSpotProcurementPaymentDraftWithCapability(
+  paymentIdCoordinate: string,
+  body: Parameters<typeof updateSpotProcurementPaymentDraft>[1]
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款草稿不可编辑");
+  return updateSpotProcurementPaymentDraft(paymentIdCoordinate, body);
+}
+
+async function updateSpotProcurementPaymentPayerWithCapability(
+  paymentIdCoordinate: string,
+  body: Parameters<typeof updateSpotProcurementPaymentPayer>[1]
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "manage_payer" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款主体不可调整");
+  return updateSpotProcurementPaymentPayer(paymentIdCoordinate, body);
+}
+
+async function abandonSpotProcurementPaymentDraftWithCapability(
+  paymentIdCoordinate: string,
+  body: Parameters<typeof abandonSpotProcurementPaymentDraft>[1]
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "abandon_payment_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款草稿不可放弃");
+  return abandonSpotProcurementPaymentDraft(paymentIdCoordinate, body);
+}
+
+async function withdrawSpotProcurementPaymentWithCapability(
+  paymentIdCoordinate: string
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "withdraw_approval" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款审批不可撤回");
+  return withdrawSpotProcurementPayment(paymentIdCoordinate);
+}
+
+async function recordSpotProcurementPaymentExecutionWithCapability(
+  paymentIdCoordinate: string,
+  body: Parameters<typeof recordSpotProcurementPaymentExecution>[1]
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "record_execution" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款不可登记实付");
+  return recordSpotProcurementPaymentExecution(paymentIdCoordinate, body);
+}
+
+async function submitSpotProcurementPaymentWithCapability(
+  paymentIdCoordinate: string
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "submit_approval" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款不可提交审批");
+  return submitSpotProcurementPayment(paymentIdCoordinate);
+}
+
+async function voidSpotProcurementPaymentWithCapability(
+  paymentIdCoordinate: string,
+  body: Parameters<typeof voidSpotProcurementPayment>[1]
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "void_payment" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款不可作废");
+  return voidSpotProcurementPayment(paymentIdCoordinate, body);
+}
+
+async function downloadSpotProcurementPaymentApprovalFormWithCapability(
+  paymentIdCoordinate: string,
+  businessType: string,
+  businessId: string,
+  body: { confirmationPassword: string; downloadReason: string }
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "download_payment_pdf" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款审批单不可下载");
+  return downloadApprovalForm(businessType, businessId, body);
+}
+
+async function uploadSpotProcurementPaymentDraftFileWithCapability(
+  paymentIdCoordinate: string,
+  file: File,
+  fileName: string
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款草稿不可上传附件");
+  return uploadSpotProcurementPaymentDraftFile(
+    paymentIdCoordinate,
+    file,
+    fileName
+  );
+}
+
+async function uploadSpotProcurementExecutionVoucherWithCapability(
+  paymentIdCoordinate: string,
+  file: File,
+  fileName: string
+) {
+  const capability = await fetchSpotProcurementPaymentDetail(paymentIdCoordinate);
+  const matchesRequestedPayment = capability.payment.id === paymentIdCoordinate;
+  if (!matchesRequestedPayment) throw new Error("付款坐标已变化，请刷新详情后重试");
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "record_execution" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购付款不可上传实付凭证");
+  return uploadSpotProcurementExecutionVoucherFile(
+    paymentIdCoordinate,
+    file,
+    fileName
+  );
 }
 
 async function closeExecution() {

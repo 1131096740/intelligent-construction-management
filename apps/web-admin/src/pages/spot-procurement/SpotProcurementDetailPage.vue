@@ -22,6 +22,7 @@ import {
   requestSpotProcurementAbnormalTermination,
   recreateSpotProcurementPaymentDraft,
   submitSpotProcurement,
+  uploadSpotProcurementDraftFile,
   updateSpotProcurementDraft,
   voidSpotProcurement,
   type PrepareSpotProcurementReviewActionResult,
@@ -31,7 +32,7 @@ import {
   type SpotProcurementWithdrawalActionContext,
   type SpotProcurementDetailReadModel
 } from "../../api/spot-procurement.api";
-import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
+import { downloadApprovalForm } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDraftAction, {
@@ -488,13 +489,19 @@ async function saveDraft() {
     for (const file of selectedUploadFiles(editQuotationFiles.value)) {
       const validationError = spotProcurementQuotationFileError(file);
       if (validationError) throw new Error(validationError);
-      const uploaded = await uploadPrivateFile(file, file.name);
+      const uploaded = await uploadSpotProcurementDraftFileWithCapability(
+        current.procurement.id,
+        file
+      );
       attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
     for (const file of selectedUploadFiles(editReferencePhotoFiles.value)) {
       const validationError = spotProcurementReferencePhotoFileError(file);
       if (validationError) throw new Error(validationError);
-      const uploaded = await uploadPrivateFile(file, file.name);
+      const uploaded = await uploadSpotProcurementDraftFileWithCapability(
+        current.procurement.id,
+        file
+      );
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
     const draft = {
@@ -513,12 +520,15 @@ async function saveDraft() {
       attachments
     };
     if (editMode.value === "version") {
-      await createSpotProcurementVersion(current.procurement.id, {
+      await createSpotProcurementVersionWithCapability(current.procurement.id, {
         ...draft,
         changeReason: requiredText(editForm.changeReason, "版本变更原因")
       });
     } else {
-      await updateSpotProcurementDraft(current.procurement.id, draft);
+      await updateSpotProcurementDraftWithCapability(
+        current.procurement.id,
+        draft
+      );
     }
     editVisible.value = false;
     showSuccess(editMode.value === "version" ? "采购修订版本已创建。" : "采购草稿已保存。");
@@ -597,7 +607,7 @@ function runSubmit() {
 async function executeDraftAction(request: BusinessDraftActionRequest) {
   const current = detail.value;
   if (!current || !["delete_pristine_draft", "abandon_application"].includes(request.action)) return;
-  await abandonSpotProcurementDraft(current.procurement.id, {
+  await abandonSpotProcurementDraftWithCapability(current.procurement.id, {
     action: request.action as "delete_pristine_draft" | "abandon_application",
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
   });
@@ -610,7 +620,9 @@ async function recreatePaymentDraft() {
   if (!current || !actionEnabled("create_payment_draft")) return;
   actionBusy.value = true;
   try {
-    const result = await recreateSpotProcurementPaymentDraft(current.procurement.id);
+    const result = await recreateSpotProcurementPaymentDraftWithCapability(
+      current.procurement.id
+    );
     showSuccess("新的付款草稿已创建，原付款草稿继续保留为历史记录。");
     await router.push(`/零星材料付款/${encodeURIComponent(result.id)}`);
   } catch (error) {
@@ -1165,13 +1177,20 @@ async function confirmAction(values: { reason: string; password: string }) {
   actionBusy.value = true;
   try {
     if (confirmation.kind === "void") {
-      await voidSpotProcurement(current.procurement.id, { reason: values.reason });
+      await voidSpotProcurementWithCapability(current.procurement.id, {
+        reason: values.reason
+      });
       showSuccess("零星采购已撤销。");
     } else {
-      await downloadApprovalForm(current.applicationPdf.businessType, current.applicationPdf.businessId, {
-        confirmationPassword: values.password,
-        downloadReason: values.reason
-      });
+      await downloadSpotProcurementApprovalFormWithCapability(
+        current.procurement.id,
+        current.applicationPdf.businessType,
+        current.applicationPdf.businessId,
+        {
+          confirmationPassword: values.password,
+          downloadReason: values.reason
+        }
+      );
       showSuccess("采购审批单已开始下载。");
     }
     confirmation.visible = false;
@@ -1181,6 +1200,154 @@ async function confirmAction(values: { reason: string; password: string }) {
   } finally {
     actionBusy.value = false;
   }
+}
+
+async function updateSpotProcurementDraftWithCapability(
+  procurementId: string,
+  body: Parameters<typeof updateSpotProcurementDraft>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购草稿不可编辑");
+  return updateSpotProcurementDraft(procurementId, body);
+}
+
+async function createSpotProcurementVersionWithCapability(
+  procurementId: string,
+  body: Parameters<typeof createSpotProcurementVersion>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "create_version" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可创建新版本");
+  return createSpotProcurementVersion(procurementId, body);
+}
+
+async function abandonSpotProcurementDraftWithCapability(
+  procurementId: string,
+  body: Parameters<typeof abandonSpotProcurementDraft>[1]
+) {
+  return body.action === "delete_pristine_draft"
+    ? deletePristineSpotProcurementDraftWithCapability(procurementId, body)
+    : abandonSpotProcurementApplicationWithCapability(procurementId, body);
+}
+
+async function deletePristineSpotProcurementDraftWithCapability(
+  procurementId: string,
+  body: Parameters<typeof abandonSpotProcurementDraft>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "delete_pristine_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不是可删除的纯净草稿");
+  return abandonSpotProcurementDraft(procurementId, {
+    action: "delete_pristine_draft",
+    reason: body.reason
+  });
+}
+
+async function abandonSpotProcurementApplicationWithCapability(
+  procurementId: string,
+  body: Parameters<typeof abandonSpotProcurementDraft>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "abandon_application" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购申请不可放弃");
+  return abandonSpotProcurementDraft(procurementId, {
+    action: "abandon_application",
+    reason: body.reason
+  });
+}
+
+async function recreateSpotProcurementPaymentDraftWithCapability(
+  procurementId: string
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "create_payment_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可重新创建付款草稿");
+  return recreateSpotProcurementPaymentDraft(procurementId);
+}
+
+async function voidSpotProcurementWithCapability(
+  procurementId: string,
+  body: Parameters<typeof voidSpotProcurement>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "void_procurement" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可作废");
+  return voidSpotProcurement(procurementId, body);
+}
+
+async function downloadSpotProcurementApprovalFormWithCapability(
+  procurementId: string,
+  businessType: string,
+  businessId: string,
+  body: { confirmationPassword: string; downloadReason: string }
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "download_application_pdf" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购审批单不可下载");
+  return downloadApprovalForm(businessType, businessId, body);
+}
+
+async function uploadSpotProcurementDraftFileWithCapability(
+  procurementId: string,
+  file: File
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购草稿不可上传附件");
+  return uploadSpotProcurementDraftFile(
+    procurementId,
+    file,
+    file.name
+  );
 }
 
 function openAbnormalTerminationRequest() {

@@ -485,8 +485,9 @@ describe("spot procurement web pages", () => {
     expect(detail).toContain("applicationOpenedPaymentId");
     expect(detail).toContain("applicationOperationToken");
     expect(detail).toContain("const operationDraft = clonePaymentApplicationDraft");
-    expect(detail).toContain("const uploaded = await uploadPrivateFile(file, fileName);\n        assertCurrentApplicationOperation(operationToken, operationPaymentId)");
-    expect(detail).toContain("assertCurrentApplicationOperation(operationToken, operationPaymentId);\n    await updateSpotProcurementPaymentDraft(operationPaymentId, payload)");
+    expect(detail).toContain("await uploadSpotProcurementPaymentDraftFileWithCapability(");
+    expect(detail).toContain("assertCurrentApplicationOperation(operationToken, operationPaymentId);");
+    expect(detail).toContain("await updateSpotProcurementPaymentDraftWithCapability(");
     expect(detail).toContain("if (isCurrentApplicationOperation(operationToken, operationPaymentId)) actionBusy.value = false");
     expect(detail).toContain("persistLocalApplicationDraft(operationPaymentId, currentStep, operationDraft, false)");
     expect(detail).toContain("await submitSpotProcurementPayment");
@@ -1109,7 +1110,7 @@ describe("spot procurement web pages", () => {
     expect(receipt).toContain(
       "current: invoiceAppendContextIsCurrent"
     );
-    expect(receipt).toContain("upload: uploadPrivateFile");
+    expect(receipt).toContain("uploadSpotProcurementInvoiceFileWithCapability(");
     expect(receipt).toContain("uploadIdempotencyKey");
     expect(receipt).toContain(
       "previousAttempt.file === file"
