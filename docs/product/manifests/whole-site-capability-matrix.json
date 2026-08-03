@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "6995de98102917cd1b7388864ce1a5d285f1008dd036ecf0b004446374b0248d",
+      "sha256": "e40965d115caf0e667a3e099d5d926e0b094f33d3337c744ff474fcc8e64ab98",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
@@ -32,9 +32,9 @@
         "mainRequestBindingCount": 452,
         "ticketFollowupCount": 2,
         "requestEdgeCount": 451,
-        "productionConsumerCount": 351,
-        "orphanWrapperCount": 81,
-        "testOnlyWrapperCount": 74,
+        "productionConsumerCount": 339,
+        "orphanWrapperCount": 93,
+        "testOnlyWrapperCount": 86,
         "unreferencedWrapperCount": 1,
         "duplicateNormalizedRouteGroupCount": 12,
         "authTransportExceptionCount": 5
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "8cebbc51a1d431c89f8d3b509bfc41b2a402da13f0b32c21003b02fb85e4e698",
+      "sha256": "c24fa25cb035e1ebee868971ea986a79c907b3cf2da37d38dda277b2c293eed3",
       "status": "blocked",
       "summary": {
         "registeredActionCount": 241,
         "pageActionCount": 44,
         "backgroundActionCount": 197,
-        "reachableVueFileCount": 131,
+        "reachableVueFileCount": 127,
         "routeRootCount": 47,
         "totalVueFileCount": 142,
         "parsedVueFileCount": 142,
-        "reachableProductionModuleCount": 232,
-        "templateEventDirectiveCount": 873,
+        "reachableProductionModuleCount": 227,
+        "templateEventDirectiveCount": 840,
         "propCallbackDirectiveCount": 7,
         "coveredProductionMutationConsumerCount": 231,
         "candidateProductionMutationConsumerCount": 231,
         "acceptedProductionMutationConsumerCount": 231,
-        "productionMutationConsumerPairCount": 243,
-        "blockerCount": 15
+        "productionMutationConsumerPairCount": 231,
+        "blockerCount": 3
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "3e918c4a01c9198fc5117855ac18b3074704fd42e3705184e264a56335a0f09e",
+      "sha256": "ae4d8b8849ca958f1ca137a5c40a6af149b8d0610338f662fcb5ac3ec8212b5a",
       "status": "ready",
       "summary": {
         "routeCount": 442,
         "exactRouteCount": 442,
         "normalizedRouteCount": 442,
-        "classificationOverrideCount": 153,
+        "classificationOverrideCount": 165,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "b8a7af157d7bad42e5f761c4b008ba4bdf2b6e393ddad7fd008ca93f1f45c3ca",
+        "classificationOverrideSha256": "93861177f13d95f7c180f317086ab252409b8397e2a4871c860a9c160d5f1bba",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 289,
-        "pageRouteCount": 290,
+        "derivedProductionPageCount": 277,
+        "pageRouteCount": 278,
         "externalTakeoverCount": 61,
-        "exitCandidateCount": 88,
+        "exitCandidateCount": 100,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 339,
+          "web_api_wrapper": 327,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 1,
-          "none": 94
+          "none": 106
         },
         "blockerCount": 0
       }
@@ -94,23 +94,23 @@
   },
   "summary": {
     "routeCount": 442,
-    "pageRouteCount": 290,
+    "pageRouteCount": 278,
     "externalTakeoverRouteCount": 61,
-    "exitCandidateRouteCount": 88,
+    "exitCandidateRouteCount": 100,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 452,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 81,
+    "orphanWrapperCount": 93,
     "duplicateMutationRouteCount": 3,
     "registeredActionCount": 241,
     "actionBindingCount": 271,
     "acceptedActionBindingCount": 252,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 243,
+    "productionMutationConsumerPairCount": 231,
     "coveredProductionMutationConsumerPairCount": 231,
-    "uncoveredProductionMutationConsumerPairCount": 12,
+    "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 99
   },
   "blockers": {
@@ -397,6 +397,16 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "copyAbandonedContractDraft",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "createApprovalDelegation",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createContractDraft",
         "classification": "test_only"
       },
@@ -478,6 +488,56 @@
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "reviewSettlementExceptionQuota",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "revokeApprovalDelegation",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "applyOrganizationRoleAddition",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "applyOrganizationRoleRemoval",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "createOrganizationDepartment",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "createOrganizationUser",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "previewOrganizationRoleAddition",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "previewOrganizationRoleRemoval",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "previewOrganizationRoleRemovalBatch",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "updateOrganizationDepartment",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "updateOrganizationUser",
         "classification": "test_only"
       },
       {
@@ -595,104 +655,7 @@
       }
     ],
     "unclassifiedRoutes": [],
-    "uncoveredMutationConsumers": [
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "copyAbandonedContractDraft",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/copies"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createApprovalDelegation",
-        "consumer": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
-        "normalizedKeys": [
-          "POST /approval-delegations"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "revokeApprovalDelegation",
-        "consumer": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
-        "normalizedKeys": [
-          "DELETE /approval-delegations/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleAddition",
-        "consumer": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-additions/apply"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleRemoval",
-        "consumer": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-changes/apply"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationDepartment",
-        "consumer": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "normalizedKeys": [
-          "POST /organization/departments"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationUser",
-        "consumer": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/users"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleAddition",
-        "consumer": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-additions/preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemoval",
-        "consumer": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-changes/preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemovalBatch",
-        "consumer": "apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-changes/batch-preview"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationDepartment",
-        "consumer": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "normalizedKeys": [
-          "PATCH /organization/departments/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationUser",
-        "consumer": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "normalizedKeys": [
-          "PATCH /organization/users/:param"
-        ]
-      }
-    ],
+    "uncoveredMutationConsumers": [],
     "unresolvedActions": []
   },
   "routes": [
@@ -714,8 +677,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -724,9 +687,7 @@
           "path": "/approval-delegations/:param",
           "normalizedKey": "DELETE /approval-delegations/:param",
           "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
@@ -734,9 +695,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -1123,7 +1084,6 @@
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
             "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-            "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
             "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
           ],
@@ -7710,8 +7670,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -7720,9 +7680,7 @@
           "path": "/organization/departments/:param",
           "normalizedKey": "PATCH /organization/departments/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -7730,9 +7688,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -7763,8 +7721,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -7773,9 +7731,7 @@
           "path": "/organization/users/:param",
           "normalizedKey": "PATCH /organization/users/:param",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -7783,9 +7739,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -8491,8 +8447,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -8501,9 +8457,7 @@
           "path": "/approval-delegations",
           "normalizedKey": "POST /approval-delegations",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
@@ -8511,9 +8465,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -12539,8 +12493,8 @@
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -12549,9 +12503,7 @@
           "path": "/contracts/:param/copies",
           "normalizedKey": "POST /contracts/:param/copies",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractListPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
@@ -12559,9 +12511,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15403,8 +15355,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15413,9 +15365,7 @@
           "path": "/organization/departments",
           "normalizedKey": "POST /organization/departments",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15423,9 +15373,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15456,8 +15406,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15466,9 +15416,7 @@
           "path": "/organization/role-additions/apply",
           "normalizedKey": "POST /organization/role-additions/apply",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15476,9 +15424,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15509,8 +15457,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15519,9 +15467,7 @@
           "path": "/organization/role-additions/preview",
           "normalizedKey": "POST /organization/role-additions/preview",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15529,9 +15475,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15562,8 +15508,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15572,9 +15518,7 @@
           "path": "/organization/role-changes/apply",
           "normalizedKey": "POST /organization/role-changes/apply",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15582,9 +15526,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15607,8 +15551,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15617,9 +15561,7 @@
           "path": "/organization/role-changes/batch-preview",
           "normalizedKey": "POST /organization/role-changes/batch-preview",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15627,9 +15569,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15660,8 +15602,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15670,9 +15612,7 @@
           "path": "/organization/role-changes/preview",
           "normalizedKey": "POST /organization/role-changes/preview",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15680,9 +15620,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {
@@ -15713,8 +15653,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/organization.api.ts",
@@ -15723,9 +15663,7 @@
           "path": "/organization/users",
           "normalizedKey": "POST /organization/users",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/organization.api.test.ts"
           ]
@@ -15733,9 +15671,9 @@
       ],
       "authTransports": [],
       "actions": [],
-      "mutationCoverage": "uncovered",
+      "mutationCoverage": "not_applicable",
       "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
+        "ORPHAN_WRAPPER"
       ]
     },
     {

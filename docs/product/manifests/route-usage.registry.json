@@ -4,27 +4,33 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 442,
-    "classificationOverrideCount": 153,
-    "derivedProductionPageCount": 289,
-    "classificationOverrideSha256": "b8a7af157d7bad42e5f761c4b008ba4bdf2b6e393ddad7fd008ca93f1f45c3ca",
+    "classificationOverrideCount": 165,
+    "derivedProductionPageCount": 277,
+    "classificationOverrideSha256": "93861177f13d95f7c180f317086ab252409b8397e2a4871c860a9c160d5f1bba",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
-      "page": 290,
+      "page": 278,
       "external_takeover": 61,
-      "exit_candidate": 88,
+      "exit_candidate": 100,
       "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 339,
+      "web_api_wrapper": 327,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 94
+      "none": 106
     }
   },
   "overrides": [
+    {
+      "method": "DELETE",
+      "path": "/approval-delegations/:delegationId",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
     {
       "method": "DELETE",
       "path": "/contract-bills/:billId/rows/:rowKey",
@@ -96,6 +102,18 @@
       "path": "/me/workbench-summary",
       "usage": "exit_candidate",
       "reason": "legacy_workbench_summary_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
+      "path": "/organization/departments/:departmentId",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
+      "path": "/organization/users/:userId",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -315,9 +333,21 @@
     },
     {
       "method": "POST",
+      "path": "/approval-delegations",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
       "path": "/contract-bill-imports/:importId/apply",
       "usage": "exit_candidate",
       "reason": "superseded_contract_draft_aggregate_bill_write_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/copies",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -852,6 +882,48 @@
       "path": "/settlements",
       "usage": "exit_candidate",
       "reason": "legacy_direct_settlement_create_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/departments",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/role-additions/apply",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/role-additions/preview",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/role-changes/apply",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/role-changes/batch-preview",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/role-changes/preview",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/organization/users",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

@@ -14,16 +14,16 @@
     "mainRequestBindingCount": 452,
     "ticketFollowupCount": 2,
     "requestEdgeCount": 451,
-    "productionConsumerCount": 351,
-    "orphanWrapperCount": 81,
-    "testOnlyWrapperCount": 74,
+    "productionConsumerCount": 339,
+    "orphanWrapperCount": 93,
+    "testOnlyWrapperCount": 86,
     "unreferencedWrapperCount": 1,
     "duplicateNormalizedRouteGroupCount": 12,
     "authTransportExceptionCount": 5
   },
   "evidence": {
     "productionModuleCount": 248,
-    "reachableProductionModuleCount": 232
+    "reachableProductionModuleCount": 227
   },
   "wrappers": [
     {
@@ -4227,9 +4227,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractListPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -4287,9 +4285,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -5364,7 +5360,6 @@
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
       ],
@@ -8378,9 +8373,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/delegations/DelegationListPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -10010,10 +10003,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "applyOrganizationRoleRemoval",
@@ -10040,10 +10033,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createOrganizationDepartment",
@@ -10070,9 +10063,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -10100,10 +10091,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchOrganizationDirectory",
@@ -10202,10 +10193,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "previewOrganizationRoleRemoval",
@@ -10232,10 +10223,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "previewOrganizationRoleRemovalBatch",
@@ -10262,10 +10253,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "updateOrganizationDepartment",
@@ -10292,9 +10283,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -10322,9 +10311,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/organization.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -14085,6 +14072,16 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "copyAbandonedContractDraft",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "createApprovalDelegation",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "createContractDraft",
         "classification": "test_only"
       },
@@ -14166,6 +14163,56 @@
       {
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "reviewSettlementExceptionQuota",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "revokeApprovalDelegation",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "applyOrganizationRoleAddition",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "applyOrganizationRoleRemoval",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "createOrganizationDepartment",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "createOrganizationUser",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "previewOrganizationRoleAddition",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "previewOrganizationRoleRemoval",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "previewOrganizationRoleRemovalBatch",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "updateOrganizationDepartment",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/organization.api.ts",
+        "wrapper": "updateOrganizationUser",
         "classification": "test_only"
       },
       {

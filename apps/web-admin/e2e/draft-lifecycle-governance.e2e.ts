@@ -1176,16 +1176,8 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
     .toBe("/合同工作台?view=all");
 });
 
-test("合同已放弃记录可携带保存时间复制为全新草稿", async ({ page }, testInfo) => {
+test("合同已放弃记录保持只读且不开放复制", async ({ page }, testInfo) => {
   await installSession(page);
-  let copyBody: Record<string, unknown> | null = null;
-  await page.route("**/api/contracts/contract-version-abandoned-1/copies", (route) => {
-    copyBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ contract: { id: "contract-copy-1" }, version: { id: "contract-version-copy-1" } })
-    });
-  });
   await page.route("**/api/contracts/workbench?*", (route) => {
     const view = new URL(route.request().url()).searchParams.get("view") ?? "all";
     const endedRows = view === "all" ? [{
@@ -1209,8 +1201,7 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
       draftRevision: 3,
       lifecycleUpdatedAt: savedAt,
       abandonedAt: savedAt,
-      abandonReason: "供应计划取消",
-      copyAvailable: true
+      abandonReason: "供应计划取消"
     }] : [];
     return route.fulfill({
       contentType: "application/json",
@@ -1225,8 +1216,8 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
   await page.goto("/合同工作台?view=all");
   await expect(page.getByText("HT-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("供应计划取消", { exact: true })).toBeVisible();
-  await expect(page.getByText("复制为新草稿", { exact: true })).toBeVisible();
-  await expect(page.getByText("进入工作台", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("复制为新草稿", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("查看详情", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 900, height: 768 });
   await expectNoDocumentHorizontalOverflow(page);
@@ -1235,11 +1226,6 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
     path: path.join(process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir, "draft-lifecycle-contract-ended-900x768.png"),
     fullPage: true
   });
-
-  await page.getByText("复制为新草稿", { exact: true }).click();
-  await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
-  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/合同工作台/contract-copy-1?versionId=contract-version-copy-1");
 });
 
 test("结算已放弃记录可携带保存时间复制为全新草稿", async ({ page }) => {

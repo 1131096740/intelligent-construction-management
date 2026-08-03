@@ -7,39 +7,39 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `8938ac6b3948b1bcf81598c88ff264b563a5ddc337da81746892a5f9e6d9918f` |
-| webApiWrappers | blocked | `6995de98102917cd1b7388864ce1a5d285f1008dd036ecf0b004446374b0248d` |
-| webPageActions | blocked | `8cebbc51a1d431c89f8d3b509bfc41b2a402da13f0b32c21003b02fb85e4e698` |
-| routeUsage | ready | `3e918c4a01c9198fc5117855ac18b3074704fd42e3705184e264a56335a0f09e` |
+| webApiWrappers | blocked | `e40965d115caf0e667a3e099d5d926e0b094f33d3337c744ff474fcc8e64ab98` |
+| webPageActions | blocked | `c24fa25cb035e1ebee868971ea986a79c907b3cf2da37d38dda277b2c293eed3` |
+| routeUsage | ready | `ae4d8b8849ca958f1ca137a5c40a6af149b8d0610338f662fcb5ac3ec8212b5a` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 442 |
-| pageRouteCount | 290 |
+| pageRouteCount | 278 |
 | externalTakeoverRouteCount | 61 |
-| exitCandidateRouteCount | 88 |
+| exitCandidateRouteCount | 100 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 452 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 81 |
+| orphanWrapperCount | 93 |
 | duplicateMutationRouteCount | 3 |
 | registeredActionCount | 241 |
 | actionBindingCount | 271 |
 | acceptedActionBindingCount | 252 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 243 |
+| productionMutationConsumerPairCount | 231 |
 | coveredProductionMutationConsumerPairCount | 231 |
-| uncoveredProductionMutationConsumerPairCount | 12 |
+| uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 99 |
 
 ## 路由矩阵
 
 | 方法 | 路径 | 用途 | 消费面 | Web wrapper | 动作 | 写入覆盖 | 阻塞 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DELETE | /approval-delegations/:delegationId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| DELETE | /approval-delegations/:delegationId | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | — | not_applicable | ORPHAN_WRAPPER |
 | DELETE | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow | — | not_applicable | ORPHAN_WRAPPER |
 | DELETE | /contract-drafts/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft | — | not_applicable | ORPHAN_WRAPPER |
 | DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | covered | — |
@@ -181,8 +181,8 @@
 | PATCH | /contract-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion | — | not_applicable | ORPHAN_WRAPPER |
 | PATCH | /contract-workbench/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft | — | not_applicable | ORPHAN_WRAPPER |
 | PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
-| PATCH | /organization/departments/:departmentId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| PATCH | /organization/users/:userId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| PATCH | /organization/departments/:departmentId | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | — | not_applicable | ORPHAN_WRAPPER |
+| PATCH | /organization/users/:userId | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#updateOrganizationUser | — | not_applicable | ORPHAN_WRAPPER |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
@@ -194,7 +194,7 @@
 | PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.draft.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | spot-procurement-receipt.draft.update | covered | — |
 | PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
-| POST | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /approval-delegations | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/login | page | auth_store | — | — | not_applicable | — |
@@ -266,7 +266,7 @@
 | POST | /contracts/:contractVersionId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadContractArchiveFile | contract-archive.associate | covered | — |
 | POST | /contracts/:contractVersionId/authorizations | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization | contract-authorization.set | covered | — |
 | POST | /contracts/:contractVersionId/change-drafts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | contract-change.create-draft | covered | — |
-| POST | /contracts/:contractVersionId/copies | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contracts/:contractVersionId/formal-files/approval | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | contract-formal-document.associate-approval | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final/confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmMutuallySignedContract | contract-final.confirm | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract | contract-final.associate | covered | — |
@@ -305,13 +305,13 @@
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
 | POST | /me/signature/canvas | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadCanvasSignature | signature.upload-canvas | covered | — |
 | POST | /me/signature | exit_candidate | none | — | — | not_applicable | — |
-| POST | /organization/departments | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /organization/role-additions/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /organization/role-additions/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /organization/role-changes/apply | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /organization/role-changes/batch-preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /organization/role-changes/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /organization/users | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationUser | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /organization/departments | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /organization/role-additions/apply | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /organization/role-additions/preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /organization/role-changes/apply | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /organization/role-changes/batch-preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /organization/role-changes/preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /organization/users | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#createOrganizationUser | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |
 | POST | /payments/:paymentId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | payment-detail.remind | covered | — |
@@ -546,6 +546,8 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#assignProjectAffiliate（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectOwnerContract（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamSettlement（test_only）
+- apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft（test_only）
+- apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#createContractDraft（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#createSettlementDraft（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#fetchActiveContractNumberRules（test_only）
@@ -563,6 +565,16 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota（test_only）
 - apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota（test_only）
+- apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation（test_only）
+- apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition（test_only）
+- apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval（test_only）
+- apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment（test_only）
+- apps/web-admin/src/api/organization.api.ts#createOrganizationUser（test_only）
+- apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition（test_only）
+- apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval（test_only）
+- apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch（test_only）
+- apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment（test_only）
+- apps/web-admin/src/api/organization.api.ts#updateOrganizationUser（test_only）
 - apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord（test_only）
 - apps/web-admin/src/api/settlement-template.api.ts#cloneSettlementTemplateVersion（unreachable_only）
 - apps/web-admin/src/api/settlement-template.api.ts#createSettlementTemplate（unreachable_only）
@@ -578,18 +590,7 @@
 
 ### 未覆盖写入消费者
 
-- apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft → apps/web-admin/src/pages/contracts/ContractListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
-- apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition → apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue
-- apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval → apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue
-- apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
-- apps/web-admin/src/api/organization.api.ts#createOrganizationUser → apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue
-- apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleAddition → apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue
-- apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval → apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue
-- apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch → apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue
-- apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
-- apps/web-admin/src/api/organization.api.ts#updateOrganizationUser → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
+- 无
 
 ### 未解决动作绑定
 

@@ -44,7 +44,9 @@ describe("contract lifecycle capability gates", () => {
   it("prepares every private-file ticket from the exact file ACL capability", () => {
     expect(detail).toContain("getPrivateFileDownloadTicketCapability");
     expect(detail).toContain("contractFileDownloadAction");
-    expect(detail).toContain('key === "create_private_file_download_ticket"');
+    expect(detail).toMatch(
+      /key === ["']create_private_file_download_ticket["']/u
+    );
     expect(detail).toContain("requirePreparedContractFileDownload(");
   });
 });

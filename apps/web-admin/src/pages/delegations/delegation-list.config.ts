@@ -24,8 +24,7 @@ export const delegationLedgerColumns: PrimaryTableCol<DelegationLedgerRow>[] = [
   { colKey: "startsAt", title: "生效时间", width: 176 },
   { colKey: "endsAt", title: "失效时间", width: 176 },
   { colKey: "deadlineLabel", title: "到期提醒", width: 112 },
-  { colKey: "enabled", title: "状态", width: 96 },
-  { colKey: "operation", title: "操作", width: 80, fixed: "right" }
+  { colKey: "enabled", title: "状态", width: 96 }
 ];
 
 export function mapDelegationLedgerRows(

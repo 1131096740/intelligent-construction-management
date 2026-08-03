@@ -12,22 +12,22 @@
     "registeredActionCount": 241,
     "pageActionCount": 44,
     "backgroundActionCount": 197,
-    "reachableVueFileCount": 131,
+    "reachableVueFileCount": 127,
     "routeRootCount": 47,
     "totalVueFileCount": 142,
     "parsedVueFileCount": 142,
-    "reachableProductionModuleCount": 232,
-    "templateEventDirectiveCount": 873,
+    "reachableProductionModuleCount": 227,
+    "templateEventDirectiveCount": 840,
     "propCallbackDirectiveCount": 7,
     "coveredProductionMutationConsumerCount": 231,
     "candidateProductionMutationConsumerCount": 231,
     "acceptedProductionMutationConsumerCount": 231,
-    "productionMutationConsumerPairCount": 243,
-    "blockerCount": 15
+    "productionMutationConsumerPairCount": 231,
+    "blockerCount": 3
   },
   "evidence": {
     "totalProductionModuleCount": 248,
-    "reachableProductionModuleCount": 232,
+    "reachableProductionModuleCount": 227,
     "totalVueFileCount": 142,
     "parsedVueFileCount": 142
   },
@@ -16966,116 +16966,7 @@
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "copyAbandonedContractDraft",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/copies"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createApprovalDelegation",
-        "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
-        "normalizedKeys": [
-          "POST /approval-delegations"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "revokeApprovalDelegation",
-        "sourceFile": "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
-        "normalizedKeys": [
-          "DELETE /approval-delegations/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationDepartment",
-        "sourceFile": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "normalizedKeys": [
-          "POST /organization/departments"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationDepartment",
-        "sourceFile": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "normalizedKeys": [
-          "PATCH /organization/departments/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationUser",
-        "sourceFile": "apps/web-admin/src/pages/organization/OrganizationManagementPage.vue",
-        "normalizedKeys": [
-          "PATCH /organization/users/:param"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemovalBatch",
-        "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationBatchRoleRemovalDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-changes/batch-preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleAddition",
-        "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-additions/apply"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleAddition",
-        "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-additions/preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleRemoval",
-        "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-changes/apply"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemoval",
-        "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/role-changes/preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationUser",
-        "sourceFile": "apps/web-admin/src/pages/organization/components/OrganizationUserCreationDrawer.vue",
-        "normalizedKeys": [
-          "POST /organization/users"
-        ]
-      }
-    ],
+    "uncoveredMutationWrappers": [],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": [

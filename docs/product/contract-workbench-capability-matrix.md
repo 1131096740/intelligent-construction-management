@@ -8,20 +8,20 @@
 | --- | --- |
 | Controller 源码路由 | 已扫描 190 条 |
 | Web API 请求 | 已扫描 146 条 |
-| 实际 Nest route manifest | 缺失；所有旧路由删除决定保持阻断 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 442 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 53 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 54 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 101 |
+| matched | 100 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 40 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 53 |
+| exit_candidate | 54 |
 
 ## 不存在的页面 API wrapper
 
@@ -146,7 +146,7 @@
 | GET | `/contracts/:param/authorizations/readiness` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/change-drafts` | createContractChangeDraft | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | GET | `/contracts/:param/change-eligibility` | fetchContractChangeEligibility | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/copies` | copyAbandonedContractDraft | apps/web-admin/src/pages/contracts/ContractListPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/copies` | copyAbandonedContractDraft |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/formal-files/approval` | uploadContractFormalApprovalFile | apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/final` | uploadMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/final/confirmation` | confirmMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |

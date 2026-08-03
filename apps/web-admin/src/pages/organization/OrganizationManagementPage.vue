@@ -6,53 +6,29 @@
     <div class="page-head">
       <div>
         <h1>组织权限</h1>
-        <p>维护部门层级、人员归属和启停状态，所有变更均需当前密码确认并写入权限审计。</p>
+        <p>只读查看部门层级、人员归属、启停状态和岗位分配。</p>
       </div>
       <div class="page-actions">
         <t-button
-          v-if="userCreationRoleOptions.length"
           variant="outline"
           :loading="refreshing"
-          :disabled="saving || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
+          :disabled="directoryLoading || integrityLoading || refreshing"
           @click="refreshPage"
         >
           刷新
-        </t-button>
-        <t-button
-          v-if="userCreationRoleOptions.length"
-          variant="outline"
-          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-          @click="openUserCreationDrawer"
-        >
-          新增人员
-        </t-button>
-        <t-button
-          variant="outline"
-          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-          @click="openBatchRoleRemovalDrawer"
-        >
-          批量预览撤岗
-        </t-button>
-        <t-button
-          v-if="isTechnicalAdmin"
-          theme="primary"
-          :disabled="directoryLoading || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-          @click="openCreateDepartment"
-        >
-          新建部门
         </t-button>
       </div>
     </div>
 
     <t-alert
       theme="info"
-      title="本页可安全创建真实人员、维护部门和人员状态，并支持逐条岗位变更及批量撤岗只读预览；人员创建与授岗严格分离。"
+      title="首次上线只读：新增、编辑、启停、授岗和撤岗已从生产页面关闭；既有组织、人员与岗位事实保持可查。"
       :close="false"
     />
 
     <t-alert
       v-if="directoryMessage"
-      :theme="directoryMessageTone"
+      theme="error"
       :title="directoryMessage"
       :close="false"
     />
@@ -61,7 +37,7 @@
 
     <t-card
       v-if="isTechnicalAdmin"
-      title="岗位数据预检"
+      title="岗位数据预检（只读）"
       bordered
     >
       <div class="integrity-card-content">
@@ -113,18 +89,6 @@
                   <span class="integrity-issue__message">{{ row.message }}</span>
                 </div>
               </template>
-              <template #operation="{ row }">
-                <t-button
-                  v-if="isProjectSuperAdminRemediationRow(row.key)"
-                  size="small"
-                  variant="text"
-                  theme="primary"
-                  :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-                  @click="openProjectSuperAdminRemediation(row.key)"
-                >
-                  预览清理
-                </t-button>
-              </template>
             </t-table>
           </div>
         </template>
@@ -157,18 +121,6 @@
             >
               {{ departmentStatusText(row.isActive) }}
             </t-tag>
-          </template>
-          <template #operation="{ row }">
-            <t-button
-              v-if="isTechnicalAdmin"
-              size="small"
-              variant="text"
-              theme="primary"
-              :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-              @click="openEditDepartment(row)"
-            >
-              编辑
-            </t-button>
           </template>
         </t-table>
       </t-card>
@@ -233,53 +185,6 @@
           <template #rosterProjects="{ row }">
             {{ rosterProjectsText(row) }}
           </template>
-          <template #operation="{ row }">
-            <div class="row-actions">
-              <t-button
-                size="small"
-                variant="text"
-                theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-                @click="openEditUser(row)"
-              >
-                编辑
-              </t-button>
-              <t-button
-                size="small"
-                variant="text"
-                theme="primary"
-                :disabled="saving || refreshing || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-                @click="openRoleDrawer(row)"
-              >
-                岗位管理
-              </t-button>
-              <t-tooltip
-                v-if="row.status === 'inactive'"
-                content="人员已停用，不能新增岗位"
-              >
-                <span>
-                  <t-button
-                    size="small"
-                    variant="text"
-                    theme="primary"
-                    disabled
-                  >
-                    新增岗位
-                  </t-button>
-                </span>
-              </t-tooltip>
-              <t-button
-                v-else
-                size="small"
-                variant="text"
-                theme="primary"
-                :disabled="saving || refreshing || roleDrawerVisible || roleAdditionDrawerVisible || batchRoleRemovalDrawerVisible || userCreationDrawerVisible"
-                @click="openRoleAdditionDrawer(row)"
-              >
-                新增岗位
-              </t-button>
-            </div>
-          </template>
         </t-table>
       </t-card>
     </div>
@@ -299,183 +204,34 @@
         <span v-if="!directory.positions.length">暂无岗位</span>
       </div>
     </t-card>
-
-    <t-dialog
-      :visible="dialogVisible"
-      :header="dialogTitle"
-      :confirm-btn="dialogConfirmButton"
-      :cancel-btn="dialogCancelButton"
-      :close-btn="!saving"
-      :close-on-esc-keydown="false"
-      :close-on-overlay-click="false"
-      @confirm="submitDialog"
-      @close="closeDialog"
-    >
-      <div class="dialog-body">
-        <t-alert
-          theme="warning"
-          :title="dialogConsequence"
-          :close="false"
-        />
-        <t-alert
-          v-if="dialogMessage"
-          theme="error"
-          :title="dialogMessage"
-          :close="false"
-        />
-        <t-form label-align="top">
-          <template v-if="dialogAction === 'create_department' || dialogAction === 'update_department'">
-            <t-form-item label="部门名称">
-              <t-input
-                v-model="departmentForm.name"
-                :disabled="saving"
-                placeholder="请输入部门名称"
-              />
-            </t-form-item>
-            <t-form-item label="上级部门">
-              <t-select
-                v-model="departmentForm.parentId"
-                :disabled="saving"
-                clearable
-                :options="dialogDepartmentOptions"
-                placeholder="不选择则为顶级部门"
-                @clear="departmentForm.parentId = null"
-              />
-            </t-form-item>
-            <t-form-item
-              v-if="dialogAction === 'update_department'"
-              label="部门状态"
-            >
-              <t-switch
-                v-model="departmentForm.isActive"
-                :disabled="saving"
-                :label="['启用', '停用']"
-              />
-            </t-form-item>
-          </template>
-
-          <template v-if="dialogAction === 'update_user'">
-            <t-form-item label="人员">
-              <t-input
-                :value="editingUser?.name ?? ''"
-                disabled
-              />
-            </t-form-item>
-            <t-form-item label="所属部门">
-              <t-select
-                v-model="userForm.departmentId"
-                :disabled="saving"
-                clearable
-                :options="activeDepartmentOptions"
-                placeholder="可清空为未分配部门"
-                @clear="userForm.departmentId = null"
-              />
-            </t-form-item>
-            <t-form-item label="人员状态">
-              <t-switch
-                v-model="userForm.isActive"
-                :disabled="saving"
-                :label="['启用', '停用']"
-              />
-            </t-form-item>
-          </template>
-
-          <t-form-item label="当前登录密码">
-            <t-input
-              v-model="confirmationPassword"
-              type="password"
-              autocomplete="current-password"
-              :disabled="saving"
-              placeholder="请输入当前登录密码"
-            />
-          </t-form-item>
-        </t-form>
-      </div>
-    </t-dialog>
-
-    <OrganizationUserCreationDrawer
-      :visible="userCreationDrawerVisible"
-      :department-options="activeDepartmentOptions"
-      :role-options="userCreationRoleOptions"
-      :project-options="activeProjectOptions"
-      @close="closeUserCreationDrawer"
-      @busy-change="userCreationDrawerBusy = $event"
-      @created="handleUserCreated"
-    />
-
-    <OrganizationRoleRemovalDrawer
-      :visible="roleDrawerVisible"
-      :user="roleDrawerUser"
-      :positions="directory.positions"
-      :remediation-target="roleDrawerRemediationTarget"
-      @close="closeRoleDrawer"
-      @busy-change="roleDrawerBusy = $event"
-      @applied="handleRoleRemovalApplied"
-    />
-    <OrganizationRoleAdditionDrawer
-      :visible="roleAdditionDrawerVisible"
-      :user="roleAdditionDrawerUser"
-      :projects="directory.projects"
-      :positions="directory.positions"
-      @close="closeRoleAdditionDrawer"
-      @busy-change="roleAdditionDrawerBusy = $event"
-      @applied="handleRoleAdditionApplied"
-    />
-    <OrganizationBatchRoleRemovalDrawer
-      :visible="batchRoleRemovalDrawerVisible"
-      :directory="directory"
-      @close="closeBatchRoleRemovalDrawer"
-      @busy-change="batchRoleRemovalDrawerBusy = $event"
-    />
   </section>
 </template>
 
 <script setup lang="ts">
-import type { RoleKey } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useAuthStore } from "../../auth/auth.store";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import type { BusinessStatusSummaryItem } from "../../components/business-status-summary.config";
 import {
-  createOrganizationDepartment,
   fetchOrganizationDirectory,
   fetchPermissionIntegrity,
-  updateOrganizationDepartment,
-  updateOrganizationUser,
   type OrganizationDirectory,
-  type OrganizationDirectoryUser,
-  type PermissionIntegrityIssue,
   type PermissionIntegrityReadModel
 } from "../../api/organization.api";
 import {
-  buildCreateDepartmentPayload,
-  buildDepartmentParentOptions,
-  buildDepartmentPatch,
-  buildProjectSuperAdminRemediationTarget,
-  buildUserPatch,
   departmentStatusText,
   filterOrganizationUsers,
   flattenDepartmentTree,
   globalPositionsText,
   mustChangePasswordText,
-  organizationActionConsequence,
-  isProjectSuperAdminRemediationIssue,
-  permissionIntegrityIssueKey,
   permissionIntegrityIssueRows as buildPermissionIntegrityIssueRows,
   permissionIntegrityPolicyText,
   permissionIntegrityReadinessTag,
   permissionIntegritySummaryItems,
   projectPositionsText,
   rosterProjectsText,
-  userStatusText,
-  type FlatOrganizationDepartment,
-  type OrganizationActionKind,
-  type OrganizationRoleRemovalTargetRow
+  userStatusText
 } from "./organization.config";
-import OrganizationRoleRemovalDrawer from "./components/OrganizationRoleRemovalDrawer.vue";
-import OrganizationRoleAdditionDrawer from "./components/OrganizationRoleAdditionDrawer.vue";
-import OrganizationBatchRoleRemovalDrawer from "./components/OrganizationBatchRoleRemovalDrawer.vue";
-import OrganizationUserCreationDrawer from "./components/OrganizationUserCreationDrawer.vue";
 
 const emptyDirectory = (): OrganizationDirectory => ({
   summary: { departments: 0, activeUsers: 0, inactiveUsers: 0, positions: 0 },
@@ -494,47 +250,18 @@ const permissionIntegrity = ref<PermissionIntegrityReadModel | null>(null);
 const directoryLoading = ref(false);
 const integrityLoading = ref(false);
 const refreshing = ref(false);
-const saving = ref(false);
-const roleDrawerVisible = ref(false);
-const roleDrawerBusy = ref(false);
-const roleDrawerUser = ref<OrganizationDirectoryUser | null>(null);
-const roleDrawerRemediationTarget = ref<OrganizationRoleRemovalTargetRow | null>(null);
-const roleAdditionDrawerVisible = ref(false);
-const roleAdditionDrawerBusy = ref(false);
-const roleAdditionDrawerUser = ref<OrganizationDirectoryUser | null>(null);
-const batchRoleRemovalDrawerVisible = ref(false);
-const batchRoleRemovalDrawerBusy = ref(false);
-const userCreationDrawerVisible = ref(false);
-const userCreationDrawerBusy = ref(false);
 const directoryMessage = ref("");
-const directoryMessageTone = ref<"success" | "error">("success");
 const integrityMessage = ref("");
-const dialogVisible = ref(false);
-const dialogAction = ref<OrganizationActionKind | null>(null);
-const dialogMessage = ref("");
-const confirmationPassword = ref("");
-const editingDepartment = ref<FlatOrganizationDepartment | null>(null);
-const editingUser = ref<OrganizationDirectoryUser | null>(null);
 const filters = reactive<{
   keyword: string;
   departmentId: string | undefined;
   status: "active" | "inactive" | undefined;
 }>({ keyword: "", departmentId: undefined, status: undefined });
-const departmentForm = reactive<{ name: string; parentId: string | null; isActive: boolean }>({
-  name: "",
-  parentId: null,
-  isActive: true
-});
-const userForm = reactive<{ departmentId: string | null; isActive: boolean }>({
-  departmentId: null,
-  isActive: true
-});
 
 const departmentColumns = [
   { colKey: "name", title: "部门", minWidth: 180 },
   { colKey: "parentName", title: "上级", minWidth: 120 },
-  { colKey: "isActive", title: "状态", width: 82 },
-  { colKey: "operation", title: "操作", width: 72, fixed: "right" }
+  { colKey: "isActive", title: "状态", width: 82 }
 ];
 const userColumns = [
   { colKey: "name", title: "姓名", width: 96 },
@@ -544,8 +271,7 @@ const userColumns = [
   { colKey: "mustChangePassword", title: "首次改密", width: 108 },
   { colKey: "globalPositions", title: "全局岗位", minWidth: 150 },
   { colKey: "rosterProjects", title: "项目归属", minWidth: 180 },
-  { colKey: "projectPositions", title: "项目岗位", minWidth: 200 },
-  { colKey: "operation", title: "操作", width: 224, fixed: "right" }
+  { colKey: "projectPositions", title: "项目岗位", minWidth: 200 }
 ];
 const integrityColumns = [
   { colKey: "severity", title: "严重级别", width: 92 },
@@ -554,8 +280,7 @@ const integrityColumns = [
   { colKey: "userId", title: "人员", minWidth: 132 },
   { colKey: "projectId", title: "项目", minWidth: 132 },
   { colKey: "roleKey", title: "岗位", minWidth: 150 },
-  { colKey: "assignmentIds", title: "相关记录", minWidth: 200 },
-  { colKey: "operation", title: "操作", width: 96, fixed: "right" }
+  { colKey: "assignmentIds", title: "相关记录", minWidth: 200 }
 ];
 const userStatusOptions = [
   { label: "启用", value: "active" },
@@ -563,48 +288,8 @@ const userStatusOptions = [
 ];
 
 const flatDepartments = computed(() => flattenDepartmentTree(directory.departments));
-const activeDepartmentOptions = computed(() => buildDepartmentParentOptions(directory.departments));
-const activeProjectOptions = computed(() =>
-  directory.projects
-    .filter((project) => project.isActive)
-    .map((project) => ({ label: `${project.name}（${project.code}）`, value: project.id }))
-);
-const subordinateRoles: Partial<Record<RoleKey, readonly RoleKey[]>> = {
-  engineering_department_director: ["engineering_director", "engineering_foreman", "engineering_tech"],
-  finance_director: ["finance_staff"],
-  contract_director: ["contract_staff"],
-  budget_director: ["budget_staff"],
-  material_director: ["material_staff"],
-  comprehensive_director: []
-};
-const userCreationRoleOptions = computed(() => {
-  const actorRoles = auth.user?.globalRoleKeys ?? [];
-  const excluded = new Set<RoleKey>([
-    "super_admin",
-    "engineering_department_member",
-    "engineering_department_director"
-  ]);
-  const allowed = new Set<RoleKey>();
-  if (actorRoles.includes("super_admin")) {
-    for (const position of directory.positions) allowed.add(position.key);
-  } else if (actorRoles.includes("chairman") || actorRoles.includes("general_manager")) {
-    for (const position of directory.positions) {
-      if (!excluded.has(position.key)) allowed.add(position.key);
-    }
-  } else {
-    for (const actorRole of actorRoles) {
-      for (const role of subordinateRoles[actorRole] ?? []) allowed.add(role);
-    }
-  }
-  return directory.positions
-    .filter((position) => allowed.has(position.key) && !excluded.has(position.key))
-    .map((position) => ({ label: position.name, value: position.key }));
-});
 const filterDepartmentOptions = computed(() =>
   flatDepartments.value.map((department) => ({ label: department.path, value: department.id }))
-);
-const dialogDepartmentOptions = computed(() =>
-  buildDepartmentParentOptions(directory.departments, editingDepartment.value?.id)
 );
 const filteredUsers = computed(() => filterOrganizationUsers(directory.users, filters));
 const summaryItems = computed<BusinessStatusSummaryItem[]>(() => [
@@ -634,33 +319,6 @@ const integrityIssueRows = computed(() =>
     ? buildPermissionIntegrityIssueRows(permissionIntegrity.value.issues, directory)
     : []
 );
-const projectSuperAdminRemediationIssues = computed(
-  () =>
-    new Map<string, PermissionIntegrityIssue>(
-      (permissionIntegrity.value?.issues ?? [])
-        .filter(isProjectSuperAdminRemediationIssue)
-        .map((issue) => [permissionIntegrityIssueKey(issue), issue])
-    )
-);
-const dialogTitle = computed(() => {
-  if (dialogAction.value === "create_department") return "新建部门";
-  if (dialogAction.value === "update_department") return "编辑部门";
-  return "编辑人员";
-});
-const dialogConsequence = computed(() =>
-  dialogAction.value
-    ? organizationActionConsequence(
-        dialogAction.value,
-        dialogAction.value === "update_user" ? userForm.isActive : departmentForm.isActive
-      )
-    : ""
-);
-const dialogConfirmButton = computed(() => ({
-  content: "确认保存",
-  loading: saving.value,
-  disabled: saving.value
-}));
-const dialogCancelButton = computed(() => ({ content: "取消", disabled: saving.value }));
 
 onMounted(() => {
   void refreshPage();
@@ -672,11 +330,8 @@ async function loadDirectory() {
     const result = await fetchOrganizationDirectory();
     Object.assign(directory, result);
     directoryMessage.value = "";
-    return true;
   } catch (error) {
-    directoryMessageTone.value = "error";
     directoryMessage.value = error instanceof Error ? error.message : "读取组织目录失败，请稍后重试。";
-    return false;
   } finally {
     directoryLoading.value = false;
   }
@@ -686,295 +341,27 @@ async function loadPermissionIntegrity() {
   if (!isTechnicalAdmin.value) {
     permissionIntegrity.value = null;
     integrityMessage.value = "";
-    return true;
+    return;
   }
   integrityLoading.value = true;
   try {
     permissionIntegrity.value = await fetchPermissionIntegrity();
     integrityMessage.value = "";
-    return true;
   } catch (error) {
     integrityMessage.value =
       error instanceof Error ? error.message : "读取权限完整性预检失败，请稍后重试。";
-    return false;
   } finally {
     integrityLoading.value = false;
   }
 }
 
 async function refreshPage() {
-  if (
-    refreshing.value ||
-    roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value ||
-    batchRoleRemovalDrawerVisible.value ||
-    userCreationDrawerVisible.value
-  ) return;
+  if (refreshing.value) return;
   refreshing.value = true;
   try {
     await Promise.all([loadDirectory(), loadPermissionIntegrity()]);
   } finally {
     refreshing.value = false;
-  }
-}
-
-function resetDialogSecrets() {
-  confirmationPassword.value = "";
-}
-
-function openCreateDepartment() {
-  editingDepartment.value = null;
-  editingUser.value = null;
-  Object.assign(departmentForm, { name: "", parentId: null, isActive: true });
-  dialogAction.value = "create_department";
-  dialogMessage.value = "";
-  resetDialogSecrets();
-  dialogVisible.value = true;
-}
-
-function openEditDepartment(department: FlatOrganizationDepartment) {
-  editingDepartment.value = department;
-  editingUser.value = null;
-  Object.assign(departmentForm, {
-    name: department.name,
-    parentId: department.parentId,
-    isActive: department.isActive
-  });
-  dialogAction.value = "update_department";
-  dialogMessage.value = "";
-  resetDialogSecrets();
-  dialogVisible.value = true;
-}
-
-function openEditUser(user: OrganizationDirectoryUser) {
-  editingDepartment.value = null;
-  editingUser.value = user;
-  Object.assign(userForm, { departmentId: user.departmentId, isActive: user.status === "active" });
-  dialogAction.value = "update_user";
-  dialogMessage.value = "";
-  resetDialogSecrets();
-  dialogVisible.value = true;
-}
-
-function openRoleDrawer(user: OrganizationDirectoryUser) {
-  if (
-    saving.value ||
-    refreshing.value ||
-    roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value ||
-    batchRoleRemovalDrawerVisible.value ||
-    userCreationDrawerVisible.value
-  ) return;
-  roleDrawerUser.value = user;
-  roleDrawerRemediationTarget.value = null;
-  roleDrawerVisible.value = true;
-}
-
-function isProjectSuperAdminRemediationRow(issueKey: string) {
-  return projectSuperAdminRemediationIssues.value.has(issueKey);
-}
-
-function openProjectSuperAdminRemediation(issueKey: string) {
-  if (
-    saving.value ||
-    refreshing.value ||
-    roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value ||
-    batchRoleRemovalDrawerVisible.value ||
-    userCreationDrawerVisible.value
-  ) return;
-  const issue = projectSuperAdminRemediationIssues.value.get(issueKey);
-  if (!issue?.userId) return;
-  const user = directory.users.find((item) => item.id === issue.userId);
-  if (!user) {
-    directoryMessageTone.value = "error";
-    directoryMessage.value = "未在组织目录中找到对应人员，不能清理该项目超级管理员异常。";
-    return;
-  }
-  const remediationTarget = buildProjectSuperAdminRemediationTarget(
-    issue,
-    user,
-    directory.positions
-  );
-  if (!remediationTarget) {
-    directoryMessageTone.value = "error";
-    directoryMessage.value = "该异常记录不满足安全清理条件，请刷新后重试。";
-    return;
-  }
-  roleDrawerUser.value = user;
-  roleDrawerRemediationTarget.value = remediationTarget;
-  roleDrawerVisible.value = true;
-}
-
-function closeRoleDrawer() {
-  if (roleDrawerBusy.value) return;
-  roleDrawerVisible.value = false;
-  roleDrawerUser.value = null;
-  roleDrawerRemediationTarget.value = null;
-}
-
-async function handleRoleRemovalApplied() {
-  roleDrawerVisible.value = false;
-  roleDrawerUser.value = null;
-  roleDrawerRemediationTarget.value = null;
-  refreshing.value = true;
-  try {
-    const [directoryReloaded, integrityReloaded] = await Promise.all([
-      loadDirectory(),
-      loadPermissionIntegrity()
-    ]);
-    const fullyReloaded = directoryReloaded && integrityReloaded;
-    directoryMessageTone.value = fullyReloaded ? "success" : "error";
-    directoryMessage.value = fullyReloaded
-      ? "岗位已撤销，组织目录和岗位数据预检已刷新。"
-      : "岗位已撤销，但部分页面数据刷新失败，请手动刷新。";
-  } finally {
-    refreshing.value = false;
-  }
-}
-
-function openRoleAdditionDrawer(user: OrganizationDirectoryUser) {
-  if (
-    saving.value ||
-    refreshing.value ||
-    roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value ||
-    batchRoleRemovalDrawerVisible.value ||
-    userCreationDrawerVisible.value
-  ) return;
-  if (user.status !== "active") {
-    directoryMessageTone.value = "error";
-    directoryMessage.value = "人员已停用，不能新增岗位。";
-    return;
-  }
-  roleAdditionDrawerUser.value = user;
-  roleAdditionDrawerVisible.value = true;
-}
-
-function closeRoleAdditionDrawer() {
-  if (roleAdditionDrawerBusy.value) return;
-  roleAdditionDrawerVisible.value = false;
-  roleAdditionDrawerUser.value = null;
-}
-
-async function handleRoleAdditionApplied() {
-  roleAdditionDrawerVisible.value = false;
-  roleAdditionDrawerUser.value = null;
-  refreshing.value = true;
-  try {
-    const [directoryReloaded, integrityReloaded] = await Promise.all([
-      loadDirectory(),
-      loadPermissionIntegrity()
-    ]);
-    const fullyReloaded = directoryReloaded && integrityReloaded;
-    directoryMessageTone.value = fullyReloaded ? "success" : "error";
-    directoryMessage.value = fullyReloaded
-      ? "岗位已新增，组织目录和岗位数据预检已刷新。"
-      : "岗位已新增，但部分页面数据刷新失败，请手动刷新。";
-  } finally {
-    refreshing.value = false;
-  }
-}
-
-function openBatchRoleRemovalDrawer() {
-  if (
-    saving.value ||
-    refreshing.value ||
-    roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value ||
-    batchRoleRemovalDrawerVisible.value ||
-    userCreationDrawerVisible.value
-  ) return;
-  batchRoleRemovalDrawerVisible.value = true;
-}
-
-function closeBatchRoleRemovalDrawer() {
-  if (batchRoleRemovalDrawerBusy.value) return;
-  batchRoleRemovalDrawerVisible.value = false;
-}
-
-function openUserCreationDrawer() {
-  if (
-    saving.value ||
-    refreshing.value ||
-    roleDrawerVisible.value ||
-    roleAdditionDrawerVisible.value ||
-    batchRoleRemovalDrawerVisible.value ||
-    userCreationDrawerVisible.value
-  ) return;
-  userCreationDrawerVisible.value = true;
-}
-
-function closeUserCreationDrawer() {
-  if (userCreationDrawerBusy.value) return;
-  userCreationDrawerVisible.value = false;
-}
-
-async function handleUserCreated() {
-  userCreationDrawerVisible.value = false;
-  refreshing.value = true;
-  try {
-    const reloaded = await loadDirectory();
-    directoryMessageTone.value = reloaded ? "success" : "error";
-    directoryMessage.value = reloaded
-      ? "人员已创建但尚未授岗，组织目录已刷新。请使用“新增岗位”继续办理。"
-      : "人员已创建但目录刷新失败，请手动刷新后再授岗。";
-  } finally {
-    refreshing.value = false;
-  }
-}
-
-function closeDialog() {
-  if (saving.value) return;
-  resetDialogSecrets();
-  dialogMessage.value = "";
-  dialogVisible.value = false;
-  dialogAction.value = null;
-  editingDepartment.value = null;
-  editingUser.value = null;
-}
-
-async function submitDialog() {
-  if (saving.value || !dialogAction.value) return;
-  saving.value = true;
-  dialogMessage.value = "";
-  try {
-    if (dialogAction.value === "create_department") {
-      await createOrganizationDepartment(
-        buildCreateDepartmentPayload({ ...departmentForm, confirmationPassword: confirmationPassword.value })
-      );
-    } else if (dialogAction.value === "update_department") {
-      if (!editingDepartment.value) throw new Error("未找到待编辑部门，请关闭后重试。");
-      await updateOrganizationDepartment(
-        editingDepartment.value.id,
-        buildDepartmentPatch(editingDepartment.value, departmentForm, confirmationPassword.value)
-      );
-    } else {
-      if (!editingUser.value) throw new Error("未找到待编辑人员，请关闭后重试。");
-      await updateOrganizationUser(
-        editingUser.value.id,
-        buildUserPatch(
-          {
-            departmentId: editingUser.value.departmentId,
-            isActive: editingUser.value.status === "active"
-          },
-          userForm,
-          confirmationPassword.value
-        )
-      );
-    }
-    const reloaded = await loadDirectory();
-    directoryMessageTone.value = reloaded ? "success" : "error";
-    directoryMessage.value = reloaded
-      ? "组织信息已保存，并已重新读取最新目录。"
-      : "组织信息已保存，但目录刷新失败，请手动刷新。";
-    saving.value = false;
-    closeDialog();
-  } catch (error) {
-    dialogMessage.value = error instanceof Error ? error.message : "保存组织信息失败，请稍后重试。";
-  } finally {
-    resetDialogSecrets();
-    saving.value = false;
   }
 }
 </script>
@@ -992,7 +379,6 @@ async function submitDialog() {
 
 .page-head,
 .page-actions,
-.row-actions,
 .filter-bar,
 .position-tags,
 .readiness-tags {
@@ -1005,8 +391,7 @@ async function submitDialog() {
   justify-content: space-between;
 }
 
-.page-actions,
-.row-actions {
+.page-actions {
   flex-wrap: wrap;
 }
 
@@ -1040,12 +425,6 @@ async function submitDialog() {
 
 .position-tags {
   flex-wrap: wrap;
-}
-
-.dialog-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--jg-space-md);
 }
 
 .integrity-card-content,
@@ -1084,5 +463,4 @@ async function submitDialog() {
     grid-template-columns: 1fr;
   }
 }
-
 </style>

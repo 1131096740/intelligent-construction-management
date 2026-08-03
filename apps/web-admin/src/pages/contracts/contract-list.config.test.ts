@@ -48,12 +48,15 @@ describe("contract ledger page configuration", () => {
     ]);
   });
 
-  it("keeps ended draft copy support in the all-contract root view", () => {
+  it("keeps ended contract history readable without exposing the abandoned-draft copy mutation", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("row.copyAvailable");
-    expect(source).toContain("copyEndedContract(row)");
     expect(source).toContain("ended: \"all\"");
-    expect(source).toContain("copyAbandonedContractDraft");
+    expect(source).toContain("fetchContractWorkbenchLedger(");
+    expect(source).toContain("openDetail(row.id)");
+    expect(source).not.toContain("row.copyAvailable");
+    expect(source).not.toContain("copyEndedContract");
+    expect(source).not.toContain("copyAbandonedContractDraft");
+    expect(source).not.toContain("复制为新草稿");
   });
 
   it("defaults an unqualified workbench visit to all visible contract roots", () => {
