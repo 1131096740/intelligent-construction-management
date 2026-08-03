@@ -1357,6 +1357,7 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
         effectiveAt: now,
         settlementMode: "direct_payment",
         settlementModeSource: "backfill",
+        settlementModeConfirmedByUserId: coreFlowSeedData.users.contractStaff.id,
         settlementModeConfirmedAt: now
       }
     }),
