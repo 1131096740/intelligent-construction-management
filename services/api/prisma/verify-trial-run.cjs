@@ -1600,10 +1600,20 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
     ["chairman", tokens.chairman]
   ]) {
     const isFinalPaymentApproval = role === "chairman";
+    const detail = await readJson(
+      `/payments/${payment.id}`,
+      token,
+      `${ROLE_LABELS[role]} 读取 UAT 付款审批坐标`
+    );
+    assert(
+      detail.reviewApprovalContext,
+      `${ROLE_LABELS[role]} 未获得 UAT 付款审批坐标`
+    );
     payment = await postJson(
       `/payments/${payment.id}/approval`,
       {
         decision: "approve",
+        ...detail.reviewApprovalContext,
         ...(isFinalPaymentApproval ? { approvedAmountCents: "1000000" } : {}),
         comment: "P0-5B UAT 脱敏审批通过"
       },
