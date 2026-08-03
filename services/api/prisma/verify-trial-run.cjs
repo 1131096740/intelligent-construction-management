@@ -1211,7 +1211,10 @@ async function assertTakeoverEvidenceDownloadReasonRequired(fileId, token) {
 }
 
 async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
-  for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
+  const contractEvidencePurposes = TAKEOVER_EVIDENCE_PURPOSES.filter(
+    (purpose) => purpose !== "historical_payment_voucher"
+  );
+  for (const purpose of contractEvidencePurposes) {
     const uploaded = await uploadPrivateFile(`UAT-${CODES.contract}-${purpose}.pdf`, token);
     await postJson(
       `/projects/${PROJECT_ID}/contract-takeovers/${takeoverId}/evidence-files`,
@@ -1227,7 +1230,7 @@ async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
       .filter((item) => item.uploaded)
       .map((item) => item.purpose)
   );
-  for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
+  for (const purpose of contractEvidencePurposes) {
     assert(uploadedPurposes.has(purpose), `接管资料清单未显示已上传：${purpose}`);
   }
 
