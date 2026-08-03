@@ -1418,6 +1418,10 @@ async function verifyPaymentBlockedBeforeConfirmation(contractVersionId, token) 
     failed.status >= 400,
     `未确认接管付款拦截 HTTP 状态异常：${failed.status}`
   );
+  assert(
+    failed.body.includes("历史合同接管尚未主管确认"),
+    `未确认接管付款未命中接管门禁：${failed.body}`
+  );
 }
 
 async function createAndConfirmSettlement(contractVersionId, tokens) {
