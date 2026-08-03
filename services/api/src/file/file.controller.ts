@@ -38,7 +38,7 @@ export class FileController {
   upload(
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: { idempotencyKey?: string } = {}
   ) {
     if (!file) {
       throw new Error("请选择要上传的资料文件");
@@ -50,7 +50,9 @@ export class FileController {
       sizeBytes: file.size,
       uploadedByUserId: user.id,
       buffer: file.buffer,
-      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+      ...(body.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: body.idempotencyKey })
     });
   }
 

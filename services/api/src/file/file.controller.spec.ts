@@ -291,7 +291,7 @@ describe("FileController authorization wiring", () => {
         buffer: Buffer.from("private-file")
       },
       { id: "user-1", name: "张三", phone: "13800000000" },
-      "a43073f9-9731-4d71-9498-b9727344dbd4"
+      { idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4" }
     );
 
     expect(files.uploadPrivateFile).toHaveBeenCalledWith({
