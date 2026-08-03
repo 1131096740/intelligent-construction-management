@@ -1917,7 +1917,7 @@ function userFacingErrorMessage(error) {
   }
 
   const firstNonEmptyLine = raw.split("\n").find((line) => line.trim());
-  if (firstNonEmptyLine) return firstNonEmptyLine;
+  if (firstNonEmptyLine) return raw;
   return `验证器抛出了空错误对象（${error?.name || Object.prototype.toString.call(error)}，code=${error?.code || "-"}，meta=${JSON.stringify(error?.meta || {})}）`;
 }
 
