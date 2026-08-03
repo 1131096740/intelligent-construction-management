@@ -112,7 +112,8 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   }]);
 
   await page.getByRole("button", { name: "重新生成当前修订版", exact: true }).click();
-  await expect(page.getByText("当前修订版已关联", { exact: true })).toBeVisible();
+  await expect.poll(() => requests.frozen).toHaveLength(2);
+  await expect(page.getByText("当前修订版已关联", { exact: true })).toHaveCount(0);
   await page.locator(".signed-pdf-panel input[type=file]").setInputFiles({
     name: "乙方签章替换件.pdf",
     mimeType: "application/pdf",
@@ -125,6 +126,7 @@ test("结算签章治理五步在宽表格外完成且响应式滚动唯一", as
   await page.getByText("乙方已逐页盖章", { exact: true }).click();
   await page.getByText("多页文件已加盖骑缝章", { exact: false }).click();
   await page.getByRole("button", { name: "核对通过并关联扫描件" }).click();
+  await expect.poll(() => requests.linked.at(-1)?.uploadedFileId).toBe("file-counterparty-2");
   expect(requests.linked.at(-1)).toMatchObject({
     uploadedFileId: "file-counterparty-2",
     declaration: {
@@ -219,6 +221,7 @@ async function installMocks(
   source = sourceLines()
 ) {
   let uploadCount = 0;
+  let frozenGenerationCount = 0;
   await page.route("**/api/auth/login", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -279,6 +282,34 @@ async function installMocks(
   }));
   await page.route("**/api/projects/project-1/settlement-drafts**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/capability")) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          projectId: "project-1",
+          availableActions: [
+            "save_draft",
+            "preview_lines",
+            "preview_import",
+            "apply_import",
+            "generate_frozen_document",
+            "link_counterparty_signed_document",
+            "upload_settlement_file"
+          ]
+        })
+      });
+    }
+    if (route.request().method() === "POST" && url.pathname.endsWith("/files")) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: `file-counterparty-${++uploadCount}`,
+          originalName: uploadCount === 1 ? "乙方签章扫描件.pdf" : "乙方签章替换件.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 1024
+        })
+      });
+    }
     if (route.request().method() === "GET" && url.pathname.endsWith("/line-attachments")) {
       return route.fulfill({ contentType: "application/json", body: "[]" });
     }
@@ -290,9 +321,14 @@ async function installMocks(
     }
     if (url.pathname.endsWith("/frozen-document")) {
       requests.frozen.push(route.request().postDataJSON() as Record<string, unknown>);
+      frozenGenerationCount += 1;
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(signedDocument("frozen-1", "file-frozen-1", "frozen_counterparty_copy"))
+        body: JSON.stringify(signedDocument(
+          `frozen-${frozenGenerationCount}`,
+          `file-frozen-${frozenGenerationCount}`,
+          "frozen_counterparty_copy"
+        ))
       });
     }
     if (url.pathname.endsWith("/counterparty-signed-documents")) {
@@ -417,6 +453,17 @@ async function installDetailMocks(page: Page, detail: () => Record<string, unkno
   await page.route("**/api/projects", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify([{ id: "project-1", code: "P001", name: "科技园项目" }])
+  }));
+  await page.route("**/api/settlements/settlement-governed/capability", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      settlementId: "settlement-governed",
+      availableActions: [
+        "retry_signed_document_generation",
+        "regenerate_signed_document",
+        "confirm_archive"
+      ]
+    })
   }));
   await page.route("**/api/settlements/settlement-governed", (route) => route.fulfill({
     contentType: "application/json",

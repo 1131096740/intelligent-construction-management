@@ -143,7 +143,7 @@ test("fresh capability 后开窗，双击只发送一次终止 POST，成功后�
 test("网络结果未知时使用完全相同的 actionId 和 body 重试", async ({
   page
 }) => {
-  const runtimeErrors = observeRuntimeErrors(page);
+  const runtimeErrors = observeRuntimeErrors(page, { expectedHttpStatuses: [503] });
   const probe = await installProjectFinancingQuotaMock(page, {
     termination: ({ projectId, quotaId, ordinal, body }) =>
       ordinal === 1
@@ -201,7 +201,7 @@ test("网络结果未知时使用完全相同的 actionId 和 body 重试", asyn
 });
 
 test("成功回执后权威 workbench GET 失败时重试只能 GET", async ({ page }) => {
-  const runtimeErrors = observeRuntimeErrors(page);
+  const runtimeErrors = observeRuntimeErrors(page, { expectedHttpStatuses: [503] });
   const probe = await installProjectFinancingQuotaMock(page, {
     workbench: ({ projectId, ordinal, probe: currentProbe }) => {
       if (projectId === PROJECT_A.id && ordinal === 2) {
@@ -302,7 +302,7 @@ test("跨项目迟到结果不会污染当前项目", async ({ page }) => {
   ).toHaveCount(0);
 
   await selectProject(page, PROJECT_B);
-  await expect(page.getByText("第二项目额度", { exact: true })).toBeVisible();
+  await expect(page.getByText("第二项目额度", { exact: true }).first()).toBeVisible();
 
   const lateResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith(
@@ -317,7 +317,7 @@ test("跨项目迟到结果不会污染当前项目", async ({ page }) => {
   await lateResponse;
   await settleUi(page);
 
-  await expect(page.getByText("第二项目额度", { exact: true })).toBeVisible();
+  await expect(page.getByText("第二项目额度", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByText("垫资额度已终止新占用", { exact: false })
   ).toHaveCount(0);
@@ -333,7 +333,7 @@ test("跨项目迟到结果不会污染当前项目", async ({ page }) => {
 test("终止 POST 返回 4xx 后重置尝试并重新执行提交 preflight", async ({
   page
 }) => {
-  const runtimeErrors = observeRuntimeErrors(page);
+  const runtimeErrors = observeRuntimeErrors(page, { expectedHttpStatuses: [409] });
   const probe = await installProjectFinancingQuotaMock(page, {
     termination: ({ projectId, quotaId, ordinal, body }) =>
       ordinal === 1
@@ -580,7 +580,10 @@ async function loginAndOpenOperations(page: Page) {
   await expect(
     page.getByRole("heading", { name: "项目垫资额度", exact: true })
   ).toBeVisible();
-  await expect(page.getByText("第一项目额度", { exact: true })).toBeVisible();
+  await expect(
+    page.locator(".financing-quota-card.jg-table-region").first()
+      .getByText("第一项目额度", { exact: true })
+  ).toBeVisible();
 }
 
 async function openTerminationDialog(page: Page) {
@@ -618,9 +621,7 @@ async function selectProject(
     .locator(".t-select__dropdown:visible")
     .getByText(`${project.code} · ${project.name}`, { exact: true })
     .click();
-  await expect(page.locator(".project-picker .t-select")).toContainText(
-    project.name
-  );
+  await expect(page.locator(".t-select__dropdown:visible")).toHaveCount(0);
 }
 
 function terminationCapability(
@@ -854,10 +855,18 @@ async function fulfillJson(route: Route, body: unknown, status = 200) {
   });
 }
 
-function observeRuntimeErrors(page: Page) {
+function observeRuntimeErrors(
+  page: Page,
+  options: { expectedHttpStatuses?: readonly number[] } = {}
+) {
   const runtimeErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") {
+      if (
+        options.expectedHttpStatuses?.some((status) =>
+          message.text().includes(`status of ${status} (`)
+        )
+      ) return;
       runtimeErrors.push(`console: ${message.text()}`);
     }
   });

@@ -210,6 +210,13 @@ test("captures the contract P1.2 ledger and detail states", async ({ page }) => 
   await page.route("**/api/contracts/HT-UI-LOAD", (route) => {
     pendingLoadingRoute = route;
   });
+  await page.route("**/api/files/file-ui-final/download-ticket-capability", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      availableActions: ["create_private_file_download_ticket"],
+      action: { key: "create_private_file_download_ticket", enabled: true }
+    })
+  }));
   await page.route("**/api/files/file-ui-final/download-ticket", async (route) => {
     previewTicketBodies.push(route.request().postDataJSON());
     await route.fulfill({
