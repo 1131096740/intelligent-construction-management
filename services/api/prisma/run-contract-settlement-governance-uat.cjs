@@ -357,7 +357,19 @@ async function prepareAndSubmitContract(fixture, tokens) {
   const [firstRequired, counterpartyRequired] = fixture.config.auth;
   await setAuthorization(fixture, "first_party", firstRequired, tokens);
   await setAuthorization(fixture, "counterparty", counterpartyRequired, tokens);
-  const current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  let current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  await request(
+    "POST",
+    `/contract-workbench/${fixture.version.id}/settlement-mode/confirm`,
+    tokens.contractDirector,
+    {
+      expectedRevision: current.draftRevision,
+      settlementMode: fixture.config.type === "generic_contract"
+        ? "direct_payment"
+        : "settlement_required"
+    }
+  );
+  current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   await prisma.contractGeneratedDocument.create({
     data: {
       contractVersionId: fixture.version.id,
