@@ -1552,6 +1552,16 @@ async function assertDuplicateSettlementPeriodBlocked(
       String(failed.body ?? "").includes("已存在结算单"),
       `同期间重复结算未返回中文业务提示：${failed.body}`
     );
+    await postJson(
+      `/projects/${PROJECT_ID}/settlement-drafts/${duplicateDraft.id}/abandonment`,
+      {
+        expectedRevision: duplicateDraft.revision,
+        action: "abandon_application",
+        reason: "重复期间校验完成，正式作废验证草稿"
+      },
+      token,
+      `作废重复期间校验草稿 ${periodLabel}`
+    );
   }
 }
 
