@@ -4,7 +4,7 @@
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；阶段 B 本地门禁实现已完成，待远端 CI 与生产等价 CSP 验证后进入阶段 C
+> 状态：执行中；阶段 B 已完成，下一步进入阶段 C 能力矩阵风险分级
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -339,7 +339,7 @@
 
 在继续业务补漏前先建立可重复的验证和部署基础：
 
-> 2026-08-03 执行记录：已在唯一候选工作树完成阶段 B 的本地实现和验证。Web 单测与 Playwright E2E 已分离，API verifier 的构建/Prisma 前置已显式化；新增 PR/main CI 和 production deploy 的 high 漏洞门；部署统一为单一 `TARGET_SHA`，新增独立 liveness/readiness、`X-Powered-By` 移除和 CSP Report-Only 配置；公安备案页脚、图标与结构测试已纳入候选并完成桌面/移动生产构建浏览器验证。全量测试、typecheck、lint、build、Prisma、`check:ui`、业务错误、运维自测和普通能力矩阵均退出 0；路由清单为 399、未分类为 0，310 个历史 blocker 留待阶段 C 分级。依赖 high 从 5 个降为 0，剩余 4 个 moderate 已完成当前代码可达性分诊。由于本候选尚未推送，远端 GitHub CI 尚无同 SHA 回执；CSP 也尚未在生产等价 Nginx 中观察，因此阶段 B 尚未满足全部退出条件，不得标记 Go-Live Ready。完整证据见 `docs/progress/2026-08-03-five-package-stage-b-release-gates.md`。
+> 2026-08-03 执行记录：已在唯一候选工作树完成阶段 B。Web 单测与 Playwright E2E 已分离，API verifier 的构建/Prisma 前置已显式化；新增 PR/main CI 和 production deploy 的 high 漏洞门；部署统一为单一 `TARGET_SHA`，新增独立 liveness/readiness、`X-Powered-By` 移除和 CSP Report-Only 配置；公安备案页脚、图标与结构测试已纳入候选。全量测试、typecheck、lint、build、Prisma、`check:ui`、业务错误、运维自测和普通能力矩阵均退出 0；路由清单为 399、未分类为 0，310 个历史 blocker 留待阶段 C 分级。依赖 high 从 5 个降为 0，剩余 4 个 moderate 已完成当前代码可达性分诊。候选分支已推送并创建 PR #1；实现 SHA `059f4fa7…` 的 GitHub Actions run `30782107286` 全绿。固定 Nginx 1.28.0 Alpine 只读挂载同一 SHA 的 production build，CSP Report-Only 响应头、无强制 CSP、静态资源、桌面/移动渲染、交互、控制台和 HTTP 错误门全部通过并清理临时环境。阶段 B 完成只表示发布门禁机器可用，不表示 Go-Live Ready；下一步必须执行阶段 C。完整证据见 `docs/progress/2026-08-03-five-package-stage-b-release-gates.md`。
 
 1. 在干净候选工作树按锁文件完成 frozen dependency install，记录 Node、pnpm、锁文件和缓存状态。
 2. 修复 Web 单测误收集 Playwright E2E 文件的问题，使单测和 E2E 使用独立配置与命令。

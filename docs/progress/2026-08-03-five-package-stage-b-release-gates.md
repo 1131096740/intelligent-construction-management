@@ -6,7 +6,7 @@
 
 阶段 A 基线：`de025e9a1e0a1f60f3973b7973b6578ef94635be`
 
-状态：本地实现与验证完成；远端同 SHA CI 和生产等价 CSP 观察待完成；非 Go-Live Ready
+状态：阶段 B 完成；远端同 SHA CI 与生产等价 CSP 验证通过；非 Go-Live Ready
 
 ## 1. 本阶段边界
 
@@ -72,10 +72,25 @@
 
 清单结果：399 条 Nest 路由、0 条未分类路由；整站能力矩阵仍为 blocked，包含 310 个历史 blocker。新增 readiness 没有引入新的业务 blocker；310 项必须在阶段 C 按 P0/P1/P2 可达性和共享根因分级，不能把普通检查退出 0 误写成发布 ready。
 
-## 4. 尚未满足的阶段 B 退出条件
+## 4. 远端 CI 回执
 
-1. 候选尚未 push，因此新 CI 还没有绑定本提交 SHA 的远端回执。
-2. CSP Report-Only 尚未在生产等价 Nginx、真实构建和浏览器链路中观察。
-3. 当前提交完成后才形成新的精确候选 SHA；所有后续动态和发布证据必须绑定该 SHA，不得复用阶段 A 或旧工作树回执。
+- 候选分支：`origin/codex/five-package-go-live`。
+- PR：[GitHub PR #1](https://github.com/1131096740/intelligent-construction-management/pull/1)，base `5234fd37bc5c320922f73323af77b20317fcf5f7`，实现 head `059f4fa70fe4cd5ef7ec571dc6a2beaabee51c22`，状态 open/mergeable。
+- CI：[Actions run 30782107286](https://github.com/1131096740/intelligent-construction-management/actions/runs/30782107286)，事件 `pull_request`，结论 `success`，Release gates job 用时 9 分 20 秒。
+- job 的 frozen install、Prisma、生产依赖 high audit、typecheck、lint、业务错误/运维安全、全量 test、API/Web build、Web UI 治理和六份能力检查全部 success。
+- GitHub 给 checkout/setup-node v4 的 action runtime 生成 Node 20 弃用并强制 Node 24 的非阻断 annotation；workflow 内应用验证仍明确使用 Node 20 并成功。该 annotation 登记为 P2 workflow 维护项，不影响本次门禁结论。
 
-在以上两项外部门完成前，阶段 B 保持“本地实现完成、退出条件未全部满足”，不得进入生产发布，也不得标记 Go-Live Ready。下一开发阶段是阶段 C：对 310 项历史 blocker 进行 P0/P1/P2 可达性分级，形成唯一 P0 修复队列和 P1/P2 处置表。
+## 5. 生产等价 CSP 回执
+
+- 精确实现 SHA `059f4fa7…` 重新生成 Web production build。
+- 使用固定官方镜像 `nginx:1.28.0-alpine`（digest `sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284`），只读挂载 production build 与临时 Nginx 配置，只绑定 `127.0.0.1:8180`。
+- Nginx `-t` 通过；`/login` 与 `/images/gongan-beian.png` 均返回 200。
+- 响应包含 `Content-Security-Policy-Report-Only`、`X-Content-Type-Options: nosniff` 与 `X-Frame-Options: DENY`，明确不存在强制 `Content-Security-Policy`；浏览器请求无 4xx/5xx。
+- Browser 可用且未回退到独立 Playwright。桌面 `1280×720` 与移动 `390×844` 均确认标题 `login - 建工智管`、有意义的登录页 DOM、无框架错误层、公安备案链接唯一且可见、图标完成加载且自然宽度 36、页面/页脚无横向溢出；手机号输入交互可用；两视口控制台均 0 warning / 0 error。
+- 专用容器、临时配置目录、浏览器标签、视口覆盖和 8180 监听均已清理；固定 Nginx 镜像保留为本机验证缓存，不参与项目或生产运行。
+
+## 6. 阶段结论与下一步
+
+阶段 B 的实现、远端 CI 和生产等价 CSP 门均已完成，可以进入阶段 C。阶段 B 只证明门禁机器可重复运行，不证明 310 个历史 blocker 已关闭，也不授权合并、部署、迁移或生产业务写入。
+
+本回执提交只更新 `prd.md`、`PROGRESS.md` 和本报告；推送后 PR CI 必须对该文档提交形成新的成功检查。最终候选 SHA 和最终 CI run 以 PR 的 head/check 为权威外部回执，且在不再修改仓库的前提下重新执行 CSP 等价验证。下一开发阶段是阶段 C：对 310 项历史 blocker 进行 P0/P1/P2 可达性分级，形成唯一 P0 修复队列和 P1/P2 处置表。
