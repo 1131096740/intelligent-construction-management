@@ -99,6 +99,7 @@ export interface ExpenseClaimCreateOptions {
   canProxy: boolean;
   applicantUsers: Array<{ id: string; name: string }>;
   factWitnessUsers: Array<{ id: string; name: string }>;
+  availableActions: string[];
   incidentalExpenseCategories: Array<{
     key:
       | "temporary_service"
@@ -107,6 +108,18 @@ export interface ExpenseClaimCreateOptions {
       | "other_incidental";
     label: string;
   }>;
+}
+
+export interface ExpenseClaimActionCapabilityReadModel {
+  claimId: string;
+  availableActions: string[];
+  removableAttachmentIds: string[];
+}
+
+export interface ExpenseClaimRepaymentActionCapabilityReadModel {
+  claimId: string;
+  repaymentId: string;
+  availableActions: string[];
 }
 
 export interface CreateExpenseClaimPayload {
@@ -245,6 +258,111 @@ export async function fetchExpenseClaimDetail(claimId: string) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}`);
   await ensureOk(response);
   return response.json() as Promise<ExpenseClaimDetailReadModel>;
+}
+
+export async function fetchExpenseClaimActionCapability(claimId: string) {
+  const response = await apiFetch(
+    `/expense-claims/${encodeURIComponent(claimId)}/capability`
+  );
+  await ensureOk(response);
+  return response.json() as Promise<ExpenseClaimActionCapabilityReadModel>;
+}
+
+export async function fetchExpenseClaimRepaymentActionCapability(
+  claimId: string,
+  repaymentId: string
+) {
+  const response = await apiFetch(
+    `/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/capability`
+  );
+  await ensureOk(response);
+  return response.json() as Promise<ExpenseClaimRepaymentActionCapabilityReadModel>;
+}
+
+async function uploadExpenseClaimPrivateFile(
+  path: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  const response = await apiFetch(path, { method: "POST", body: form });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string }>;
+}
+
+export function uploadExpenseClaimDraftAttachmentFile(
+  claimId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadExpenseClaimPrivateFile(
+    `/expense-claims/${encodeURIComponent(claimId)}/draft-attachment-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadExpenseClaimAppendAttachmentFile(
+  claimId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadExpenseClaimPrivateFile(
+    `/expense-claims/${encodeURIComponent(claimId)}/append-attachment-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadExpenseClaimPaymentVoucherFile(
+  claimId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadExpenseClaimPrivateFile(
+    `/expense-claims/${encodeURIComponent(claimId)}/payment-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadExpenseClaimLoanDisbursementVoucherFile(
+  claimId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadExpenseClaimPrivateFile(
+    `/expense-claims/${encodeURIComponent(claimId)}/disbursement-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadExpenseClaimLoanRepaymentVoucherFile(
+  claimId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadExpenseClaimPrivateFile(
+    `/expense-claims/${encodeURIComponent(claimId)}/repayment-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
 }
 
 export async function adjustExpenseClaimPaymentSubject(claimId: string, body: { companyEntityId: string; reason: string }) {

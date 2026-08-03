@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `5a94d8072bdb5bbb966b0b32eb0f10ae9402dfbe5705aa05969ec89b53285b7a` |
-| webApiWrappers | blocked | `0bae163baf24b3adb29dbccf87676e56904c226493444ab3174ca628343e8d04` |
-| webPageActions | blocked | `b612e8a8ff7165d5a533810b034abedad268de8e4261a7b4b1e898343b6931f7` |
-| routeUsage | ready | `3c7cc8e312a93363708329abe4539650cdd4461de40410cfe75429b19cea49e8` |
+| nestRoutes | ready | `8570fca409b5307cd3e23d21f33377ae80847206590a0ce412126dd133dc2c76` |
+| webApiWrappers | blocked | `27a89762ed733a534642c851a49779f7800e85e341283093bd79be0738684e8d` |
+| webPageActions | blocked | `60350b8e6dfbddfc55d1e1a94b6fb0a57030acb330bda4b5587ef389e5ea422a` |
+| routeUsage | ready | `852e114a2c17970ac117f4b47959a6c3a9b885b5fcdce8deee0719eea4164c67` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 428 |
-| pageRouteCount | 321 |
+| routeCount | 435 |
+| pageRouteCount | 328 |
 | externalTakeoverRouteCount | 61 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 438 |
+| mainRequestBindingCount | 445 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 191 |
-| actionBindingCount | 221 |
-| acceptedActionBindingCount | 201 |
-| unresolvedActionBindingCount | 1 |
-| productionMutationConsumerPairCount | 281 |
-| coveredProductionMutationConsumerPairCount | 182 |
-| uncoveredProductionMutationConsumerPairCount | 99 |
-| blockerCount | 143 |
+| registeredActionCount | 209 |
+| actionBindingCount | 239 |
+| acceptedActionBindingCount | 220 |
+| unresolvedActionBindingCount | 0 |
+| productionMutationConsumerPairCount | 285 |
+| coveredProductionMutationConsumerPairCount | 201 |
+| uncoveredProductionMutationConsumerPairCount | 84 |
+| blockerCount | 127 |
 
 ## 路由矩阵
 
@@ -87,7 +87,9 @@
 | GET | /contracts/settlement-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementContractOptions | — | not_applicable | — |
 | GET | /contracts/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractWorkbenchLedger | — | not_applicable | — |
 | GET | /draft-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDraftRetentionPreview | — | not_applicable | — |
+| GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | — | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
+| GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | — | not_applicable | — |
@@ -277,20 +279,25 @@
 | POST | /contracts/:contractVersionId/signing/material-change | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange | contract.signing-material-change | covered | — |
 | POST | /contracts | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft<br>apps/web-admin/src/api/core-flow-read.api.ts#createContractDraft | contract-draft.create | covered | DUPLICATE_MUTATION_ROUTE<br>ORPHAN_WRAPPER |
 | POST | /draft-retention/controlled-entry | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /expense-claims/:claimId/approval | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/attachments/:attachmentId/removal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/attachments/append | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/attachments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#attachExpenseClaimAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/disbursements | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanDisbursement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/final-disbursement-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalDisbursementPdf | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/final-payment-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalPaymentPdf | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/payment-subject | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/payments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimPayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/repayments/:repaymentId/confirmation | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#confirmExpenseClaimLoanRepayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/repayments/:repaymentId/reversal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reverseExpenseClaimLoanRepayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /expense-claims/:claimId/append-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimAppendAttachmentFile | expense-claim.attachment.append-upload | covered | — |
+| POST | /expense-claims/:claimId/approval | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim | expense-claim.review | covered | — |
+| POST | /expense-claims/:claimId/attachments/:attachmentId/removal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment | expense-claim.attachment.remove | covered | — |
+| POST | /expense-claims/:claimId/attachments/append | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment | expense-claim.attachment.append | covered | — |
+| POST | /expense-claims/:claimId/attachments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#attachExpenseClaimAttachment | expense-claim.attachment.attach | covered | — |
+| POST | /expense-claims/:claimId/disbursement-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimLoanDisbursementVoucherFile | expense-claim.loan.disbursement-voucher.upload | covered | — |
+| POST | /expense-claims/:claimId/disbursements | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanDisbursement | expense-claim.loan.disbursement.record | covered | — |
+| POST | /expense-claims/:claimId/draft-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimDraftAttachmentFile | expense-claim.attachment.draft-upload | covered | — |
+| POST | /expense-claims/:claimId/final-disbursement-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalDisbursementPdf | expense-claim.loan.final-disbursement-pdf.generate | covered | — |
+| POST | /expense-claims/:claimId/final-payment-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalPaymentPdf | expense-claim.final-payment-pdf.generate | covered | — |
+| POST | /expense-claims/:claimId/payment-subject | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject | expense-claim.payment-subject.adjust | covered | — |
+| POST | /expense-claims/:claimId/payment-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimPaymentVoucherFile | expense-claim.payment-voucher.upload | covered | — |
+| POST | /expense-claims/:claimId/payments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimPayment | expense-claim.payment.record | covered | — |
+| POST | /expense-claims/:claimId/repayment-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimLoanRepaymentVoucherFile | expense-claim.loan.repayment-voucher.upload | covered | — |
+| POST | /expense-claims/:claimId/repayments/:repaymentId/confirmation | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#confirmExpenseClaimLoanRepayment | expense-claim.loan.repayment.confirm | covered | — |
+| POST | /expense-claims/:claimId/repayments/:repaymentId/reversal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reverseExpenseClaimLoanRepayment | expense-claim.loan.repayment.reverse | covered | — |
+| POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
+| POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
+| POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateCompanyContractWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | affiliate-company-contract.record<br>contract-archive.upload-file<br>contract-final.upload-file<br>payment-execution.record<br>project-expense.execution-local-status<br>project-financing-quota.request | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
@@ -557,26 +564,11 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#attachExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#confirmExpenseClaimLoanRepayment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim → apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue
-- apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalDisbursementPdf → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalPaymentPdf → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanDisbursement → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimPayment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#reverseExpenseClaimLoanRepayment → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
-- apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim → apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue
 - apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition → apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue
 - apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleRemoval → apps/web-admin/src/pages/organization/components/OrganizationRoleRemovalDrawer.vue
 - apps/web-admin/src/api/organization.api.ts#createOrganizationDepartment → apps/web-admin/src/pages/organization/OrganizationManagementPage.vue
@@ -622,4 +614,4 @@
 
 ### 未解决动作绑定
 
-- expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- 无

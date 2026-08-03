@@ -27,7 +27,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
+  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeProjectLoanEntry: tx.employeeProjectLoanEntry, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
@@ -43,9 +43,93 @@ describe("ExpenseClaimService", () => {
     tx.companyEntity.findMany.mockResolvedValue([{ id: "company-1", name: "建工智管" }]);
     tx.project.findMany.mockResolvedValue([{ id: "project-1", code: "JGXM-001", name: "科技园项目" }]);
     tx.user.findMany.mockResolvedValue([{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }]);
-    await expect(service.createOptions("user-a")).resolves.toEqual(expect.objectContaining({ companyEntities: [{ id: "company-1", name: "建工智管" }], projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }], canProxy: false, applicantUsers: [{ id: "user-a", name: "经办人" }], factWitnessUsers: [{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }] }));
+    await expect(service.createOptions("user-a")).resolves.toEqual(expect.objectContaining({ companyEntities: [{ id: "company-1", name: "建工智管" }], projects: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }], canProxy: false, applicantUsers: [{ id: "user-a", name: "经办人" }], factWitnessUsers: [{ id: "user-a", name: "经办人" }, { id: "user-b", name: "申请人" }], availableActions: ["create_expense_claim"] }));
     expect(visibility.visibleProjectIds).toHaveBeenCalledWith("user-a");
     expect(tx.project.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ["project-1"] }, isActive: true } }));
+  });
+
+  it("derives exact claim actions from the authorized server detail", async () => {
+    const { service } = createHarness();
+    jest.spyOn(service, "getMine").mockResolvedValue({
+      id: "claim-1",
+      handledByUserId: "handler-1",
+      status: "draft",
+      approval: null,
+      attachmentPermissions: { canAppendEvidence: false },
+      paymentSubjectPermissions: { canAdjust: false },
+      fundsPermissions: {
+        canRecordPayment: false,
+        canRecordReimbursementPayment: false,
+        canGenerateFinalPaymentPdf: false,
+        canGenerateLoanFinalDisbursementPdf: false,
+        canRecordLoanDisbursement: false,
+        canRecordLoanRepayment: false,
+        canConfirmLoanRepayment: false,
+        canReverseLoanRepayment: false
+      },
+      attachments: [
+        { id: "attachment-1", removedAt: null },
+        { id: "attachment-2", removedAt: new Date() }
+      ]
+    } as never);
+
+    await expect(
+      service.getActionCapability("claim-1", "handler-1")
+    ).resolves.toEqual({
+      claimId: "claim-1",
+      availableActions: [
+        "submit_expense_claim",
+        "attach_expense_claim_attachment",
+        "remove_expense_claim_attachment"
+      ],
+      removableAttachmentIds: ["attachment-1"]
+    });
+  });
+
+  it("publishes repayment actions only for the exact requested repayment", async () => {
+    const { service, tx } = createHarness();
+    jest.spyOn(service, "getMine").mockResolvedValue({
+      id: "claim-1",
+      fundsPermissions: {
+        canConfirmLoanRepayment: true,
+        canReverseLoanRepayment: true
+      },
+      loanAccount: { id: "account-1", balanceAmountCents: "500" },
+      loanRepayments: [
+        { id: "repayment-recorded", status: "recorded", amountCents: "300" },
+        { id: "repayment-confirmed", status: "confirmed", amountCents: "200" }
+      ]
+    } as never);
+    tx.employeeProjectLoanEntry.findFirst.mockResolvedValue({
+      id: "entry-1",
+      entryType: "repayment",
+      amountCents: 200n,
+      balanceDeltaCents: -200n,
+      sourceRepaymentId: "repayment-confirmed"
+    });
+
+    await expect(
+      service.getRepaymentActionCapability(
+        "claim-1",
+        "repayment-recorded",
+        "finance-director-1"
+      )
+    ).resolves.toEqual({
+      claimId: "claim-1",
+      repaymentId: "repayment-recorded",
+      availableActions: ["confirm_expense_claim_loan_repayment"]
+    });
+    await expect(
+      service.getRepaymentActionCapability(
+        "claim-1",
+        "repayment-confirmed",
+        "finance-director-1"
+      )
+    ).resolves.toEqual({
+      claimId: "claim-1",
+      repaymentId: "repayment-confirmed",
+      availableActions: ["reverse_expense_claim_loan_repayment"]
+    });
   });
   it("reads a new-domain claim detail only for its applicant or handler", async () => {
     const { service, tx } = createHarness();

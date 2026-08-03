@@ -1378,27 +1378,231 @@
       ]
     },
     {
-      "id": "expense-claim.submit-local-status",
-      "usage": "page_action",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "t-popconfirm",
-        "event": "confirm",
-        "handler": "submit"
-      },
+      "id": "expense-claim.create",
+      "usage": "background",
+      "routePaths": ["/费用与报销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createExpenseClaimWithCapability" },
       "semantic": "business_write",
-      "capability": {
-        "kind": "client_role_or_status",
-        "source": "detail.status === 'draft'"
-      },
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_expense_claim" },
       "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "name": "submitExpenseClaim"
-        }
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "createExpenseClaim" }
+      ]
+    },
+    {
+      "id": "expense-claim.submit",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitExpenseClaimWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_expense_claim" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "submitExpenseClaim" }
+      ]
+    },
+    {
+      "id": "expense-claim.review",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewExpenseClaimWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_expense_claim" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "reviewExpenseClaim" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.attach",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachExpenseClaimAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "attachExpenseClaimAttachment" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.append",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "appendExpenseClaimAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "append_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "appendExpenseClaimAttachment" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.remove",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "removeExpenseClaimAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "remove_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "removeExpenseClaimAttachment" }
+      ]
+    },
+    {
+      "id": "expense-claim.payment-subject.adjust",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "adjustExpenseClaimPaymentSubjectWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "adjust_expense_claim_payment_subject" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "adjustExpenseClaimPaymentSubject" }
+      ]
+    },
+    {
+      "id": "expense-claim.payment.record",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordExpenseClaimPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_payment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "recordExpenseClaimPayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.final-payment-pdf.generate",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateExpenseClaimFinalPaymentPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_expense_claim_final_payment_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "generateExpenseClaimFinalPaymentPdf" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.disbursement.record",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordExpenseClaimLoanDisbursementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_disbursement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "recordExpenseClaimLoanDisbursement" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.final-disbursement-pdf.generate",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_expense_claim_final_disbursement_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "generateExpenseClaimFinalDisbursementPdf" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment.record",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordExpenseClaimLoanRepaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "recordExpenseClaimLoanRepayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment.confirm",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmExpenseClaimLoanRepaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "confirmExpenseClaimLoanRepayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment.reverse",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reverseExpenseClaimLoanRepaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "reverse_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "reverseExpenseClaimLoanRepayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.draft-upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimDraftAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimDraftAttachmentFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.append-upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimAppendAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "append_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimAppendAttachmentFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.payment-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimPaymentVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_payment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimPaymentVoucherFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.disbursement-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_disbursement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimLoanDisbursementVoucherFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimLoanRepaymentVoucherFile" }
       ]
     },
     {
