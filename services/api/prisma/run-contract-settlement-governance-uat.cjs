@@ -428,9 +428,26 @@ function roleSequenceForType(type) {
 
 async function approveContract(fixture, tokens) {
   for (const role of roleSequenceForType(fixture.config.type)) {
+    const [version, instance] = await Promise.all([
+      prisma.contractVersion.findUnique({ where: { id: fixture.version.id } }),
+      prisma.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: fixture.version.id,
+          flowType: "contract.approve",
+          status: "in_progress"
+        },
+        orderBy: { createdAt: "desc" }
+      })
+    ]);
+    assert(version && instance, `${fixture.config.type} 审批坐标缺失`);
     await request("POST", `/contracts/${fixture.version.id}/approval`, tokens[role], {
       decision: "approve",
-      comment: `UAT ${role} 通过`
+      comment: `UAT ${role} 通过`,
+      expectedContractUpdatedAt: version.updatedAt.toISOString(),
+      expectedApprovalInstanceId: instance.id,
+      expectedNodeIndex: instance.currentNodeIndex,
+      expectedApprovalUpdatedAt: instance.updatedAt.toISOString()
     });
   }
   const approved = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
