@@ -399,6 +399,26 @@ async function runPsql(dockerCommand, databaseName, sql) {
   ], { timeoutMs: 60_000 });
 }
 
+async function capturePostgresLogs(dockerCommand) {
+  const result = await dockerCommand([
+    "logs",
+    dockerCommand.containerName
+  ]);
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? ""
+  };
+}
+
+function postgresLogDelta(before, after) {
+  const sliceDelta = (previous, current) =>
+    current.startsWith(previous) ? current.slice(previous.length) : current;
+  return [
+    sliceDelta(before.stdout, after.stdout),
+    sliceDelta(before.stderr, after.stderr)
+  ].join("\n");
+}
+
 async function verifyMigrationProof(dockerCommand, databaseName) {
   const proof = await runPsql(
     dockerCommand,
@@ -848,18 +868,38 @@ async function verifyPre115RetainedMigrations({
       dockerCommand,
       scenario.databaseName
     );
+    const postgresLogBefore = await capturePostgresLogs(dockerCommand);
     let migrationFailure;
     try {
       await runPrismaMigrate({ databaseUrl: scenarioUrl, runtimeEnv });
     } catch (error) {
       migrationFailure = error;
     }
+    const failedMigrationLog = await runPsql(
+      dockerCommand,
+      scenario.databaseName,
+      `
+        SELECT COALESCE("logs", '')
+        FROM "_prisma_migrations"
+        WHERE "migration_name" = '${REQUEST_MIGRATION}'
+        ORDER BY "started_at" DESC
+        LIMIT 1;
+      `
+    );
+    const postgresLogAfter = await capturePostgresLogs(dockerCommand);
+    const migrationFailureEvidence = [
+      migrationFailure instanceof Error ? migrationFailure.message : "",
+      failedMigrationLog.stdout,
+      failedMigrationLog.stderr,
+      postgresLogDelta(postgresLogBefore, postgresLogAfter)
+    ].join("\n");
     if (
       !migrationFailure ||
-      !String(migrationFailure.message).includes(scenario.expectedFailure)
+      !migrationFailureEvidence.includes(scenario.expectedFailure)
     ) {
       throw new Error(
-        `#115 ${scenario.kind} 场景未以预期错误停止迁移`
+        `#115 ${scenario.kind} 场景未以预期错误停止迁移；` +
+        `evidence=${migrationFailureEvidence.trim().slice(-2000)}`
       );
     }
     await verifyRequestMigrationRollback({
