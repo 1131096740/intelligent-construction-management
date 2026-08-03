@@ -473,6 +473,37 @@ test("core detail pages expose flow summaries, actions, files, and timelines", a
   await expect(page.getByRole("heading", { name: "审批与办理时间线" })).toBeVisible();
 });
 
+test("RC-06 mocked contract detail remains operable on the configured mobile project", async ({
+  browserName,
+  page
+}) => {
+  expect(browserName).toBe("webkit");
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await routeCoreDetailMocks(page);
+  await loginWithMockedAuth(page, ["contract_staff"]);
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await page.goto("/contracts/HT-E2E-001");
+
+  expect(await page.evaluate(() => ({
+    height: window.innerHeight,
+    width: window.innerWidth
+  }))).toEqual({ height: 844, width: 390 });
+  await expect(page).toHaveTitle(/建工智管/u);
+  await expect(page.locator("#main-content")).not.toBeEmpty();
+  await expect(page.getByRole("heading", { name: "E2E 钢材采购合同" })).toBeVisible();
+  await expect(page.locator(".business-detail-header")).toContainText("确认归档");
+  await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
+  await expect(page.getByText("当前账号在此单据暂无可办理动作。")).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test("settlement and payment detail failures do not show static samples", async ({ page }) => {
   const phone = process.env.E2E_LIMITED_PHONE;
   const password = process.env.E2E_LIMITED_PASSWORD;

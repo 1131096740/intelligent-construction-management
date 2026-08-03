@@ -8,6 +8,7 @@
   "include": [
     "e2e/**/*.ts",
     "playwright.config.ts",
+    "playwright.rc06.config.ts",
     "playwright.project-financing-quota-termination.config.ts"
   ]
 }

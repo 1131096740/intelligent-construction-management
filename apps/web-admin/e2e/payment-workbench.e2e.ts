@@ -630,7 +630,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
       body: JSON.stringify({ projectId: "project-1", availableActions: ["create_payment"] })
     })
   );
-  await page.route("**/api/payments", async (route) => {
+  await page.route(/\/api\/payments(?:\?.*)?$/u, async (route) => {
     if (route.request().method() === "POST") {
       createdBody = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({

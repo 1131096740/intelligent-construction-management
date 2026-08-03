@@ -111,11 +111,16 @@ jobs:
       - name: Check Web UI governance
         run: pnpm --filter @jiangkong/web-admin check:ui
 
-      - name: Install Chromium
-        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium
+      - name: Install Chromium and WebKit
+        run: pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 
       - name: Run Web P0 E2E against production build
         run: pnpm --filter @jiangkong/web-admin exec playwright test --config playwright.config.ts e2e/p0-browser-smoke.e2e.ts
+
+      - name: Run Web RC-06 mocked browser contract gate
+        env:
+          PLAYWRIGHT_RC06_OUTPUT_DIR: ${{ github.workspace }}/apps/web-admin/test-results/rc06-mock
+        run: pnpm --filter @jiangkong/web-admin test:e2e:rc06:mock
 
       - name: Upload Playwright failure artifacts
         if: failure()
