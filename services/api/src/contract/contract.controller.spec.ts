@@ -802,6 +802,7 @@ describe("ContractController authorization wiring", () => {
 
   it.each([
     ["create", "contract.create"],
+    ["createCapability", "contract.create"],
     ["createChangeDraft", "contract.create"],
     ["abandonDraft", "contract.create"],
     ["changeEligibility", "contract.create"],

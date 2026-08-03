@@ -122,10 +122,14 @@ describe("ContractDraftAggregateService", () => {
     });
     expect(result.draftOperationAvailableActions).toEqual([
       "acquire_contract_draft_edit_lease",
+      "apply_contract_type_change",
+      "check_contract_submission_readiness",
       "heartbeat_contract_draft_edit_lease",
+      "preview_contract_type_change",
       "queue_contract_draft_preview",
       "release_contract_draft_edit_lease",
-      "save_contract_draft"
+      "save_contract_draft",
+      "submit_contract_draft"
     ]);
   });
 
@@ -250,6 +254,8 @@ describe("ContractDraftAggregateService", () => {
       canTakeOver: true
     });
     expect(result.draftOperationAvailableActions).toEqual([
+      "confirm_contract_settlement_mode",
+      "transfer_contract_draft",
       "take_over_contract_draft_edit_lease"
     ]);
   });

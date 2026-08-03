@@ -322,7 +322,7 @@
             保存草稿
           </t-button>
           <t-button
-            v-if="editable"
+            v-if="contractDraftOperationAvailableActions.includes('submit_contract_draft')"
             size="small"
             theme="primary"
             :loading="submissionBusy"
@@ -585,7 +585,7 @@
                   <t-select
                     :value="workbench.contract.contractTypeKey"
                     :options="contractTypeOptions"
-                    :disabled="editorDisabled || migrationBusy"
+                    :disabled="editorDisabled || migrationBusy || !contractDraftOperationAvailableActions.includes('preview_contract_type_change')"
                     placeholder="切换合同类型"
                     @change="onExistingTypeChange"
                   />
@@ -1061,6 +1061,8 @@ import {
   confirmContractSettlementMode,
   executeContractBillRemainderCancellation,
   executeContractDraftLifecycleAction,
+  fetchContractDraftOperationCapabilities,
+  fetchContractDraftTransferCapabilities,
   fetchContractDraftWorkbench,
   listPublishedContractTemplates,
   previewContractTypeChange,
@@ -1073,6 +1075,122 @@ import {
   type ExecuteContractDraftLifecycleActionResult,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
+
+async function checkContractSubmissionReadinessWithCapability(
+  contractVersionId: string
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "check_contract_submission_readiness"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能检查合同提交条件");
+  }
+  return checkContractSubmissionReadiness(contractVersionId);
+}
+
+async function confirmContractSettlementModeWithCapability(
+  contractVersionId: string,
+  body: { expectedRevision: number; settlementMode: ContractSettlementMode }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "confirm_contract_settlement_mode"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能确认合同结算方式");
+  }
+  return confirmContractSettlementMode(contractVersionId, body);
+}
+
+async function previewContractTypeChangeWithCapability(
+  contractVersionId: string,
+  body: {
+    targetBusinessTemplateVersionId: string;
+    expectedRevision: number;
+  }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "preview_contract_type_change"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能预览合同类型迁移");
+  }
+  return previewContractTypeChange(contractVersionId, body);
+}
+
+async function applyContractTypeChangeWithCapability(
+  contractVersionId: string,
+  body: {
+    targetBusinessTemplateVersionId: string;
+    expectedRevision: number;
+  }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "apply_contract_type_change"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能执行合同类型迁移");
+  }
+  return applyContractTypeChange(contractVersionId, body);
+}
+
+async function transferContractDraftWithCapability(
+  contractId: string,
+  contractVersionId: string,
+  toUserId: string
+) {
+  const capability = await fetchContractDraftTransferCapabilities(contractId);
+  const matchesRequestedContract = capability.contractId === contractId;
+  if (!matchesRequestedContract) {
+    throw new Error("合同草稿能力响应合同不一致");
+  }
+  const matchesRequestedVersion =
+    capability.contractVersionId === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "transfer_contract_draft"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能转移合同草稿负责人");
+  }
+  return transferContractDraft(contractId, {
+    toUserId,
+    expectedContractVersionId: contractVersionId
+  });
+}
 import {
   fetchApprovalDelegationUserOptions,
   fetchContractCreateProjects
@@ -1916,9 +2034,13 @@ function onNegotiationChanged() {
   void reloadCurrent();
 }
 
-// A contract director may view + transfer even when they cannot edit. We allow
-// transfer whenever a contract is loaded; backend enforces the actual role.
-const canTransfer = computed(() => Boolean(workbench.value));
+// A contract director may transfer even when they cannot edit. The backend
+// publishes that capability explicitly and the mutation rechecks it.
+const canTransfer = computed(() =>
+  contractDraftOperationAvailableActions.value.includes(
+    "transfer_contract_draft"
+  )
+);
 const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
@@ -2352,7 +2474,7 @@ async function onExistingTypeChange(value: string) {
       return;
     }
 
-    const preview = (await previewContractTypeChange(wb.version.id, {
+    const preview = (await previewContractTypeChangeWithCapability(wb.version.id, {
       targetBusinessTemplateVersionId: targetTemplateVersionId,
       expectedRevision: wb.version.draftRevision
     })) as Record<string, unknown>;
@@ -2397,7 +2519,7 @@ async function onConfirmMigration() {
   migrationBusy.value = true;
   errorMessage.value = "";
   try {
-    await applyContractTypeChange(wb.version.id, {
+    await applyContractTypeChangeWithCapability(wb.version.id, {
       targetBusinessTemplateVersionId: migrationTargetTemplateVersionId.value,
       expectedRevision: wb.version.draftRevision
     });
@@ -2502,7 +2624,7 @@ async function onConfirmSettlementMode(mode: ContractSettlementMode) {
     return;
   }
   try {
-    await confirmContractSettlementMode(current.version.id, {
+    await confirmContractSettlementModeWithCapability(current.version.id, {
       expectedRevision: current.version.draftRevision,
       settlementMode: mode
     });
@@ -2695,6 +2817,11 @@ async function completeGovernanceMutation(reload: boolean) {
 }
 
 function requestSubmission() {
+  if (
+    !contractDraftOperationAvailableActions.value.includes(
+      "submit_contract_draft"
+    )
+  ) return;
   submissionError.value = "";
   submissionMessage.value = "";
   submissionConfirmVisible.value = true;
@@ -2748,7 +2875,7 @@ async function confirmSubmission() {
   try {
     const current = await prepareGovernanceMutation();
     if (!current) throw new Error("草稿保存失败，本次未提交审批。");
-    const readiness = await checkContractSubmissionReadiness(current.version.id) as {
+    const readiness = await checkContractSubmissionReadinessWithCapability(current.version.id) as {
       ready?: boolean;
       blocking?: unknown[];
       blockingMessages?: string[];
@@ -2802,11 +2929,12 @@ async function onLoadServer() {
 async function onConfirmTransfer() {
   const target = transferUserId.value.trim();
   const id = contractId.value;
-  if (writeLocked.value || !target || !id) {
+  const versionId = workbench.value?.version.id;
+  if (writeLocked.value || !target || !id || !versionId) {
     return;
   }
   try {
-    await transferContractDraft(id, { toUserId: target });
+    await transferContractDraftWithCapability(id, versionId, target);
     transferVisible.value = false;
     transferUserId.value = "";
     await loadExpectedWorkbench(id);

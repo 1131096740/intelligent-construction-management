@@ -1644,6 +1644,70 @@ describe("ContractWorkbenchService", () => {
     );
   });
 
+  it("publishes transfer capability for the exact latest editable contract version", async () => {
+    const tx = {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          voidedAt: null
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "version-1" })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      }
+    };
+    const service = makeService(tx);
+
+    await expect(
+      (service as unknown as {
+        getTransferCapability(contractId: string, actorUserId: string): Promise<unknown>;
+      }).getTransferCapability("contract-1", "director-1")
+    ).resolves.toEqual({
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      availableActions: ["transfer_contract_draft"]
+    });
+  });
+
+  it("rejects transfer when the page version is no longer the latest editable version", async () => {
+    const tx = {
+      $queryRaw: contractDraftBoundaryQuery(),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractVersion: editableContractVersionModel(),
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-director" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const service = makeService(tx);
+
+    await expect(
+      service.transferDraft("contract-1", "director-1", {
+        toUserId: "owner-2",
+        expectedContractVersionId: "version-stale"
+      })
+    ).rejects.toThrow("合同草稿版本已变化");
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("lists current and voided drafts separately", async () => {
     const myRows = [{ id: "contract-1", voidedAt: null }];
     const voidedRows = [{ id: "contract-2", voidedAt: new Date() }];

@@ -9,9 +9,9 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 64,
-    "pageActionCount": 56,
-    "backgroundActionCount": 8,
+    "registeredActionCount": 69,
+    "pageActionCount": 54,
+    "backgroundActionCount": 15,
     "reachableVueFileCount": 132,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
@@ -19,11 +19,11 @@
     "reachableProductionModuleCount": 234,
     "templateEventDirectiveCount": 949,
     "propCallbackDirectiveCount": 11,
-    "coveredProductionMutationConsumerCount": 40,
-    "candidateProductionMutationConsumerCount": 54,
-    "acceptedProductionMutationConsumerCount": 40,
+    "coveredProductionMutationConsumerCount": 47,
+    "candidateProductionMutationConsumerCount": 59,
+    "acceptedProductionMutationConsumerCount": 47,
     "productionMutationConsumerPairCount": 277,
-    "blockerCount": 266
+    "blockerCount": 255
   },
   "evidence": {
     "totalProductionModuleCount": 241,
@@ -685,7 +685,7 @@
         "event": "call",
         "handler": "autoSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 159,
+        "sourceLine": 178,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -729,6 +729,72 @@
             "localCallChain": [
               "autoSaveContractDraftAggregateWithCapability",
               "saveContractDraftAggregate"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.create",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createWorkbenchDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 78,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_contract_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "createWorkbenchDraft",
+          "method": "POST",
+          "path": "/contracts",
+          "normalizedKey": "POST /contracts",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts",
+            "normalizedKey": "POST /contracts",
+            "controller": "ContractController",
+            "handler": "create",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "createWorkbenchDraftWithCapability",
+              "createWorkbenchDraft"
             ]
           },
           "ticketFollowups": []
@@ -857,7 +923,7 @@
         "event": "call",
         "handler": "acquireContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 76,
+        "sourceLine": 95,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -924,7 +990,7 @@
         "event": "call",
         "handler": "heartbeatContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 96,
+        "sourceLine": 115,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -991,7 +1057,7 @@
         "event": "call",
         "handler": "releaseContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 117,
+        "sourceLine": 136,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -1058,7 +1124,7 @@
         "event": "call",
         "handler": "takeOverContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 138,
+        "sourceLine": 157,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1125,7 +1191,7 @@
         "event": "call",
         "handler": "manualSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 181,
+        "sourceLine": 200,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1192,7 +1258,7 @@
         "event": "call",
         "handler": "queueContractDraftPreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 203,
+        "sourceLine": 222,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -1243,8 +1309,8 @@
       ]
     },
     {
-      "id": "contract-draft.transfer-local-gate",
-      "usage": "page_action",
+      "id": "contract-draft.transfer",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/:contractId",
         "/合同工作台/新建"
@@ -1255,19 +1321,20 @@
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
       "trigger": {
-        "element": "t-dialog",
-        "event": "confirm",
-        "handler": "onConfirmTransfer",
-        "kind": "prop_callback",
-        "sourceLine": 1025,
-        "sourceColumn": 6
+        "element": "module",
+        "event": "call",
+        "handler": "transferContractDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1168,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canTransfer",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "transfer_contract_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -1286,19 +1353,22 @@
             "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "authenticated_only",
+            "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": null
+            "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "onConfirmTransfer"
+              "transferContractDraftWithCapability",
+              "transferContractDraft"
             ]
           },
           "ticketFollowups": []
@@ -1556,8 +1626,272 @@
       ]
     },
     {
-      "id": "contract-workbench.submit-local-status",
-      "usage": "page_action",
+      "id": "contract-workbench.apply-type-change",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTypeChangeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1144,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "apply_contract_type_change",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "applyContractTypeChange",
+          "method": "POST",
+          "path": "/contract-workbench/:param/type-change",
+          "normalizedKey": "POST /contract-workbench/:param/type-change",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-workbench/:contractVersionId/type-change",
+            "normalizedKey": "POST /contract-workbench/:param/type-change",
+            "controller": "ContractWorkbenchController",
+            "handler": "applyTypeChange",
+            "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "applyContractTypeChangeWithCapability",
+              "applyContractTypeChange"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.check-submission-readiness",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "checkContractSubmissionReadinessWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1079,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "check_contract_submission_readiness",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "checkContractSubmissionReadiness",
+          "method": "POST",
+          "path": "/contracts/:param/readiness",
+          "normalizedKey": "POST /contracts/:param/readiness",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/readiness",
+            "normalizedKey": "POST /contracts/:param/readiness",
+            "controller": "ContractController",
+            "handler": "checkReadiness",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "checkContractSubmissionReadinessWithCapability",
+              "checkContractSubmissionReadiness"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.confirm-settlement-mode",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractSettlementModeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1099,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "confirm_contract_settlement_mode",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "confirmContractSettlementMode",
+          "method": "POST",
+          "path": "/contract-workbench/:param/settlement-mode/confirm",
+          "normalizedKey": "POST /contract-workbench/:param/settlement-mode/confirm",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-workbench/:contractVersionId/settlement-mode/confirm",
+            "normalizedKey": "POST /contract-workbench/:param/settlement-mode/confirm",
+            "controller": "ContractWorkbenchController",
+            "handler": "confirmSettlementMode",
+            "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmContractSettlementModeWithCapability",
+              "confirmContractSettlementMode"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.preview-type-change",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTypeChangeWithCapability",
+        "kind": "background_call",
+        "sourceLine": 1120,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "preview_contract_type_change",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "previewContractTypeChange",
+          "method": "POST",
+          "path": "/contract-workbench/:param/type-change-preview",
+          "normalizedKey": "POST /contract-workbench/:param/type-change-preview",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-workbench/:contractVersionId/type-change-preview",
+            "normalizedKey": "POST /contract-workbench/:param/type-change-preview",
+            "controller": "ContractWorkbenchController",
+            "handler": "previewTypeChange",
+            "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "previewContractTypeChangeWithCapability",
+              "previewContractTypeChange"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.submit",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/:contractId",
         "/合同工作台/新建"
@@ -1566,21 +1900,22 @@
         "/合同工作台/:contractId",
         "/合同工作台/新建"
       ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestSubmission",
-        "kind": "event",
-        "sourceLine": 330,
-        "sourceColumn": 12
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractDraftWithCapability",
+        "kind": "background_call",
+        "sourceLine": 243,
+        "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "editable",
-        "serverDerived": false,
-        "dominatesTrigger": false
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "submit_contract_draft",
+        "serverDerived": true,
+        "dominatesTrigger": true
       },
       "bindings": [
         {
@@ -1607,11 +1942,14 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
           "causalProof": {
             "localCallChain": [
-              "requestSubmission"
+              "submitContractDraftWithCapability",
+              "submitContractDraft"
             ]
           },
           "ticketFollowups": []
@@ -5169,13 +5507,6 @@
     "unresolvedWrappers": [
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "contract-draft.transfer-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "transferContractDraft"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
         "actionId": "contract-takeover.create-local-role",
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -5194,13 +5525,6 @@
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
         "wrapper": "updateContractTakeover"
-      },
-      {
-        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
-        "actionId": "contract-workbench.submit-local-status",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractDraft"
       },
       {
         "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
@@ -5302,12 +5626,6 @@
     "clientRoleOrStatusGates": [
       {
         "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "contract-draft.transfer-local-gate",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "capabilitySource": "canTransfer"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
         "actionId": "contract-takeover.create-local-role",
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "capabilitySource": "canManageTakeovers"
@@ -5323,12 +5641,6 @@
         "actionId": "contract-takeover.update-local-role-status",
         "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "capabilitySource": "canManageTakeovers && canEditTakeover(row.takeover)"
-      },
-      {
-        "code": "CLIENT_ROLE_OR_STATUS_GATE",
-        "actionId": "contract-workbench.submit-local-status",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "capabilitySource": "editable"
       },
       {
         "code": "CLIENT_ROLE_OR_STATUS_GATE",
@@ -6039,51 +6351,6 @@
       },
       {
         "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "applyContractTypeChange",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/type-change"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "checkContractSubmissionReadiness",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/readiness"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "confirmContractSettlementMode",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/settlement-mode/confirm"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "previewContractTypeChange",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/type-change-preview"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "transferContractDraft",
-        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-        "normalizedKeys": [
-          "POST /contract-workbench/:param/transfer"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
         "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts",
         "wrapper": "abandonContractTaxFactRevision",
         "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
@@ -6332,24 +6599,6 @@
         "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
         "normalizedKeys": [
           "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createWorkbenchDraft",
-        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contracts"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractDraft",
-        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contract-drafts/:param/submission"
         ]
       },
       {

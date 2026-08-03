@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 401,
-    "exactRouteCount": 401,
-    "normalizedRouteCount": 401,
+    "routeCount": 403,
+    "exactRouteCount": 403,
+    "normalizedRouteCount": 403,
     "classificationOverrideCount": 108,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 293,
-    "pageRouteCount": 296,
+    "derivedProductionPageCount": 295,
+    "pageRouteCount": 298,
     "externalTakeoverCount": 59,
     "exitCandidateCount": 43,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 343,
+      "web_api_wrapper": 345,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
       "none": 49
     },
-    "blockerCount": 0
+    "blockerCount": 4
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 343,
+    "productionWrapperRouteCount": 345,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -963,6 +963,7 @@
             "normalizedPath": "/contract-drafts/:param/workbench",
             "normalizedKey": "GET /contract-drafts/:param/workbench",
             "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           },
@@ -1376,6 +1377,46 @@
     },
     {
       "method": "GET",
+      "path": "/contract-workbench/:contractId/transfer-capability",
+      "normalizedKey": "GET /contract-workbench/:param/transfer-capability",
+      "controller": "ContractWorkbenchController",
+      "handler": "transferCapability",
+      "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractDraftTransferCapabilities",
+            "method": "GET",
+            "normalizedPath": "/contract-workbench/:param/transfer-capability",
+            "normalizedKey": "GET /contract-workbench/:param/transfer-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/contract-workbench/:contractVersionId/documents",
       "normalizedKey": "GET /contract-workbench/:param/documents",
       "controller": "ContractDocumentController",
@@ -1677,6 +1718,46 @@
             "normalizedKey": "GET /contracts/:param/change-eligibility",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/create-capability",
+      "normalizedKey": "GET /contracts/create-capability",
+      "controller": "ContractController",
+      "handler": "createCapability",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "fetchContractCreateCapabilities",
+            "method": "GET",
+            "normalizedPath": "/contracts/create-capability",
+            "normalizedKey": "GET /contracts/create-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
         ],
@@ -7911,10 +7992,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -8187,10 +8268,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -8227,10 +8308,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -8267,10 +8348,10 @@
       "sourceFile": "services/api/src/contract-workbench/contract-workbench.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": null,
+      "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -16371,7 +16452,28 @@
     "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [],
+    "expectationMismatches": [
+      {
+        "field": "consumerSurfaceCounts.web_api_wrapper",
+        "expected": 343,
+        "actual": 345
+      },
+      {
+        "field": "derivedProductionPageCount",
+        "expected": 293,
+        "actual": 295
+      },
+      {
+        "field": "routeCount",
+        "expected": 401,
+        "actual": 403
+      },
+      {
+        "field": "usageCounts.page",
+        "expected": 296,
+        "actual": 298
+      }
+    ],
     "unclassifiedRoutes": []
   }
 }

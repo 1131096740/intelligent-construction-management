@@ -190,6 +190,17 @@ export interface CreateWorkbenchDraftReadModel {
   [key: string]: unknown;
 }
 
+export interface ContractCreateCapabilityReadModel {
+  projectId: string;
+  availableActions: string[];
+}
+
+export function fetchContractCreateCapabilities(projectId: string) {
+  return readJson<ContractCreateCapabilityReadModel>(
+    `/contracts/create-capability?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
 export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload) {
   return postJson<CreateWorkbenchDraftReadModel>("/contracts", body);
 }
@@ -925,6 +936,19 @@ export function applyContractTypeChange(
 
 export interface TransferContractDraftPayload {
   toUserId: string;
+  expectedContractVersionId?: string;
+}
+
+export interface ContractDraftTransferCapabilityReadModel {
+  contractId: string;
+  contractVersionId: string | null;
+  availableActions: string[];
+}
+
+export function fetchContractDraftTransferCapabilities(contractId: string) {
+  return readJson<ContractDraftTransferCapabilityReadModel>(
+    `/contract-workbench/${encodeURIComponent(contractId)}/transfer-capability`
+  );
 }
 
 export function transferContractDraft(contractId: string, body: TransferContractDraftPayload) {

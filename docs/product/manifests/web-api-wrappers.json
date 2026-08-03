@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 411,
-    "transportWrapperCount": 391,
+    "exportedFunctionCount": 413,
+    "transportWrapperCount": 393,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 411,
+    "mainRequestBindingCount": 413,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 410,
-    "productionConsumerCount": 354,
+    "requestEdgeCount": 412,
+    "productionConsumerCount": 356,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -1572,7 +1572,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1857,
+          "sourceLine": 1881,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1602,7 +1602,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1857,
+          "sourceLine": 1881,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1648,7 +1648,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1422,
+          "sourceLine": 1446,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -1780,6 +1780,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchContractCreateCapabilities",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 72,
+          "method": "GET",
+          "path": "/contracts/create-capability?projectId=:param",
+          "normalizedPath": "/contracts/create-capability",
+          "normalizedKey": "GET /contracts/create-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractCreateCapabilities",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchContractDraftOperationCapabilities",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -1801,12 +1831,41 @@
           ]
         }
       ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+      ],
       "testConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractDraftTransferCapabilities",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 72,
+          "method": "GET",
+          "path": "/contract-workbench/:param/transfer-capability",
+          "normalizedPath": "/contract-workbench/:param/transfer-capability",
+          "normalizedKey": "GET /contract-workbench/:param/transfer-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractDraftTransferCapabilities",
+              "readJson"
+            ]
+          ]
+        }
       ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

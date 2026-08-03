@@ -11,6 +11,7 @@ import type {
 vi.mock("../../../api/contract-workbench.api", () => ({
   acquireContractDraftEditLease: vi.fn(),
   createWorkbenchDraft: vi.fn(),
+  fetchContractCreateCapabilities: vi.fn(),
   fetchContractDraftWorkbench: vi.fn(),
   fetchContractDraftOperationCapabilities: vi.fn(),
   heartbeatContractDraftEditLease: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("../../../api/contract-workbench.api", () => ({
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
+  fetchContractCreateCapabilities,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
   heartbeatContractDraftEditLease,
@@ -45,6 +47,7 @@ import {
 import { canApplyExpectedWorkbenchVersion } from "../contract-change.state";
 
 const mockCreateDraft = vi.mocked(createWorkbenchDraft);
+const mockFetchCreateCapabilities = vi.mocked(fetchContractCreateCapabilities);
 const mockAcquireLease = vi.mocked(acquireContractDraftEditLease);
 const mockFetchOperationCapabilities = vi.mocked(
   fetchContractDraftOperationCapabilities
@@ -59,10 +62,14 @@ const mockTakeOverLease = vi.mocked(takeOverContractDraftEditLease);
 
 const DEFAULT_DRAFT_OPERATION_ACTIONS = [
   "acquire_contract_draft_edit_lease",
+  "apply_contract_type_change",
+  "check_contract_submission_readiness",
   "heartbeat_contract_draft_edit_lease",
+  "preview_contract_type_change",
   "queue_contract_draft_preview",
   "release_contract_draft_edit_lease",
   "save_contract_draft",
+  "submit_contract_draft",
   "take_over_contract_draft_edit_lease"
 ];
 
@@ -251,6 +258,10 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-07-28T00:00:00.000Z"));
   globalThis.localStorage = memoryStorage();
   vi.resetAllMocks();
+  mockFetchCreateCapabilities.mockImplementation(async (projectId) => ({
+    projectId,
+    availableActions: ["create_contract_draft"]
+  }));
   mockFetchOperationCapabilities.mockImplementation(async (contractVersionId) => {
     const workbench = makeWorkbench();
     return makeWorkbench({
@@ -446,9 +457,9 @@ describe("useContractDraft", () => {
     mockSubmitDraft.mockReturnValueOnce(pending.promise);
     const firstRetry = draft.submitNow();
     const repeatedClick = draft.submitNow();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(mockSubmitDraft).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => {
+      expect(mockSubmitDraft).toHaveBeenCalledTimes(2);
+    });
     expect(mockSubmitDraft.mock.calls[1]?.[2]).toEqual(firstPayload);
 
     pending.resolve({
@@ -462,6 +473,20 @@ describe("useContractDraft", () => {
     await expect(firstRetry).resolves.toMatchObject({ approvalInstanceId: "approval-1" });
     await expect(repeatedClick).resolves.toMatchObject({ approvalInstanceId: "approval-1" });
     expect(mockSubmitDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("rechecks the server capability and fails closed before submission", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    await draft.load("cv-1");
+    mockFetchOperationCapabilities.mockResolvedValueOnce(makeWorkbench({
+      draftOperationAvailableActions: DEFAULT_DRAFT_OPERATION_ACTIONS.filter(
+        (action) => action !== "submit_contract_draft"
+      )
+    }));
+
+    await expect(draft.submitNow()).rejects.toThrow("当前用户不能提交合同草稿");
+    expect(mockSubmitDraft).not.toHaveBeenCalled();
   });
 
   it("turns the submitted draft readonly and clears its local recovery copy", async () => {
@@ -1080,6 +1105,25 @@ describe("useContractDraft", () => {
     expect(replace).toHaveBeenCalledWith(
       "/contracts/ct-9/workbench?versionId=cv-9"
     );
+  });
+
+  it("rechecks the selected project capability and fails closed before creation", async () => {
+    const replace = vi.fn();
+    const draft = useContractDraft({ replace });
+    mockFetchCreateCapabilities.mockResolvedValueOnce({
+      projectId: "p-1",
+      availableActions: []
+    });
+
+    draft.initializeDraft.setProjectId("p-1");
+    draft.initializeDraft.setContractTypeKey("subcontract");
+    draft.initializeDraft.setBusinessTemplateVersionId("tmpl-1");
+
+    await expect(draft.initializeDraft.commit()).rejects.toThrow(
+      "当前用户不能在所选项目创建合同草稿"
+    );
+    expect(mockCreateDraft).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("carries scenario and exact mapping only as a complete pair", async () => {

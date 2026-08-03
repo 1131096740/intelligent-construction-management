@@ -71,13 +71,24 @@ export class ContractDraftAggregateService {
       ? await this.isContractDirector(actorUserId)
       : false;
     const isOwner = legacyReadModel.contract.ownerUserId === actorUserId;
+    const isDirector = canTakeOver || await this.isContractDirector(actorUserId);
+    const isOriginalDraft = version.changeType !== "change" &&
+      version.changeType !== "supplement";
     const draftOperationAvailableActions = [
       ...(isOwner ? [
         "acquire_contract_draft_edit_lease",
+        ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
+        "check_contract_submission_readiness",
         "heartbeat_contract_draft_edit_lease",
+        ...(isOriginalDraft ? ["preview_contract_type_change"] : []),
         "queue_contract_draft_preview",
         "release_contract_draft_edit_lease",
-        "save_contract_draft"
+        "save_contract_draft",
+        ...(version.status === "draft" ? ["submit_contract_draft"] : [])
+      ] : []),
+      ...(isDirector ? [
+        "confirm_contract_settlement_mode",
+        "transfer_contract_draft"
       ] : []),
       ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
     ];

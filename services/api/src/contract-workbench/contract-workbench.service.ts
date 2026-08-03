@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -150,6 +151,33 @@ export class ContractWorkbenchService {
       actorUserId
     );
     return this.readiness.checkAndStore(contractVersionId, actorUserId);
+  }
+
+  async getTransferCapability(contractId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalContractDirector(tx, actorUserId);
+      const contract = await tx.contract.findUnique({
+        where: { id: contractId },
+        select: { id: true, voidedAt: true }
+      });
+      if (!contract) {
+        throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
+      }
+      const version = await tx.contractVersion.findFirst({
+        where: {
+          contractId,
+          status: { in: [...EDITABLE_STATUSES] }
+        },
+        select: { id: true },
+        orderBy: { versionNo: "desc" }
+      });
+      return {
+        contractId,
+        contractVersionId: version?.id ?? null,
+        availableActions:
+          version && !contract.voidedAt ? ["transfer_contract_draft"] : []
+      };
+    });
   }
 
   async listDrafts(actorUserId: string, scope: "my" | "voided") {
@@ -1347,7 +1375,15 @@ export class ContractWorkbenchService {
     const input = this.parseTransferInput(rawInput);
     return this.runSerializableWithRetry(async (tx) => {
       await this.assertGlobalContractDirector(tx, actorUserId);
-      await this.lockLatestEditableVersionForContract(tx, contractId);
+      const version = await this.lockLatestEditableVersionForContract(tx, contractId);
+      if (
+        input.expectedContractVersionId &&
+        version.id !== input.expectedContractVersionId
+      ) {
+        throw new ConflictException(
+          "合同草稿版本已变化，请刷新合同工作台后重试转交"
+        );
+      }
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
       if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
       const targetUser = await tx.user.findUnique({ where: { id: input.toUserId } });
@@ -2312,7 +2348,19 @@ export class ContractWorkbenchService {
     if (typeof input.toUserId !== "string" || !input.toUserId.trim()) {
       throw new BadRequestException("请选择合同草稿转交接收人");
     }
-    return { toUserId: input.toUserId.trim() };
+    if (
+      input.expectedContractVersionId !== undefined &&
+      (typeof input.expectedContractVersionId !== "string" ||
+        !input.expectedContractVersionId.trim())
+    ) {
+      throw new BadRequestException("合同草稿版本编号不正确，请刷新后重试");
+    }
+    return {
+      toUserId: input.toUserId.trim(),
+      ...(typeof input.expectedContractVersionId === "string"
+        ? { expectedContractVersionId: input.expectedContractVersionId.trim() }
+        : {})
+    };
   }
 
   private parseClause(value: unknown, index: number): ContractClauseDefinition {

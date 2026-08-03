@@ -82,6 +82,15 @@ export class ContractController {
     return this.contracts.createDraft(body, user.id);
   }
 
+  @Get("create-capability")
+  @RequireProjectRole("contract.create")
+  createCapability(@Query("projectId") projectId: string) {
+    return {
+      projectId,
+      availableActions: ["create_contract_draft"]
+    };
+  }
+
   @Post(":contractVersionId/change-drafts")
   @ContractCutoverSurface()
   // 合同变更草稿：合同员或合同部主管作为合同经办人发起。

@@ -6,34 +6,34 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `3c7f872951389ef25833a36f7cff2929bc5161897589feeee604d2a1c1c3f93b` |
-| webApiWrappers | blocked | `06572697c2344faad53f0f927b4119a302fc67c73c2c8edd82c03a5c8bf4e83e` |
-| webPageActions | blocked | `911b4151202a000dd05d53d47680a5979ace51b761fad3562833919520e91509` |
-| routeUsage | ready | `cbdc94bb814a676ffc0a1d12857cb3d07a7d013c6f93b2154d1d4c910155a01c` |
+| nestRoutes | ready | `d703ac821df4e7e64466147f1a0cf65f49629ce9c36eb904ec28dfa908eb0f70` |
+| webApiWrappers | blocked | `1bb4665a0aee5e241f6103b7f8f8aa1e7cfb0c49f3008cdc0d40ab4708b727ad` |
+| webPageActions | blocked | `7b09df30d867ce976efb4682c5d2a711d4e5fa620ab57c2ce0b9d954623317ec` |
+| routeUsage | blocked | `7ea92fc558a1853d3937bc12c05aa79a9b94c669f8c356b48cf05050ce15142d` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 401 |
-| pageRouteCount | 296 |
+| routeCount | 403 |
+| pageRouteCount | 298 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 411 |
+| mainRequestBindingCount | 413 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 64 |
-| actionBindingCount | 89 |
-| acceptedActionBindingCount | 56 |
-| unresolvedActionBindingCount | 14 |
+| registeredActionCount | 69 |
+| actionBindingCount | 94 |
+| acceptedActionBindingCount | 63 |
+| unresolvedActionBindingCount | 12 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 40 |
-| uncoveredProductionMutationConsumerPairCount | 237 |
-| blockerCount | 294 |
+| coveredProductionMutationConsumerPairCount | 47 |
+| uncoveredProductionMutationConsumerPairCount | 230 |
+| blockerCount | 286 |
 
 ## 路由矩阵
 
@@ -74,11 +74,13 @@
 | GET | /contract-workbench/:contractVersionId/documents | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listContractDocuments | — | not_applicable | — |
 | GET | /contract-workbench/:contractVersionId/negotiation-rounds | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractNegotiationRounds | — | not_applicable | — |
 | GET | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractOfflineRevisionHistory | — | not_applicable | — |
+| GET | /contract-workbench/:contractId/transfer-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftTransferCapabilities | — | not_applicable | — |
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
 | GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalWithdrawalAction | contract.signing-material-change | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
+| GET | /contracts/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractCreateCapabilities | — | not_applicable | — |
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
 | GET | /contracts/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLifecycleLedger | — | not_applicable | ORPHAN_WRAPPER |
 | GET | /contracts/payment-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentContractOptions | — | not_applicable | — |
@@ -202,7 +204,7 @@
 | POST | /contract-drafts/:contractVersionId/edit-lease/heartbeat | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#heartbeatContractDraftEditLease | contract-draft.lease-heartbeat | covered | — |
 | POST | /contract-drafts/:contractVersionId/edit-lease/takeover | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#takeOverContractDraftEditLease | contract-draft.lease-takeover | covered | — |
 | POST | /contract-drafts/:contractVersionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview | contract-draft.preview-queue | covered | — |
-| POST | /contract-drafts/:contractVersionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft | contract-workbench.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /contract-drafts/:contractVersionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft | contract-workbench.submit | covered | — |
 | POST | /contract-layout-template-versions/:versionId/clone | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-template-versions/:versionId/discard | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-template-versions/:versionId/inspection | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -232,10 +234,10 @@
 | POST | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#uploadContractNegotiationRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-workbench/:contractVersionId/parties | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-workbench/:contractId/restore | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#restoreContractDraft | — | not_applicable | ORPHAN_WRAPPER |
-| POST | /contract-workbench/:contractVersionId/settlement-mode/confirm | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmContractSettlementMode | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-workbench/:contractId/transfer | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#transferContractDraft | contract-draft.transfer-local-gate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-workbench/:contractVersionId/type-change-preview | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#previewContractTypeChange | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-workbench/:contractVersionId/type-change | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contract-workbench/:contractVersionId/settlement-mode/confirm | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmContractSettlementMode | contract-workbench.confirm-settlement-mode | covered | — |
+| POST | /contract-workbench/:contractId/transfer | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#transferContractDraft | contract-draft.transfer | covered | — |
+| POST | /contract-workbench/:contractVersionId/type-change-preview | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#previewContractTypeChange | contract-workbench.preview-type-change | covered | — |
+| POST | /contract-workbench/:contractVersionId/type-change | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange | contract-workbench.apply-type-change | covered | — |
 | POST | /contract-workbench/:contractId/void | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#voidContractDraft | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction | contract-draft.abandon-application<br>contract-draft.delete-pristine | covered | ORPHAN_WRAPPER |
 | POST | /contracts/:contractVersionId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateContractApproval | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -254,12 +256,12 @@
 | POST | /contracts/:contractVersionId/formal-files/final | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/formal-files/final/return | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnMutuallySignedContractForCorrection | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generateContractPdfArchive | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contracts/:contractVersionId/readiness | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/readiness | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness | contract-workbench.check-submission-readiness | covered | — |
 | POST | /contracts/:contractVersionId/seal-approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveContractSeal | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/seal/approve | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveGovernedContractSeal | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/seal/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeContractSeal | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/signing/material-change | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange | contract.signing-material-change | covered | — |
-| POST | /contracts | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft<br>apps/web-admin/src/api/core-flow-read.api.ts#createContractDraft | — | uncovered | DUPLICATE_MUTATION_ROUTE<br>MUTATION_CONSUMER_UNCOVERED<br>ORPHAN_WRAPPER |
+| POST | /contracts | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft<br>apps/web-admin/src/api/core-flow-read.api.ts#createContractDraft | contract-draft.create | covered | DUPLICATE_MUTATION_ROUTE<br>ORPHAN_WRAPPER |
 | POST | /draft-retention/controlled-entry | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /expense-claims/:claimId/approval | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /expense-claims/:claimId/attachments/:attachmentId/removal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -512,26 +514,21 @@
 - apps/web-admin/src/api/contract-tax-facts.api.ts#reviewContractTaxFactRevisionByFinance → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-tax-facts.api.ts#submitContractTaxFactRevisionForFinanceReview → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#confirmContractBillTransitions → apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#confirmContractSettlementMode → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty → apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createContractTemplate → apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#discardContractBillTransitions → apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#discardContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#discardLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#discardStandardClauseVersion → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#previewContractDraftBillExcelImport → apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#previewContractTypeChange → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#publishContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#publishStandardClauseVersion → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
@@ -541,11 +538,9 @@
 - apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions → apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization → apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#stopContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#submitContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#submitStandardClauseVersion → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#transferContractDraft → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
@@ -733,11 +728,9 @@
 
 ### 未解决动作绑定
 
-- contract-draft.transfer-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.submit-review-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.update-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-workbench.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - expense-claim.submit-local-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - payment-request.create-local-form#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - project-expense.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

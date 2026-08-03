@@ -258,6 +258,31 @@
       ]
     },
     {
+      "id": "contract-draft.create",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createWorkbenchDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_contract_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "createWorkbenchDraft"
+        }
+      ]
+    },
+    {
       "id": "contract-draft.lease-acquire",
       "usage": "background",
       "routePaths": [
@@ -414,27 +439,128 @@
       ]
     },
     {
-      "id": "contract-draft.transfer-local-gate",
-      "usage": "page_action",
+      "id": "contract-draft.transfer",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/新建",
         "/合同工作台/:contractId"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
       "trigger": {
-        "element": "t-dialog",
-        "event": "confirm",
-        "handler": "onConfirmTransfer"
+        "element": "module",
+        "event": "call",
+        "handler": "transferContractDraftWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "canTransfer"
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "transfer_contract_draft"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "name": "transferContractDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.apply-type-change",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTypeChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "apply_contract_type_change"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "applyContractTypeChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.check-submission-readiness",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "checkContractSubmissionReadinessWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "check_contract_submission_readiness"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "checkContractSubmissionReadiness"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.confirm-settlement-mode",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractSettlementModeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "confirm_contract_settlement_mode"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "confirmContractSettlementMode"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.preview-type-change",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTypeChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "preview_contract_type_change"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "previewContractTypeChange"
         }
       ]
     },
@@ -591,22 +717,23 @@
       ]
     },
     {
-      "id": "contract-workbench.submit-local-status",
-      "usage": "page_action",
+      "id": "contract-workbench.submit",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/新建",
         "/合同工作台/:contractId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "requestSubmission"
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractDraftWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "client_role_or_status",
-        "source": "editable"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "submit_contract_draft"
       },
       "wrappers": [
         {

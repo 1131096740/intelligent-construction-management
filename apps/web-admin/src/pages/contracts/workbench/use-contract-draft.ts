@@ -20,6 +20,7 @@ import {
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
+  fetchContractCreateCapabilities,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
   heartbeatContractDraftEditLease,
@@ -36,6 +37,7 @@ import {
   type ContractDraftPaymentTermsModel,
   type ContractDraftSubmissionResult,
   type ContractDraftWorkbenchReadModel,
+  type CreateWorkbenchDraftPayload,
   type SaveContractDraftAggregatePayload
 } from "../../../api/contract-workbench.api";
 import {
@@ -72,6 +74,23 @@ import {
 
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
+
+async function createWorkbenchDraftWithCapability(
+  payload: CreateWorkbenchDraftPayload
+) {
+  const capability = await fetchContractCreateCapabilities(payload.projectId);
+  const matchesRequestedProject = capability.projectId === payload.projectId;
+  if (!matchesRequestedProject) {
+    throw new Error("合同创建能力响应项目不一致");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "create_contract_draft"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能在所选项目创建合同草稿");
+  }
+  return createWorkbenchDraft(payload);
+}
 
 async function acquireContractDraftEditLeaseWithCapability(
   contractVersionId: string
@@ -219,6 +238,28 @@ async function queueContractDraftPreviewWithCapability(
     throw new Error("当前用户不能生成合同草稿预览");
   }
   return queueContractDraftPreview(contractVersionId, sourceRevision);
+}
+
+async function submitContractDraftWithCapability(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: { expectedRevision: number; idempotencyKey: string }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "submit_contract_draft"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能提交合同草稿");
+  }
+  return submitContractDraft(contractVersionId, leaseToken, payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -1997,7 +2038,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
 
     const request = pendingSubmissionRequest;
-    const result = await submitContractDraft(versionId, token, {
+    const result = await submitContractDraftWithCapability(versionId, token, {
       expectedRevision: request.expectedRevision,
       idempotencyKey: request.idempotencyKey
     });
@@ -2193,7 +2234,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       businessTemplateVersionId: initBusinessTemplateVersionId.value,
       amountLimitType: initAmountLimitType.value
     };
-    const created = await createWorkbenchDraft(
+    const created = await createWorkbenchDraftWithCapability(
       initBusinessScenarioId.value && initScenarioTemplateMappingId.value
         ? {
             ...basePayload,
