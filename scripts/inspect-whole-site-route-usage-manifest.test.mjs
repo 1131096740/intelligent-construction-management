@@ -1124,28 +1124,28 @@ test("locks the repository baseline to 42 plus 19 external routes and no blocker
     }
   );
   assert.equal(manifest.summary.routeCount, 442);
-  assert.equal(manifest.summary.classificationOverrideCount, 110);
+  assert.equal(manifest.summary.classificationOverrideCount, 115);
   assert.equal(
     manifest.summary.classificationOverrideSha256,
-    "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1"
+    "a67afb7ab71ac617d2c4413d76d3b44cf74a7885ee744186787f9cb6d8a2b9f0"
   );
   assert.equal(
     manifest.summary.consumerSurfaceOverrideSha256,
     "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1"
   );
-  assert.equal(manifest.summary.derivedProductionPageCount, 332);
-  assert.equal(manifest.summary.pageRouteCount, 335);
+  assert.equal(manifest.summary.derivedProductionPageCount, 327);
+  assert.equal(manifest.summary.pageRouteCount, 330);
   assert.equal(manifest.summary.externalTakeoverCount, 61);
-  assert.equal(manifest.summary.exitCandidateCount, 43);
+  assert.equal(manifest.summary.exitCandidateCount, 48);
   assert.equal(manifest.summary.internalTaskCount, 3);
   assert.equal(manifest.summary.unclassifiedCount, 0);
   assert.deepEqual(manifest.summary.consumerSurfaceCounts, {
-    web_api_wrapper: 384,
+    web_api_wrapper: 379,
     auth_store: 5,
     signed_ticket_delivery: 1,
     machine_probe: 2,
     operator_endpoint: 1,
-    none: 49
+    none: 54
   });
   const signedDeliveryRoute = manifest.routes.find(
     (entry) =>

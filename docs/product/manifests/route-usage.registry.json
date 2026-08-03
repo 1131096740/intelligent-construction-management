@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 442,
-    "classificationOverrideCount": 110,
-    "derivedProductionPageCount": 332,
-    "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
+    "classificationOverrideCount": 115,
+    "derivedProductionPageCount": 327,
+    "classificationOverrideSha256": "a67afb7ab71ac617d2c4413d76d3b44cf74a7885ee744186787f9cb6d8a2b9f0",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
-      "page": 335,
+      "page": 330,
       "external_takeover": 61,
-      "exit_candidate": 43,
+      "exit_candidate": 48,
       "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 384,
+      "web_api_wrapper": 379,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 49
+      "none": 54
     }
   },
   "overrides": [
@@ -177,6 +177,12 @@
     },
     {
       "method": "PATCH",
+      "path": "/company-entities/:id",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "PATCH",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "usage": "exit_candidate",
       "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
@@ -222,6 +228,30 @@
       "path": "/auth/wx-login",
       "usage": "exit_candidate",
       "reason": "native_miniprogram_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/business-parties",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/business-parties/:partyId/versions",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/company-entities",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/company-entities/:id/status",
+      "usage": "exit_candidate",
+      "reason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

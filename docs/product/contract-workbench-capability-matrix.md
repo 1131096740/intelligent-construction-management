@@ -10,18 +10,18 @@
 | Web API 请求 | 已扫描 146 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 442 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 24 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 29 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 123 |
+| matched | 121 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 47 |
+| backend_without_frontend | 44 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 24 |
+| exit_candidate | 29 |
 
 ## 不存在的页面 API wrapper
 
@@ -32,14 +32,14 @@
 | Method | Route | API wrapper | 生产消费者 | 分类 | 决策 | 物理删除授权 | 退出/删除缺失证据 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/business-parties` | listBusinessParties | apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue | matched | 保留 | 否 | — |
-| POST | `/business-parties` | createBusinessParty | apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue | matched | 保留 | 否 | — |
+| POST | `/business-parties` | createBusinessParty |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/business-parties/:param` | getBusinessParty | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
-| POST | `/business-parties/:param/versions` | createBusinessPartyVersion | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
+| POST | `/business-parties/:param/versions` | createBusinessPartyVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/company-entities` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/company-entities` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| PATCH | `/company-entities/:param` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| PATCH | `/company-entities/:param` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/company-entities/:param/history` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/company-entities/:param/status` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/status` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/company-entities/management` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-bill-imports/:param/apply` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-bills/:param/excel-imports` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |

@@ -7,33 +7,33 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `8938ac6b3948b1bcf81598c88ff264b563a5ddc337da81746892a5f9e6d9918f` |
-| webApiWrappers | blocked | `a06f51744d671e3e468aafef0ca5bb47ef467956bd464b7cf29877847d07ca40` |
-| webPageActions | blocked | `8051332155b65781e8261808fe45ae6e8f6b11176ee77fbcdc9080e3f2a78bd3` |
-| routeUsage | ready | `1f5f84434d13a8fc011d5e5e8735c2bb0deddd44a20c7f49e81a3fc11a8332e2` |
+| webApiWrappers | blocked | `6f3097e8e1269ef1742e3813acb71cd46ea3cf6290f27acb840a3aec8697ef71` |
+| webPageActions | blocked | `1864351330c81def1f65b2aef9e3da3927f5d4d0dec1bc81c37abcec17c270bc` |
+| routeUsage | ready | `12b21cf49ec8eaf27ddbb5d5e56ee9ecfaf459ec447fe21ab26daa6bb275d76f` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 442 |
-| pageRouteCount | 335 |
+| pageRouteCount | 330 |
 | externalTakeoverRouteCount | 61 |
-| exitCandidateRouteCount | 43 |
+| exitCandidateRouteCount | 48 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 452 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
-| orphanWrapperCount | 37 |
+| orphanWrapperCount | 42 |
 | duplicateMutationRouteCount | 3 |
 | registeredActionCount | 243 |
 | actionBindingCount | 273 |
 | acceptedActionBindingCount | 254 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 288 |
+| productionMutationConsumerPairCount | 282 |
 | coveredProductionMutationConsumerPairCount | 233 |
-| uncoveredProductionMutationConsumerPairCount | 55 |
-| blockerCount | 98 |
+| uncoveredProductionMutationConsumerPairCount | 49 |
+| blockerCount | 97 |
 
 ## 路由矩阵
 
@@ -172,7 +172,7 @@
 | GET | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedStandardClauses | — | not_applicable | — |
 | GET | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | — | not_applicable | — |
-| PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| PATCH | /company-entities/:id | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | — | not_applicable | ORPHAN_WRAPPER |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | ORPHAN_WRAPPER |
 | PATCH | /contract-business-scenarios/:scenarioId | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /contract-layout-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -201,10 +201,10 @@
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/refresh | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/wx-login | exit_candidate | none | — | — | not_applicable | — |
-| POST | /business-parties/:partyId/versions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /company-entities/:id/status | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /business-parties | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | ORPHAN_WRAPPER |
+| POST | /company-entities | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | — | not_applicable | ORPHAN_WRAPPER |
 | POST | /contract-bill-imports/:importId/apply | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/excel-imports | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-bills/:billId/rows/:rowKey/remainder-cancellation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation | contract-bill.remainder-cancellation | covered | — |
@@ -494,8 +494,13 @@
 
 ### 孤儿 wrapper
 
+- apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity（test_only）
+- apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity（test_only）
+- apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#addBillRow（test_only）
+- apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty（test_only）
+- apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#createDraftCheckpoint（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow（test_only）
 - apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft（test_only）
@@ -534,17 +539,12 @@
 
 ### 未覆盖写入消费者
 
-- apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity → apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue
-- apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity → apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue
-- apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus → apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue
 - apps/web-admin/src/api/contract-scenario.api.ts#createContractBusinessScenario → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
 - apps/web-admin/src/api/contract-scenario.api.ts#createContractScenarioMapping → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
 - apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
 - apps/web-admin/src/api/contract-scenario.api.ts#updateContractScenarioMapping → apps/web-admin/src/pages/contract-templates/ContractScenarioGovernancePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty → apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createContractTemplate → apps/web-admin/src/pages/contract-templates/ContractTemplateListPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
@@ -567,7 +567,6 @@
 - apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft → apps/web-admin/src/pages/contracts/ContractListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation → apps/web-admin/src/pages/delegations/DelegationListPage.vue
-- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue
 - apps/web-admin/src/api/organization.api.ts#applyOrganizationRoleAddition → apps/web-admin/src/pages/organization/components/OrganizationRoleAdditionDrawer.vue

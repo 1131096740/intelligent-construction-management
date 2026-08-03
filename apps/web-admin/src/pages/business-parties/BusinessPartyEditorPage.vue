@@ -3,79 +3,19 @@
     <div class="page-head">
       <div>
         <h1>{{ party?.name ?? "合作单位详情" }}</h1>
-        <p>{{ businessPartyEditPolicy.label }}；不在 Phase 1 增加银行账户审批</p>
+        <p>查看合作单位当前资料与不可覆盖的历史版本。</p>
       </div>
       <t-button @click="loadParty">
         刷新
       </t-button>
     </div>
 
-    <t-card
-      title="新建档案版本"
-      :bordered="true"
+    <t-alert
+      theme="info"
+      title="上线准备期间暂为只读"
+      message="当前可查看档案版本与既有附件事实；版本新增和附件上传将在主数据治理完成后重新开放。"
       class="panel"
-    >
-      <div class="form-grid">
-        <label><span>名称</span><t-input v-model="form.name" /></label>
-        <label><span>统一社会信用代码</span><t-input v-model="form.unifiedSocialCreditCode" /></label>
-        <label><span>法定代表人</span><t-input v-model="form.legalRepresentative" /></label>
-        <label><span>地址</span><t-input v-model="form.address" /></label>
-        <label><span>联系人</span><t-input v-model="form.contactName" /></label>
-        <label><span>联系电话</span><t-input v-model="form.contactPhone" /></label>
-      </div>
-
-      <div
-        v-for="(attachment, index) in attachments"
-        :key="index"
-        class="attachment-row"
-      >
-        <select v-model="attachment.category">
-          <option value="business_license">
-            营业执照
-          </option>
-          <option value="legal_id">
-            法人身份证
-          </option>
-          <option value="authorization">
-            授权文件
-          </option>
-          <option value="qualification">
-            资质证书
-          </option>
-          <option value="other">
-            其他
-          </option>
-        </select>
-        <t-input
-          v-model="attachment.name"
-          :placeholder="attachment.category === 'legal_id' ? '法人身份证人像面/国徽面' : '附件名称'"
-        />
-        <t-input
-          v-model="attachment.validUntil"
-          placeholder="有效期，如 2026-12-31"
-        />
-        <input
-          type="file"
-          @change="(event) => onAttachmentFile(index, event)"
-        >
-        <span class="file-id">{{ attachment.fileId ? `已上传：${attachment.name || "附件"}` : "未上传" }}</span>
-      </div>
-      <p class="attachment-hint">
-        上传法人身份证时请分两条附件记录，并在名称中明确标注“人像面”或“国徽面”；合同生成时两面按同一 A4 页面上下居中处理。
-      </p>
-      <t-space class="form-actions">
-        <t-button @click="addAttachment">
-          新增附件
-        </t-button>
-        <t-button
-          theme="primary"
-          :loading="saving"
-          @click="createVersion"
-        >
-          创建新版本
-        </t-button>
-      </t-space>
-    </t-card>
+    />
 
     <t-card
       title="版本历史"
@@ -117,11 +57,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { uploadPrivateFile } from "../../api/core-flow-read.api";
-import { createBusinessPartyVersion, getBusinessParty } from "../../api/contract-workbench.api";
-import { businessPartyEditPolicy } from "../contract-templates/contract-template.config";
+import { getBusinessParty } from "../../api/contract-workbench.api";
 
 interface AttachmentDraft {
   category: "business_license" | "legal_id" | "authorization" | "qualification" | "other";
@@ -141,18 +79,8 @@ const route = useRoute();
 const party = ref<Record<string, unknown> | null>(null);
 const versions = ref<PartyVersionRow[]>([]);
 const loading = ref(false);
-const saving = ref(false);
 const message = ref("");
-const tone = ref<"success" | "danger">("success");
-const form = reactive({
-  name: "",
-  unifiedSocialCreditCode: "",
-  legalRepresentative: "",
-  address: "",
-  contactName: "",
-  contactPhone: ""
-});
-const attachments = ref<AttachmentDraft[]>([]);
+const tone = ref<"danger">("danger");
 const columns = [
   { colKey: "versionNo", title: "版本", width: 80 },
   { colKey: "summary", title: "档案快照", minWidth: 220 },
@@ -168,41 +96,6 @@ function snapshot(row: PartyVersionRow) {
   };
 }
 
-function fillFromLatest() {
-  const latest = versions.value[0]?.snapshot as Record<string, unknown> | undefined;
-  if (!latest) return;
-  form.name = String(latest.name ?? "");
-  form.unifiedSocialCreditCode = String(latest.unifiedSocialCreditCode ?? "");
-  form.legalRepresentative = String(latest.legalRepresentative ?? "");
-  form.address = String(latest.address ?? "");
-  form.contactName = String(latest.contactName ?? "");
-  form.contactPhone = String(latest.contactPhone ?? "");
-}
-
-function addAttachment() {
-  attachments.value.push({ category: "qualification", fileId: "", name: "", validUntil: "" });
-}
-
-async function onAttachmentFile(index: number, event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  try {
-    const name = attachments.value[index].name.trim();
-    const uploaded = await uploadPrivateFile(
-      file,
-      name && attachments.value[index].category === "legal_id"
-        ? `${name} - ${file.name}`
-        : file.name
-    );
-    attachments.value[index].fileId = uploaded.id;
-    attachments.value[index].name ||= file.name;
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "上传附件失败";
-    tone.value = "danger";
-  }
-}
-
 async function loadParty() {
   loading.value = true;
   try {
@@ -212,35 +105,11 @@ async function loadParty() {
     };
     party.value = data.party;
     versions.value = data.versions;
-    fillFromLatest();
   } catch (error) {
     message.value = error instanceof Error ? error.message : "加载合作单位失败";
     tone.value = "danger";
   } finally {
     loading.value = false;
-  }
-}
-
-async function createVersion() {
-  saving.value = true;
-  try {
-    await createBusinessPartyVersion(String(route.params.partyId), {
-      name: form.name.trim(),
-      unifiedSocialCreditCode: form.unifiedSocialCreditCode.trim() || undefined,
-      legalRepresentative: form.legalRepresentative.trim() || undefined,
-      address: form.address.trim() || undefined,
-      contactName: form.contactName.trim() || undefined,
-      contactPhone: form.contactPhone.trim() || undefined,
-      attachments: attachments.value.filter((attachment) => attachment.fileId && attachment.name)
-    });
-    message.value = "新版本已创建";
-    tone.value = "success";
-    await loadParty();
-  } catch (error) {
-    message.value = error instanceof Error ? error.message : "创建新版本失败";
-    tone.value = "danger";
-  } finally {
-    saving.value = false;
   }
 }
 
@@ -251,24 +120,11 @@ onMounted(loadParty);
 .page { min-width: 0; color: #151922; }
 .page-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-head h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
-.page-head p, label span, small { margin: 0; color: #767f8d; font-size: 12px; }
+.page-head p, small { margin: 0; color: #767f8d; font-size: 12px; }
 .panel { margin-bottom: 16px; border-radius: 3px; }
-.form-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px; }
-label { display: grid; gap: 4px; }
-.attachment-row { display: grid; grid-template-columns: 150px 1fr 160px 220px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
-.attachment-row select { height: 32px; border: 1px solid #dcdfe6; border-radius: 3px; }
-.form-actions { flex-wrap: wrap; }
-.file-id, .attachment-line, .message { font-size: 12px; }
-.attachment-hint { margin: 4px 0 12px; color: #767f8d; font-size: 12px; }
-.success { color: #1b6b3a; }
+.attachment-line, .message { font-size: 12px; }
 .danger { color: #b51d2a; }
-@container jg-page (max-width: 1100px) {
-  .attachment-row { grid-template-columns: 140px minmax(180px, 1fr) 150px; }
-}
-@container jg-page (max-width: 840px) {
-  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @container jg-page (max-width: 620px) {
-  .page-head, .form-grid, .attachment-row { display: grid; grid-template-columns: 1fr; }
+  .page-head { display: grid; grid-template-columns: 1fr; }
 }
 </style>

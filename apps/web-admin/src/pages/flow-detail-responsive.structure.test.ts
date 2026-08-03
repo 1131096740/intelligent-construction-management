@@ -23,11 +23,11 @@ describe("responsive forms and detail pages", () => {
     }
   });
 
-  it("keeps the party history table local while its form and attachments reflow", () => {
+  it("keeps the read-only party history table local while the page header reflows", () => {
     expect(partyEditor).toContain("jg-table-region jg-table-region--standard");
     expect(partyEditor).toContain(':horizontal-scroll-affixed-bottom="true"');
-    expect(partyEditor).toContain("@container jg-page (max-width: 1100px)");
     expect(partyEditor).toContain("@container jg-page (max-width: 620px)");
+    expect(partyEditor).toContain("上线准备期间暂为只读");
   });
 
   it("keeps all three project data tables as separate shared scroll owners", () => {

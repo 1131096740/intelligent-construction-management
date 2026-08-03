@@ -14,16 +14,16 @@
     "mainRequestBindingCount": 452,
     "ticketFollowupCount": 2,
     "requestEdgeCount": 451,
-    "productionConsumerCount": 395,
-    "orphanWrapperCount": 37,
-    "testOnlyWrapperCount": 36,
+    "productionConsumerCount": 390,
+    "orphanWrapperCount": 42,
+    "testOnlyWrapperCount": 41,
     "unreferencedWrapperCount": 1,
     "duplicateNormalizedRouteGroupCount": 12,
     "authTransportExceptionCount": 5
   },
   "evidence": {
     "productionModuleCount": 241,
-    "reachableProductionModuleCount": 234
+    "reachableProductionModuleCount": 233
   },
   "wrappers": [
     {
@@ -51,10 +51,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/company-entity.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchActiveCompanyEntities",
@@ -171,10 +171,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/company-entity.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "updateCompanyEntityStatus",
@@ -201,9 +201,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/company-entity.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -1174,9 +1172,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -1204,9 +1200,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -8879,7 +8873,6 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
         "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
         "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"
@@ -13815,6 +13808,21 @@
   "blockers": {
     "orphanWrappers": [
       {
+        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+        "wrapper": "createCompanyEntity",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+        "wrapper": "updateCompanyEntity",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+        "wrapper": "updateCompanyEntityStatus",
+        "classification": "test_only"
+      },
+      {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "abandonContractDraft",
         "classification": "test_only"
@@ -13822,6 +13830,16 @@
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "addBillRow",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createBusinessParty",
+        "classification": "test_only"
+      },
+      {
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "createBusinessPartyVersion",
         "classification": "test_only"
       },
       {

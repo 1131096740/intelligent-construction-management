@@ -13,29 +13,29 @@
     "routeCount": 442,
     "exactRouteCount": 442,
     "normalizedRouteCount": 442,
-    "classificationOverrideCount": 110,
+    "classificationOverrideCount": 115,
     "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "9329e446da2accaf51ea9dd2fa50468893d58752c4678de79bbb5369402083b1",
+    "classificationOverrideSha256": "a67afb7ab71ac617d2c4413d76d3b44cf74a7885ee744186787f9cb6d8a2b9f0",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 332,
-    "pageRouteCount": 335,
+    "derivedProductionPageCount": 327,
+    "pageRouteCount": 330,
     "externalTakeoverCount": 61,
-    "exitCandidateCount": 43,
+    "exitCandidateCount": 48,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 384,
+      "web_api_wrapper": 379,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 49
+      "none": 54
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 384,
+    "productionWrapperRouteCount": 379,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 2
   },
@@ -5851,29 +5851,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-            "wrapper": "updateCompanyEntity",
-            "method": "PATCH",
-            "normalizedPath": "/company-entities/:param",
-            "normalizedKey": "PATCH /company-entities/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -6979,29 +6968,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createBusinessParty",
-            "method": "POST",
-            "normalizedPath": "/business-parties",
-            "normalizedKey": "POST /business-parties",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7019,29 +6997,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createBusinessPartyVersion",
-            "method": "POST",
-            "normalizedPath": "/business-parties/:param/versions",
-            "normalizedKey": "POST /business-parties/:param/versions",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7059,29 +7026,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-            "wrapper": "createCompanyEntity",
-            "method": "POST",
-            "normalizedPath": "/company-entities",
-            "normalizedKey": "POST /company-entities",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7099,29 +7055,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "stage_d_c_p1_01_master_data_readonly_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-            "wrapper": "updateCompanyEntityStatus",
-            "method": "POST",
-            "normalizedPath": "/company-entities/:param/status",
-            "normalizedKey": "POST /company-entities/:param/status",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -10818,7 +10763,6 @@
             "normalizedPath": "/files",
             "normalizedKey": "POST /files",
             "productionConsumers": [
-              "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
               "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
               "apps/web-admin/src/pages/settlement-templates/SettlementTemplateEditorPage.vue"

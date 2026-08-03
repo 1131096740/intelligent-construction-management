@@ -12,22 +12,22 @@
     "registeredActionCount": 243,
     "pageActionCount": 46,
     "backgroundActionCount": 197,
-    "reachableVueFileCount": 132,
+    "reachableVueFileCount": 131,
     "routeRootCount": 47,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135,
-    "reachableProductionModuleCount": 234,
-    "templateEventDirectiveCount": 960,
+    "reachableProductionModuleCount": 233,
+    "templateEventDirectiveCount": 949,
     "propCallbackDirectiveCount": 11,
     "coveredProductionMutationConsumerCount": 233,
     "candidateProductionMutationConsumerCount": 233,
     "acceptedProductionMutationConsumerCount": 233,
-    "productionMutationConsumerPairCount": 288,
-    "blockerCount": 58
+    "productionMutationConsumerPairCount": 282,
+    "blockerCount": 52
   },
   "evidence": {
     "totalProductionModuleCount": 241,
-    "reachableProductionModuleCount": 234,
+    "reachableProductionModuleCount": 233,
     "totalVueFileCount": 135,
     "parsedVueFileCount": 135
   },
@@ -17101,60 +17101,6 @@
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
     "uncoveredMutationWrappers": [
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createBusinessPartyVersion",
-        "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
-        "normalizedKeys": [
-          "POST /business-parties/:param/versions"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
-        "normalizedKeys": [
-          "POST /files"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createBusinessParty",
-        "sourceFile": "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
-        "normalizedKeys": [
-          "POST /business-parties"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "updateCompanyEntityStatus",
-        "sourceFile": "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue",
-        "normalizedKeys": [
-          "POST /company-entities/:param/status"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "createCompanyEntity",
-        "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
-        "normalizedKeys": [
-          "POST /company-entities"
-        ]
-      },
-      {
-        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "updateCompanyEntity",
-        "sourceFile": "apps/web-admin/src/pages/company-entities/components/CompanyEntityFormDrawer.vue",
-        "normalizedKeys": [
-          "PATCH /company-entities/:param"
-        ]
-      },
       {
         "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
