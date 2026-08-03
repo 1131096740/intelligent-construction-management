@@ -1,10 +1,10 @@
 # 建工智管工作台实施包 1–5 完成与全员上线 PRD
 
-> 版本：v1.3
+> 版本：v1.4
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；阶段 D 已启动，C-P0-01 已本地清零，下一步进入 C-P0-02
+> 状态：执行中；C-P0-02 第 1/6 子组已本地清零，下一步执行第 2 子组
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -114,7 +114,7 @@
 | 数据库迁移 | 生产 109 条；当前候选基线 116 条 | 新候选必须重新完成迁移和恢复演练 |
 | 数据库约束 | 约 170 个未验证约束；“未验证”不等于已发现违反 | 关键表必须在恢复库验证，并形成生产分批验证方案 |
 | 备份 | 最近自然 Cron 备份、校验、`pg_restore --list`、异机回执和权限证据通过 | 发布时仍需新备份和恢复证据 |
-| Task 11 能力矩阵 | 阶段 D 当前为 401 routes、0 unclassified、306 raw blockers；C-P0-01 的 4 个精确 pair 已清零，未覆盖 pair 247→243 | 阶段 D 已启动；Task 11 严格完成门仍未通过，下一步按唯一队列执行 C-P0-02 |
+| Task 11 能力矩阵 | 阶段 D 当前为 401 routes、0 unclassified、294 raw blockers、237 uncovered pairs、14 unresolved bindings；C-P0-01 已清零，C-P0-02 第 1 子组再关闭 6 个 pair 和 6 个 unresolved | Task 11 严格完成门仍未通过；下一步按唯一队列执行 C-P0-02 第 2 子组 |
 | 全量测试 | 阶段 B 最终 SHA 的 PR CI 已完成 frozen install、全量 test、typecheck、lint、build、Prisma、UI 与发布检查并退出 0 | 阶段 D 每个新 SHA 重跑受影响门；阶段 E 对冻结 SHA 重跑总门 |
 | 浏览器门 | 阶段 B 已通过生产等价登录、公安备案、桌面/移动渲染与控制台门；核心业务长链仍待阶段 E | 旧业务 SHA 证据不可复用，冻结 SHA 必须重跑四岗位业务门 |
 | CI/CD | PR/push Release gates 已建立；部署 workflow 与脚本已统一单一 `TARGET_SHA` 并在改变生产前失败关闭 | 阶段 D 保持 CI 全绿；阶段 E/F 验证冻结 SHA 与回滚 |
@@ -380,6 +380,14 @@
 > 306 blockers，未覆盖 pair 247→243，目标四 pair 精确归零；Chromium/WebKit 动态用例
 > 6/6 通过。整站仍 blocked，下一步严格进入 `C-P0-02`。完整证据见
 > `docs/progress/2026-08-03-five-package-stage-d-c-p0-01-file-signature-actions.md`。
+
+> 2026-08-03 后续执行记录：`C-P0-02` 已拆成 6 个依赖有序子组，第 1 组合同草稿
+> 租约、自动/手动保存、预览与租约接管已本地清零。服务端发布精确草稿操作 capability，
+> Web 每次写入前以同一工作台 GET 二次预检；7 个登记动作全部达到
+> `serverDerived / dominatesTrigger / causalVerified`。整站矩阵由 306 降为 294 raw blockers，
+> uncovered pair 243→237、unresolved binding 20→14；C-P0-02 自身剩余 79 pair / 5 unresolved。
+> 下一步只能执行第 2 组草稿创建、提交、负责人转移与工作台治理。完整证据见
+> `docs/progress/2026-08-03-five-package-stage-d-c-p0-02a-contract-draft-operations.md`。
 
 只修复行为确实缺失、测试已经失效或最终候选证据不足的切片，已实现且仍通过的 Task 登记为“复核通过”，不重复改写。按以下依赖顺序执行：
 

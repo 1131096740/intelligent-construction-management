@@ -2640,6 +2640,20 @@ function closureHasCanonicalExpression(nodes, expected) {
   return found;
 }
 
+function capabilitySourceBindings(nodes, expected, symbols) {
+  const normalizedExpected = normalizedExpression(expected);
+  const bindings = new Set();
+  for (const node of nodes) {
+    walkEstree(node, (candidate) => {
+      if (canonicalExpression(candidate) !== normalizedExpected) return;
+      const root = referenceRootIdentifier(candidate);
+      const binding = resolvedReferenceBinding(root, symbols);
+      if (binding) bindings.add(binding);
+    });
+  }
+  return bindings;
+}
+
 function closureHasLiteral(
   nodes,
   expected,
@@ -6302,7 +6316,8 @@ function capabilityRefUsageIsSafe(
   context,
   {
     originExpressions = [],
-    vueRefRoot = true
+    vueRefRoot = true,
+    rootBinding: explicitRootBinding = null
   } = {}
 ) {
   const ast = context.symbols.ast;
@@ -6310,10 +6325,8 @@ function capabilityRefUsageIsSafe(
   if (!ast || !scopeManager) return false;
   const scopeBindings =
     scopeBindingsByIdentifier(scopeManager);
-  const rootBinding = uniqueScopeVariable(
-    scopeManager,
-    root
-  );
+  const rootBinding =
+    explicitRootBinding ?? uniqueScopeVariable(scopeManager, root);
   if (!scopeBindings || !rootBinding) return false;
   const parentByNode = new WeakMap();
   const indexParents = (
@@ -8325,10 +8338,15 @@ function capabilityServerProvenanceSources(
   ) {
     return null;
   }
-  const rootBindings = topLevelScopeVariables(
-    context.symbols.scopeManager,
-    root
-  );
+  const discoveredBindings =
+    context.capabilitySourceBindings ??
+    context.discoveredCapabilitySourceBindings;
+  const rootBindings = discoveredBindings?.size > 0
+    ? [...discoveredBindings]
+    : topLevelScopeVariables(
+        context.symbols.scopeManager,
+        root
+      );
   if (rootBindings.length !== 1) return null;
   const rootBinding = rootBindings[0];
   const declaration = uniqueIndexedNode(
@@ -8347,7 +8365,8 @@ function capabilityServerProvenanceSources(
       context,
       {
         originExpressions: [declaration],
-        vueRefRoot: false
+        vueRefRoot: false,
+        rootBinding
       }
     )
       ? directSources
@@ -8380,7 +8399,7 @@ function capabilityServerProvenanceSources(
       root,
       capability.source,
       context,
-      { originExpressions: populated }
+      { originExpressions: populated, rootBinding }
     )
   ) {
     return null;
@@ -8638,9 +8657,17 @@ function expressionHasCapability(
     return false;
   }
   const nodes = capabilityClosure(node, context.symbols);
+  const sourceBindings = capabilitySourceBindings(
+    nodes,
+    capability.source,
+    context.symbols
+  );
+  const provenanceContext = sourceBindings.size === 1
+    ? { ...context, capabilitySourceBindings: sourceBindings }
+    : context;
   if (
     !closureHasCanonicalExpression(nodes, capability.source) ||
-    !capabilityHasServerProvenance(capability, context)
+    !capabilityHasServerProvenance(capability, provenanceContext)
   ) {
     return false;
   }
@@ -8687,7 +8714,13 @@ function expressionHasCapability(
     return closureHasEnabledCheck(nodes);
   }
   if (capability.kind === "available_action_string") {
+    for (const binding of sourceBindings) {
+      context.discoveredCapabilitySourceBindings?.add(binding);
+    }
     return true;
+  }
+  for (const binding of sourceBindings) {
+    context.discoveredCapabilitySourceBindings?.add(binding);
   }
   return true;
 }
@@ -9028,6 +9061,114 @@ function actionCollectionEvidence(element) {
     .filter(Boolean);
 }
 
+function backgroundCapabilityDominates(candidate, capability, context) {
+  const definition = candidate.expression;
+  const body = [
+    "ArrowFunctionExpression",
+    "FunctionDeclaration",
+    "FunctionExpression"
+  ].includes(definition?.type) && definition.generator !== true
+    ? definition.body
+    : null;
+  if (body?.type !== "BlockStatement") return false;
+  const statements = body.body ?? [];
+  const definitions = indexedCompletionDefinitions(definition);
+  for (let index = 0; index < statements.length; index += 1) {
+    const statement = statements[index];
+    if (
+      statement.type !== "IfStatement" ||
+      statement.alternate ||
+      !["abrupt", "return"].includes(
+        statementCompletion(
+          statement.consequent,
+          definitions,
+          new Set()
+        )
+      ) ||
+      !capabilityRequired(
+        statement.test,
+        false,
+        capability,
+        context
+      )
+    ) {
+      continue;
+    }
+    const prefixIsReadOnly = statements
+      .slice(0, index + 1)
+      .every((prefixStatement) => {
+        if (prefixStatement.type === "VariableDeclaration") {
+          return (
+            prefixStatement.kind === "const" &&
+            (prefixStatement.declarations ?? []).every((declaration) => {
+              if (
+                declaration.id?.type !== "Identifier" ||
+                !declaration.init
+              ) {
+                return false;
+              }
+              if (
+                preflightExpressionIsPure(
+                  declaration.init,
+                  context.symbols
+                )
+              ) {
+                return true;
+              }
+              const initialized = unwrapPreflightExpression(declaration.init);
+              const value = initialized?.type === "AwaitExpression"
+                ? unwrapPreflightExpression(initialized.argument)
+                : initialized;
+              if (
+                value?.type !== "CallExpression" ||
+                value.callee?.type !== "Identifier"
+              ) {
+                return false;
+              }
+              const binding = context.symbols.scopeBindings?.get(
+                value.callee
+              );
+              return Boolean(
+                binding &&
+                context.serverReadImports.has(binding) &&
+                (value.arguments ?? []).every(
+                  (argument) =>
+                    argument?.type !== "SpreadElement" &&
+                    preflightExpressionIsPure(
+                      argument,
+                      context.symbols
+                    )
+                )
+              );
+            })
+          );
+        }
+        if (prefixStatement.type !== "IfStatement") return false;
+        return (
+          !prefixStatement.alternate &&
+          preflightExpressionIsPure(
+            prefixStatement.test,
+            context.symbols
+          ) &&
+          ["abrupt", "return"].includes(
+            statementCompletion(
+              prefixStatement.consequent,
+              definitions,
+              new Set()
+            )
+          ) &&
+          preflightThrowBranchIsSafe(
+            prefixStatement.consequent,
+            context.symbols,
+            new Set()
+          )
+        );
+      });
+    if (prefixIsReadOnly) return true;
+  }
+  return false;
+}
+
 function capabilityDominates(candidate, capability, context) {
   if (!SERVER_CAPABILITY_KINDS.has(capability.kind)) return false;
   if (
@@ -9038,6 +9179,16 @@ function capabilityDominates(candidate, capability, context) {
         capability,
         context
       )
+    )
+  ) {
+    return true;
+  }
+  if (
+    candidate.kind === "background_call" &&
+    backgroundCapabilityDominates(
+      candidate,
+      capability,
+      context
     )
   ) {
     return true;
@@ -13790,6 +13941,7 @@ export async function inspectWholeSitePageActionManifest({
         wrapperIndex,
         action.sourceFile
       ),
+      discoveredCapabilitySourceBindings: new Set(),
       registryVariant: action.trigger.variant,
       businessDraftActionTrusted
     };

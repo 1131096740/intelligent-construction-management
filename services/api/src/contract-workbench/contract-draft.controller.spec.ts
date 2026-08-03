@@ -129,6 +129,23 @@ describe("ContractDraftController", () => {
     );
   });
 
+  it("protects preview and every edit-lease mutation with the workbench project action", () => {
+    for (const handler of [
+      "generatePreview",
+      "acquireEditLease",
+      "heartbeatEditLease",
+      "takeOverEditLease",
+      "releaseEditLease"
+    ] as const) {
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PROJECT_ACTION_KEY,
+          ContractDraftController.prototype[handler]
+        )
+      ).toBe("contract.create");
+    }
+  });
+
   it("forwards the global aggregate save with the opaque lease token", async () => {
     const { aggregate, controller } = makeController();
     const body = {

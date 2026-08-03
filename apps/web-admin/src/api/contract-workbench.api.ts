@@ -202,6 +202,7 @@ export type ContractDraftWorkbenchReadModel =
   Omit<ContractWorkbenchReadModel, "checkpoints"> & {
     draft: Record<string, unknown>;
     attachments: ContractDraftAttachmentModel[];
+    draftOperationAvailableActions: string[];
     lease: ContractDraftLeaseState;
     version: ContractWorkbenchReadModel["version"] & {
       draftLifecycleKind?: "pristine_draft" | "approval_draft";
@@ -332,6 +333,15 @@ export function fetchContractWorkbench(contractId: string) {
 }
 
 export function fetchContractDraftWorkbench(contractVersionId: string) {
+  return readJson<ContractDraftWorkbenchReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
+    true
+  );
+}
+
+export function fetchContractDraftOperationCapabilities(
+  contractVersionId: string
+) {
   return readJson<ContractDraftWorkbenchReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
     true

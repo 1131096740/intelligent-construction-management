@@ -17,7 +17,12 @@ describe("ContractDraftAggregateService", () => {
     draftData: { fieldValues: { name: "精确版本一" } }
   };
   const legacyReadModel = {
-    contract: { id: "contract-1", code: null, temporaryCode: "DRAFT-001" },
+    contract: {
+      id: "contract-1",
+      code: null,
+      temporaryCode: "DRAFT-001",
+      ownerUserId: "actor-1"
+    },
     version: { ...version },
     lifecycleKind: "pristine_draft",
     checkpoints: [{ id: "legacy-checkpoint" }],
@@ -115,6 +120,13 @@ describe("ContractDraftAggregateService", () => {
       expiresAt: null,
       canTakeOver: false
     });
+    expect(result.draftOperationAvailableActions).toEqual([
+      "acquire_contract_draft_edit_lease",
+      "heartbeat_contract_draft_edit_lease",
+      "queue_contract_draft_preview",
+      "release_contract_draft_edit_lease",
+      "save_contract_draft"
+    ]);
   });
 
   it("returns stable errors for a missing or non-editable version", async () => {
@@ -237,6 +249,9 @@ describe("ContractDraftAggregateService", () => {
       holderDisplayName: "当前编辑人",
       canTakeOver: true
     });
+    expect(result.draftOperationAvailableActions).toEqual([
+      "take_over_contract_draft_edit_lease"
+    ]);
   });
 
   it("reports a naturally expired lease without silently reacquiring it", async () => {

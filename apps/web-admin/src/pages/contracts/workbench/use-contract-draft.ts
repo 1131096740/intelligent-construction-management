@@ -20,6 +20,7 @@ import {
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
+  fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
   heartbeatContractDraftEditLease,
   queueContractDraftPreview,
@@ -71,6 +72,154 @@ import {
 
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
+
+async function acquireContractDraftEditLeaseWithCapability(
+  contractVersionId: string
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "acquire_contract_draft_edit_lease"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能取得合同草稿编辑租约");
+  }
+  return acquireContractDraftEditLease(contractVersionId);
+}
+
+async function heartbeatContractDraftEditLeaseWithCapability(
+  contractVersionId: string,
+  leaseToken: string
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "heartbeat_contract_draft_edit_lease"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能续期合同草稿编辑租约");
+  }
+  return heartbeatContractDraftEditLease(contractVersionId, leaseToken);
+}
+
+async function releaseContractDraftEditLeaseWithCapability(
+  contractVersionId: string,
+  leaseToken: string
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "release_contract_draft_edit_lease"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能释放合同草稿编辑租约");
+  }
+  return releaseContractDraftEditLease(contractVersionId, leaseToken);
+}
+
+async function takeOverContractDraftEditLeaseWithCapability(
+  contractVersionId: string,
+  confirmation: { currentPassword: string }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "take_over_contract_draft_edit_lease"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能接管合同草稿编辑租约");
+  }
+  return takeOverContractDraftEditLease(contractVersionId, confirmation);
+}
+
+async function autoSaveContractDraftAggregateWithCapability(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: SaveContractDraftAggregatePayload
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "save_contract_draft"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能保存合同草稿");
+  }
+  return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
+}
+
+async function manualSaveContractDraftAggregateWithCapability(
+  contractVersionId: string,
+  leaseToken: string,
+  payload: SaveContractDraftAggregatePayload
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "save_contract_draft"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能保存合同草稿");
+  }
+  return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
+}
+
+async function queueContractDraftPreviewWithCapability(
+  contractVersionId: string,
+  sourceRevision: number
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "queue_contract_draft_preview"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能生成合同草稿预览");
+  }
+  return queueContractDraftPreview(contractVersionId, sourceRevision);
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -1007,6 +1156,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   }) as ContractDraftAggregateModel;
   const model = aggregateModel.draft;
   const workbench = ref<ContractDraftWorkbenchReadModel | null>(null);
+  const contractDraftOperationAvailableActions = ref<string[]>([]);
   const saveError = ref("");
   const conflict = ref<ContractDraftConflict | null>(null);
   const formalSaveCompleted = ref(false);
@@ -1240,6 +1390,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       disposed ||
       !versionId ||
       !token ||
+      !contractDraftOperationAvailableActions.value.includes(
+        "heartbeat_contract_draft_edit_lease"
+      ) ||
       lease.value.kind !== "held"
     ) {
       return false;
@@ -1249,7 +1402,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       return false;
     }
     try {
-      const result = await heartbeatContractDraftEditLease(versionId, token);
+      const result = await heartbeatContractDraftEditLeaseWithCapability(
+        versionId,
+        token
+      );
       if (
         disposed ||
         contractVersionId.value !== versionId ||
@@ -1302,12 +1458,15 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       !versionId ||
       disposed ||
+      !contractDraftOperationAvailableActions.value.includes(
+        "take_over_contract_draft_edit_lease"
+      ) ||
       !("canTakeOver" in lease.value) ||
       !lease.value.canTakeOver
     ) {
       return false;
     }
-    const grant = await takeOverContractDraftEditLease(versionId, {
+    const grant = await takeOverContractDraftEditLeaseWithCapability(versionId, {
       currentPassword
     });
     if (disposed || contractVersionId.value !== versionId) return false;
@@ -1320,8 +1479,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     const token = leaseToken;
     cancelLeaseTimers();
     leaseToken = null;
-    if (versionId && token) {
-      void releaseContractDraftEditLease(versionId, token).catch(() => {
+    if (
+      versionId &&
+      token &&
+      contractDraftOperationAvailableActions.value.includes(
+        "release_contract_draft_edit_lease"
+      )
+    ) {
+      void releaseContractDraftEditLeaseWithCapability(versionId, token).catch(() => {
         // Unload release is best effort and must never extend the lease.
       });
     }
@@ -1454,6 +1619,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       releaseCurrentLease();
     }
     workbench.value = structuredClone(result);
+    contractDraftOperationAvailableActions.value = Array.isArray(
+      result.draftOperationAvailableActions
+    )
+      ? result.draftOperationAvailableActions.filter(
+          (action): action is string => typeof action === "string"
+        )
+      : [];
     contractVersionId.value = result.version.id;
     aggregateSaveState.value = createAggregateSaveState(
       result.version.draftRevision
@@ -1479,9 +1651,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       !leaseToken &&
       canAutoAcquireLease &&
+      contractDraftOperationAvailableActions.value.includes(
+        "acquire_contract_draft_edit_lease"
+      ) &&
       (result.lease.state === "available" || result.lease.state === "expired")
     ) {
-      const lease = await acquireContractDraftEditLease(requestedVersionId);
+      const lease = await acquireContractDraftEditLeaseWithCapability(
+        requestedVersionId
+      );
       if (disposed || requestId !== loadRequestId) return null;
       setLeaseGrant(lease);
     } else if (!leaseToken) {
@@ -1571,7 +1748,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
 
   async function performSave(saveKind: "auto" | "manual"): Promise<boolean> {
     const savingVersionId = contractVersionId.value;
-    if (disposed || !savingVersionId) {
+    if (
+      disposed ||
+      !savingVersionId ||
+      !contractDraftOperationAvailableActions.value.includes(
+        "save_contract_draft"
+      )
+    ) {
       return false;
     }
     if (!dirtyRef.value) {
@@ -1646,11 +1829,17 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
 
     try {
-      const result = await saveContractDraftAggregate(
-        savingVersionId,
-        token,
-        payload
-      );
+      const result = payload.saveKind === "auto"
+        ? await autoSaveContractDraftAggregateWithCapability(
+            savingVersionId,
+            token,
+            payload
+          )
+        : await manualSaveContractDraftAggregateWithCapability(
+            savingVersionId,
+            token,
+            payload
+          );
       // A late response from another route must never mutate the newly loaded
       // contract's revision, dirty state, backup, or conflict UI.
       if (contractVersionId.value !== savingVersionId) return true;
@@ -1763,6 +1952,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       disposed ||
       !versionId ||
+      !contractDraftOperationAvailableActions.value.includes(
+        "queue_contract_draft_preview"
+      ) ||
       !formalSaveCompleted.value ||
       dirtyRef.value ||
       activeSave ||
@@ -1770,7 +1962,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     ) {
       return false;
     }
-    await queueContractDraftPreview(versionId, currentRevision.value);
+    await queueContractDraftPreviewWithCapability(
+      versionId,
+      currentRevision.value
+    );
     return true;
   }
 
@@ -2053,6 +2248,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
       loadRequestId += 1;
       contractVersionId.value = null;
+      contractDraftOperationAvailableActions.value = [];
       pausedRef.value = false;
       conflict.value = null;
     });

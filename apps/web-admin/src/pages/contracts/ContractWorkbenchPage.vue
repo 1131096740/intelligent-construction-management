@@ -312,6 +312,7 @@
             转移负责人
           </t-button>
           <t-button
+            v-if="contractDraftOperationAvailableActions.includes('save_contract_draft')"
             size="small"
             variant="outline"
             :disabled="editorDisabled"
@@ -341,7 +342,12 @@
         class="workbench-governance-alert"
       >
         <template
-          v-if="leaseCanTakeOver"
+          v-if="
+            leaseCanTakeOver &&
+              contractDraftOperationAvailableActions.includes(
+                'take_over_contract_draft_edit_lease'
+              )
+          "
           #operation
         >
           <t-button
@@ -1235,6 +1241,7 @@ const leaveSave = createContractWorkbenchLeaveSave({
 });
 const contractDraftAvailableActions =
   shallowRef<DetailActionReadModel[] | null>(null);
+const contractDraftOperationAvailableActions = shallowRef<string[]>([]);
 const contractDraftLifecycleVersionId = computed(
   () => workbench.value?.version.id ?? ""
 );
@@ -1390,6 +1397,7 @@ function hideInvalidContractDraftLifecycleCapability(error: unknown) {
     code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
   ) {
     contractDraftAvailableActions.value = null;
+    contractDraftOperationAvailableActions.value = [];
     deletePristineDraftVisible.value = false;
     abandonApplicationVisible.value = false;
   }
@@ -1971,6 +1979,7 @@ onBeforeUnmount(() => {
   contractWorkbenchComponentAlive = false;
   workbenchLoadRequestId += 1;
   contractDraftAvailableActions.value = null;
+  contractDraftOperationAvailableActions.value = [];
   deletePristineDraftVisible.value = false;
   abandonApplicationVisible.value = false;
   clearManualSaveMessage();
@@ -2418,7 +2427,12 @@ async function onCreateDraft() {
 }
 
 async function onSave() {
-  if (writeLocked.value) return;
+  if (
+    writeLocked.value ||
+    !contractDraftOperationAvailableActions.value.includes(
+      "save_contract_draft"
+    )
+  ) return;
   clearManualSaveMessage();
   errorMessage.value = "";
   const wasFormallySaved = formalSaveCompleted.value;
@@ -2687,12 +2701,22 @@ function requestSubmission() {
 }
 
 function requestLeaseTakeover() {
+  if (
+    !contractDraftOperationAvailableActions.value.includes(
+      "take_over_contract_draft_edit_lease"
+    )
+  ) return;
   leaseTakeoverError.value = "";
   leaseTakeoverVisible.value = true;
 }
 
 async function confirmLeaseTakeover(values: { password: string }) {
-  if (leaseTakeoverBusy.value) return;
+  if (
+    leaseTakeoverBusy.value ||
+    !contractDraftOperationAvailableActions.value.includes(
+      "take_over_contract_draft_edit_lease"
+    )
+  ) return;
   leaseTakeoverBusy.value = true;
   leaseTakeoverError.value = "";
   try {
@@ -2847,6 +2871,7 @@ async function loadExpectedWorkbench(id: string) {
   const requestId = ++workbenchLoadRequestId;
   const expectedVersionId = queryText(route.query.versionId).trim();
   contractDraftAvailableActions.value = null;
+  contractDraftOperationAvailableActions.value = [];
   deletePristineDraftVisible.value = false;
   abandonApplicationVisible.value = false;
   deletePristineDraftError.value = "";
@@ -2872,6 +2897,13 @@ async function loadExpectedWorkbench(id: string) {
     throw new Error(exactVersionError.value);
   }
   contractDraftAvailableActions.value = capability.availableActions!;
+  contractDraftOperationAvailableActions.value = Array.isArray(
+    capability.draftOperationAvailableActions
+  )
+    ? capability.draftOperationAvailableActions.filter(
+        (action): action is string => typeof action === "string"
+      )
+    : [];
 }
 
 function returnToContractDetail() {
@@ -2910,6 +2942,7 @@ watch(contractId, (next, previous) => {
     focusedBillKey.value = "";
     workbenchLoadRequestId += 1;
     contractDraftAvailableActions.value = null;
+    contractDraftOperationAvailableActions.value = [];
     workbench.value = null;
     exactVersionError.value = "";
     historicalTakeoverRouteRequired.value = false;
@@ -2924,6 +2957,7 @@ watch(() => route.query.versionId, (next, previous) => {
     clearSessionSaveReceipt();
     workbenchLoadRequestId += 1;
     contractDraftAvailableActions.value = null;
+    contractDraftOperationAvailableActions.value = [];
     workbench.value = null;
     exactVersionError.value = "";
     historicalTakeoverRouteRequired.value = false;

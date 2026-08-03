@@ -699,6 +699,80 @@ async function submit() {
   }
 });
 
+test("accepts a fail-closed server capability preflight for a background mutation", async () => {
+  const action = registryAction({
+    id: "example.background",
+    usage: "background",
+    trigger: {
+      element: "module",
+      event: "call",
+      handler: "submit"
+    },
+    capability: {
+      kind: "available_action_string",
+      source: "operationCapabilities.availableActions",
+      key: "submit_approval"
+    }
+  });
+  const page = `<script setup lang="ts">
+import { getExample, submitExample } from "../api/example.api";
+async function submit() {
+  const operationCapabilities = await getExample("example-1");
+  const operationAllowed = operationCapabilities.availableActions.includes(
+    "submit_approval"
+  );
+  if (!operationAllowed) {
+    throw new Error("operation unavailable");
+  }
+  return submitExample("example-1");
+}
+void submit;
+</script>
+<template><div /></template>
+`;
+  const root = await fixture({ actions: [action], page });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    manifest.status,
+    "ready",
+    JSON.stringify(manifest.blockers)
+  );
+  assert.equal(manifest.actions[0].capability.serverDerived, true);
+  assert.equal(manifest.actions[0].capability.dominatesTrigger, true);
+  assert.equal(manifest.actions[0].bindings[0].causalVerified, true);
+
+  const unsafeRoot = await fixture({
+    actions: [action],
+    page: page.replace(
+      'const operationCapabilities = await getExample("example-1");',
+      'const mutation = submitExample("example-1");\n  const operationCapabilities = await getExample("example-1");'
+    ).replace(
+      'return submitExample("example-1");',
+      "return mutation;"
+    )
+  });
+  const unsafe = await inspectWholeSitePageActionManifest({ root: unsafeRoot });
+  assert.equal(unsafe.status, "blocked");
+  assert.equal(unsafe.actions[0].capability.dominatesTrigger, false);
+
+  const callbackMutationRoot = await fixture({
+    actions: [action],
+    page: page.replace(
+      "  const operationAllowed = operationCapabilities.availableActions.includes(",
+      '  operationCapabilities.availableActions.map(() => submitExample("example-1"));\n  const operationAllowed = operationCapabilities.availableActions.includes('
+    )
+  });
+  const callbackMutation = await inspectWholeSitePageActionManifest({
+    root: callbackMutationRoot
+  });
+  assert.equal(callbackMutation.status, "blocked");
+  assert.equal(
+    callbackMutation.actions[0].capability.dominatesTrigger,
+    false
+  );
+});
+
 test("keeps approve and reject variants distinct while sharing one wrapper and action key", async () => {
   const approve = registryAction({
     id: "example.review.approve",

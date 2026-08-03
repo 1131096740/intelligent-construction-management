@@ -70,6 +70,17 @@ export class ContractDraftAggregateService {
     const canTakeOver = leaseState === "held_by_other"
       ? await this.isContractDirector(actorUserId)
       : false;
+    const isOwner = legacyReadModel.contract.ownerUserId === actorUserId;
+    const draftOperationAvailableActions = [
+      ...(isOwner ? [
+        "acquire_contract_draft_edit_lease",
+        "heartbeat_contract_draft_edit_lease",
+        "queue_contract_draft_preview",
+        "release_contract_draft_edit_lease",
+        "save_contract_draft"
+      ] : []),
+      ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
+    ];
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {
@@ -80,6 +91,7 @@ export class ContractDraftAggregateService {
       },
       draft: version.draftData,
       attachments,
+      draftOperationAvailableActions,
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,

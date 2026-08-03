@@ -75,6 +75,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/preview-generation")
+  @RequireProjectRole("contract.create")
   generatePreview(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: GenerateContractDraftPreviewDto,
@@ -100,6 +101,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/edit-lease")
+  @RequireProjectRole("contract.create")
   acquireEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -108,6 +110,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/edit-lease/heartbeat")
+  @RequireProjectRole("contract.create")
   heartbeatEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string
@@ -116,6 +119,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/edit-lease/takeover")
+  @RequireProjectRole("contract.create")
   takeOverEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -125,6 +129,7 @@ export class ContractDraftController {
   }
 
   @Delete(":contractVersionId/edit-lease")
+  @RequireProjectRole("contract.create")
   releaseEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string

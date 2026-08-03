@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `e5ff7d30413c1b086b9e92a71510e6a258bef5104b9e9861224b5bffc24bc4ad` |
-| webApiWrappers | blocked | `f6502e985344fb1c6323640d53954c317847128e6281c2c974cf32e616a331ab` |
-| webPageActions | blocked | `d2b0a41e3d185eaaaf1dbe68723736f5c8647c9166968ea2a539ac6f9c7c09dc` |
-| routeUsage | ready | `f153effff170da219b504e1a83f4597b2980388fab90e41b39dd4669f6ce419a` |
+| nestRoutes | ready | `3c7f872951389ef25833a36f7cff2929bc5161897589feeee604d2a1c1c3f93b` |
+| webApiWrappers | blocked | `06572697c2344faad53f0f927b4119a302fc67c73c2c8edd82c03a5c8bf4e83e` |
+| webPageActions | blocked | `911b4151202a000dd05d53d47680a5979ace51b761fad3562833919520e91509` |
+| routeUsage | ready | `cbdc94bb814a676ffc0a1d12857cb3d07a7d013c6f93b2154d1d4c910155a01c` |
 
 ## 汇总
 
@@ -21,19 +21,19 @@
 | exitCandidateRouteCount | 43 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 410 |
+| mainRequestBindingCount | 411 |
 | webRequestWithoutNestCount | 1 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 37 |
 | duplicateMutationRouteCount | 3 |
-| registeredActionCount | 63 |
-| actionBindingCount | 88 |
-| acceptedActionBindingCount | 49 |
-| unresolvedActionBindingCount | 20 |
+| registeredActionCount | 64 |
+| actionBindingCount | 89 |
+| acceptedActionBindingCount | 56 |
+| unresolvedActionBindingCount | 14 |
 | productionMutationConsumerPairCount | 277 |
-| coveredProductionMutationConsumerPairCount | 34 |
-| uncoveredProductionMutationConsumerPairCount | 243 |
-| blockerCount | 306 |
+| coveredProductionMutationConsumerPairCount | 40 |
+| uncoveredProductionMutationConsumerPairCount | 237 |
+| blockerCount | 294 |
 
 ## 路由矩阵
 
@@ -42,7 +42,7 @@
 | DELETE | /approval-delegations/:delegationId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | DELETE | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow | — | not_applicable | ORPHAN_WRAPPER |
 | DELETE | /contract-drafts/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft | — | not_applicable | ORPHAN_WRAPPER |
-| DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | covered | — |
 | DELETE | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardContractBillTransitions | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#deleteSpotProcurementReceiptPhoto | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -61,7 +61,7 @@
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
 | GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractDraftLifecycleAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
 | GET | /contract-layout-template-versions/:versionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
 | GET | /contract-layout-templates | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listPublishedLayoutTemplates | — | not_applicable | — |
@@ -198,10 +198,10 @@
 | POST | /contract-document-differences/:differenceId/disposition | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#disposeContractDocumentDifference | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-documents/:documentId/retry | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#retryContractDocument | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-drafts/:contractVersionId/bills/:billKey/import-preview | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#previewContractDraftBillExcelImport | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#acquireContractDraftEditLease | contract-draft.lease-acquire | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-drafts/:contractVersionId/edit-lease/heartbeat | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#heartbeatContractDraftEditLease | contract-draft.lease-heartbeat | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-drafts/:contractVersionId/edit-lease/takeover | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#takeOverContractDraftEditLease | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
-| POST | /contract-drafts/:contractVersionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview | contract-draft.preview-queue | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| POST | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#acquireContractDraftEditLease | contract-draft.lease-acquire | covered | — |
+| POST | /contract-drafts/:contractVersionId/edit-lease/heartbeat | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#heartbeatContractDraftEditLease | contract-draft.lease-heartbeat | covered | — |
+| POST | /contract-drafts/:contractVersionId/edit-lease/takeover | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#takeOverContractDraftEditLease | contract-draft.lease-takeover | covered | — |
+| POST | /contract-drafts/:contractVersionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview | contract-draft.preview-queue | covered | — |
 | POST | /contract-drafts/:contractVersionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft | contract-workbench.submit-local-status | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-template-versions/:versionId/clone | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contract-layout-template-versions/:versionId/discard | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardLayoutTemplateVersion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -436,7 +436,7 @@
 | POST | /standard-clauses | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createStandardClause | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-bills/:billId/rows | exit_candidate | none | — | — | not_applicable | — |
-| PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
+| PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | covered | — |
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PUT | /projects/:projectId/contract-takeovers/:takeoverId/contract-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverContractSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PUT | /projects/:projectId/contract-takeovers/:takeoverId/finance-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverFinanceSide | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
@@ -512,7 +512,6 @@
 - apps/web-admin/src/api/contract-tax-facts.api.ts#reviewContractTaxFactRevisionByFinance → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-tax-facts.api.ts#submitContractTaxFactRevisionForFinanceReview → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
 - apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision → apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#acquireContractDraftEditLease → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#cloneContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
@@ -530,7 +529,6 @@
 - apps/web-admin/src/api/contract-workbench.api.ts#discardContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#discardLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#discardStandardClauseVersion → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#heartbeatContractDraftEditLease → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#inspectLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#previewContractDraftBillExcelImport → apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#previewContractTypeChange → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
@@ -538,19 +536,15 @@
 - apps/web-admin/src/api/contract-workbench.api.ts#publishLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#publishStandardClauseVersion → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#queueContractDocument → apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#queueLayoutTemplatePreview → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#retryContractDocument → apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions → apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization → apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#stopContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#submitContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion → apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#submitStandardClauseVersion → apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue
-- apps/web-admin/src/api/contract-workbench.api.ts#takeOverContractDraftEditLease → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
 - apps/web-admin/src/api/contract-workbench.api.ts#transferContractDraft → apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateContractNumberRule → apps/web-admin/src/pages/contract-templates/ContractNumberRulePage.vue
 - apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion → apps/web-admin/src/pages/contract-templates/ContractTemplateEditorPage.vue
@@ -739,12 +733,6 @@
 
 ### 未解决动作绑定
 
-- contract-draft.aggregate-autosave#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.lease-acquire#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.lease-heartbeat#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.lease-release#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.manual-save#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
-- contract-draft.preview-queue#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-draft.transfer-local-gate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.create-local-role#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
 - contract-takeover.submit-review-local-role-status#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

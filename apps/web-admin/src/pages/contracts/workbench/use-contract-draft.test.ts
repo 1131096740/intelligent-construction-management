@@ -12,6 +12,7 @@ vi.mock("../../../api/contract-workbench.api", () => ({
   acquireContractDraftEditLease: vi.fn(),
   createWorkbenchDraft: vi.fn(),
   fetchContractDraftWorkbench: vi.fn(),
+  fetchContractDraftOperationCapabilities: vi.fn(),
   heartbeatContractDraftEditLease: vi.fn(),
   queueContractDraftPreview: vi.fn(),
   releaseContractDraftEditLease: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("../../../api/contract-workbench.api", () => ({
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
+  fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
   heartbeatContractDraftEditLease,
   queueContractDraftPreview,
@@ -44,6 +46,9 @@ import { canApplyExpectedWorkbenchVersion } from "../contract-change.state";
 
 const mockCreateDraft = vi.mocked(createWorkbenchDraft);
 const mockAcquireLease = vi.mocked(acquireContractDraftEditLease);
+const mockFetchOperationCapabilities = vi.mocked(
+  fetchContractDraftOperationCapabilities
+);
 const mockFetchWorkbench = vi.mocked(fetchContractDraftWorkbench);
 const mockHeartbeatLease = vi.mocked(heartbeatContractDraftEditLease);
 const mockQueuePreview = vi.mocked(queueContractDraftPreview);
@@ -51,6 +56,15 @@ const mockReleaseLease = vi.mocked(releaseContractDraftEditLease);
 const mockSaveDraft = vi.mocked(saveContractDraftAggregate);
 const mockSubmitDraft = vi.mocked(submitContractDraft);
 const mockTakeOverLease = vi.mocked(takeOverContractDraftEditLease);
+
+const DEFAULT_DRAFT_OPERATION_ACTIONS = [
+  "acquire_contract_draft_edit_lease",
+  "heartbeat_contract_draft_edit_lease",
+  "queue_contract_draft_preview",
+  "release_contract_draft_edit_lease",
+  "save_contract_draft",
+  "take_over_contract_draft_edit_lease"
+];
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -134,6 +148,7 @@ function makeWorkbench(
       expiresAt: null,
       canTakeOver: false
     },
+    draftOperationAvailableActions: [...DEFAULT_DRAFT_OPERATION_ACTIONS],
     documents: [],
     readiness: { ready: false, blockingMessages: [], warningMessages: [] },
     ...overrides
@@ -236,6 +251,15 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-07-28T00:00:00.000Z"));
   globalThis.localStorage = memoryStorage();
   vi.resetAllMocks();
+  mockFetchOperationCapabilities.mockImplementation(async (contractVersionId) => {
+    const workbench = makeWorkbench();
+    return makeWorkbench({
+      version: {
+        ...workbench.version,
+        id: contractVersionId
+      }
+    });
+  });
   mockAcquireLease.mockResolvedValue({
     token: "lease-token",
     leaseRevision: 1,
@@ -314,6 +338,65 @@ afterEach(() => {
 });
 
 describe("useContractDraft", () => {
+  it("rechecks the server capability and fails closed before saving", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockFetchOperationCapabilities
+      .mockResolvedValueOnce(makeWorkbench())
+      .mockResolvedValueOnce(makeWorkbench({
+        draftOperationAvailableActions: []
+      } as Partial<ContractDraftWorkbenchReadModel>));
+
+    await draft.load("cv-1");
+    draft.model.contractName = "权限已被撤销";
+    draft.markDirty();
+
+    await expect(draft.saveNow()).resolves.toBe(false);
+    expect(mockFetchOperationCapabilities).toHaveBeenCalledTimes(2);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the workbench omits draft-operation capabilities", async () => {
+    const scope = effectScope();
+    const draft = scope.run(makeDraft)!;
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      draftOperationAvailableActions: []
+    } as Partial<ContractDraftWorkbenchReadModel>));
+
+    await draft.load("cv-1");
+    draft.model.contractName = "不得写入";
+    draft.markDirty();
+
+    await expect(draft.saveNow()).resolves.toBe(false);
+    await expect(draft.queuePreviewForCurrentRevision()).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(30_000);
+    scope.stop();
+
+    expect(mockAcquireLease).not.toHaveBeenCalled();
+    expect(mockHeartbeatLease).not.toHaveBeenCalled();
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    expect(mockQueuePreview).not.toHaveBeenCalled();
+    expect(mockReleaseLease).not.toHaveBeenCalled();
+  });
+
+  it("does not take over an occupied lease without the exact server capability", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValue(makeWorkbench({
+      draftOperationAvailableActions: [],
+      lease: {
+        state: "held_by_other",
+        holderDisplayName: "另一位经办人",
+        expiresAt: "2026-07-28T00:02:00.000Z",
+        canTakeOver: true
+      }
+    } as Partial<ContractDraftWorkbenchReadModel>));
+
+    await draft.load("cv-1");
+
+    await expect(draft.takeOverLease("current-password")).resolves.toBe(false);
+    expect(mockTakeOverLease).not.toHaveBeenCalled();
+  });
+
   it("queues preview only when the caller explicitly requests it after a successful save", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
@@ -565,7 +648,9 @@ describe("useContractDraft", () => {
     });
 
     scope.stop();
-    expect(mockReleaseLease).toHaveBeenCalledWith("cv-1", "lease-token");
+    await vi.waitFor(() => {
+      expect(mockReleaseLease).toHaveBeenCalledWith("cv-1", "lease-token");
+    });
     vi.unstubAllGlobals();
   });
 
@@ -1970,7 +2055,9 @@ describe("useContractDraft", () => {
     draft.model.contractName = "第一次修改";
     draft.markDirty();
     const firstSave = draft.saveNow();
-    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+    });
     expect(mockSaveDraft.mock.calls[0]?.[2]).toMatchObject({ expectedRevision: 3 });
 
     draft.model.contractName = "请求期间的新修改";

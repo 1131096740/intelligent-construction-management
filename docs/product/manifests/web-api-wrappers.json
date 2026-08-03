@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 410,
-    "transportWrapperCount": 390,
+    "exportedFunctionCount": 411,
+    "transportWrapperCount": 391,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 410,
+    "mainRequestBindingCount": 411,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 409,
-    "productionConsumerCount": 353,
+    "requestEdgeCount": 410,
+    "productionConsumerCount": 354,
     "orphanWrapperCount": 37,
     "testOnlyWrapperCount": 36,
     "unreferencedWrapperCount": 1,
@@ -1572,7 +1572,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1847,
+          "sourceLine": 1857,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1602,7 +1602,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1847,
+          "sourceLine": 1857,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1648,7 +1648,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1412,
+          "sourceLine": 1422,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -1776,6 +1776,36 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractDraftOperationCapabilities",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 72,
+          "method": "GET",
+          "path": "/contract-drafts/:param/workbench",
+          "normalizedPath": "/contract-drafts/:param/workbench",
+          "normalizedKey": "GET /contract-drafts/:param/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractDraftOperationCapabilities",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
       "unreachableConsumers": []
     },
@@ -12408,6 +12438,10 @@
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "executeContractDraftLifecycleAction"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractDraftOperationCapabilities"
         },
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",

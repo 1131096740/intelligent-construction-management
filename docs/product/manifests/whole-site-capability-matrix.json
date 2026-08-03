@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "e5ff7d30413c1b086b9e92a71510e6a258bef5104b9e9861224b5bffc24bc4ad",
+      "sha256": "3c7f872951389ef25833a36f7cff2929bc5161897589feeee604d2a1c1c3f93b",
       "status": "ready",
       "summary": {
         "routeCount": 401
@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "f6502e985344fb1c6323640d53954c317847128e6281c2c974cf32e616a331ab",
+      "sha256": "06572697c2344faad53f0f927b4119a302fc67c73c2c8edd82c03a5c8bf4e83e",
       "status": "blocked",
       "summary": {
         "apiModuleCount": 15,
-        "exportedFunctionCount": 410,
-        "transportWrapperCount": 390,
+        "exportedFunctionCount": 411,
+        "transportWrapperCount": 391,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 410,
+        "mainRequestBindingCount": 411,
         "ticketFollowupCount": 2,
-        "requestEdgeCount": 409,
-        "productionConsumerCount": 353,
+        "requestEdgeCount": 410,
+        "productionConsumerCount": 354,
         "orphanWrapperCount": 37,
         "testOnlyWrapperCount": 36,
         "unreferencedWrapperCount": 1,
@@ -42,12 +42,12 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "d2b0a41e3d185eaaaf1dbe68723736f5c8647c9166968ea2a539ac6f9c7c09dc",
+      "sha256": "911b4151202a000dd05d53d47680a5979ace51b761fad3562833919520e91509",
       "status": "blocked",
       "summary": {
-        "registeredActionCount": 63,
-        "pageActionCount": 57,
-        "backgroundActionCount": 6,
+        "registeredActionCount": 64,
+        "pageActionCount": 56,
+        "backgroundActionCount": 8,
         "reachableVueFileCount": 132,
         "routeRootCount": 47,
         "totalVueFileCount": 135,
@@ -55,16 +55,16 @@
         "reachableProductionModuleCount": 234,
         "templateEventDirectiveCount": 949,
         "propCallbackDirectiveCount": 11,
-        "coveredProductionMutationConsumerCount": 34,
-        "candidateProductionMutationConsumerCount": 53,
-        "acceptedProductionMutationConsumerCount": 34,
+        "coveredProductionMutationConsumerCount": 40,
+        "candidateProductionMutationConsumerCount": 54,
+        "acceptedProductionMutationConsumerCount": 40,
         "productionMutationConsumerPairCount": 277,
-        "blockerCount": 289
+        "blockerCount": 266
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "f153effff170da219b504e1a83f4597b2980388fab90e41b39dd4669f6ce419a",
+      "sha256": "cbdc94bb814a676ffc0a1d12857cb3d07a7d013c6f93b2154d1d4c910155a01c",
       "status": "ready",
       "summary": {
         "routeCount": 401,
@@ -99,19 +99,19 @@
     "exitCandidateRouteCount": 43,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 410,
+    "mainRequestBindingCount": 411,
     "webRequestWithoutNestCount": 1,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 37,
     "duplicateMutationRouteCount": 3,
-    "registeredActionCount": 63,
-    "actionBindingCount": 88,
-    "acceptedActionBindingCount": 49,
-    "unresolvedActionBindingCount": 20,
+    "registeredActionCount": 64,
+    "actionBindingCount": 89,
+    "acceptedActionBindingCount": 56,
+    "unresolvedActionBindingCount": 14,
     "productionMutationConsumerPairCount": 277,
-    "coveredProductionMutationConsumerPairCount": 34,
-    "uncoveredProductionMutationConsumerPairCount": 243,
-    "blockerCount": 306
+    "coveredProductionMutationConsumerPairCount": 40,
+    "uncoveredProductionMutationConsumerPairCount": 237,
+    "blockerCount": 294
   },
   "blockers": {
     "upstreamManifestIssues": [
@@ -530,14 +530,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "acquireContractDraftEditLease",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contract-drafts/:param/edit-lease"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "applyContractTypeChange",
         "consumer": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
         "normalizedKeys": [
@@ -674,14 +666,6 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "heartbeatContractDraftEditLease",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contract-drafts/:param/edit-lease/heartbeat"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "inspectLayoutTemplateVersion",
         "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "normalizedKeys": [
@@ -738,26 +722,10 @@
       },
       {
         "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueContractDraftPreview",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contract-drafts/:param/preview-generation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
         "wrapper": "queueLayoutTemplatePreview",
         "consumer": "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
         "normalizedKeys": [
           "POST /contract-layout-template-versions/:param/preview-generation"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "releaseContractDraftEditLease",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "DELETE /contract-drafts/:param/edit-lease"
         ]
       },
       {
@@ -774,14 +742,6 @@
         "consumer": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
         "normalizedKeys": [
           "PUT /contract-versions/:param/bill-transitions"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "saveContractDraftAggregate",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "PUT /contract-drafts/:param"
         ]
       },
       {
@@ -830,14 +790,6 @@
         "consumer": "apps/web-admin/src/pages/contract-templates/StandardClauseLibraryPage.vue",
         "normalizedKeys": [
           "POST /standard-clause-versions/:param/submission"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "takeOverContractDraftEditLease",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contract-drafts/:param/edit-lease/takeover"
         ]
       },
       {
@@ -2324,90 +2276,6 @@
     ],
     "unresolvedActions": [
       {
-        "actionId": "contract-draft.aggregate-autosave",
-        "bindingIndex": 0,
-        "identity": "contract-draft.aggregate-autosave\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000saveContractDraftAggregate\u0000PUT\u0000PUT /contract-drafts/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "saveContractDraftAggregate",
-        "normalizedKey": "PUT /contract-drafts/:param",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-draft.lease-acquire",
-        "bindingIndex": 0,
-        "identity": "contract-draft.lease-acquire\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000acquireContractDraftEditLease\u0000POST\u0000POST /contract-drafts/:param/edit-lease\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "acquireContractDraftEditLease",
-        "normalizedKey": "POST /contract-drafts/:param/edit-lease",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-draft.lease-heartbeat",
-        "bindingIndex": 0,
-        "identity": "contract-draft.lease-heartbeat\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000heartbeatContractDraftEditLease\u0000POST\u0000POST /contract-drafts/:param/edit-lease/heartbeat\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "heartbeatContractDraftEditLease",
-        "normalizedKey": "POST /contract-drafts/:param/edit-lease/heartbeat",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-draft.lease-release",
-        "bindingIndex": 0,
-        "identity": "contract-draft.lease-release\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000releaseContractDraftEditLease\u0000DELETE\u0000DELETE /contract-drafts/:param/edit-lease\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "releaseContractDraftEditLease",
-        "normalizedKey": "DELETE /contract-drafts/:param/edit-lease",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-draft.manual-save",
-        "bindingIndex": 0,
-        "identity": "contract-draft.manual-save\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000saveContractDraftAggregate\u0000PUT\u0000PUT /contract-drafts/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "saveContractDraftAggregate",
-        "normalizedKey": "PUT /contract-drafts/:param",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-draft.preview-queue",
-        "bindingIndex": 0,
-        "identity": "contract-draft.preview-queue\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000queueContractDraftPreview\u0000POST\u0000POST /contract-drafts/:param/preview-generation\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueContractDraftPreview",
-        "normalizedKey": "POST /contract-drafts/:param/preview-generation",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
         "actionId": "contract-draft.transfer-local-gate",
         "bindingIndex": 0,
         "identity": "contract-draft.transfer-local-gate\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000transferContractDraft\u0000POST\u0000POST /contract-workbench/:param/transfer\u00000",
@@ -2741,10 +2609,10 @@
         "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -2778,32 +2646,27 @@
           "semantic": "technical_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
           "capability": {
-            "kind": "server_lease",
-            "source": "leaseToken",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "release_contract_draft_edit_lease",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "releaseContractDraftEditLease",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -3602,6 +3465,20 @@
           ],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "fetchContractDraftOperationCapabilities",
+          "method": "GET",
+          "path": "/contract-drafts/:param/workbench",
+          "normalizedKey": "GET /contract-drafts/:param/workbench",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
           ]
         },
         {
@@ -10330,10 +10207,10 @@
         "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10367,32 +10244,27 @@
           "semantic": "technical_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
           "capability": {
-            "kind": "server_lease",
-            "source": "result.lease.state",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "acquire_contract_draft_edit_lease",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "acquireContractDraftEditLease",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10404,10 +10276,10 @@
         "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10441,32 +10313,27 @@
           "semantic": "technical_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
           "capability": {
-            "kind": "server_lease",
-            "source": "leaseToken",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "heartbeat_contract_draft_edit_lease",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "heartbeatContractDraftEditLease",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10478,10 +10345,10 @@
         "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10506,11 +10373,36 @@
         }
       ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "actions": [
+        {
+          "actionId": "contract-draft.lease-takeover",
+          "bindingIndex": 0,
+          "identity": "contract-draft.lease-takeover\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000takeOverContractDraftEditLease\u0000POST\u0000POST /contract-drafts/:param/edit-lease/takeover\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "take_over_contract_draft_edit_lease",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "takeOverContractDraftEditLease",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10522,10 +10414,10 @@
         "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": null,
+        "requiredProjectAction": "contract.create",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
@@ -10559,32 +10451,27 @@
           "semantic": "technical_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
           "capability": {
-            "kind": "server_boolean",
-            "source": "formalSaveCompleted",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "queue_contract_draft_preview",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "queueContractDraftPreview",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -22327,60 +22214,53 @@
           "semantic": "technical_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
           "capability": {
-            "kind": "server_lease",
-            "source": "contractDraftLeaseCanEdit(lease)",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "save_contract_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "saveContractDraftAggregate",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         },
         {
           "actionId": "contract-draft.manual-save",
           "bindingIndex": 0,
           "identity": "contract-draft.manual-save\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000saveContractDraftAggregate\u0000PUT\u0000PUT /contract-drafts/:param\u00000",
-          "usage": "page_action",
+          "usage": "background",
           "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+          "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
           "capability": {
-            "kind": "server_lease",
-            "source": "canEdit",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "kind": "available_action_string",
+            "source": "operationCapabilities.draftOperationAvailableActions",
+            "key": "save_contract_draft",
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "saveContractDraftAggregate",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {

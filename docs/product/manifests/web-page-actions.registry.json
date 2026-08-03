@@ -216,13 +216,13 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "performSave",
-        "variant": "auto"
+        "handler": "autoSaveContractDraftAggregateWithCapability"
       },
       "semantic": "technical_write",
       "capability": {
-        "kind": "server_lease",
-        "source": "contractDraftLeaseCanEdit(lease)"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "save_contract_draft"
       },
       "wrappers": [
         {
@@ -268,12 +268,13 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "load"
+        "handler": "acquireContractDraftEditLeaseWithCapability"
       },
       "semantic": "technical_write",
       "capability": {
-        "kind": "server_lease",
-        "source": "result.lease.state"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "acquire_contract_draft_edit_lease"
       },
       "wrappers": [
         {
@@ -293,12 +294,13 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "performLeaseVerification"
+        "handler": "heartbeatContractDraftEditLeaseWithCapability"
       },
       "semantic": "technical_write",
       "capability": {
-        "kind": "server_lease",
-        "source": "leaseToken"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "heartbeat_contract_draft_edit_lease"
       },
       "wrappers": [
         {
@@ -318,12 +320,13 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "releaseCurrentLease"
+        "handler": "releaseContractDraftEditLeaseWithCapability"
       },
       "semantic": "technical_write",
       "capability": {
-        "kind": "server_lease",
-        "source": "leaseToken"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "release_contract_draft_edit_lease"
       },
       "wrappers": [
         {
@@ -334,21 +337,22 @@
     },
     {
       "id": "contract-draft.manual-save",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/新建",
         "/合同工作台/:contractId"
       ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
       "trigger": {
-        "element": "t-button",
-        "event": "click",
-        "handler": "onSave"
+        "element": "module",
+        "event": "call",
+        "handler": "manualSaveContractDraftAggregateWithCapability"
       },
       "semantic": "business_write",
       "capability": {
-        "kind": "server_lease",
-        "source": "canEdit"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "save_contract_draft"
       },
       "wrappers": [
         {
@@ -368,17 +372,44 @@
       "trigger": {
         "element": "module",
         "event": "call",
-        "handler": "queuePreviewForCurrentRevision"
+        "handler": "queueContractDraftPreviewWithCapability"
       },
       "semantic": "technical_write",
       "capability": {
-        "kind": "server_boolean",
-        "source": "formalSaveCompleted"
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "queue_contract_draft_preview"
       },
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "name": "queueContractDraftPreview"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.lease-takeover",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "takeOverContractDraftEditLeaseWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "take_over_contract_draft_edit_lease"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "takeOverContractDraftEditLease"
         }
       ]
     },
