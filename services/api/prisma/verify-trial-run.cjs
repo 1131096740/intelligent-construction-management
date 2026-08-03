@@ -1331,7 +1331,14 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
   const [version, terms] = await Promise.all([
     prisma.contractVersion.findUnique({
       where: { id: takeoverRecord.contractVersionId },
-      select: { status: true, effectiveAt: true }
+      select: {
+        status: true,
+        effectiveAt: true,
+        settlementMode: true,
+        settlementModeSource: true,
+        settlementModeConfirmedByUserId: true,
+        settlementModeConfirmedAt: true
+      }
     }),
     prisma.paymentTermsVersion.findUnique({
       where: { id: takeoverRecord.paymentTermsVersionId },
@@ -1345,7 +1352,13 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
   await prisma.$transaction([
     prisma.contractVersion.update({
       where: { id: takeoverRecord.contractVersionId },
-      data: { status: "effective", effectiveAt: now }
+      data: {
+        status: "effective",
+        effectiveAt: now,
+        settlementMode: "direct_payment",
+        settlementModeSource: "backfill",
+        settlementModeConfirmedAt: now
+      }
     }),
     prisma.paymentTermsVersion.update({
       where: { id: takeoverRecord.paymentTermsVersionId },
@@ -1361,7 +1374,11 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
         where: { id: takeoverRecord.contractVersionId },
         data: {
           status: version.status,
-          effectiveAt: version.effectiveAt
+          effectiveAt: version.effectiveAt,
+          settlementMode: version.settlementMode,
+          settlementModeSource: version.settlementModeSource,
+          settlementModeConfirmedByUserId: version.settlementModeConfirmedByUserId,
+          settlementModeConfirmedAt: version.settlementModeConfirmedAt
         }
       }),
       prisma.paymentTermsVersion.update({
