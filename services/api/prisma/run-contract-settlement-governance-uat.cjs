@@ -566,7 +566,14 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
   };
   await setAuthorization(changeFixture, "first_party", false, tokens);
   await setAuthorization(changeFixture, "counterparty", false, tokens);
-  const current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
+  let current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
+  await request(
+    "POST",
+    `/contract-workbench/${draft.id}/settlement-mode/confirm`,
+    tokens.contractDirector,
+    { expectedRevision: current.draftRevision, settlementMode: "settlement_required" }
+  );
+  current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
   await prisma.contractGeneratedDocument.create({
     data: {
       contractVersionId: draft.id,
