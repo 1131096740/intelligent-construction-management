@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
 const { PDFDocument } = require("pdf-lib");
 const { PrismaClient } = require("@prisma/client");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
@@ -156,6 +157,7 @@ async function prepareSignatures(tokens) {
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
     "base64"
   );
+  const signatureSha256 = createHash("sha256").update(signaturePng).digest("hex");
   for (const role of [
     "contractStaff", "chairman", "generalManager", "projectManager", "contractDirector", "financeDirector",
     "materialDirector", "materialStaff", "engineeringDirector", "engineeringForeman",
@@ -167,6 +169,14 @@ async function prepareSignatures(tokens) {
       signaturePng,
       "image/png"
     );
+    await prisma.handwrittenSignatureVersion.create({
+      data: {
+        userId: users[role].id,
+        fileId: signature.id,
+        contentSha256: signatureSha256,
+        source: "canvas"
+      }
+    });
     await prisma.user.update({ where: { id: users[role].id }, data: { signatureFileId: signature.id } });
   }
 }
