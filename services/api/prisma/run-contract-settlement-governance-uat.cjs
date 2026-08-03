@@ -552,7 +552,11 @@ async function createEffectiveBoundaryBase(type, suffix, shared, tokens) {
       companyEntityCreditCodeSnapshot: shared.entity.unifiedSocialCreditCode,
       companyEntityRegisteredAddressSnapshot: shared.entity.registeredAddress,
       taxFactStatus: "frozen",
-      taxFactsFrozenAt: new Date()
+      taxFactsFrozenAt: new Date(),
+      settlementMode: type === "generic_contract" ? "direct_payment" : "settlement_required",
+      settlementModeSource: "contract_director",
+      settlementModeConfirmedByUserId: users.contractDirector.id,
+      settlementModeConfirmedAt: new Date()
     }
   });
   await prisma.paymentTermsVersion.update({ where: { id: fixture.terms.id }, data: { status: "effective" } });
