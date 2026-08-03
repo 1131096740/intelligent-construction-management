@@ -80,6 +80,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @jiangkong/api exec prisma generate
 
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
       - name: Typecheck
         run: pnpm typecheck
 

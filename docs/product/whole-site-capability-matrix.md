@@ -6,20 +6,20 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `077586ff08c2cadb603e4561fd535980cbecc36f552a71c6a091a8ae118972a8` |
+| nestRoutes | ready | `e04c32dfd251a3f1d106bf62100fca5793fc70e30f586fc43d06bfe4cfc2df66` |
 | webApiWrappers | blocked | `43a1f4ecc10d2432b887b0101933e1fdcb630ff9eb59aa193e8e8e1aa8af28d5` |
 | webPageActions | blocked | `47cbf1cad9ffb9a9a44147aacf750b2bdb1f6ba1d85e2aeb75d3416793c165d3` |
-| routeUsage | ready | `5ba6b36402852aaa8189233598fb6295fb0daaf3123d217a962086064ff69965` |
+| routeUsage | ready | `ccf5e8c8048095fa8fbc3cc1c03767cf7886b2d10f6e027d12f0eb851e049c2f` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 398 |
+| routeCount | 399 |
 | pageRouteCount | 294 |
 | externalTakeoverRouteCount | 59 |
 | exitCandidateRouteCount | 43 |
-| internalTaskRouteCount | 2 |
+| internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 408 |
 | webRequestWithoutNestCount | 1 |
@@ -91,6 +91,7 @@
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
+| GET | /health/readiness | internal_task | machine_probe | — | — | not_applicable | — |
 | GET | /me/signature/canvas-handoffs/:token | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getCanvasSignatureHandoff | — | not_applicable | — |
 | GET | /me/signature/ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getSignatureTicket | — | not_applicable | — |
 | GET | /me/work-items | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkItems | — | not_applicable | — |

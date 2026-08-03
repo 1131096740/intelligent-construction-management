@@ -970,6 +970,23 @@
     },
     {
       "method": "GET",
+      "path": "/health/readiness",
+      "normalizedKey": "GET /health/readiness",
+      "controller": "HealthController",
+      "handler": "readiness",
+      "sourceFile": "services/api/src/health.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "public",
+      "guardAuthorization": "public",
+      "isPublic": true,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/me/signature/canvas-handoffs/:token",
       "normalizedKey": "GET /me/signature/canvas-handoffs/:param",
       "controller": "MeController",

@@ -48,7 +48,7 @@
     "create:trial-users": "node scripts/create-trial-users.cjs",
     "contract-master:review-pack": "node scripts/generate-contract-master-review-pack.cjs",
     "check:business-errors": "node scripts/check-business-errors.cjs",
-    "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
+    "pretest": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build && node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/api exec prisma generate",
     "test": "jest",
     "pretypecheck": "node ../../scripts/pnpm-workspace.mjs --filter @jiangkong/shared-domain build",
     "typecheck": "tsc --noEmit",

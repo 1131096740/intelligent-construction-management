@@ -6,10 +6,20 @@ const adminLayout = readFileSync(new URL("./AdminLayout.vue", import.meta.url), 
 const loginPage = readFileSync(new URL("../pages/login/LoginPage.vue", import.meta.url), "utf8");
 const changePasswordPage = readFileSync(new URL("../pages/login/ChangePasswordPage.vue", import.meta.url), "utf8");
 
-describe("site ICP filing footer", () => {
+describe("site filing footer", () => {
   it("links the approved filing number to the MIIT filing service", () => {
     expect(footer).toContain("滇ICP备2026013686号-1");
     expect(footer).toContain('href="https://beian.miit.gov.cn/"');
+    expect(footer).toContain('target="_blank"');
+    expect(footer).toContain('rel="noopener noreferrer"');
+  });
+
+  it("links the approved public security filing with its official icon", () => {
+    expect(footer).toContain("滇公网安备53011102001651号");
+    expect(footer).toContain(
+      'href="https://beian.mps.gov.cn/#/query/webSearch?code=53011102001651"'
+    );
+    expect(footer).toContain('src="/images/gongan-beian.png"');
     expect(footer).toContain('target="_blank"');
     expect(footer).toContain('rel="noopener noreferrer"');
   });

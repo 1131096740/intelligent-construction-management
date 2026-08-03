@@ -9,7 +9,7 @@ DEPLOY_CONFIRMATION_MODE="${DEPLOY_CONFIRMATION_MODE:-immediate}"
 DEPLOY_CONFIRMATION_DIR="${DEPLOY_CONFIRMATION_DIR:-/run/jiangkong-deploy}"
 DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-}"
 DEPLOY_CONFIRMATION_TIMEOUT_SECONDS="${DEPLOY_CONFIRMATION_TIMEOUT_SECONDS:-1800}"
-CANDIDATE_SHA_CONFIRMATION="${CANDIDATE_SHA_CONFIRMATION:-}"
+TARGET_SHA="${TARGET_SHA:-}"
 API_ENV_FILE="${API_ENV_FILE:-/etc/jiangkong/api.env}"
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
@@ -18,7 +18,8 @@ BACKUP_RUN_AS_ROOT="${BACKUP_RUN_AS_ROOT:-true}"
 DEPLOY_COREPACK_HOME="${DEPLOY_COREPACK_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}/node/corepack}"
 STAGING_PARENT_DIR="${STAGING_PARENT_DIR:-/srv/jiangkong}"
 ROLLBACK_PARENT_DIR="${ROLLBACK_PARENT_DIR:-/srv/jiangkong}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health}"
+LIVENESS_URL="${LIVENESS_URL:-${HEALTH_URL:-http://127.0.0.1:3000/health}}"
+READINESS_URL="${READINESS_URL:-http://127.0.0.1:3000/health/readiness}"
 HEALTH_ATTEMPTS="${HEALTH_ATTEMPTS:-15}"
 BACKUP_SCRIPT="${BACKUP_SCRIPT:-$REPO_ROOT/scripts/ops/db-backup.sh}"
 DB_BACKUP_TRANSFER_SCRIPT="${DB_BACKUP_TRANSFER_SCRIPT:-$REPO_ROOT/scripts/ops/cos-backup-transfer.mjs}"
@@ -160,10 +161,11 @@ verified_backup_artifacts_exist() {
   [[ -s "$backup_file" && -s "$backup_file.sha256" && -s "$backup_file.offsite.json" ]]
 }
 
-wait_for_health() {
+wait_for_url() {
+  local url=$1
   local attempt
   for ((attempt = 1; attempt <= HEALTH_ATTEMPTS; attempt += 1)); do
-    if curl -fsS "$HEALTH_URL" >/dev/null; then
+    if curl -fsS "$url" >/dev/null; then
       return 0
     fi
     if (( attempt < HEALTH_ATTEMPTS )); then
@@ -171,6 +173,14 @@ wait_for_health() {
     fi
   done
   return 1
+}
+
+wait_for_liveness() {
+  wait_for_url "$LIVENESS_URL"
+}
+
+wait_for_readiness() {
+  wait_for_url "$READINESS_URL"
 }
 
 await_deployment_confirmation() {
@@ -183,7 +193,7 @@ await_deployment_confirmation() {
   local decision=""
   echo "Deployment is healthy and awaiting an explicit smoke-test decision."
   echo "Decision file: $DEPLOY_CONFIRMATION_FILE"
-  echo "Expected content: CONFIRM $CANDIDATE_SHA_CONFIRMATION or ROLLBACK $CANDIDATE_SHA_CONFIRMATION"
+  echo "Expected content: CONFIRM $TARGET_SHA or ROLLBACK $TARGET_SHA"
 
   while (( elapsed <= DEPLOY_CONFIRMATION_TIMEOUT_SECONDS )); do
     if sudo --non-interactive test -f "$DEPLOY_CONFIRMATION_FILE"; then
@@ -194,11 +204,11 @@ await_deployment_confirmation() {
       decision="$(sudo --non-interactive cat "$DEPLOY_CONFIRMATION_FILE")"
       sudo --non-interactive rm -f "$DEPLOY_CONFIRMATION_FILE"
       case "$decision" in
-        "CONFIRM $CANDIDATE_SHA_CONFIRMATION")
+        "CONFIRM $TARGET_SHA")
           echo "Deployment confirmed after the smoke-test window."
           return 0
           ;;
-        "ROLLBACK $CANDIDATE_SHA_CONFIRMATION")
+        "ROLLBACK $TARGET_SHA")
           echo "Deployment rollback requested after the smoke-test window." >&2
           return 1
           ;;
@@ -254,7 +264,7 @@ cleanup() {
       echo "Failed to validate or reload Nginx during recovery" >&2
       recovery_failed=true
     fi
-    if ! wait_for_health; then
+    if ! wait_for_liveness; then
       echo "Recovered runtime did not pass the API health check" >&2
       recovery_failed=true
     fi
@@ -277,13 +287,13 @@ trap cleanup EXIT
 
 cd "$REPO_ROOT"
 
-if [[ ! "$CANDIDATE_SHA_CONFIRMATION" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "CANDIDATE_SHA_CONFIRMATION must be the approved 40-character lowercase SHA" >&2
+if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "TARGET_SHA must be the approved 40-character lowercase SHA" >&2
   exit 1
 fi
 actual_candidate_sha="$(git rev-parse HEAD)"
-if [[ "$actual_candidate_sha" != "$CANDIDATE_SHA_CONFIRMATION" ]]; then
-  echo "CANDIDATE_SHA_CONFIRMATION does not match the checked out HEAD" >&2
+if [[ "$actual_candidate_sha" != "$TARGET_SHA" ]]; then
+  echo "TARGET_SHA does not match the checked out HEAD" >&2
   exit 1
 fi
 if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
@@ -298,7 +308,7 @@ if [[ "$DEPLOY_CONFIRMATION_MODE" == manual ]]; then
     exit 1
   fi
   sudo --non-interactive install -d -m 0750 "$DEPLOY_CONFIRMATION_DIR"
-  DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-$DEPLOY_CONFIRMATION_DIR/$CANDIDATE_SHA_CONFIRMATION.decision}"
+  DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-$DEPLOY_CONFIRMATION_DIR/$TARGET_SHA.decision}"
   if [[ "$(dirname -- "$DEPLOY_CONFIRMATION_FILE")" != "$DEPLOY_CONFIRMATION_DIR" ]] ||
     [[ -e "$DEPLOY_CONFIRMATION_FILE" ]] ||
     [[ -L "$DEPLOY_CONFIRMATION_FILE" ]] ||
@@ -378,8 +388,13 @@ sudo systemctl restart "$API_SERVICE"
 sudo nginx -t
 sudo systemctl reload nginx
 
-if ! wait_for_health; then
-  echo "production API health check did not recover after restart" >&2
+if ! wait_for_liveness; then
+  echo "production API liveness check did not recover after restart" >&2
+  exit 1
+fi
+
+if ! wait_for_readiness; then
+  echo "production API readiness check did not recover after restart" >&2
   exit 1
 fi
 

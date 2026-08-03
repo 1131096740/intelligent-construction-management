@@ -3,23 +3,23 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 398,
-    "classificationOverrideCount": 107,
+    "routeCount": 399,
+    "classificationOverrideCount": 108,
     "derivedProductionPageCount": 291,
-    "classificationOverrideSha256": "1a9f9bbf12f9b194350741c19347789e5d4fb6ebf19c81adb03a94dabb8b4d01",
-    "consumerSurfaceOverrideSha256": "1bdffd246de7f2bbcbffd42d24e3844d3c49dac084a10e1a7659e40e9d59d2a2",
+    "classificationOverrideSha256": "690228141102d58691c581fefa5f8b8f7b1d3eb9a2cd112b27ed7ae0d7fc855f",
+    "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
       "page": 294,
       "external_takeover": 59,
       "exit_candidate": 43,
-      "internal_task": 2,
+      "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
       "web_api_wrapper": 341,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
-      "machine_probe": 1,
+      "machine_probe": 2,
       "operator_endpoint": 1,
       "none": 49
     }
@@ -78,6 +78,12 @@
       "path": "/health",
       "usage": "internal_task",
       "reason": "service_health_probe"
+    },
+    {
+      "method": "GET",
+      "path": "/health/readiness",
+      "usage": "internal_task",
+      "reason": "service_database_readiness_probe"
     },
     {
       "method": "GET",
@@ -694,6 +700,12 @@
       "path": "/health",
       "consumerSurface": "machine_probe",
       "reason": "service_and_public_health_monitoring"
+    },
+    {
+      "method": "GET",
+      "path": "/health/readiness",
+      "consumerSurface": "machine_probe",
+      "reason": "deployment_and_runtime_database_readiness_monitoring"
     },
     {
       "method": "POST",

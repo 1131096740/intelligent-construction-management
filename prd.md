@@ -4,7 +4,7 @@
 >
 > 日期：2026-08-03
 >
-> 状态：执行中；阶段 A 已建立唯一五包上线候选，待启动阶段 B
+> 状态：执行中；阶段 B 本地门禁实现已完成，待远端 CI 与生产等价 CSP 验证后进入阶段 C
 >
 > 适用范围：合同工作台实施包 1–5 的全部任务、全员上线和上线后关闭旧能力
 >
@@ -259,7 +259,7 @@
 - 最终候选必须让 Shared、API、Web 的标准全量测试命令全部退出 0。
 - 运行 Shared/API/Web typecheck、lint、Web `check:ui`、API/Web production build、业务错误检查和 Prisma validate/generate。
 - GitHub 增加 PR/push 验证，至少执行全量测试、类型、lint、build、UI 检查、迁移静态门和能力矩阵发布门。
-- 修复部署 workflow 与部署脚本的 `TARGET_SHA` / `CANDIDATE_SHA_CONFIRMATION` 契约，Verify 失败时不得推进生产 checkout。
+- 将部署 workflow 与服务器部署脚本统一为单一 `TARGET_SHA` 契约，Verify 失败时不得推进生产 checkout；数据库恢复演练自身的候选迁移确认仍按独立 runbook 管理。
 
 验收：空缓存或明确缓存状态下，CI 对同一 SHA 可重复全绿；故意传入不同 SHA 时部署在改变生产前失败关闭。
 
@@ -339,11 +339,13 @@
 
 在继续业务补漏前先建立可重复的验证和部署基础：
 
+> 2026-08-03 执行记录：已在唯一候选工作树完成阶段 B 的本地实现和验证。Web 单测与 Playwright E2E 已分离，API verifier 的构建/Prisma 前置已显式化；新增 PR/main CI 和 production deploy 的 high 漏洞门；部署统一为单一 `TARGET_SHA`，新增独立 liveness/readiness、`X-Powered-By` 移除和 CSP Report-Only 配置；公安备案页脚、图标与结构测试已纳入候选并完成桌面/移动生产构建浏览器验证。全量测试、typecheck、lint、build、Prisma、`check:ui`、业务错误、运维自测和普通能力矩阵均退出 0；路由清单为 399、未分类为 0，310 个历史 blocker 留待阶段 C 分级。依赖 high 从 5 个降为 0，剩余 4 个 moderate 已完成当前代码可达性分诊。由于本候选尚未推送，远端 GitHub CI 尚无同 SHA 回执；CSP 也尚未在生产等价 Nginx 中观察，因此阶段 B 尚未满足全部退出条件，不得标记 Go-Live Ready。完整证据见 `docs/progress/2026-08-03-five-package-stage-b-release-gates.md`。
+
 1. 在干净候选工作树按锁文件完成 frozen dependency install，记录 Node、pnpm、锁文件和缓存状态。
 2. 修复 Web 单测误收集 Playwright E2E 文件的问题，使单测和 E2E 使用独立配置与命令。
 3. 修复 API verifier 对偶然存在的旧 `dist` 的依赖，在命令入口显式构建所需包或使用可追溯源码入口。
 4. 增加 PR/push CI，至少覆盖全量测试、typecheck、lint、build、Prisma、Web `check:ui`、业务错误和发布关键能力矩阵。
-5. 统一 GitHub workflow、服务器部署入口和部署脚本的 `TARGET_SHA` / `CANDIDATE_SHA_CONFIRMATION` 契约；错误 SHA 必须在生产 checkout、构建、迁移和服务重启前失败关闭。
+5. 统一 GitHub workflow、服务器部署入口和部署脚本的单一 `TARGET_SHA` 契约；错误 SHA 必须在生产 checkout、构建、迁移和服务重启前失败关闭。
 6. 将静态 `/health` 保留为 liveness，新增至少检查 API 进程、数据库和必要依赖的 readiness。
 7. 移除 `X-Powered-By`；在生产等价环境验证 CSP Report-Only，并完成可达 high 依赖漏洞分诊。
 

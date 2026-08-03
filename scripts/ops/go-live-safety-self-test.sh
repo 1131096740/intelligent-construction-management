@@ -25,6 +25,22 @@ fail() {
   exit 1
 }
 
+DEPLOY_SCRIPT="$SCRIPT_DIR/deploy-production-server.sh"
+DEPLOY_WORKFLOW="$SCRIPT_DIR/../../.github/workflows/deploy-production.yml"
+NGINX_SECURITY_SNIPPET="$SCRIPT_DIR/../../deploy/nginx/jiangkong-security-snippets.conf.example"
+grep -Fq 'TARGET_SHA="${TARGET_SHA:-}"' "$DEPLOY_SCRIPT" ||
+  fail "deployment script does not accept the canonical TARGET_SHA"
+if grep -Fq 'CANDIDATE_SHA_CONFIRMATION' "$DEPLOY_SCRIPT"; then
+  fail "deployment script still defines a second candidate SHA contract"
+fi
+grep -Fq '"env TARGET_SHA=$TARGET_SHA bash -s"' "$DEPLOY_WORKFLOW" ||
+  fail "deployment workflow does not pass the canonical TARGET_SHA"
+grep -Fq 'add_header Content-Security-Policy-Report-Only ' "$NGINX_SECURITY_SNIPPET" ||
+  fail "Nginx security snippet does not define the CSP report-only gate"
+if grep -Eq '^add_header Content-Security-Policy ' "$NGINX_SECURITY_SNIPPET"; then
+  fail "CSP must remain report-only until production-equivalent validation is complete"
+fi
+
 assert_file() {
   [[ -f "$1" ]] || fail "expected file $1"
 }
@@ -218,7 +234,7 @@ FAKE
 cat > "$FAKE_BIN/curl" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'curl runtime=%s marker=%s\n' "${API_RUNTIME_DIR:-missing}" "$(cat "${API_RUNTIME_DIR:-/missing}/dist/release.txt" 2>/dev/null || true)" >> "${FAKE_LOG:?}"
+printf 'curl args=%s runtime=%s marker=%s\n' "$*" "${API_RUNTIME_DIR:-missing}" "$(cat "${API_RUNTIME_DIR:-/missing}/dist/release.txt" 2>/dev/null || true)" >> "${FAKE_LOG:?}"
 if [[ -f "${API_RUNTIME_DIR:?}/dist/release.txt" ]] &&
   [[ "$(< "${API_RUNTIME_DIR}/dist/release.txt")" == old-api ]]; then
   exit 0
@@ -238,7 +254,7 @@ if [[ -n "${FAKE_DEPLOY_CONFIRMATION_FILE:-}" ]] &&
   [[ ! -e "$FAKE_DEPLOY_CONFIRMATION_FILE" ]]; then
   printf '%s %s\n' \
     "${FAKE_DEPLOY_CONFIRMATION_ACTION:-CONFIRM}" \
-    "${CANDIDATE_SHA_CONFIRMATION:?}" \
+    "${TARGET_SHA:?}" \
     > "$FAKE_DEPLOY_CONFIRMATION_FILE"
 fi
 exit 0
@@ -684,7 +700,7 @@ run_deploy_fixture() {
   PATH="$FAKE_BIN:$PATH" \
     FAKE_LOG="$FAKE_LOG" \
     FAKE_GIT_HEAD="$candidate_sha" \
-    CANDIDATE_SHA_CONFIRMATION="$candidate_sha" \
+    TARGET_SHA="$candidate_sha" \
     REPO_ROOT_OVERRIDE="$fixture/repo" \
     API_RUNTIME_DIR="$fixture/runtime/api" \
     WEB_RUNTIME_DIR="$fixture/runtime/web-admin" \
@@ -747,7 +763,7 @@ invalid_candidate_fixture="$TEST_ROOT/deploy-invalid-candidate"
 make_deploy_fixture "$invalid_candidate_fixture"
 : > "$FAKE_LOG"
 if run_deploy_fixture "$invalid_candidate_fixture" \
-  env CANDIDATE_SHA_CONFIRMATION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa >/dev/null 2>&1; then
+  env TARGET_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa >/dev/null 2>&1; then
   fail "deployment must reject a candidate SHA that does not match HEAD"
 fi
 if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
@@ -771,6 +787,10 @@ fi
 if grep -Fq "$api_only_fixture/runtime/web-admin" "$FAKE_LOG"; then
   fail "API-only deployment touched the Web runtime"
 fi
+grep -Fq 'curl args=-fsS http://127.0.0.1:3000/health runtime=' "$FAKE_LOG" ||
+  fail "deployment did not check API liveness"
+grep -Fq 'curl args=-fsS http://127.0.0.1:3000/health/readiness runtime=' "$FAKE_LOG" ||
+  fail "deployment did not check database readiness"
 
 api_only_health_failure_fixture="$TEST_ROOT/deploy-api-only-health-failure"
 make_deploy_fixture "$api_only_health_failure_fixture"

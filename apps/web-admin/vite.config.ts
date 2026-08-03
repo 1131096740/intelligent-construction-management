@@ -1,5 +1,5 @@
 import vue from "@vitejs/plugin-vue";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [vue()],
@@ -10,6 +10,9 @@ export default defineConfig({
     commonjsOptions: {
       include: [/node_modules/, /packages\/shared-domain/]
     }
+  },
+  test: {
+    include: ["src/**/*.test.ts", "src/**/*.spec.ts"]
   },
   server: {
     proxy: {

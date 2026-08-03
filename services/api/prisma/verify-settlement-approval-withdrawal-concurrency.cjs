@@ -2,10 +2,6 @@
 "use strict";
 
 const { Prisma, PrismaClient } = require("@prisma/client");
-const { AuditService } = require("../dist/audit/audit.service");
-const {
-  SettlementService
-} = require("../dist/settlement/settlement.service");
 const {
   DATABASE_NAME,
   assertVerificationScope,
@@ -33,6 +29,22 @@ let settlementFixtureSequence = 0;
 let clientA;
 let clientB;
 let observerClient;
+let AuditService;
+let SettlementService;
+
+function loadRuntimeServices() {
+  if (!AuditService || !SettlementService) {
+    ({ AuditService } = require("../dist/audit/audit.service"));
+    ({ SettlementService } = require(
+      "../dist/settlement/settlement.service"
+    ));
+  }
+}
+
+function createAuditService() {
+  loadRuntimeServices();
+  return new AuditService();
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -288,6 +300,7 @@ function createServicePrisma(client, options = {}) {
 }
 
 function createSettlementService(client, audit, options = {}) {
+  loadRuntimeServices();
   return new SettlementService(
     createServicePrisma(client, options),
     audit
@@ -295,7 +308,7 @@ function createSettlementService(client, audit, options = {}) {
 }
 
 function pausingAudit(action, entered, release) {
-  const persistedAudit = new AuditService();
+  const persistedAudit = createAuditService();
   let paused = false;
   return {
     record: async (tx, input) => {
@@ -371,7 +384,7 @@ async function runObservedRace({
   );
   const secondService = createSettlementService(
     clientB,
-    new AuditService(),
+    createAuditService(),
     { backendPid: secondBackendPid }
   );
   let firstResultPromise;
@@ -751,7 +764,7 @@ async function verifyNonApplicantZeroWrites() {
   });
   const before = await readFacts(fixture);
   let transactionCalls = 0;
-  const service = createSettlementService(clientA, new AuditService(), {
+  const service = createSettlementService(clientA, createAuditService(), {
     beforeTransaction: () => {
       transactionCalls += 1;
       throw new Error(
@@ -813,7 +826,7 @@ async function verifyDuplicateActiveInstanceZeroWrites() {
   );
   const service = createSettlementService(
     clientA,
-    new AuditService()
+    createAuditService()
   );
   const error = await service
     .withdrawApproval(
@@ -850,7 +863,7 @@ async function expectCoordinateConflict(fixture, input, label) {
   );
   const service = createSettlementService(
     clientA,
-    new AuditService()
+    createAuditService()
   );
   const error = await service
     .withdrawApproval(
@@ -960,7 +973,7 @@ async function verifyQuotaReleaseOnce() {
   });
   const service = createSettlementService(
     clientA,
-    new AuditService()
+    createAuditService()
   );
   await service.withdrawApproval(
     fixture.settlementId,
@@ -1035,7 +1048,7 @@ function actionLogFailureInjection(evidence) {
 }
 
 function auditFailureInjection(action, expectedAuditCount, evidence) {
-  const persistedAudit = new AuditService();
+  const persistedAudit = createAuditService();
   return {
     record: async (tx, input) => {
       await persistedAudit.record(tx, input);
@@ -1122,7 +1135,7 @@ async function verifyActionLogFailureRollsBack() {
   await verifyInjectedFailureRollback({
     label: "action-log-rollback",
     serviceFactory: (_fixture, evidence) =>
-      createSettlementService(clientA, new AuditService(), {
+      createSettlementService(clientA, createAuditService(), {
         transformTx: actionLogFailureInjection(evidence)
       }),
     expectedMessage:
