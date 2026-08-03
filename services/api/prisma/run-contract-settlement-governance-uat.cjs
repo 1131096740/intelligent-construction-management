@@ -214,6 +214,7 @@ async function prepareSharedFixtures(tokens) {
       paymentTermsSummary: "UAT脱敏付款条款",
       retentionSummary: "UAT脱敏质保条款",
       fileId: quotaFile.id,
+      fileContentSha256Snapshot: quotaFile.contentSha256,
       recordedByUserId: users.contractStaff.id,
       confirmedByUserId: users.contractDirector.id,
       confirmedAt: new Date(),
