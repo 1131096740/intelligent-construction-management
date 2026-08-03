@@ -502,6 +502,11 @@ async function sealAndArchive(fixture, tokens) {
   });
   const effective = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   assert(effective.status === "effective" && effective.effectiveAt, "合同双方最终版归档后未生效");
+  assert(
+    effective.settlementMode === (fixture.config.type === "generic_contract" ? "direct_payment" : "settlement_required") &&
+      effective.settlementModeConfirmedAt,
+    `${fixture.config.type} 生效归档后结算方式确认状态丢失`
+  );
   evidence.set(fixture.config.id, [fixture.contract.id, fixture.version.id, final.id]);
 }
 
