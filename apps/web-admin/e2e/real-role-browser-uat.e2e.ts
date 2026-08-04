@@ -175,21 +175,30 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const contractLedgerResponse = await rawRequest(page, "contract_staff", "GET", "/contracts");
     expect(contractLedgerResponse.ok()).toBeTruthy();
     const contractLedger = (await contractLedgerResponse.json()) as { rows?: Array<Record<string, unknown>> };
-    const first = contractLedger.rows?.[0];
-    const contractId = first?.contractId ?? first?.id;
-    expect(typeof contractId).toBe("string");
-    const contractDetailResponse = await rawRequest(
-      page,
-      "contract_staff",
-      "GET",
-      `/contracts/${encodeURIComponent(String(contractId))}`
-    );
-    expect(contractDetailResponse.ok()).toBeTruthy();
-    const contractDetail = (await contractDetailResponse.json()) as {
-      contractVersionId?: unknown;
-      settlementBlockMessage?: unknown;
-    };
-    const versionId = contractDetail.contractVersionId;
+    let versionId: string | undefined;
+    for (const row of contractLedger.rows ?? []) {
+      const contractId = row.contractId ?? row.id;
+      if (typeof contractId !== "string") continue;
+      const contractDetailResponse = await rawRequest(
+        page,
+        "contract_staff",
+        "GET",
+        `/contracts/${encodeURIComponent(contractId)}`
+      );
+      if (!contractDetailResponse.ok()) continue;
+      const contractDetail = (await contractDetailResponse.json()) as {
+        contractVersionId?: unknown;
+        settlementBlockMessage?: unknown;
+      };
+      if (
+        typeof contractDetail.contractVersionId === "string" &&
+        typeof contractDetail.settlementBlockMessage === "string" &&
+        contractDetail.settlementBlockMessage.includes("可基于当前合同版本创建结算")
+      ) {
+        versionId = contractDetail.contractVersionId;
+        break;
+      }
+    }
     expect(typeof versionId).toBe("string");
 
     const createdSettlement = await rawRequest(page, "contract_staff", "POST", "/settlements", {
@@ -198,8 +207,12 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       periodLabel: "2026-08",
       amountCents: "1"
     });
-    expect(createdSettlement.ok()).toBeTruthy();
-    const settlementData = (await createdSettlement.json()) as { id?: string; settlementId?: string; settlement?: { id?: string } };
+    const settlementBodyText = await createdSettlement.text();
+    expect(
+      createdSettlement.ok(),
+      `创建隔离结算失败：HTTP ${createdSettlement.status()} ${settlementBodyText.slice(0, 300)}`
+    ).toBeTruthy();
+    const settlementData = JSON.parse(settlementBodyText) as { id?: string; settlementId?: string; settlement?: { id?: string } };
     const settlementId = settlementData.id ?? settlementData.settlementId ?? settlementData.settlement?.id;
     expect(typeof settlementId).toBe("string");
 
