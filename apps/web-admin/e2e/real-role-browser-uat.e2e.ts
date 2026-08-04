@@ -43,6 +43,13 @@ const roleCases: RoleCase[] = [
   }
 ];
 
+const settlementRaceAccount: RoleCase = {
+  key: "material_staff",
+  phone: "13800001009",
+  name: "物资员",
+  routes: []
+};
+
 type RequestLedgerEntry = {
   role: string;
   method: string;
@@ -172,98 +179,33 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const forbiddenOrganizationWrite = await rawRequest(page, "contract_staff", "POST", "/organization/users", {});
     expect(forbiddenOrganizationWrite.status()).toBe(403);
 
-    const contractLedgerResponse = await rawRequest(page, "contract_staff", "GET", "/contracts");
-    expect(contractLedgerResponse.ok()).toBeTruthy();
-    const contractLedger = (await contractLedgerResponse.json()) as { rows?: Array<Record<string, unknown>> };
-    let versionId: string | undefined;
-    let projectId: string | undefined;
-    let settlementTemplateVersionId: string | undefined;
-    for (const row of contractLedger.rows ?? []) {
-      const contractId = row.contractId ?? row.id;
-      if (typeof contractId !== "string") continue;
-      const contractDetailResponse = await rawRequest(
-        page,
-        "contract_staff",
-        "GET",
-        `/contracts/${encodeURIComponent(contractId)}`
-      );
-      if (!contractDetailResponse.ok()) continue;
-      const contractDetail = (await contractDetailResponse.json()) as {
-        contractVersionId?: unknown;
-        settlementBlockMessage?: unknown;
-      };
-      if (
-        typeof contractDetail.contractVersionId === "string" &&
-        typeof contractDetail.settlementBlockMessage === "string" &&
-        contractDetail.settlementBlockMessage.includes("可基于当前合同版本创建结算")
-      ) {
-        const sourceLinesResponse = await rawRequest(
-          page,
-          "contract_staff",
-          "GET",
-          `/settlement-workbench/contract-versions/${encodeURIComponent(contractDetail.contractVersionId)}/source-lines`
-        );
-        if (!sourceLinesResponse.ok()) continue;
-        const sourceLines = (await sourceLinesResponse.json()) as { projectId?: unknown };
-        if (typeof sourceLines.projectId !== "string") continue;
-        const recommendationsResponse = await rawRequest(
-          page,
-          "contract_staff",
-          "GET",
-          `/settlement-workbench/projects/${encodeURIComponent(sourceLines.projectId)}/contract-versions/${encodeURIComponent(contractDetail.contractVersionId)}/template-recommendations`
-        );
-        if (!recommendationsResponse.ok()) continue;
-        const recommendations = (await recommendationsResponse.json()) as {
-          selected?: { templateVersionId?: unknown } | null;
-          choices?: Array<{ templateVersionId?: unknown }>;
-        };
-        const selectedTemplate = recommendations.selected?.templateVersionId ?? recommendations.choices?.[0]?.templateVersionId;
-        if (typeof selectedTemplate !== "string") continue;
-        versionId = contractDetail.contractVersionId;
-        projectId = sourceLines.projectId;
-        settlementTemplateVersionId = selectedTemplate;
-        break;
-      }
-    }
-    expect(typeof versionId).toBe("string");
-    expect(typeof projectId).toBe("string");
-    expect(typeof settlementTemplateVersionId).toBe("string");
-
-    const createdSettlement = await rawRequest(page, "contract_staff", "POST", "/settlements", {
-      contractVersionId: String(versionId),
-      settlementTemplateVersionId: String(settlementTemplateVersionId),
-      code: `RC06-${Date.now()}`,
-      periodLabel: "2026-08",
-      amountCents: "1",
-      settlementLines: [{
-        sourceType: "manual_adjustment",
-        name: "RC06 并发幂等探针",
-        amountCents: "1",
-        reason: "隔离浏览器门禁测试"
-      }]
-    });
-    const settlementBodyText = await createdSettlement.text();
-    expect(
-      createdSettlement.ok(),
-      `创建隔离结算失败：HTTP ${createdSettlement.status()} ${settlementBodyText.slice(0, 300)}`
-    ).toBeTruthy();
-    const settlementData = JSON.parse(settlementBodyText) as { id?: string; settlementId?: string; settlement?: { id?: string } };
-    const settlementId = settlementData.id ?? settlementData.settlementId ?? settlementData.settlement?.id;
+    const trialRunId = process.env.TRIAL_RUN_ID;
+    expect(trialRunId, "隔离治理 UAT 必须注入 TRIAL_RUN_ID").toBeTruthy();
+    const settlementCode = `JS-UAT-${trialRunId}-settlement_material_route`;
+    const existingSettlement = await rawRequest(
+      page,
+      "contract_staff",
+      "GET",
+      `/settlements/${encodeURIComponent(settlementCode)}`
+    );
+    expect(existingSettlement.ok()).toBeTruthy();
+    const settlementData = (await existingSettlement.json()) as { settlementId?: unknown; id?: unknown };
+    const settlementId = settlementData.settlementId ?? settlementData.id;
     expect(typeof settlementId).toBe("string");
 
-    const directorContext = await browser.newContext({ viewport });
-    const directorPage = await directorContext.newPage();
-    await captureApiResponses(directorPage, "contract_director");
-    await login(directorPage, roleCases[1]);
+    const reviewerContext = await browser.newContext({ viewport });
+    const reviewerPage = await reviewerContext.newPage();
+    await captureApiResponses(reviewerPage, settlementRaceAccount.key);
+    await login(reviewerPage, settlementRaceAccount);
     const [firstApproval, duplicateApproval] = await Promise.all([
-      rawRequest(directorPage, "contract_director", "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
-      rawRequest(directorPage, "contract_director", "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
+      rawRequest(reviewerPage, settlementRaceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
+      rawRequest(reviewerPage, settlementRaceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
     ]);
     const approvalStatuses = [firstApproval.status(), duplicateApproval.status()];
     expect(approvalStatuses).toContain(409);
     expect(approvalStatuses.filter((status) => status === 200 || status === 201)).toHaveLength(1);
 
-    await directorContext.close();
+    await reviewerContext.close();
     await context.close();
   });
 
