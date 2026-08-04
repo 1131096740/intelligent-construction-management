@@ -38,6 +38,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @jiangkong/api exec prisma generate
 
+      - name: Prepare PostgreSQL 16 dynamic gate image
+        run: docker pull postgres:16
+
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high
 
@@ -66,11 +69,19 @@ jobs:
       - name: Verify Web UI governance
         run: pnpm --filter @jiangkong/web-admin check:ui
 
+      - name: Run exact-SHA PostgreSQL dynamic gate
+        run: |
+          candidate_sha="$(git rev-parse HEAD)"
+          node services/api/prisma/run-database-dynamic-gate-local.cjs \
+            --execute \
+            --candidate-sha "$candidate_sha" \
+            --confirm LOCAL_PG16_DYNAMIC_GATE
+
       - name: Verify capability and usage manifests
         run: |
           pnpm inspect:contract-workbench-capabilities
           pnpm inspect:whole-site-capabilities
-          pnpm inspect:whole-site-web-api
-          pnpm inspect:whole-site-page-actions
-          pnpm inspect:whole-site-route-usage
-          pnpm inspect:whole-site-capability-matrix
+          pnpm inspect:whole-site-web-api:ready
+          pnpm inspect:whole-site-page-actions:ready
+          pnpm inspect:whole-site-route-usage:ready
+          pnpm inspect:whole-site-capability-matrix:ready

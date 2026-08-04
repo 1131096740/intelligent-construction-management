@@ -55,6 +55,8 @@ GLR-07
 
 ### GLR-04 — 加固动态数据库和 require-ready CI 门
 
+状态：实现已接线，待本地一次性 PostgreSQL 16 exact-SHA 执行收据。
+
 前置：GLR-00。验收：动态 PostgreSQL 迁移/测试在 CI 中真实运行；`--require-ready` 发现 blocker 时非零退出；成功门绑定当前 SHA；失败日志可定位。
 
 ### GLR-05 — 精确 SHA 证据收口
