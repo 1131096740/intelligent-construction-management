@@ -1,6 +1,7 @@
 import { ContractDraftController } from "./contract-draft.controller";
 import { RequestMethod } from "@nestjs/common";
-import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { RouteParamtypes } from "@nestjs/common/enums/route-paramtypes.enum";
+import { METHOD_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from "@nestjs/common/constants";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 
 describe("ContractDraftController", () => {
@@ -94,7 +95,7 @@ describe("ContractDraftController", () => {
         "cv-1",
         file,
         { id: "owner-1" } as never,
-        "upload-key-1"
+        { idempotencyKey: "upload-key-1" }
       )
     ).resolves.toEqual({ id: "file-1" });
     expect(aggregate.uploadPrivateFile).toHaveBeenCalledWith(
@@ -120,6 +121,20 @@ describe("ContractDraftController", () => {
         ContractDraftController.prototype.uploadPrivateFile
       )
     ).toBe("contract.create");
+  });
+
+  it("passes multipart upload metadata as an object to the API validation pipe", () => {
+    const metadata = Reflect.getMetadata(
+      ROUTE_ARGS_METADATA,
+      ContractDraftController,
+      "uploadPrivateFile"
+    ) as Record<string, { data?: string }>;
+    const bodyMetadata = Object.entries(metadata).find(([key]) =>
+      key.startsWith(`${RouteParamtypes.BODY}:`)
+    );
+
+    expect(bodyMetadata).toBeDefined();
+    expect(bodyMetadata?.[1].data).toBeUndefined();
   });
 
   it("queues preview generation for the exact saved revision", async () => {

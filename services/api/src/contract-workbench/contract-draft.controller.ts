@@ -23,6 +23,7 @@ import {
   type MemoryUploadedFile,
   normalizeUploadedOriginalName
 } from "../file/uploaded-file";
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import {
@@ -94,7 +95,7 @@ export class ContractDraftController {
     @Param("contractVersionId") contractVersionId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body("idempotencyKey") idempotencyKey?: string
+    @Body() body: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     if (!file) {
       throw new Error("请选择要上传的资料文件");
@@ -105,7 +106,7 @@ export class ContractDraftController {
       mimeType: file.mimetype,
       sizeBytes: file.size,
       buffer: file.buffer,
-      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+      ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey })
     });
   }
 
