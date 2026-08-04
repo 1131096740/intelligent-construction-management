@@ -137,9 +137,19 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       await login(page, account);
 
       for (const route of account.routes) {
+        const ledgerStart = ledger.length;
         await page.goto(route, { waitUntil: "domcontentloaded" });
         await page.waitForTimeout(800);
         expect(normalizedPath(page.url()), `${account.key} 被错误重定向：${route}`).toBe(route);
+        const routeResponses = ledger.slice(ledgerStart).filter((entry) => entry.role === account.key);
+        expect(
+          routeResponses.some((entry) => entry.status >= 200 && entry.status < 300),
+          `${account.key} ${route} 未产生成功 API 响应`
+        ).toBeTruthy();
+        expect(
+          routeResponses.some((entry) => entry.status >= 500 || entry.status === 404),
+          `${account.key} ${route} 产生 404/5xx API 响应`
+        ).toBeFalsy();
       }
 
       await context.close();
@@ -165,11 +175,21 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const contractLedgerResponse = await rawRequest(page, "contract_staff", "GET", "/contracts");
     expect(contractLedgerResponse.ok()).toBeTruthy();
     const contractLedger = (await contractLedgerResponse.json()) as { rows?: Array<Record<string, unknown>> };
-    const first = contractLedger.rows?.find((row) => {
-      const type = row.contractTypeKey ?? row.typePricing;
-      return type !== "generic_contract";
-    }) ?? contractLedger.rows?.[0];
-    const versionId = first?.contractVersionId ?? first?.versionId;
+    const first = contractLedger.rows?.[0];
+    const contractId = first?.contractId ?? first?.id;
+    expect(typeof contractId).toBe("string");
+    const contractDetailResponse = await rawRequest(
+      page,
+      "contract_staff",
+      "GET",
+      `/contracts/${encodeURIComponent(String(contractId))}`
+    );
+    expect(contractDetailResponse.ok()).toBeTruthy();
+    const contractDetail = (await contractDetailResponse.json()) as {
+      contractVersionId?: unknown;
+      settlementBlockMessage?: unknown;
+    };
+    const versionId = contractDetail.contractVersionId;
     expect(typeof versionId).toBe("string");
 
     const createdSettlement = await rawRequest(page, "contract_staff", "POST", "/settlements", {
