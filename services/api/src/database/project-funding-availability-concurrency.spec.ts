@@ -789,8 +789,6 @@ async function runBehindProjectRowLock<T>({
               AND activity.pid <> pg_backend_pid()
               AND activity.wait_event_type = 'Lock'
               AND ${backend.pid} = ANY(pg_blocking_pids(activity.pid))
-              AND position('FROM "Project"' IN activity.query) > 0
-              AND position('FOR UPDATE' IN activity.query) > 0
             ORDER BY activity.pid
           `
         );
