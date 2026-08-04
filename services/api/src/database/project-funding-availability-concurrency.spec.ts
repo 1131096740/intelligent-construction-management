@@ -30,7 +30,7 @@ describe("project funding PostgreSQL evidence", () => {
       const databaseUrl = projectFundingDatabaseUrl(
         process.env.PROJECT_FUNDING_DATABASE_URL
       );
-      const clients = [0, 1].map(
+      const clients = [0, 1, 2, 3].map(
         () =>
           new PrismaClient({
             datasources: { db: { url: databaseUrl } }
