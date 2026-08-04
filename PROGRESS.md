@@ -10,8 +10,9 @@
 
 ---
 
-## 快速结论（更新至 2026-08-04）
+## 快速结论（更新至 2026-08-05）
 
+- [~] 2026-08-05 精确候选 `27fdfa454bd95c105e9f4848470c2d01e4da2616` 已完成 push、PR #2、合并及部署前门禁复核；部署 run `30930442792` 在切换前的 Web RC-06 mocked browser gate 发现付款实付凭证上传 Mock 路由与现行页面真实调用不一致，故 Deploy to server 跳过，生产未变更。RED 根因是 `payment-workbench.e2e.ts` 的通用 `payment-execution-*` Mock 先捕获 `/payments/:paymentId/execution-voucher-file-uploads`，返回付款详情而非上传幂等响应；GREEN 已增加精确领域上传 Mock 并让通用路由对该路径 `fallback`。本地 RC-06 Mock 14/14、Web E2E typecheck、lint、UI check、`git diff --check` 通过。修复将产生新候选 SHA，必须重新绑定 PG16/require-ready、RC-06、RC-09/阶段 F、CI 和部署前门禁；当前未对新 SHA push、合并或部署。
 - [~] 2026-08-04 生产部署门复盘：精确候选 `6d1feed400e7e537cd05f706ce3cc6fd75af82df` 已合并为 `40a8aa6d101da5a37d5675e05a882d723c570781`，但部署 run `30925910694` 在切换前的 Web P0 E2E 发现基础 Playwright 配置只有 Chromium，而移动合同详情测试要求 WebKit，故部署步骤按门禁跳过，生产未变更。已按 RED→GREEN 将基础门拆为 Chromium 桌面 4 项与 WebKit `390×844` 移动 1 项；本地 P0 5/5、Web E2E typecheck、lint、UI check、diff check 通过。当前进度提交会产生新候选 SHA，必须重新绑定 PG16/require-ready、RC-06、RC-09/阶段 F、CI 和部署前全部门禁；生产部署仍未完成。
 - [~] 2026-08-04 GLR-04 CI follow-up：精确 SHA `24ecaf72563254c0ee0417979c775e042ce75ee2` 的 GitHub Release gates 已连续三次在 PG16 动态门临时 runner 失败，前置全量测试、构建和 UI 门均通过；失败分别落在项目支出财务与付款实付 runner 的 `createdb`，容器 `pg_isready` ready 后仍默认使用 Unix socket，报 `/var/run/postgresql/.s.PGSQL.5432` 不存在。本机用同一 `postgres:16` digest 的付款实付与项目支出财务完整 runner 均通过。按 RED→GREEN 新增 `withLocalPostgresHost` runtime 回归（先 1 fail 后 5/5 pass），并让 5 个动态 runner 的 `pg_isready/createdb/psql` 统一显式使用容器内 `127.0.0.1` TCP；当前修复尚未形成新 SHA，必须提交后重新绑定 PG16/require-ready、RC-06、RC-09/阶段 F 与 CI，未合并或部署。
 - [~] 2026-08-04 PR #1 NO-GO 修复继续：GLR-04 已定位并修复动态数据库 runner 在临时 `HOME` 下丢失 Corepack 缓存、重新解析 pnpm 的根因；共享运行时、数据库动态门及两个并发 runner 均显式继承/派生 `COREPACK_HOME`，RED→GREEN 回归 9/9。GLR-06 真实岗位浏览器门已加入隔离写冻结 API 的稳定 503、同 UUID 并发文件上传幂等、下载票据和内容回读证据，Web E2E typecheck 与 OperationalWriteFreezeGuard 6/6 通过。当前完整候选 SHA 绑定的 PG16/require-ready、RC-06、RC-09/阶段 F 与 CI 需在本次提交后重跑；本轮仍未连接生产、未 push、未合并或部署。

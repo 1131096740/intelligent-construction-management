@@ -239,25 +239,32 @@ async function mockPaymentExecutionRequests(
   page: Page,
   capture: PaymentExecutionRequestCapture
 ) {
-  await page.route("**/api/files", async (route) => {
-    const requestBody =
-      route.request().postDataBuffer()?.toString("utf8") ?? "";
-    const idempotencyKey =
-      /name="idempotencyKey"\r\n\r\n([^\r\n]+)/u.exec(
-        requestBody
-      )?.[1] ?? "";
-    capture.order.push("POST /files");
-    capture.uploadIdempotencyKeys.push(idempotencyKey);
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ id: idempotencyKey })
-    });
-  });
+  await page.route(
+    "**/api/payments/payment-execution-*/execution-voucher-file-uploads",
+    async (route) => {
+      const requestBody =
+        route.request().postDataBuffer()?.toString("utf8") ?? "";
+      const idempotencyKey =
+        /name="idempotencyKey"\r\n\r\n([^\r\n]+)/u.exec(
+          requestBody
+        )?.[1] ?? "";
+      capture.order.push("POST /files");
+      capture.uploadIdempotencyKeys.push(idempotencyKey);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: idempotencyKey })
+      });
+    }
+  );
   await page.route(
     "**/api/payments/payment-execution-**",
     async (route) => {
       const request = route.request();
       const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/execution-voucher-file-uploads")) {
+        await route.fallback();
+        return;
+      }
       const segments = pathname.split("/").filter(Boolean);
       const paymentId =
         segments.at(-1) === "executions"
