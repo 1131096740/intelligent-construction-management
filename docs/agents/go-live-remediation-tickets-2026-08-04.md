@@ -35,7 +35,9 @@ GLR-07
 
 ### GLR-01 — 修复 `POST /files` 权限旁路
 
-前置：GLR-00。验收：未授权岗位/越权项目稳定拒绝；授权业务路径保持可用；测试证明 Guard → ValidationPipe → Service 顺序；上传仍是私有对象并保留审计和幂等。
+状态：已完成（本地候选，尚未 push/合并/部署）。
+
+前置：GLR-00。验收：未授权岗位稳定拒绝；授权业务路径保持可用；测试证明 Guard → ValidationPipe → Service 顺序；上传仍是私有对象并保留审计和幂等。证据：48/48 `services/api/src/file/file.controller.spec.ts`、API typecheck、API lint、`git diff --check`。
 
 ### GLR-02 — 结算审批过期状态返回 409
 
