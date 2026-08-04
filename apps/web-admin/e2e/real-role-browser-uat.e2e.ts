@@ -84,6 +84,14 @@ function normalizedPath(url: string) {
   return decodeURI(new URL(url).pathname);
 }
 
+function redactDownloadTicketPath(path: string) {
+  const url = new URL(path, "http://local");
+  for (const key of ["actorUserId", "expiresAt", "downloadReason", "token"]) {
+    if (url.searchParams.has(key)) url.searchParams.set(key, "[redacted]");
+  }
+  return `${url.pathname}${url.search}`;
+}
+
 async function captureApiResponses(page: Page, role: string) {
   page.on("response", (response) => {
     const url = new URL(response.url());
@@ -330,7 +338,7 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     ledger.push({
       role: "contract_staff",
       method: "GET",
-      path: `/api${ticketData.downloadUrl}`,
+      path: redactDownloadTicketPath(`/api${ticketData.downloadUrl}`),
       status: downloaded.status()
     });
     expect(downloaded.status()).toBe(200);
