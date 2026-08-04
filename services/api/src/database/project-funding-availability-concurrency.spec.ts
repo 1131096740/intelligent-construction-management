@@ -99,6 +99,7 @@ describe("project funding PostgreSQL evidence", () => {
         );
         const rollbackBusinessId = businessId("rollback");
         const rollbackExecutionId = executionId("rollback");
+        const rollbackVoucherFileId = `pf-exp-voucher-${marker}`;
         const rollbackPaidAt = new Date();
         await clients[0]!.projectExpenseRequest.create({
           data: {
@@ -117,6 +118,19 @@ describe("project funding PostgreSQL evidence", () => {
             status: "approved_pending_payment"
           }
         });
+        await clients[0]!.fileObject.create({
+          data: {
+            id: rollbackVoucherFileId,
+            bucket: "local-test",
+            objectKey: `project-funding/${marker}/rollback-voucher.pdf`,
+            originalName: "rollback-voucher.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128,
+            uploadedByUserId: actorId,
+            contentSha256: "c".repeat(64),
+            storageStatus: "active"
+          }
+        });
         await clients[0]!.projectExpenseExecution.create({
           data: {
             id: rollbackExecutionId,
@@ -126,7 +140,7 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 600n,
             paidAt: rollbackPaidAt,
             executedByUserId: actorId,
-            voucherFileId: `pf-exp-voucher-${marker}`
+            voucherFileId: rollbackVoucherFileId
           }
         });
         await expect(
