@@ -61,13 +61,13 @@ GLR-07
 
 ### GLR-05 — 精确 SHA 证据收口
 
-前置：GLR-01、GLR-02、GLR-03、GLR-04。验收：所有报告、测试、浏览器和 manifest 证据同一精确候选 SHA；执行 `git diff --check`；工作树状态和命令可复核。当前已在实现候选 `4258ee440edea317f211c28593e97858398b4d54` 取得 PostgreSQL 16 动态总门收据（118/118 migrations、54/54 tests、28/28 files、9 groups、`remainingTests=0`、`remainingFiles=0`，PG16 镜像 `sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20`），并取得 RC-06 治理 20/20、P0-5B、Chromium 2/2、WebKit 2/2 证据。由于本次票据/进度文档提交会产生新 SHA，必须在新候选上重跑并完成最终绑定后才可关闭本票。
+前置：GLR-01、GLR-02、GLR-03、GLR-04。验收：所有报告、测试、浏览器和 manifest 证据同一精确候选 SHA；执行 `git diff --check`；工作树状态和命令可复核。候选 `64f49d0a` 的能力矩阵 matched、446 route、432 wrappers/452 bindings、页面动作、route-usage、capability matrix 的 require-ready，以及 CI 接线/运维安全自测均通过；由于本次进度/票据提交会产生新 SHA，RC-06 与 PostgreSQL 16 动态总门需在新候选上重跑并完成最终绑定后才可关闭本票。
 
 ### GLR-06 — RC-06 生产等价浏览器长链
 
 前置：GLR-01、GLR-02、GLR-05。验收：真实岗位长链在桌面与移动视口通过；包含 503、400/403/409、双击/重试幂等、移动端上传下载；无控制台错误、404、重复 POST；失败时保留证据并不宣称通过。
 
-当前进展：真实隔离治理 UAT 已连续修复签名领域上传、合同版式上传和合同主管发起场景的合同所有者文件上传路径；审批前授权/审批正式文件走 `POST /contract-drafts/:versionId/files`，审批后最终正式文件保持通用 `POST /files`，并修复领域 multipart 入口的 `@Body("idempotencyKey")` 全局校验 400 问题。随后 P0-5B 发现结算签名准备仍使用通用入口，已改为 `/me/signature/canvas` 并按 `signatureFileId` 绑定；当前又确认结算模板治理要求 `contract_director` 本人拥有源 XLSX，故通用上传精确补入 `contract_director`，同时保留无关岗位拒绝。驱动器回归 4/4、runner 规格 5/5、文件控制器 48/48、领域控制器 12/12 通过；实现候选 `4258ee440edea317f211c28593e97858398b4d54` 的治理 UAT 20/20、P0-5B、Chromium `1366×768` 2/2、WebKit `390×844` 2/2 以及无浏览器错误/404/5xx 的请求门通过。证据收据位于 `/private/tmp/glr06-governance-4258ee44.json` 与 `/private/tmp/glr06-browser-4258ee44.json-*`；文档收口后仍需在最终精确 SHA 重跑，故本票尚未关闭。
+当前进展：真实隔离治理 UAT 已连续修复签名领域上传、合同版式上传和合同主管发起场景的合同所有者文件上传路径；审批前授权/审批正式文件走 `POST /contract-drafts/:versionId/files`，审批后最终正式文件保持通用 `POST /files`，并修复领域 multipart 入口的 `@Body("idempotencyKey")` 全局校验 400 问题。随后 P0-5B 发现结算签名准备仍使用通用入口，已改为 `/me/signature/canvas` 并按 `signatureFileId` 绑定；当前又确认结算模板治理要求 `contract_director` 本人拥有源 XLSX，故通用上传精确补入 `contract_director`，同时保留无关岗位拒绝。驱动器回归 4/4、runner 规格 5/5、文件控制器 48/48、领域控制器 12/12 通过；此前实现候选已通过治理 UAT 20/20、P0-5B、Chromium `1366×768` 2/2、WebKit `390×844` 2/2 以及无浏览器错误/404/5xx 的请求门，`64f49d0a` 的静态门也全部通过。本次进度提交后仍需在新精确 SHA 重跑 RC-06 与 PostgreSQL 16 动态总门，故本票尚未关闭。
 
 ### GLR-07 — RC-09 与阶段 F 演练
 
