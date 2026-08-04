@@ -61,17 +61,19 @@ GLR-07
 
 ### GLR-05 — 精确 SHA 证据收口
 
-前置：GLR-01、GLR-02、GLR-03、GLR-04。验收：所有报告、测试、浏览器和 manifest 证据同一精确候选 SHA；执行 `git diff --check`；工作树状态和命令可复核。候选 `64f49d0a` 的能力矩阵 matched、446 route、432 wrappers/452 bindings、页面动作、route-usage、capability matrix 的 require-ready，以及 CI 接线/运维安全自测均通过；由于本次进度/票据提交会产生新 SHA，RC-06 与 PostgreSQL 16 动态总门需在新候选上重跑并完成最终绑定后才可关闭本票。
+前置：GLR-01、GLR-02、GLR-03、GLR-04。验收：所有报告、测试、浏览器和 manifest 证据同一精确候选 SHA；执行 `git diff --check`；工作树状态和命令可复核。提交前候选 `93586ff91a5d3ea77cbdc5369b429f595292e91e` 的能力矩阵 matched、446 route、432 wrappers/452 bindings、页面动作、route-usage、capability matrix 的 require-ready、CI 接线、RC-06 和 PostgreSQL 16 动态总门均通过；由于本次进度/票据提交会产生新 SHA，RC-06 与 PostgreSQL 16 动态总门需在新候选上重跑并完成最终绑定后才可关闭本票。
 
 ### GLR-06 — RC-06 生产等价浏览器长链
 
 前置：GLR-01、GLR-02、GLR-05。验收：真实岗位长链在桌面与移动视口通过；包含 503、400/403/409、双击/重试幂等、移动端上传下载；无控制台错误、404、重复 POST；失败时保留证据并不宣称通过。
 
-当前进展：真实隔离治理 UAT 已连续修复签名领域上传、合同版式上传和合同主管发起场景的合同所有者文件上传路径；审批前授权/审批正式文件走 `POST /contract-drafts/:versionId/files`，审批后最终正式文件保持通用 `POST /files`，并修复领域 multipart 入口的 `@Body("idempotencyKey")` 全局校验 400 问题。随后 P0-5B 发现结算签名准备仍使用通用入口，已改为 `/me/signature/canvas` 并按 `signatureFileId` 绑定；当前又确认结算模板治理要求 `contract_director` 本人拥有源 XLSX，故通用上传精确补入 `contract_director`，同时保留无关岗位拒绝。驱动器回归 4/4、runner 规格 5/5、文件控制器 48/48、领域控制器 12/12 通过；此前实现候选已通过治理 UAT 20/20、P0-5B、Chromium `1366×768` 2/2、WebKit `390×844` 2/2 以及无浏览器错误/404/5xx 的请求门，`64f49d0a` 的静态门也全部通过。本次进度提交后仍需在新精确 SHA 重跑 RC-06 与 PostgreSQL 16 动态总门，故本票尚未关闭。
+当前进展：真实隔离治理 UAT 已连续修复签名领域上传、合同版式上传和合同主管发起场景的合同所有者文件上传路径；审批前授权/审批正式文件走 `POST /contract-drafts/:versionId/files`，审批后最终正式文件保持通用 `POST /files`，并修复领域 multipart 入口的 `@Body("idempotencyKey")` 全局校验 400 问题。随后 P0-5B 发现结算签名准备仍使用通用入口，已改为 `/me/signature/canvas` 并按 `signatureFileId` 绑定；当前又确认结算模板治理要求 `contract_director` 本人拥有源 XLSX，故通用上传精确补入 `contract_director`，同时保留无关岗位拒绝。驱动器回归 4/4、runner 规格 5/5、文件控制器 48/48、领域控制器 12/12 通过；提交前候选 `93586ff91a5d3ea77cbdc5369b429f595292e91e` 已通过治理 UAT 20/20、P0-5B、Chromium `1366×768` 2/2、WebKit `390×844` 2/2 以及无浏览器错误/404/5xx 的请求门。本次进度提交后仍需在新精确 SHA 重跑 RC-06，故本票尚未关闭。
 
 ### GLR-07 — RC-09 与阶段 F 演练
 
 前置：GLR-04、GLR-05、GLR-06。验收：隔离恢复、迁移、构建/部署/readiness/回滚、监控日志、维护/停写/恢复在同一 SHA 上完成并有证据；生产业务数据不变。
+
+当前进展：提交前候选 `93586ff91a5d3ea77cbdc5369b429f595292e91e` 的本地冻结/监控/COS/路由观测/发布安全自测和合成 dump 隔离恢复已通过；恢复收据明确 `productionData=false`、118/118 migrations、候选 SHA 精确匹配。生产自然 Cron、最新生产备份与 COS 异机回执、告警送达、生产等价部署/readiness/rollback、全站停写/恢复和阶段 F 仍需单独授权后完成，因此本票保持未关闭。
 
 ### GLR-08 — 最终 Go/No-Go
 
