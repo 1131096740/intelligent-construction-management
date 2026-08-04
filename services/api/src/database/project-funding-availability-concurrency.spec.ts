@@ -131,20 +131,20 @@ describe("project funding PostgreSQL evidence", () => {
             storageStatus: "active"
           }
         });
-        await clients[0]!.projectExpenseExecution.create({
-          data: {
-            id: rollbackExecutionId,
-            idempotencyKey: randomUUID(),
-            projectExpenseRequestId: rollbackBusinessId,
-            projectId: rollbackProjectId,
-            amountCents: 600n,
-            paidAt: rollbackPaidAt,
-            executedByUserId: actorId,
-            voucherFileId: rollbackVoucherFileId
-          }
-        });
         await expect(
           clients[0]!.$transaction(async (tx) => {
+            await tx.projectExpenseExecution.create({
+              data: {
+                id: rollbackExecutionId,
+                idempotencyKey: randomUUID(),
+                projectExpenseRequestId: rollbackBusinessId,
+                projectId: rollbackProjectId,
+                amountCents: 600n,
+                paidAt: rollbackPaidAt,
+                executedByUserId: actorId,
+                voucherFileId: rollbackVoucherFileId
+              }
+            });
             await service.allocateExecution(tx, {
               projectId: rollbackProjectId,
               executionType: "project_expense_execution",
@@ -155,12 +155,34 @@ describe("project funding PostgreSQL evidence", () => {
               occurredAt: rollbackPaidAt,
               actorUserId: actorId
             });
+            await tx.projectExpenseRequest.update({
+              where: { id: rollbackBusinessId },
+              data: { paidAmountCents: 600n, status: "paid" }
+            });
+            await tx.auditLog.create({
+              data: {
+                actorUserId: actorId,
+                action: "project_expense.execution.record",
+                businessType: "project_expense_request",
+                businessId: rollbackBusinessId,
+                metadata: {
+                  executionId: rollbackExecutionId,
+                  amountCents: "600",
+                  voucherFileId: rollbackVoucherFileId
+                }
+              }
+            });
             throw new Error("voucher binding failed");
           })
         ).rejects.toThrow("voucher binding failed");
         expect(
           await clients[0]!.projectFundingAllocation.count({
             where: { executionId: executionId("rollback") }
+          })
+        ).toBe(0);
+        expect(
+          await clients[0]!.projectExpenseExecution.count({
+            where: { id: rollbackExecutionId }
           })
         ).toBe(0);
 
