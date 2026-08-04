@@ -92,6 +92,7 @@ describe("settlement contract cap database concurrency", () => {
               paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
               paymentTermsStage: { findFirst: jest.fn().mockResolvedValue({ ratioBps: 10_000 }) },
               settlement: {
+                findUnique: jest.fn().mockResolvedValue(null),
                 findFirst: jest.fn().mockResolvedValue(null),
                 findMany: jest.fn().mockResolvedValue([]),
                 create: jest.fn().mockImplementation(async ({ data }: { data: { projectId: string; contractId: string; amountCents: bigint } }) => {

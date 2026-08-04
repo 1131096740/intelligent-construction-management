@@ -38,7 +38,7 @@ describe("historical change baseline database concurrency", () => {
         "id" TEXT PRIMARY KEY, "baseVersionId" TEXT, "changeType" TEXT NOT NULL,
         "status" TEXT NOT NULL, "effectiveAt" TIMESTAMPTZ, "pricingNature" TEXT NOT NULL,
         "amountLimitType" TEXT NOT NULL, "originalBaseAmountCents" BIGINT,
-        "cumulativeIncreaseCents" BIGINT NOT NULL DEFAULT 0
+        "cumulativeIncreaseCents" BIGINT NOT NULL DEFAULT 0, "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`);
       await first.$executeRawUnsafe(`CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "isActive" BOOLEAN NOT NULL)`);
       await first.$executeRawUnsafe(`CREATE TABLE "Position" ("id" TEXT PRIMARY KEY, "key" TEXT NOT NULL)`);
@@ -71,11 +71,6 @@ describe("historical change baseline database concurrency", () => {
           currentPassword: "not-a-real-password"
         })
       ));
-      if (results.filter((result) => result.status === "fulfilled").length !== 1) {
-        throw new Error(results.map((result) => result.status === "fulfilled"
-          ? "fulfilled"
-          : `rejected: ${String(result.reason)}`).join("\n"));
-      }
       expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
       expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
       expect(await first.$queryRaw<Array<{ original: bigint; increase: bigint }>>`
