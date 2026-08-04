@@ -181,6 +181,12 @@ async function main() {
         timeoutMs: 15 * 60 * 1000
       });
       if (process.env.TRIAL_RUN_BROWSER_SCRIPT) {
+        assert(
+          process.env.REAL_BROWSER_EVIDENCE_PATH &&
+            path.isAbsolute(process.env.REAL_BROWSER_EVIDENCE_PATH) &&
+            process.env.REAL_BROWSER_EVIDENCE_PATH.endsWith(".json"),
+          "设置 TRIAL_RUN_BROWSER_SCRIPT 时必须显式提供绝对 REAL_BROWSER_EVIDENCE_PATH"
+        );
         await command(process.execPath, [path.resolve(process.env.TRIAL_RUN_BROWSER_SCRIPT)], {
           cwd: root,
           env: {
@@ -188,8 +194,7 @@ async function main() {
             REAL_API_BASE_URL: apiBaseUrl,
             REAL_ROLE_PASSWORD: trialPassword,
             REAL_BROWSER_CANDIDATE_SHA: candidateSha,
-            REAL_BROWSER_EVIDENCE_PATH: path.resolve(process.env.REAL_BROWSER_EVIDENCE_PATH ||
-              path.join(temporaryRoot, "real-browser-evidence.json"))
+            REAL_BROWSER_EVIDENCE_PATH: path.resolve(process.env.REAL_BROWSER_EVIDENCE_PATH)
           },
           forwardOutput: true,
           timeoutMs: 30 * 60 * 1000

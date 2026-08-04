@@ -53,6 +53,7 @@ type RequestLedgerEntry = {
 const ledger: RequestLedgerEntry[] = [];
 const browserErrors: string[] = [];
 const failedRequests: string[] = [];
+const testFailures: string[] = [];
 
 function assertRuntimeConfiguration() {
   expect(initialPassword, "REAL_ROLE_PASSWORD 必须由隔离 UAT runner 注入").toBeTruthy();
@@ -83,7 +84,7 @@ async function login(page: Page, account: RoleCase) {
   await page.getByPlaceholder("请输入手机号").fill(account.phone);
   await page.getByPlaceholder("请输入密码").fill(initialPassword!);
   await page.getByRole("button", { name: "登录" }).click();
-  await expect(page).toHaveURL(/\/首页|\/change-password/);
+  await expect.poll(() => normalizedPath(page.url())).toMatch(/^\/(?:首页|change-password)$/u);
   if (normalizedPath(page.url()) === "/change-password") {
     throw new Error(`${account.key} 仍要求首次改密；核心 UAT 应先完成岗位改密`);
   }
@@ -114,10 +115,18 @@ async function rawRequest(page: Page, role: string, method: string, path: string
 
 test.describe("RC-06 real API-backed four-role browser acceptance", () => {
   test.beforeAll(() => assertRuntimeConfiguration());
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus) {
+      testFailures.push(`${testInfo.project.name}:${testInfo.title}:${testInfo.status}`);
+    }
+  });
 
-  test("all required roles can authenticate and use their core read workbenches", async ({ browser }) => {
+  test("all required roles can authenticate and use their core read workbenches", async ({ browser }, testInfo) => {
+    const viewport = testInfo.project.name.includes("webkit")
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 };
     for (const account of roleCases) {
-      const context = await browser.newContext();
+      const context = await browser.newContext({ viewport });
       const page = await context.newPage();
       await captureApiResponses(page, account.key);
       await login(page, account);
@@ -132,8 +141,11 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     }
   });
 
-  test("records stable 400, 403 and 409 negative API paths without leaking server errors", async ({ browser }) => {
-    const context = await browser.newContext();
+  test("records stable 400, 403 and 409 negative API paths without leaking server errors", async ({ browser }, testInfo) => {
+    const viewport = testInfo.project.name.includes("webkit")
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 };
+    const context = await browser.newContext({ viewport });
     const page = await context.newPage();
     await captureApiResponses(page, "negative");
     await login(page, roleCases[0]);
@@ -145,27 +157,38 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const forbiddenOrganizationWrite = await rawRequest(page, "contract_staff", "POST", "/organization/users", {});
     expect(forbiddenOrganizationWrite.status()).toBe(403);
 
-    const ledgerResponse = await rawRequest(page, "contract_staff", "GET", "/contracts");
-    expect(ledgerResponse.ok()).toBeTruthy();
-    const ledgerData = (await ledgerResponse.json()) as { rows?: Array<Record<string, unknown>> };
-    const first = ledgerData.rows?.[0];
-    const versionId = first?.contractVersionId ?? first?.versionId ?? first?.id;
+    const contractLedgerResponse = await rawRequest(page, "contract_staff", "GET", "/contracts");
+    expect(contractLedgerResponse.ok()).toBeTruthy();
+    const contractLedger = (await contractLedgerResponse.json()) as { rows?: Array<Record<string, unknown>> };
+    const first = contractLedger.rows?.find((row) => {
+      const type = row.contractTypeKey ?? row.typePricing;
+      return type !== "generic_contract";
+    }) ?? contractLedger.rows?.[0];
+    const versionId = first?.contractVersionId ?? first?.versionId;
     expect(typeof versionId).toBe("string");
 
-    const leaderContext = await browser.newContext();
-    const leaderPage = await leaderContext.newPage();
-    await captureApiResponses(leaderPage, "chairman");
-    await login(leaderPage, roleCases[4]);
-    const conflict = await rawRequest(leaderPage, "chairman", "POST", `/contracts/${encodeURIComponent(String(versionId))}/approval`, {
-      decision: "approve",
-      expectedContractUpdatedAt: new Date(0).toISOString(),
-      expectedApprovalInstanceId: "stale-approval-instance",
-      expectedNodeIndex: 0,
-      expectedApprovalUpdatedAt: new Date(0).toISOString()
+    const createdSettlement = await rawRequest(page, "contract_staff", "POST", "/settlements", {
+      contractVersionId: String(versionId),
+      code: `RC06-${Date.now()}`,
+      periodLabel: "2026-08",
+      amountCents: "1"
     });
-    expect(conflict.status()).toBe(409);
+    expect(createdSettlement.ok()).toBeTruthy();
+    const settlementData = (await createdSettlement.json()) as { id?: string; settlementId?: string; settlement?: { id?: string } };
+    const settlementId = settlementData.id ?? settlementData.settlementId ?? settlementData.settlement?.id;
+    expect(typeof settlementId).toBe("string");
 
-    await leaderContext.close();
+    const directorContext = await browser.newContext({ viewport });
+    const directorPage = await directorContext.newPage();
+    await captureApiResponses(directorPage, "contract_director");
+    await login(directorPage, roleCases[1]);
+    const [firstApproval, duplicateApproval] = await Promise.all([
+      rawRequest(directorPage, "contract_director", "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
+      rawRequest(directorPage, "contract_director", "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
+    ]);
+    expect([firstApproval.status(), duplicateApproval.status()].sort()).toEqual([200, 409]);
+
+    await directorContext.close();
     await context.close();
   });
 
@@ -184,16 +207,18 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     const evidence = {
       schemaVersion: 1,
       gate: "rc06-real-api-backed-browser",
-      status: badStatuses.length === 0 && browserErrors.length === 0 && failedRequests.length === 0 ? "passed" : "failed",
+      status: badStatuses.length === 0 && browserErrors.length === 0 && failedRequests.length === 0 && testFailures.length === 0 ? "passed" : "failed",
       candidateSha: process.env.REAL_BROWSER_CANDIDATE_SHA ?? null,
       browsers: [testInfo.project.name],
       roles: roleCases.map(({ key, routes }) => ({ key, routes })),
       requestStatusCounts: statusCounts,
       requestLedger: ledger,
       browserErrors,
-      failedRequests
+      failedRequests,
+      testFailures
     };
     await fs.mkdir(path.dirname(output), { recursive: true });
     await fs.writeFile(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+    await fs.chmod(output, 0o600);
   });
 });
