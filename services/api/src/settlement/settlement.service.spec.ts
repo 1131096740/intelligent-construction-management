@@ -3377,11 +3377,17 @@ describe("SettlementService", () => {
     };
     const settlementService = new SettlementService(prisma as never, audit as never);
 
-    await expect(
-      settlementService.reviewApproval("settlement-1", "budget-director-1", {
-        decision: "approve"
-      })
-    ).rejects.toThrow("当前结算单暂不能处理审批，请确认仍在审批中");
+    const rejection = settlementService.reviewApproval("settlement-1", "budget-director-1", {
+      decision: "approve"
+    });
+    await expect(rejection).rejects.toBeInstanceOf(ConflictException);
+    await rejection.catch((error) => {
+      expect(error.getStatus()).toBe(409);
+      expect(error.getResponse()).toEqual({
+        code: "SETTLEMENT_APPROVAL_REVIEW_CONFLICT",
+        message: "未找到进行中的结算审批流程，请刷新后重试"
+      });
+    });
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 

@@ -2224,7 +2224,7 @@ export class SettlementService {
       }
 
       if (settlement.status !== "approval_pending") {
-        throw new Error("当前结算单暂不能处理审批，请确认仍在审批中");
+        throw settlementApprovalReviewConflict();
       }
 
       await lockApprovalReviewRow(tx, Prisma.sql`

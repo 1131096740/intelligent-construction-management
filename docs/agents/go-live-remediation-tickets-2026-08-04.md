@@ -41,7 +41,9 @@ GLR-07
 
 ### GLR-02 — 结算审批过期状态返回 409
 
-前置：GLR-00。验收：过期/非 `approval_pending`、无唯一进行中实例、重复审批均稳定返回 409 业务码；不会 500、不会推进状态、不会产生副作用；并覆盖真实 controller/service 路径。
+状态：已完成（本地候选，尚未 push/合并/部署）。
+
+前置：GLR-00。验收：过期/非 `approval_pending` 状态稳定返回 HTTP 409 和 `SETTLEMENT_APPROVAL_REVIEW_CONFLICT`；不会 500、不会推进状态、不会产生副作用。已有无唯一进行中实例、重复审批冲突测试继续通过。证据：结算服务 158/158、API typecheck、API lint、`git diff --check`。
 
 ### GLR-03 — 收敛治理 blocker 与重复 mutation route
 
