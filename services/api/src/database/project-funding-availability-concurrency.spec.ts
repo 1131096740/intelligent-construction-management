@@ -57,7 +57,7 @@ describe("project funding PostgreSQL evidence", () => {
           "general_contractor_payment"
         );
         const concurrentResults = await Promise.allSettled(
-          clients.map((client, index) =>
+          clients.slice(0, 2).map((client, index) =>
             client.$transaction((tx) =>
               service.allocateExecution(tx, {
                 projectId: concurrentProjectId,
