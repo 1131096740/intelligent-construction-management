@@ -120,7 +120,7 @@ describe("project funding PostgreSQL evidence", () => {
         await clients[0]!.projectExpenseExecution.create({
           data: {
             id: rollbackExecutionId,
-            idempotencyKey: `pf-exp-exec-${marker}`,
+            idempotencyKey: randomUUID(),
             projectExpenseRequestId: rollbackBusinessId,
             projectId: rollbackProjectId,
             amountCents: 600n,
