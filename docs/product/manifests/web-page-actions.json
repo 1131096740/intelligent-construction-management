@@ -961,6 +961,7 @@
             "guardAuthorization": "positions",
             "isPublic": false,
             "requiredPositions": [
+              "contract_director",
               "contract_staff",
               "finance_director",
               "finance_staff"
@@ -2998,6 +2999,7 @@
             "guardAuthorization": "positions",
             "isPublic": false,
             "requiredPositions": [
+              "contract_director",
               "contract_staff",
               "finance_director",
               "finance_staff"
