@@ -204,9 +204,26 @@ jobs:
             done <<< "$status_output"
           }
 
+          assert_dependency_tree_writable() {
+            local path
+            for path in \
+              /opt/jiangkong \
+              /opt/jiangkong/node_modules \
+              /opt/jiangkong/node_modules/.bin \
+              /opt/jiangkong/services/api/node_modules \
+              /opt/jiangkong/apps/web-admin/node_modules; do
+              if [ -e "$path" ] &&
+                { [ ! -d "$path" ] || [ ! -w "$path" ]; }; then
+                echo "deployment dependency path is not writable by $(id -un): $path" >&2
+                return 1
+              fi
+            done
+          }
+
           git config --global --replace-all safe.directory /opt/jiangkong
           cd /opt/jiangkong
           assert_clean_release_tree
+          assert_dependency_tree_writable
           git fetch origin main
           git cat-file -e "$TARGET_SHA^{commit}"
           git merge-base --is-ancestor "$TARGET_SHA" origin/main

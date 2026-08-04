@@ -15,6 +15,7 @@ bash -n \
   "$SCRIPT_DIR/run-production-db-backup.sh"
 
 cleanup() {
+  chmod -R u+w "$TEST_ROOT" 2>/dev/null || true
   rm -rf "$TEST_ROOT"
 }
 trap cleanup EXIT
@@ -35,6 +36,10 @@ if grep -Fq 'CANDIDATE_SHA_CONFIRMATION' "$DEPLOY_SCRIPT"; then
 fi
 grep -Fq '"env TARGET_SHA=$TARGET_SHA bash -s"' "$DEPLOY_WORKFLOW" ||
   fail "deployment workflow does not pass the canonical TARGET_SHA"
+grep -Fq 'assert_dependency_tree_writable' "$DEPLOY_SCRIPT" ||
+  fail "deployment script does not preflight dependency-tree ownership"
+grep -Fq 'assert_dependency_tree_writable' "$DEPLOY_WORKFLOW" ||
+  fail "deployment workflow does not preflight dependency-tree ownership before checkout"
 grep -Fq 'add_header Content-Security-Policy-Report-Only ' "$NGINX_SECURITY_SNIPPET" ||
   fail "Nginx security snippet does not define the CSP report-only gate"
 if grep -Eq '^add_header Content-Security-Policy ' "$NGINX_SECURITY_SNIPPET"; then
@@ -878,6 +883,22 @@ if run_deploy_fixture "$stale_confirmation_fixture" env \
 fi
 if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment performed work before rejecting a stale confirmation marker"
+fi
+
+unwritable_dependency_fixture="$TEST_ROOT/deploy-unwritable-dependency-tree"
+make_deploy_fixture "$unwritable_dependency_fixture"
+mkdir -p "$unwritable_dependency_fixture/repo/node_modules/.bin"
+chmod 555 "$unwritable_dependency_fixture/repo/node_modules" \
+  "$unwritable_dependency_fixture/repo/node_modules/.bin"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$unwritable_dependency_fixture" >/dev/null 2>&1; then
+  fail "deployment must reject an unwritable dependency tree"
+fi
+if grep -q '^pnpm ' "$FAKE_LOG"; then
+  fail "deployment attempted pnpm before rejecting an unwritable dependency tree"
+fi
+if grep -Eq '^(systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
+  fail "deployment mutated runtime or database state before rejecting an unwritable dependency tree"
 fi
 
 health_failure_fixture="$TEST_ROOT/deploy-health-failure"

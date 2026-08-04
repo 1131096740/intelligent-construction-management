@@ -183,6 +183,22 @@ wait_for_readiness() {
   wait_for_url "$READINESS_URL"
 }
 
+assert_dependency_tree_writable() {
+  local path
+  for path in \
+    "$REPO_ROOT" \
+    "$REPO_ROOT/node_modules" \
+    "$REPO_ROOT/node_modules/.bin" \
+    "$REPO_ROOT/services/api/node_modules" \
+    "$REPO_ROOT/apps/web-admin/node_modules"; do
+    if [[ -e "$path" ]] &&
+      { [[ ! -d "$path" ]] || [[ ! -w "$path" ]]; }; then
+      echo "deployment dependency path is not writable by $(id -un): $path" >&2
+      return 1
+    fi
+  done
+}
+
 await_deployment_confirmation() {
   if [[ "$DEPLOY_CONFIRMATION_MODE" == immediate ]]; then
     return 0
@@ -327,6 +343,8 @@ if [[ ! -d "$API_RUNTIME_DIR" ]] ||
   echo "selected production runtime directories must exist before an in-place deployment" >&2
   exit 1
 fi
+
+assert_dependency_tree_writable
 
 # Build every selected runtime before applying database migrations. A build
 # failure must not leave production with a new schema and the previous API
