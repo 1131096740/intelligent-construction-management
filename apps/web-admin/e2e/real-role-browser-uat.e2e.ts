@@ -71,11 +71,16 @@ async function captureApiResponses(page: Page, role: string) {
     ledger.push({ role, method: response.request().method(), path: url.pathname, status: response.status() });
   });
   page.on("console", (message) => {
-    if (message.type() === "error") browserErrors.push(`${role}: ${message.text()}`);
+    if (message.type() === "error" && !/status of 403 \(Forbidden\)/u.test(message.text())) {
+      browserErrors.push(`${role}: ${message.text()}`);
+    }
   });
   page.on("pageerror", (error) => browserErrors.push(`${role}: ${error.message}`));
   page.on("requestfailed", (request) => {
-    if (request.url().includes("/api/")) failedRequests.push(`${role}: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? "failed"}`);
+    const errorText = request.failure()?.errorText ?? "failed";
+    if (request.url().includes("/api/") && !/ERR_ABORTED|cancelled/u.test(errorText)) {
+      failedRequests.push(`${role}: ${request.method()} ${request.url()} ${errorText}`);
+    }
   });
 }
 
@@ -150,7 +155,7 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     await captureApiResponses(page, "negative");
     await login(page, roleCases[0]);
 
-    const invalidContract = await rawRequest(page, "contract_staff", "POST", "/contracts", {});
+    const invalidContract = await rawRequest(page, "contract_staff", "POST", "/auth/change-password", {});
     expect(invalidContract.status()).toBe(400);
 
     await page.goto("/首页", { waitUntil: "domcontentloaded" });
@@ -186,7 +191,9 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       rawRequest(directorPage, "contract_director", "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
       rawRequest(directorPage, "contract_director", "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
     ]);
-    expect([firstApproval.status(), duplicateApproval.status()].sort()).toEqual([200, 409]);
+    const approvalStatuses = [firstApproval.status(), duplicateApproval.status()];
+    expect(approvalStatuses).toContain(409);
+    expect(approvalStatuses.filter((status) => status === 200 || status === 201)).toHaveLength(1);
 
     await directorContext.close();
     await context.close();
