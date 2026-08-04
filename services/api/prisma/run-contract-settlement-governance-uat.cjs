@@ -1,6 +1,5 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { createHash } = require("node:crypto");
 const { PDFDocument } = require("pdf-lib");
 const { PrismaClient } = require("@prisma/client");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
@@ -143,6 +142,19 @@ async function uploadBuffer(token, name, buffer, mimeType) {
   return JSON.parse(text);
 }
 
+async function uploadCanvasSignature(token, name, buffer) {
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: "image/png" }), name);
+  const response = await fetch(`${baseUrl}/me/signature/canvas`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form
+  });
+  const text = await response.text();
+  assert(response.ok, `上传 ${name} 失败 HTTP ${response.status}: ${text}`);
+  return JSON.parse(text);
+}
+
 async function uploadExistingLocalFile(token, fileId, name) {
   const file = await prisma.fileObject.findUnique({ where: { id: fileId } });
   assert(file && file.storageStatus === "active", `未找到本地文件 ${fileId}`);
@@ -157,27 +169,17 @@ async function prepareSignatures(tokens) {
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
     "base64"
   );
-  const signatureSha256 = createHash("sha256").update(signaturePng).digest("hex");
   for (const role of [
     "contractStaff", "chairman", "generalManager", "projectManager", "contractDirector", "financeDirector",
     "materialDirector", "materialStaff", "engineeringDirector", "engineeringForeman",
     "engineeringTech", "comprehensiveDirector"
   ]) {
-    const signature = await uploadBuffer(
+    const signature = await uploadCanvasSignature(
       tokens[role],
       `UAT-${runId}-${role}-signature.png`,
-      signaturePng,
-      "image/png"
+      signaturePng
     );
-    await prisma.handwrittenSignatureVersion.create({
-      data: {
-        userId: users[role].id,
-        fileId: signature.id,
-        contentSha256: signatureSha256,
-        source: "canvas"
-      }
-    });
-    await prisma.user.update({ where: { id: users[role].id }, data: { signatureFileId: signature.id } });
+    assert(signature.signatureFileId, `用户 ${role} 手写签名上传未返回文件 ID`);
   }
 }
 
