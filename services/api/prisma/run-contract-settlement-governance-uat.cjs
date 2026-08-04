@@ -512,11 +512,7 @@ async function sealAndArchive(fixture, tokens) {
     signingDateCompleted: true
   };
   await request("POST", `/contracts/${fixture.version.id}/seal/complete`, tokens[fixture.applicantRole], completion);
-  const finalPdf = await uploadContractDraftPdf(
-    tokens[fixture.applicantRole],
-    fixture.version.id,
-    `UAT-${runId}-${fixture.config.type}-final.pdf`
-  );
+  const finalPdf = await uploadPdf(tokens[fixture.applicantRole], `UAT-${runId}-${fixture.config.type}-final.pdf`);
   const final = await request("POST", `/contracts/${fixture.version.id}/formal-files/final`, tokens[fixture.applicantRole], {
     ...completion,
     fileId: finalPdf.id,

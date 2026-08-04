@@ -11,6 +11,9 @@ const signaturePreparationSource = runnerSource.slice(start, end);
 const fixtureStart = runnerSource.indexOf("async function createContractFixture");
 const fixtureEnd = runnerSource.indexOf("\nasync function prepareAndSubmitContract", fixtureStart);
 const fixtureSource = runnerSource.slice(fixtureStart, fixtureEnd);
+const sealStart = runnerSource.indexOf("async function sealAndArchive");
+const sealEnd = runnerSource.indexOf("\nasync function assertAuthorizationCombinations", sealStart);
+const sealSource = runnerSource.slice(sealStart, sealEnd);
 
 test("governance UAT prepares each personal signature through the domain route", () => {
   assert.match(signaturePreparationSource, /\/me\/signature\/canvas/u);
@@ -29,8 +32,12 @@ test("contract-owned formal files use the draft domain upload route", () => {
     runnerSource,
     /uploadContractDraftPdf\(\s*tokens\[fixture\.applicantRole\],\s*fixture\.version\.id,\s*`UAT-\$\{runId\}-\$\{fixture\.config\.type\}-approval\.pdf`/u
   );
+});
+
+test("post-approval final files use the non-draft upload route", () => {
   assert.match(
-    runnerSource,
-    /uploadContractDraftPdf\(\s*tokens\[fixture\.applicantRole\],\s*fixture\.version\.id,\s*`UAT-\$\{runId\}-\$\{fixture\.config\.type\}-final\.pdf`/u
+    sealSource,
+    /const finalPdf = await uploadPdf\(tokens\[fixture\.applicantRole\],\s*`UAT-\$\{runId\}-\$\{fixture\.config\.type\}-final\.pdf`/u
   );
+  assert.doesNotMatch(sealSource, /uploadContractDraftPdf\([\s\S]*-final\.pdf/u);
 });
