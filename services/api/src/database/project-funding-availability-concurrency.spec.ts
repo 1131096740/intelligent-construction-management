@@ -460,7 +460,7 @@ describe("project funding PostgreSQL evidence", () => {
           );
         const terminationActionId = randomUUID();
         const [terminationResult, concurrentQuotaPayment] =
-          await runBehindProjectRowLock({
+          await runBehindProjectRowLock<unknown>({
             blockerClient: clients[2]!,
             observerClient: clients[3]!,
             projectId: terminationProjectId,
