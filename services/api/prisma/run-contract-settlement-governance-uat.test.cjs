@@ -22,3 +22,15 @@ test("director-skip governance fixture uploads its template through contract sta
   assert.match(fixtureSource, /uploadPdf\(tokens\.contractStaff,/u);
   assert.doesNotMatch(fixtureSource, /uploadPdf\(tokens\[applicantRole\],/u);
 });
+
+test("contract-owned formal files use the draft domain upload route", () => {
+  assert.match(runnerSource, /async function uploadContractDraftPdf\(/u);
+  assert.match(
+    runnerSource,
+    /uploadContractDraftPdf\(\s*tokens\[fixture\.applicantRole\],\s*fixture\.version\.id,\s*`UAT-\$\{runId\}-\$\{fixture\.config\.type\}-approval\.pdf`/u
+  );
+  assert.match(
+    runnerSource,
+    /uploadContractDraftPdf\(\s*tokens\[fixture\.applicantRole\],\s*fixture\.version\.id,\s*`UAT-\$\{runId\}-\$\{fixture\.config\.type\}-final\.pdf`/u
+  );
+});

@@ -129,10 +129,27 @@ async function uploadPdf(token, name, pageCount = 1) {
   return uploadBuffer(token, name, buffer, "application/pdf");
 }
 
+async function uploadContractDraftPdf(token, contractVersionId, name, pageCount = 1) {
+  const document = await PDFDocument.create();
+  for (let index = 0; index < pageCount; index += 1) document.addPage([841.89, 595.28]);
+  const buffer = Buffer.from(await document.save({ useObjectStreams: false }));
+  return uploadMultipart(
+    token,
+    `/contract-drafts/${contractVersionId}/files`,
+    name,
+    buffer,
+    "application/pdf"
+  );
+}
+
 async function uploadBuffer(token, name, buffer, mimeType) {
+  return uploadMultipart(token, "/files", name, buffer, mimeType);
+}
+
+async function uploadMultipart(token, urlPath, name, buffer, mimeType) {
   const form = new FormData();
   form.append("file", new Blob([buffer], { type: mimeType }), name);
-  const response = await fetch(`${baseUrl}/files`, {
+  const response = await fetch(`${baseUrl}${urlPath}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form
@@ -354,7 +371,11 @@ async function setAuthorization(fixture, side, required, tokens) {
   const current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   const body = { side, expectedRevision: current.draftRevision, required };
   if (required) {
-    const file = await uploadPdf(tokens[fixture.applicantRole], `UAT-${runId}-${fixture.config.type}-${side}-authorization.pdf`);
+    const file = await uploadContractDraftPdf(
+      tokens[fixture.applicantRole],
+      fixture.version.id,
+      `UAT-${runId}-${fixture.config.type}-${side}-authorization.pdf`
+    );
     body.upload = {
       fileId: file.id,
       grantorName: side === "first_party" ? "UAT我方" : "UAT乙方",
@@ -401,7 +422,11 @@ async function prepareAndSubmitContract(fixture, tokens) {
       completedAt: new Date()
     }
   });
-  const approvalPdf = await uploadPdf(tokens[fixture.applicantRole], `UAT-${runId}-${fixture.config.type}-approval.pdf`);
+  const approvalPdf = await uploadContractDraftPdf(
+    tokens[fixture.applicantRole],
+    fixture.version.id,
+    `UAT-${runId}-${fixture.config.type}-approval.pdf`
+  );
   await request("POST", `/contracts/${fixture.version.id}/formal-files/approval`, tokens[fixture.applicantRole], {
     fileId: approvalPdf.id,
     sourceRevision: current.draftRevision,
@@ -487,7 +512,11 @@ async function sealAndArchive(fixture, tokens) {
     signingDateCompleted: true
   };
   await request("POST", `/contracts/${fixture.version.id}/seal/complete`, tokens[fixture.applicantRole], completion);
-  const finalPdf = await uploadPdf(tokens[fixture.applicantRole], `UAT-${runId}-${fixture.config.type}-final.pdf`);
+  const finalPdf = await uploadContractDraftPdf(
+    tokens[fixture.applicantRole],
+    fixture.version.id,
+    `UAT-${runId}-${fixture.config.type}-final.pdf`
+  );
   const final = await request("POST", `/contracts/${fixture.version.id}/formal-files/final`, tokens[fixture.applicantRole], {
     ...completion,
     fileId: finalPdf.id,
