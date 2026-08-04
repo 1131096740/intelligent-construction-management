@@ -55,9 +55,9 @@ GLR-07
 
 ### GLR-04 — 加固动态数据库和 require-ready CI 门
 
-状态：实现已接线，待本地一次性 PostgreSQL 16 exact-SHA 执行收据。
+状态：已完成（本地候选，尚未 push/合并/部署）。
 
-前置：GLR-00。验收：动态 PostgreSQL 迁移/测试在 CI 中真实运行；`--require-ready` 发现 blocker 时非零退出；成功门绑定当前 SHA；失败日志可定位。
+前置：GLR-00。验收：动态 PostgreSQL 迁移/测试在 CI 中真实运行；`--require-ready` 发现 blocker 时非零退出；成功门绑定当前 SHA；失败日志可定位。证据：候选 `4afc1019dfa8bf16934b096a08b57b611edde80c` 上一次性 PostgreSQL 16 动态门通过，118/118 migrations、54/54 tests、28/28 files、9 groups、`remainingTests=0`、`remainingFiles=0`；镜像 `sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20`；runner self-test 7/7、四类 `--require-ready` 静态门和 `git diff --check` 通过。CI 接线由 `scripts/go-live-ci-gates.test.mjs` 1/1 保护。本票证据仅绑定实现 SHA，GLR-05 仍须在最终候选 SHA 重跑并收口。
 
 ### GLR-05 — 精确 SHA 证据收口
 
