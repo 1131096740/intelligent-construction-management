@@ -176,6 +176,8 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     expect(contractLedgerResponse.ok()).toBeTruthy();
     const contractLedger = (await contractLedgerResponse.json()) as { rows?: Array<Record<string, unknown>> };
     let versionId: string | undefined;
+    let projectId: string | undefined;
+    let settlementTemplateVersionId: string | undefined;
     for (const row of contractLedger.rows ?? []) {
       const contractId = row.contractId ?? row.id;
       if (typeof contractId !== "string") continue;
@@ -195,17 +197,50 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
         typeof contractDetail.settlementBlockMessage === "string" &&
         contractDetail.settlementBlockMessage.includes("可基于当前合同版本创建结算")
       ) {
+        const sourceLinesResponse = await rawRequest(
+          page,
+          "contract_staff",
+          "GET",
+          `/settlement-workbench/contract-versions/${encodeURIComponent(contractDetail.contractVersionId)}/source-lines`
+        );
+        if (!sourceLinesResponse.ok()) continue;
+        const sourceLines = (await sourceLinesResponse.json()) as { projectId?: unknown };
+        if (typeof sourceLines.projectId !== "string") continue;
+        const recommendationsResponse = await rawRequest(
+          page,
+          "contract_staff",
+          "GET",
+          `/settlement-workbench/projects/${encodeURIComponent(sourceLines.projectId)}/contract-versions/${encodeURIComponent(contractDetail.contractVersionId)}/template-recommendations`
+        );
+        if (!recommendationsResponse.ok()) continue;
+        const recommendations = (await recommendationsResponse.json()) as {
+          selected?: { templateVersionId?: unknown } | null;
+          choices?: Array<{ templateVersionId?: unknown }>;
+        };
+        const selectedTemplate = recommendations.selected?.templateVersionId ?? recommendations.choices?.[0]?.templateVersionId;
+        if (typeof selectedTemplate !== "string") continue;
         versionId = contractDetail.contractVersionId;
+        projectId = sourceLines.projectId;
+        settlementTemplateVersionId = selectedTemplate;
         break;
       }
     }
     expect(typeof versionId).toBe("string");
+    expect(typeof projectId).toBe("string");
+    expect(typeof settlementTemplateVersionId).toBe("string");
 
     const createdSettlement = await rawRequest(page, "contract_staff", "POST", "/settlements", {
       contractVersionId: String(versionId),
+      settlementTemplateVersionId: String(settlementTemplateVersionId),
       code: `RC06-${Date.now()}`,
       periodLabel: "2026-08",
-      amountCents: "1"
+      amountCents: "1",
+      settlementLines: [{
+        sourceType: "manual_adjustment",
+        name: "RC06 并发幂等探针",
+        amountCents: "1",
+        reason: "隔离浏览器门禁测试"
+      }]
     });
     const settlementBodyText = await createdSettlement.text();
     expect(
