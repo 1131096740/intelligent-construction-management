@@ -477,6 +477,7 @@ test("RC-06 mocked contract detail remains operable on the configured mobile pro
   browserName,
   page
 }) => {
+  test.skip(browserName !== "webkit", "mobile contract runs in the WebKit project");
   expect(browserName).toBe("webkit");
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];

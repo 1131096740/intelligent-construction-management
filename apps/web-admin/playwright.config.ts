@@ -28,7 +28,16 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      grepInvert: /RC-06 mocked contract detail remains operable on the configured mobile project/u,
       use: { ...devices["Desktop Chrome"] }
+    },
+    {
+      name: "webkit-mobile",
+      grep: /RC-06 mocked contract detail remains operable on the configured mobile project/u,
+      use: {
+        ...devices["iPhone 13"],
+        viewport: { width: 390, height: 844 }
+      }
     }
   ]
 });
