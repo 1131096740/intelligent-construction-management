@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 442,
-    "exactRouteCount": 442,
-    "normalizedRouteCount": 442,
+    "routeCount": 446,
+    "exactRouteCount": 446,
+    "normalizedRouteCount": 446,
     "classificationOverrideCount": 165,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "93861177f13d95f7c180f317086ab252409b8397e2a4871c860a9c160d5f1bba",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 277,
-    "pageRouteCount": 278,
+    "derivedProductionPageCount": 281,
+    "pageRouteCount": 282,
     "externalTakeoverCount": 61,
     "exitCandidateCount": 100,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 327,
+      "web_api_wrapper": 331,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -34,8 +34,8 @@
     "blockerCount": 0
   },
   "evidence": {
-    "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 327,
+    "upstreamWebManifestStatus": "ready",
+    "productionWrapperRouteCount": 331,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -10361,9 +10361,13 @@
       "sourceFile": "services/api/src/file/file.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "authenticated_only",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
+      "requiredPositions": [
+        "contract_staff",
+        "finance_director",
+        "finance_staff"
+      ],
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
@@ -10376,52 +10380,12 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordPaymentExecutionWithUpload",
-            "method": "POST",
-            "normalizedPath": "/files",
-            "normalizedKey": "POST /files",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
-            "method": "POST",
-            "normalizedPath": "/files",
-            "normalizedKey": "POST /files",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectExpenseExecutionWithUpload",
-            "method": "POST",
-            "normalizedPath": "/files",
-            "normalizedKey": "POST /files",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "uploadPrivateFile",
             "method": "POST",
             "normalizedPath": "/files",
             "normalizedKey": "POST /files",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "requestProjectFinancingQuotaWithUpload",
-            "method": "POST",
-            "normalizedPath": "/files",
-            "normalizedKey": "POST /files",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
             ]
           }
         ],
@@ -11195,6 +11159,46 @@
     },
     {
       "method": "POST",
+      "path": "/payments/:paymentId/execution-voucher-file-uploads",
+      "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
+      "controller": "PaymentController",
+      "handler": "uploadExecutionVoucherPrivateFile",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "payment.execution",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordPaymentExecutionWithUpload",
+            "method": "POST",
+            "normalizedPath": "/payments/:param/execution-voucher-file-uploads",
+            "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/payments/:paymentId/executions",
       "normalizedKey": "POST /payments/:param/executions",
       "controller": "PaymentController",
@@ -11616,6 +11620,46 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/affiliate-company-contracts/:param/confirmation",
             "normalizedKey": "POST /projects/:param/affiliate-company-contracts/:param/confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/affiliate-company-contracts/file-uploads",
+      "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadAffiliateCompanyContractPrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.affiliate_company_contract.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/affiliate-company-contracts/file-uploads",
+            "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
             ]
@@ -13311,6 +13355,46 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/expense-requests/:expenseRequestId/execution-voucher-file-uploads",
+      "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+      "controller": "ProjectExpenseController",
+      "handler": "uploadExecutionVoucherPrivateFile",
+      "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project_expense.execution",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectExpenseExecutionWithUpload",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+            "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/expense-requests/:expenseRequestId/executions",
       "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
       "controller": "ProjectExpenseController",
@@ -13657,6 +13741,46 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/financing-quotas/:param/termination",
             "normalizedKey": "POST /projects/:param/financing-quotas/:param/termination",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas/file-uploads",
+      "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadProjectFinancingQuotaPrivateFile",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.financing_quota.request",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+            "wrapper": "requestProjectFinancingQuotaWithUpload",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/financing-quotas/file-uploads",
+            "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
             ]

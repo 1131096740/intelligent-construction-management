@@ -592,6 +592,22 @@ function classifyOrphan(wrapper) {
   };
 }
 
+function validateRetiredWrapper(entry) {
+  assertExactKeys(
+    entry,
+    ["apiFile", "classification", "reason", "wrapper"],
+    "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER"
+  );
+  assertString(entry.apiFile, "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER");
+  assertString(entry.wrapper, "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER");
+  assertString(entry.classification, "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER");
+  assertString(entry.reason, "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER");
+  assert(
+    entry.reason.trim().length > 0,
+    "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER"
+  );
+}
+
 function deriveUnresolvedRequests(wrappers) {
   return sortBy(
     wrappers.flatMap((wrapper) =>
@@ -695,10 +711,16 @@ function validateWebSummary(manifest) {
         : []
     )
   ).size;
+  const retiredIdentities = new Set(
+    (manifest.retiredWrappers ?? []).map((entry) =>
+      wrapperKey(entry.apiFile, entry.wrapper)
+    )
+  );
   const orphanWrappers = wrappers.filter(
     (wrapper) =>
       wrapper.kind === "transport" &&
-      wrapper.productionConsumers.length === 0
+      wrapper.productionConsumers.length === 0 &&
+      !retiredIdentities.has(wrapperKey(wrapper.apiFile, wrapper.name))
   );
   const expected = {
     apiModuleCount: new Set(
@@ -741,25 +763,40 @@ function validateWebSummary(manifest) {
 }
 
 function validateWebManifest(manifest) {
+  const isLiveManifest = LIVE_WEB_MANIFESTS.has(manifest);
+  const expectedKeys = [
+    "authTransportExceptions",
+    "blockers",
+    "duplicateNormalizedRoutes",
+    "evidence",
+    "schemaVersion",
+    "scope",
+    "status",
+    "summary",
+    "wrappers"
+  ];
+  if (isLiveManifest) expectedKeys.splice(4, 0, "retiredWrappers");
   assertExactKeys(
     manifest,
-    [
-      "authTransportExceptions",
-      "blockers",
-      "duplicateNormalizedRoutes",
-      "evidence",
-      "schemaVersion",
-      "scope",
-      "status",
-      "summary",
-      "wrappers"
-    ],
+    expectedKeys,
     "CAPABILITY_MATRIX_INVALID_WEB_MANIFEST"
   );
   assert(
     manifest.schemaVersion === 1,
     "CAPABILITY_MATRIX_INVALID_WEB_MANIFEST"
   );
+  const retiredWrappers = manifest.retiredWrappers ?? [];
+  assertArray(retiredWrappers, "CAPABILITY_MATRIX_INVALID_RETIRED_WEB_WRAPPER");
+  const retiredIdentities = new Set();
+  for (const entry of retiredWrappers) {
+    validateRetiredWrapper(entry);
+    const identity = wrapperKey(entry.apiFile, entry.wrapper);
+    assert(
+      !retiredIdentities.has(identity),
+      "CAPABILITY_MATRIX_DUPLICATE_RETIRED_WEB_WRAPPER"
+    );
+    retiredIdentities.add(identity);
+  }
   assertExactKeys(
     manifest.scope,
     ["apiRoot", "nestRouteManifest", "productionEntrypoint"],
@@ -855,7 +892,7 @@ function validateWebManifest(manifest) {
     ),
     "CAPABILITY_MATRIX_WEB_DUPLICATE_ROUTE_DRIFT"
   );
-  const expectedOrphans = sortBy(
+  const detectedOrphans = sortBy(
     manifest.wrappers
       .filter(
         (wrapper) =>
@@ -864,6 +901,21 @@ function validateWebManifest(manifest) {
       )
       .map(classifyOrphan),
     (entry) => wrapperKey(entry.apiFile, entry.wrapper)
+  );
+  const detectedOrphansByIdentity = new Map(
+    detectedOrphans.map((entry) => [wrapperKey(entry.apiFile, entry.wrapper), entry])
+  );
+  for (const entry of retiredWrappers) {
+    const detected = detectedOrphansByIdentity.get(
+      wrapperKey(entry.apiFile, entry.wrapper)
+    );
+    assert(
+      detected && detected.classification === entry.classification,
+      "CAPABILITY_MATRIX_STALE_RETIRED_WEB_WRAPPER"
+    );
+  }
+  const expectedOrphans = detectedOrphans.filter(
+    (entry) => !retiredIdentities.has(wrapperKey(entry.apiFile, entry.wrapper))
   );
   assert(
     isDeepStrictEqual(

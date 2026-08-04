@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "authorizationScope": "cross_manifest_release_evidence_only",
     "deletionAuthorized": false,
@@ -14,16 +14,16 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "8938ac6b3948b1bcf81598c88ff264b563a5ddc337da81746892a5f9e6d9918f",
+      "sha256": "b590ddab27d76844913e544fe761de44d1ad20c2db4b2ed5d1c59ff866a28e5a",
       "status": "ready",
       "summary": {
-        "routeCount": 442
+        "routeCount": 446
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "e40965d115caf0e667a3e099d5d926e0b094f33d3337c744ff474fcc8e64ab98",
-      "status": "blocked",
+      "sha256": "a3271cbe17536219d80b4b370b59c2c2bd34afe0c0843a2aa41d85ac4b7c1209",
+      "status": "ready",
       "summary": {
         "apiModuleCount": 15,
         "exportedFunctionCount": 452,
@@ -33,17 +33,17 @@
         "ticketFollowupCount": 2,
         "requestEdgeCount": 451,
         "productionConsumerCount": 339,
-        "orphanWrapperCount": 93,
-        "testOnlyWrapperCount": 86,
-        "unreferencedWrapperCount": 1,
-        "duplicateNormalizedRouteGroupCount": 12,
+        "orphanWrapperCount": 0,
+        "testOnlyWrapperCount": 0,
+        "unreferencedWrapperCount": 0,
+        "duplicateNormalizedRouteGroupCount": 9,
         "authTransportExceptionCount": 5
       }
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "c24fa25cb035e1ebee868971ea986a79c907b3cf2da37d38dda277b2c293eed3",
-      "status": "blocked",
+      "sha256": "21231f0b34437c0b9a821f8b56ffbd9e49f336af9122488699ef395791dabe03",
+      "status": "ready",
       "summary": {
         "registeredActionCount": 241,
         "pageActionCount": 44,
@@ -59,29 +59,29 @@
         "candidateProductionMutationConsumerCount": 231,
         "acceptedProductionMutationConsumerCount": 231,
         "productionMutationConsumerPairCount": 231,
-        "blockerCount": 3
+        "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "ae4d8b8849ca958f1ca137a5c40a6af149b8d0610338f662fcb5ac3ec8212b5a",
+      "sha256": "fa2af2cd5a9643d7f8f28a80d99320b4703e9635797f8b03fb7e92167b4ec4b7",
       "status": "ready",
       "summary": {
-        "routeCount": 442,
-        "exactRouteCount": 442,
-        "normalizedRouteCount": 442,
+        "routeCount": 446,
+        "exactRouteCount": 446,
+        "normalizedRouteCount": 446,
         "classificationOverrideCount": 165,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "93861177f13d95f7c180f317086ab252409b8397e2a4871c860a9c160d5f1bba",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 277,
-        "pageRouteCount": 278,
+        "derivedProductionPageCount": 281,
+        "pageRouteCount": 282,
         "externalTakeoverCount": 61,
         "exitCandidateCount": 100,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 327,
+          "web_api_wrapper": 331,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,17 +93,17 @@
     }
   },
   "summary": {
-    "routeCount": 442,
-    "pageRouteCount": 278,
+    "routeCount": 446,
+    "pageRouteCount": 282,
     "externalTakeoverRouteCount": 61,
     "exitCandidateRouteCount": 100,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
     "mainRequestBindingCount": 452,
-    "webRequestWithoutNestCount": 1,
+    "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
-    "orphanWrapperCount": 93,
-    "duplicateMutationRouteCount": 3,
+    "orphanWrapperCount": 0,
+    "duplicateMutationRouteCount": 0,
     "registeredActionCount": 241,
     "actionBindingCount": 271,
     "acceptedActionBindingCount": 252,
@@ -111,549 +111,14 @@
     "productionMutationConsumerPairCount": 231,
     "coveredProductionMutationConsumerPairCount": 231,
     "uncoveredProductionMutationConsumerPairCount": 0,
-    "blockerCount": 99
+    "blockerCount": 0
   },
   "blockers": {
-    "upstreamManifestIssues": [
-      {
-        "input": "web_api_wrappers",
-        "status": "blocked"
-      },
-      {
-        "input": "web_page_actions",
-        "status": "blocked"
-      }
-    ],
-    "webRequestsWithoutNest": [
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementPaymentDraft",
-        "method": "POST",
-        "normalizedKey": "POST /spot-procurements/:param/payments",
-        "productionConsumers": []
-      }
-    ],
+    "upstreamManifestIssues": [],
+    "webRequestsWithoutNest": [],
     "authRequestsWithoutNest": [],
-    "orphanWrappers": [
-      {
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "createCompanyEntity",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "updateCompanyEntity",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "updateCompanyEntityStatus",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractBusinessScenario",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractScenarioMapping",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractBusinessScenario",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractScenarioMapping",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "abandonContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "addBillRow",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createBusinessParty",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createBusinessPartyVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractNumberRule",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractTemplate",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createDraftCheckpoint",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createLayoutTemplate",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createStandardClause",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "deleteBillRow",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "deletePristineContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardStandardClauseVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "fetchContractWorkbench",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "getLatestLayoutTemplatePreview",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "inspectLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "listContractDrafts",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "listStandardClauseHistory",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishStandardClauseVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueLayoutTemplatePreview",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "reorderBillRows",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "restoreContractDraft",
-        "classification": "unreferenced"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "restoreDraftCheckpoint",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "revokeContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "revokeLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "saveContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractNumberRule",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitStandardClauseVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateBillRow",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractNumberRule",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "voidContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "assignProjectAffiliate",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectOwnerContract",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectUpstreamSettlement",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "copyAbandonedContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createApprovalDelegation",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createSettlementDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchActiveContractNumberRules",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchContractLifecycleLedger",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchProjectAffiliateMappingReport",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchSettlementLifecycleLedger",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchWorkbenchSummary",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordContractTakeoverCorrection",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecution",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateCompanyContract",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecution",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseFinance",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectOwnerContract",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectProxyPayment",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectUpstreamSettlement",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "requestSettlementExceptionQuota",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewSettlementExceptionQuota",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "revokeApprovalDelegation",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleAddition",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleRemoval",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationDepartment",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationUser",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleAddition",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemoval",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemovalBatch",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationDepartment",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationUser",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "abandonSettlementDraftRecord",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "cloneSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "createSettlementTemplate",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "discardSettlementTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "downloadSettlementTemplatePreview",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "generateSettlementTemplatePreview",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "inspectSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "publishSettlementTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "stopSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "submitSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "updateSettlementTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementPaymentDraft",
-        "classification": "test_only"
-      }
-    ],
-    "duplicateMutationRoutes": [
-      {
-        "normalizedKey": "POST /contracts",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createWorkbenchDraft"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "createContractDraft"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /files",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordPaymentExecutionWithUpload"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectExpenseExecutionWithUpload"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "uploadPrivateFile"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "requestProjectFinancingQuotaWithUpload"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordContractTakeoverCorrection"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "submitContractTakeoverCorrection"
-          }
-        ]
-      }
-    ],
+    "orphanWrappers": [],
+    "duplicateMutationRoutes": [],
     "unclassifiedRoutes": [],
     "uncoveredMutationConsumers": [],
     "unresolvedActions": []
@@ -696,9 +161,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -737,9 +200,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -778,9 +239,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -1863,9 +1322,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -2003,9 +1460,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -2213,9 +1668,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -2416,9 +1869,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -2791,9 +2242,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -3549,9 +2998,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -5717,9 +5164,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -6566,9 +6011,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7177,9 +6620,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7321,9 +6762,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7362,9 +6801,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7406,9 +6843,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7450,9 +6885,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7491,9 +6924,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7535,9 +6966,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7579,9 +7008,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7620,9 +7047,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7689,9 +7114,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -7740,9 +7163,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8127,9 +7548,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8466,9 +7885,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8816,9 +8233,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8857,9 +8272,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8898,9 +8311,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -8939,9 +8350,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9100,9 +8509,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9141,9 +8548,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9185,9 +8590,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -9229,9 +8632,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10027,9 +9428,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10071,9 +9470,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10115,9 +9512,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10159,9 +9554,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10202,9 +9595,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10245,9 +9636,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10288,9 +9677,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10332,9 +9719,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10376,9 +9761,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10485,9 +9868,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10526,9 +9907,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10706,9 +10085,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10750,9 +10127,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10793,9 +10168,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10836,9 +10209,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10879,9 +10250,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10923,9 +10292,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -10967,9 +10334,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11076,9 +10441,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11117,9 +10480,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11386,9 +10747,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11699,9 +11058,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11807,9 +11164,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12512,9 +11867,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -13231,18 +12584,6 @@
             "apps/web-admin/src/api/contract-workbench.api.test.ts",
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
           ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "createContractDraft",
-          "method": "POST",
-          "path": "/contracts",
-          "normalizedKey": "POST /contracts",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
         }
       ],
       "authTransports": [],
@@ -13275,10 +12616,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "DUPLICATE_MUTATION_ROUTE",
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14834,9 +14172,13 @@
         "sourceFile": "services/api/src/file/file.controller.ts",
         "authorizationScope": "guard_metadata_only",
         "authentication": "authenticated",
-        "guardAuthorization": "authenticated_only",
+        "guardAuthorization": "positions",
         "isPublic": false,
-        "requiredPositions": [],
+        "requiredPositions": [
+          "contract_staff",
+          "finance_director",
+          "finance_staff"
+        ],
         "requiredProjectAction": null,
         "authorizationCombination": null,
         "contractCutoverSurface": false,
@@ -14845,48 +14187,6 @@
       "usage": "page",
       "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordPaymentExecutionWithUpload",
-          "method": "POST",
-          "path": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
-          "method": "POST",
-          "path": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectExpenseExecutionWithUpload",
-          "method": "POST",
-          "path": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "uploadPrivateFile",
@@ -14900,50 +14200,10 @@
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "method": "POST",
-          "path": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/project-financing-quota.api.test.ts"
-          ]
         }
       ],
       "authTransports": [],
       "actions": [
-        {
-          "actionId": "affiliate-company-contract.record",
-          "bindingIndex": 0,
-          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContractWithUpload\u0000POST\u0000POST /files\u00000",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "affiliateCompanyContractRootActions",
-            "key": "record_affiliate_company_contract",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        },
         {
           "actionId": "contract-archive.upload-file",
           "bindingIndex": 0,
@@ -14995,89 +14255,10 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
-        },
-        {
-          "actionId": "payment-execution.record",
-          "bindingIndex": 1,
-          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000POST\u0000POST /files\u00001",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "paymentApprovalCapability.availableActions",
-            "key": "record_execution",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordPaymentExecutionWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        },
-        {
-          "actionId": "project-expense.execution-local-status",
-          "bindingIndex": 1,
-          "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000POST\u0000POST /files\u00001",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "projectExpenseWithdrawalCapability.availableActions",
-            "key": "record_execution",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectExpenseExecutionWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        },
-        {
-          "actionId": "project-financing-quota.request",
-          "bindingIndex": 1,
-          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000POST\u0000POST /files\u00001",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "selectedFinancingQuotaRequestAction",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "DUPLICATE_MUTATION_ROUTE"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15374,9 +14555,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15425,9 +14604,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15476,9 +14653,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15527,9 +14702,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15570,9 +14743,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15621,9 +14792,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -15672,9 +14841,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16113,6 +15280,84 @@
     {
       "route": {
         "method": "POST",
+        "path": "/payments/:paymentId/execution-voucher-file-uploads",
+        "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
+        "controller": "PaymentController",
+        "handler": "uploadExecutionVoucherPrivateFile",
+        "sourceFile": "services/api/src/payment/payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "payment.execution",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "method": "POST",
+          "path": "/payments/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadPaymentExecutionPrivateFile",
+          "method": "POST",
+          "path": "/payments/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "payment-execution.record",
+          "bindingIndex": 1,
+          "identity": "payment-execution.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordPaymentExecutionWithUpload\u0000POST\u0000POST /payments/:param/execution-voucher-file-uploads\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "paymentApprovalCapability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordPaymentExecutionWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/payments/:paymentId/executions",
         "normalizedKey": "POST /payments/:param/executions",
         "controller": "PaymentController",
@@ -16188,9 +15433,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16570,9 +15813,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -16779,6 +16020,84 @@
     {
       "route": {
         "method": "POST",
+        "path": "/projects/:projectId/affiliate-company-contracts/file-uploads",
+        "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
+        "controller": "ProjectController",
+        "handler": "uploadAffiliateCompanyContractPrivateFile",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.affiliate_company_contract.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-company-contracts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
+          "bodyKind": "raw",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectAffiliateCompanyContractPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/affiliate-company-contracts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
+          "bodyKind": "raw",
+          "productionConsumers": [],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "affiliate-company-contract.record",
+          "bindingIndex": 1,
+          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContractWithUpload\u0000POST\u0000POST /projects/:param/affiliate-company-contracts/file-uploads\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "affiliateCompanyContractRootActions",
+            "key": "record_affiliate_company_contract",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliateCompanyContractWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/projects/:projectId/affiliate-company-contracts",
         "normalizedKey": "POST /projects/:param/affiliate-company-contracts",
         "controller": "ProjectController",
@@ -16828,8 +16147,8 @@
       "actions": [
         {
           "actionId": "affiliate-company-contract.record",
-          "bindingIndex": 1,
-          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContractWithUpload\u0000POST\u0000POST /projects/:param/affiliate-company-contracts\u00001",
+          "bindingIndex": 0,
+          "identity": "affiliate-company-contract.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliateCompanyContractWithUpload\u0000POST\u0000POST /projects/:param/affiliate-company-contracts\u00000",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
@@ -16854,9 +16173,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -18031,18 +17348,6 @@
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordContractTakeoverCorrection",
-          "method": "POST",
-          "path": "/projects/:param/contract-takeovers/:param/corrections",
-          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "submitContractTakeoverCorrection",
           "method": "POST",
           "path": "/projects/:param/contract-takeovers/:param/corrections",
@@ -18086,10 +17391,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "DUPLICATE_MUTATION_ROUTE",
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -19711,6 +19013,84 @@
     {
       "route": {
         "method": "POST",
+        "path": "/projects/:projectId/expense-requests/:expenseRequestId/execution-voucher-file-uploads",
+        "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+        "controller": "ProjectExpenseController",
+        "handler": "uploadExecutionVoucherPrivateFile",
+        "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project_expense.execution",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "bodyKind": "raw",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectExpenseExecutionPrivateFile",
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "bodyKind": "raw",
+          "productionConsumers": [],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-expense.execution-local-status",
+          "bindingIndex": 1,
+          "identity": "project-expense.execution-local-status\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectExpenseExecutionWithUpload\u0000POST\u0000POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads\u00001",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "projectExpenseWithdrawalCapability.availableActions",
+            "key": "record_execution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectExpenseExecutionWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/projects/:projectId/expense-requests/:expenseRequestId/executions",
         "normalizedKey": "POST /projects/:param/expense-requests/:param/executions",
         "controller": "ProjectExpenseController",
@@ -19786,9 +19166,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -19868,9 +19246,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20372,6 +19748,73 @@
     {
       "route": {
         "method": "POST",
+        "path": "/projects/:projectId/financing-quotas/file-uploads",
+        "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
+        "controller": "ProjectController",
+        "handler": "uploadProjectFinancingQuotaPrivateFile",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.financing_quota.request",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "requestProjectFinancingQuotaWithUpload",
+          "method": "POST",
+          "path": "/projects/:param/financing-quotas/file-uploads",
+          "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/project-financing-quota.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project-financing-quota.request",
+          "bindingIndex": 2,
+          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000POST\u0000POST /projects/:param/financing-quotas/file-uploads\u00002",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+          "capability": {
+            "kind": "detail_action",
+            "source": "selectedFinancingQuotaRequestAction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "wrapper": "requestProjectFinancingQuotaWithUpload",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/projects/:projectId/financing-quotas",
         "normalizedKey": "POST /projects/:param/financing-quotas",
         "controller": "ProjectController",
@@ -20409,8 +19852,8 @@
       "actions": [
         {
           "actionId": "project-financing-quota.request",
-          "bindingIndex": 2,
-          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000POST\u0000POST /projects/:param/financing-quotas\u00002",
+          "bindingIndex": 1,
+          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000POST\u0000POST /projects/:param/financing-quotas\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
@@ -20473,9 +19916,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20514,9 +19955,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20555,9 +19994,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -20689,9 +20126,7 @@
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21329,9 +20764,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21370,9 +20803,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21613,9 +21044,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21654,9 +21083,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21767,9 +21194,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21810,9 +21235,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21852,9 +21275,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21894,9 +21315,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21938,9 +21357,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -21982,9 +21399,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -22026,9 +21441,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -22068,9 +21481,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -22110,9 +21521,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -22152,9 +21561,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -23459,9 +22866,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -26157,9 +25562,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -26200,9 +25603,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -26244,9 +25645,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -26288,9 +25687,7 @@
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ORPHAN_WRAPPER"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {

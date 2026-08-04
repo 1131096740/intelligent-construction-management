@@ -19,6 +19,8 @@ const API_ROOT = "apps/web-admin/src/api";
 const WEB_SOURCE_ROOT = "apps/web-admin/src";
 const NEST_MANIFEST_PATH =
   "docs/product/manifests/nest-business-routes.json";
+const RETIRED_WRAPPER_REGISTRY_PATH =
+  "docs/product/manifests/retired-web-api-wrappers.json";
 const MAX_FINITE_VALUES = 32;
 const HTTP_METHODS = new Set([
   "DELETE",
@@ -4917,13 +4919,135 @@ function inspectAuthTransportExceptions(path, source) {
   );
 }
 
+function wrapperIdentity(wrapper) {
+  return `${wrapper.apiFile}\0${wrapper.wrapper}`;
+}
+
+async function readRetiredWrapperRegistry(root) {
+  let parsed;
+  try {
+    parsed = JSON.parse(
+      await readFile(join(root, RETIRED_WRAPPER_REGISTRY_PATH), "utf8")
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return { entries: [], invalid: [] };
+    }
+    return {
+      entries: [],
+      invalid: [
+        {
+          apiFile: RETIRED_WRAPPER_REGISTRY_PATH,
+          wrapper: "<registry>",
+          reason: "Registry could not be read or parsed."
+        }
+      ]
+    };
+  }
+
+  const invalid = [];
+  const entries = [];
+  if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.entries)) {
+    invalid.push({
+      apiFile: RETIRED_WRAPPER_REGISTRY_PATH,
+      wrapper: "<registry>",
+      reason: "Registry schemaVersion or entries is invalid."
+    });
+    return { entries, invalid };
+  }
+
+  const seen = new Set();
+  for (const group of parsed.entries) {
+    const validGroup =
+      typeof group?.apiFile === "string" &&
+      typeof group?.classification === "string" &&
+      typeof group?.reason === "string" &&
+      group.reason.trim().length > 0 &&
+      Array.isArray(group.wrappers) &&
+      group.wrappers.length > 0;
+    if (!validGroup) {
+      invalid.push({
+        apiFile: group?.apiFile ?? RETIRED_WRAPPER_REGISTRY_PATH,
+        wrapper: "<entry>",
+        reason: "Registry entry must declare apiFile, classification, reason, and wrappers."
+      });
+      continue;
+    }
+    for (const wrapper of group.wrappers) {
+      const entry = {
+        apiFile: group.apiFile,
+        wrapper,
+        classification: group.classification,
+        reason: group.reason
+      };
+      const identity = wrapperIdentity(entry);
+      if (typeof wrapper !== "string" || wrapper.length === 0 || seen.has(identity)) {
+        invalid.push({
+          apiFile: group.apiFile,
+          wrapper: typeof wrapper === "string" ? wrapper : "<wrapper>",
+          reason: seen.has(identity)
+            ? "Registry contains a duplicate wrapper identity."
+            : "Registry wrapper name must be a non-empty string."
+        });
+        continue;
+      }
+      seen.add(identity);
+      entries.push(entry);
+    }
+  }
+  return { entries, invalid };
+}
+
+function applyRetiredWrapperRegistry(orphanWrappers, registry) {
+  const orphanByIdentity = new Map(
+    orphanWrappers.map((wrapper) => [wrapperIdentity(wrapper), wrapper])
+  );
+  const registered = [];
+  const registeredIdentities = new Set();
+  const invalid = [...registry.invalid];
+  for (const entry of registry.entries) {
+    const actual = orphanByIdentity.get(wrapperIdentity(entry));
+    if (!actual) {
+      invalid.push({
+        ...entry,
+        reason: "Registry entry does not match a current orphan wrapper."
+      });
+      continue;
+    }
+    if (actual.classification !== entry.classification) {
+      invalid.push({
+        ...entry,
+        reason: `Registry classification ${entry.classification} does not match ${actual.classification}.`
+      });
+      continue;
+    }
+    registeredIdentities.add(wrapperIdentity(entry));
+    registered.push({ ...actual, reason: entry.reason });
+  }
+  return {
+    retiredWrappers: registered,
+    orphanWrappers: [
+      ...orphanWrappers.filter(
+        (wrapper) => !registeredIdentities.has(wrapperIdentity(wrapper))
+      ),
+      ...invalid.map((item) => ({
+        apiFile: item.apiFile ?? RETIRED_WRAPPER_REGISTRY_PATH,
+        wrapper: item.wrapper ?? "<registry>",
+        classification: "registry_invalid",
+        reason: item.reason
+      }))
+    ]
+  };
+}
+
 function classifyBlockers({
   wrappers,
   duplicateNormalizedRoutes,
   consumerIssues,
-  nestRouteKeys
+  nestRouteKeys,
+  retiredWrapperRegistry
 }) {
-  const orphanWrappers = wrappers
+  const detectedOrphanWrappers = wrappers
     .filter(
       (wrapper) =>
         wrapper.kind === "transport" &&
@@ -4939,6 +5063,10 @@ function classifyBlockers({
             ? "unreachable_only"
             : "unreferenced"
     }));
+  const { orphanWrappers, retiredWrappers } = applyRetiredWrapperRegistry(
+    detectedOrphanWrappers,
+    retiredWrapperRegistry
+  );
   const unresolvedRequests = wrappers.flatMap((wrapper) =>
     wrapper.requests
       .filter(
@@ -4971,7 +5099,8 @@ function classifyBlockers({
     ),
     unresolvedRequests,
     frontendWithoutBackend,
-    consumerIssues
+    consumerIssues,
+    retiredWrappers
   };
 }
 
@@ -5116,6 +5245,7 @@ export async function inspectWholeSiteWebApiManifest({ root }) {
   );
   const duplicateNormalizedRoutes =
     deriveDuplicateWebApiRoutes(wrappers);
+  const retiredWrapperRegistry = await readRetiredWrapperRegistry(resolvedRoot);
   const blockers = classifyBlockers({
     wrappers,
     duplicateNormalizedRoutes,
@@ -5124,8 +5254,11 @@ export async function inspectWholeSiteWebApiManifest({ root }) {
         compareStrings(left.consumer, right.consumer) ||
         compareStrings(left.issue, right.issue)
     ),
-    nestRouteKeys
+    nestRouteKeys,
+    retiredWrapperRegistry
   });
+  const retiredWrappers = blockers.retiredWrappers;
+  delete blockers.retiredWrappers;
   const authPath = `${WEB_SOURCE_ROOT}/auth/auth.store.ts`;
   const authTransportExceptions = inspectAuthTransportExceptions(
     authPath,
@@ -5199,6 +5332,7 @@ export async function inspectWholeSiteWebApiManifest({ root }) {
       ).length
     },
     wrappers,
+    retiredWrappers,
     authTransportExceptions,
     duplicateNormalizedRoutes,
     blockers

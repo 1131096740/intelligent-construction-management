@@ -227,6 +227,21 @@ export class ProjectController {
     return this.affiliateCompanyContractService().record(projectId, user.id, body);
   }
 
+  @Post(":projectId/affiliate-company-contracts/file-uploads")
+  @RequireProjectRole("project.affiliate_company_contract.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadAffiliateCompanyContractPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "线下合同登记文件");
+  }
+
   @Post(":projectId/affiliate-company-contracts/:contractId/confirmation")
   @RequireProjectRole("project.affiliate_company_contract.confirm")
   confirmAffiliateCompanyContract(
@@ -604,6 +619,21 @@ export class ProjectController {
     @Body() body: RequestProjectFinancingQuotaDto
   ) {
     return this.projects.requestProjectFinancingQuota(projectId, user.id, body);
+  }
+
+  @Post(":projectId/financing-quotas/file-uploads")
+  @RequireProjectRole("project.financing_quota.request")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadProjectFinancingQuotaPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(file, user, idempotencyKey, "项目垫资额度申请依据");
   }
 
   @Post(":projectId/financing-quotas/:quotaId/approval")

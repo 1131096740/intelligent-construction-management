@@ -1984,12 +1984,6 @@ export function abandonSpotProcurementDraft(
   );
 }
 
-export function createSpotProcurementPaymentDraft(procurementId: string) {
-  return postJson<SpotProcurementPaymentWriteReadModel>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/payments`
-  );
-}
-
 export function recreateSpotProcurementPaymentDraft(procurementId: string) {
   return postJson<SpotProcurementPaymentWriteReadModel>(
     `/spot-procurements/${encodeURIComponent(procurementId)}/payment-drafts`

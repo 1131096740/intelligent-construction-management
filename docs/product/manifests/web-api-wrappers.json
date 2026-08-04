@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "apiRoot": "apps/web-admin/src/api",
     "productionEntrypoint": "apps/web-admin/src/main.ts",
@@ -15,10 +15,10 @@
     "ticketFollowupCount": 2,
     "requestEdgeCount": 451,
     "productionConsumerCount": 339,
-    "orphanWrapperCount": 93,
-    "testOnlyWrapperCount": 86,
-    "unreferencedWrapperCount": 1,
-    "duplicateNormalizedRouteGroupCount": 12,
+    "orphanWrapperCount": 0,
+    "testOnlyWrapperCount": 0,
+    "unreferencedWrapperCount": 0,
+    "duplicateNormalizedRouteGroupCount": 9,
     "authTransportExceptionCount": 5
   },
   "evidence": {
@@ -4349,34 +4349,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createContractDraft",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 82,
-          "method": "POST",
-          "path": "/contracts",
-          "normalizedPath": "/contracts",
-          "normalizedKey": "POST /contracts",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "createContractDraft",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "createContractTakeover",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -4758,7 +4730,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6942,
+          "sourceLine": 6946,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4788,7 +4760,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6926,
+          "sourceLine": 6930,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4818,7 +4790,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6926,
+          "sourceLine": 6930,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4848,7 +4820,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5332,
+          "sourceLine": 5347,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4877,7 +4849,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6926,
+          "sourceLine": 6930,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4967,7 +4939,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6969,
+          "sourceLine": 6973,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -4996,7 +4968,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6956,
+          "sourceLine": 6960,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5025,7 +4997,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6984,
+          "sourceLine": 6988,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5054,7 +5026,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6926,
+          "sourceLine": 6930,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7296,34 +7268,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "recordContractTakeoverCorrection",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 82,
-          "method": "POST",
-          "path": "/projects/:param/contract-takeovers/:param/corrections",
-          "normalizedPath": "/projects/:param/contract-takeovers/:param/corrections",
-          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "recordContractTakeoverCorrection",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "recordPaymentExecution",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -7379,15 +7323,15 @@
           "kind": "main",
           "sourceLine": 112,
           "method": "POST",
-          "path": "/files",
-          "normalizedPath": "/files",
-          "normalizedKey": "POST /files",
+          "path": "/payments/:param/execution-voucher-file-uploads",
+          "normalizedPath": "/payments/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
           "bodyKind": "form_data",
           "localCallChains": [
             [
               "recordPaymentExecutionWithUpload",
               "executePaymentExecutionRecord",
-              "uploadPrivateFile",
+              "uploadPaymentExecutionPrivateFile",
               "postForm"
             ]
           ]
@@ -7514,23 +7458,6 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 112,
-          "method": "POST",
-          "path": "/files",
-          "normalizedPath": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
-          "localCallChains": [
-            [
-              "recordProjectAffiliateCompanyContractWithUpload",
-              "executeAffiliateCompanyContractRecord",
-              "uploadPrivateFile",
-              "postForm"
-            ]
-          ]
-        },
-        {
-          "kind": "main",
           "sourceLine": 82,
           "method": "POST",
           "path": "/projects/:param/affiliate-company-contracts",
@@ -7543,6 +7470,23 @@
               "executeAffiliateCompanyContractRecord",
               "recordProjectAffiliateCompanyContract",
               "postJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-company-contracts/file-uploads",
+          "normalizedPath": "/projects/:param/affiliate-company-contracts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "recordProjectAffiliateCompanyContractWithUpload",
+              "executeAffiliateCompanyContractRecord",
+              "uploadProjectAffiliateCompanyContractPrivateFile",
+              "postForm"
             ]
           ]
         }
@@ -7701,15 +7645,15 @@
           "kind": "main",
           "sourceLine": 112,
           "method": "POST",
-          "path": "/files",
-          "normalizedPath": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
+          "path": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "normalizedPath": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "bodyKind": "raw",
           "localCallChains": [
             [
               "recordProjectExpenseExecutionWithUpload",
               "executeProjectExpenseExecutionRecord",
-              "uploadPrivateFile",
+              "uploadProjectExpenseExecutionPrivateFile",
               "postForm"
             ]
           ]
@@ -8826,6 +8770,32 @@
       "unreachableConsumers": []
     },
     {
+      "name": "uploadPaymentExecutionPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/payments/:param/execution-voucher-file-uploads",
+          "normalizedPath": "/payments/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /payments/:param/execution-voucher-file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadPaymentExecutionPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "uploadPaymentPdfArchivePrivateFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -8915,6 +8885,32 @@
       "unreachableConsumers": []
     },
     {
+      "name": "uploadProjectAffiliateCompanyContractPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/affiliate-company-contracts/file-uploads",
+          "normalizedPath": "/projects/:param/affiliate-company-contracts/file-uploads",
+          "normalizedKey": "POST /projects/:param/affiliate-company-contracts/file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectAffiliateCompanyContractPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "uploadProjectAffiliateContractPrivateFile",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -8995,6 +8991,32 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
       ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadProjectExpenseExecutionPrivateFile",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "POST",
+          "path": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "normalizedPath": "/projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "normalizedKey": "POST /projects/:param/expense-requests/:param/execution-voucher-file-uploads",
+          "bodyKind": "raw",
+          "localCallChains": [
+            [
+              "uploadProjectExpenseExecutionPrivateFile",
+              "postForm"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [],
       "testConsumers": [],
       "unreachableConsumers": []
     },
@@ -10695,23 +10717,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1522,
-          "method": "POST",
-          "path": "/files",
-          "normalizedPath": "/files",
-          "normalizedKey": "POST /files",
-          "bodyKind": "form_data",
-          "localCallChains": [
-            [
-              "requestProjectFinancingQuotaWithUpload",
-              "executeProjectFinancingQuotaRequest",
-              "uploadProjectFinancingQuotaAttachment"
-            ]
-          ]
-        },
-        {
-          "kind": "main",
-          "sourceLine": 1484,
+          "sourceLine": 1485,
           "method": "POST",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -10722,6 +10728,22 @@
               "requestProjectFinancingQuotaWithUpload",
               "executeProjectFinancingQuotaRequest",
               "postProjectFinancingQuotaRequest"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 1524,
+          "method": "POST",
+          "path": "/projects/:param/financing-quotas/file-uploads",
+          "normalizedPath": "/projects/:param/financing-quotas/file-uploads",
+          "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "requestProjectFinancingQuotaWithUpload",
+              "executeProjectFinancingQuotaRequest",
+              "uploadProjectFinancingQuotaAttachment"
             ]
           ]
         }
@@ -11974,7 +11996,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/abandonment",
           "normalizedPath": "/spot-procurements/:param/abandonment",
@@ -12005,7 +12027,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/abandonment",
           "normalizedPath": "/spot-procurement-payments/:param/abandonment",
@@ -12036,7 +12058,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/photos",
           "normalizedPath": "/spot-procurements/:param/receipt/photos",
@@ -12065,7 +12087,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/abnormal-termination/confirmation",
           "normalizedPath": "/spot-procurements/:param/abnormal-termination/confirmation",
@@ -12096,7 +12118,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/discrepancy",
           "normalizedPath": "/spot-procurements/:param/discrepancy",
@@ -12127,7 +12149,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
@@ -12151,35 +12173,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createSpotProcurementPaymentDraft",
-      "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 2296,
-          "method": "POST",
-          "path": "/spot-procurements/:param/payments",
-          "normalizedPath": "/spot-procurements/:param/payments",
-          "normalizedKey": "POST /spot-procurements/:param/payments",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "createSpotProcurementPaymentDraft",
-              "postJson",
-              "writeJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/spot-procurement.api.test.ts"
-      ],
-      "productionConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "createSpotProcurementReceiptDelegation",
       "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
       "kind": "transport",
@@ -12187,7 +12180,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/delegations",
           "normalizedPath": "/spot-procurements/:param/receipt/delegations",
@@ -12216,7 +12209,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/versions",
           "normalizedPath": "/spot-procurements/:param/versions",
@@ -12247,7 +12240,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2286,
+          "sourceLine": 2280,
           "method": "DELETE",
           "path": "/spot-procurements/:param/receipt/photos/:param",
           "normalizedPath": "/spot-procurements/:param/receipt/photos/:param",
@@ -12275,7 +12268,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -12291,7 +12284,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/:param/receipt",
           "normalizedPath": "/spot-procurements/:param/receipt",
@@ -12307,7 +12300,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/invoices",
           "normalizedPath": "/spot-procurement-payments/:param/invoices",
@@ -12339,7 +12332,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval",
           "normalizedPath": "/spot-procurement-payments/:param/approval",
@@ -12371,7 +12364,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/approval",
           "normalizedPath": "/spot-procurements/:param/approval",
@@ -12403,7 +12396,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurements/:param/approval-withdrawal",
@@ -12435,7 +12428,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/application-text-suggestions?:param",
           "normalizedPath": "/spot-procurements/application-text-suggestions",
@@ -12465,7 +12458,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/capabilities?projectId=:param",
           "normalizedPath": "/spot-procurements/capabilities",
@@ -12496,7 +12489,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/create-project-options",
           "normalizedPath": "/spot-procurements/create-project-options",
@@ -12526,7 +12519,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -12557,7 +12550,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -12588,7 +12581,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurement-payments",
           "normalizedPath": "/spot-procurement-payments",
@@ -12619,7 +12612,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/:param/receipt",
           "normalizedPath": "/spot-procurements/:param/receipt",
@@ -12649,7 +12642,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements",
           "normalizedPath": "/spot-procurements",
@@ -12680,7 +12673,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/invoices/:param/invalidation",
           "normalizedPath": "/spot-procurement-payments/:param/invoices/:param/invalidation",
@@ -12711,7 +12704,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurement-payments/:param",
           "normalizedPath": "/spot-procurement-payments/:param",
@@ -12742,7 +12735,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -12773,7 +12766,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2272,
+          "sourceLine": 2266,
           "method": "GET",
           "path": "/spot-procurements/:param",
           "normalizedPath": "/spot-procurements/:param",
@@ -12804,7 +12797,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/executions",
           "normalizedPath": "/spot-procurement-payments/:param/executions",
@@ -12835,7 +12828,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/refunds",
           "normalizedPath": "/spot-procurements/:param/refunds",
@@ -12866,7 +12859,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/payment-drafts",
           "normalizedPath": "/spot-procurements/:param/payment-drafts",
@@ -12897,7 +12890,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/pdf-refresh",
           "normalizedPath": "/spot-procurements/:param/receipt/pdf-refresh",
@@ -12928,7 +12921,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/abnormal-termination",
           "normalizedPath": "/spot-procurements/:param/abnormal-termination",
@@ -12959,7 +12952,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/draft-reset",
           "normalizedPath": "/spot-procurements/:param/receipt/draft-reset",
@@ -12990,7 +12983,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/review",
           "normalizedPath": "/spot-procurements/:param/receipt/review",
@@ -13019,7 +13012,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/review-revocation",
           "normalizedPath": "/spot-procurements/:param/receipt/review-revocation",
@@ -13048,7 +13041,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/submission",
           "normalizedPath": "/spot-procurements/:param/submission",
@@ -13079,7 +13072,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/submission",
           "normalizedPath": "/spot-procurement-payments/:param/submission",
@@ -13110,7 +13103,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/receipt/submission",
           "normalizedPath": "/spot-procurements/:param/receipt/submission",
@@ -13141,7 +13134,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "PATCH",
           "path": "/spot-procurements/:param/draft",
           "normalizedPath": "/spot-procurements/:param/draft",
@@ -13172,7 +13165,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "PATCH",
           "path": "/spot-procurement-payments/:param/draft",
           "normalizedPath": "/spot-procurement-payments/:param/draft",
@@ -13203,7 +13196,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "PATCH",
           "path": "/spot-procurement-payments/:param/payer",
           "normalizedPath": "/spot-procurement-payments/:param/payer",
@@ -13234,7 +13227,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "PATCH",
           "path": "/spot-procurements/:param/receipt/draft",
           "normalizedPath": "/spot-procurements/:param/receipt/draft",
@@ -13459,7 +13452,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurements/:param/voiding",
           "normalizedPath": "/spot-procurements/:param/voiding",
@@ -13490,7 +13483,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/voiding",
           "normalizedPath": "/spot-procurement-payments/:param/voiding",
@@ -13521,7 +13514,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2296,
+          "sourceLine": 2290,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/approval-withdrawal",
           "normalizedPath": "/spot-procurement-payments/:param/approval-withdrawal",
@@ -13543,6 +13536,566 @@
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
       ],
       "unreachableConsumers": []
+    }
+  ],
+  "retiredWrappers": [
+    {
+      "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+      "wrapper": "createCompanyEntity",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+      "wrapper": "updateCompanyEntity",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+      "wrapper": "updateCompanyEntityStatus",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "wrapper": "createContractBusinessScenario",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "wrapper": "createContractScenarioMapping",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "wrapper": "updateContractBusinessScenario",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "wrapper": "updateContractScenarioMapping",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "abandonContractDraft",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "addBillRow",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "cloneContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "cloneLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createBusinessParty",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createBusinessPartyVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createContractNumberRule",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createContractTemplate",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createDraftCheckpoint",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createLayoutTemplate",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "createStandardClause",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "deleteBillRow",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "deletePristineContractDraft",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "discardContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "discardLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "discardStandardClauseVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "fetchContractWorkbench",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "getLatestLayoutTemplatePreview",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "inspectLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "listContractDrafts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "listStandardClauseHistory",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "publishContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "publishLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "publishStandardClauseVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "queueLayoutTemplatePreview",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "reorderBillRows",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "restoreDraftCheckpoint",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "revokeContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "revokeLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "saveContractDraft",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "stopContractNumberRule",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "stopContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "stopLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "submitContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "submitLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "submitStandardClauseVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "updateBillRow",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "updateContractNumberRule",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "updateContractTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "updateLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "voidContractDraft",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "restoreContractDraft",
+      "classification": "unreferenced",
+      "reason": "No production or test consumer; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "assignProjectAffiliate",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "confirmProjectOwnerContract",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "confirmProjectUpstreamSettlement",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "copyAbandonedContractDraft",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "createApprovalDelegation",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "createSettlementDraft",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "fetchActiveContractNumberRules",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "fetchContractLifecycleLedger",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "fetchProjectAffiliateMappingReport",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "fetchSettlementLifecycleLedger",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "fetchWorkbenchSummary",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordPaymentExecution",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordProjectAffiliateCompanyContract",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordProjectExpenseExecution",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordProjectExpenseFinance",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordProjectOwnerContract",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordProjectProxyPayment",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "recordProjectUpstreamSettlement",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "requestSettlementExceptionQuota",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "reviewSettlementExceptionQuota",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "revokeApprovalDelegation",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "uploadPaymentExecutionPrivateFile",
+      "classification": "unreferenced",
+      "reason": "No production or test consumer; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "uploadProjectAffiliateCompanyContractPrivateFile",
+      "classification": "unreferenced",
+      "reason": "No production or test consumer; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "uploadProjectExpenseExecutionPrivateFile",
+      "classification": "unreferenced",
+      "reason": "No production or test consumer; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "applyOrganizationRoleAddition",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "applyOrganizationRoleRemoval",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "createOrganizationDepartment",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "createOrganizationUser",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "previewOrganizationRoleAddition",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "previewOrganizationRoleRemoval",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "previewOrganizationRoleRemovalBatch",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "updateOrganizationDepartment",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "wrapper": "updateOrganizationUser",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "abandonSettlementDraftRecord",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "cloneSettlementTemplateVersion",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "createSettlementTemplate",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "generateSettlementTemplatePreview",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "inspectSettlementTemplateVersion",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "stopSettlementTemplateVersion",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "submitSettlementTemplateVersion",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "discardSettlementTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "downloadSettlementTemplatePreview",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "publishSettlementTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "updateSettlementTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
     }
   ],
   "authTransportExceptions": [
@@ -13755,588 +14308,13 @@
           "wrapper": "prepareSpotProcurementWithdrawalAction"
         }
       ]
-    },
-    {
-      "normalizedKey": "POST /contracts",
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "createWorkbenchDraft"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "createContractDraft"
-        }
-      ]
-    },
-    {
-      "normalizedKey": "POST /files",
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordPaymentExecutionWithUpload"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordProjectExpenseExecutionWithUpload"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "uploadPrivateFile"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload"
-        }
-      ]
-    },
-    {
-      "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "recordContractTakeoverCorrection"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "submitContractTakeoverCorrection"
-        }
-      ]
     }
   ],
   "blockers": {
-    "orphanWrappers": [
-      {
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "createCompanyEntity",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "updateCompanyEntity",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
-        "wrapper": "updateCompanyEntityStatus",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractBusinessScenario",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "createContractScenarioMapping",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractBusinessScenario",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
-        "wrapper": "updateContractScenarioMapping",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "abandonContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "addBillRow",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "cloneLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createBusinessParty",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createBusinessPartyVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractNumberRule",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createContractTemplate",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createDraftCheckpoint",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createLayoutTemplate",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "createStandardClause",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "deleteBillRow",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "deletePristineContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "discardStandardClauseVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "fetchContractWorkbench",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "getLatestLayoutTemplatePreview",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "inspectLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "listContractDrafts",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "listStandardClauseHistory",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "publishStandardClauseVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "queueLayoutTemplatePreview",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "reorderBillRows",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "restoreContractDraft",
-        "classification": "unreferenced"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "restoreDraftCheckpoint",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "revokeContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "revokeLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "saveContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractNumberRule",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "stopLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "submitStandardClauseVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateBillRow",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractNumberRule",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateContractTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "updateLayoutTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "voidContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "assignProjectAffiliate",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectOwnerContract",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "confirmProjectUpstreamSettlement",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "copyAbandonedContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createApprovalDelegation",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createContractDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "createSettlementDraft",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchActiveContractNumberRules",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchContractLifecycleLedger",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchProjectAffiliateMappingReport",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchSettlementLifecycleLedger",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "fetchWorkbenchSummary",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordContractTakeoverCorrection",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordPaymentExecution",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectAffiliateCompanyContract",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseExecution",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectExpenseFinance",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectOwnerContract",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectProxyPayment",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "recordProjectUpstreamSettlement",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "requestSettlementExceptionQuota",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "reviewSettlementExceptionQuota",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "revokeApprovalDelegation",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleAddition",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "applyOrganizationRoleRemoval",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationDepartment",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "createOrganizationUser",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleAddition",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemoval",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "previewOrganizationRoleRemovalBatch",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationDepartment",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/organization.api.ts",
-        "wrapper": "updateOrganizationUser",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
-        "wrapper": "abandonSettlementDraftRecord",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "cloneSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "createSettlementTemplate",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "discardSettlementTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "downloadSettlementTemplatePreview",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "generateSettlementTemplatePreview",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "inspectSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "publishSettlementTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "stopSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "submitSettlementTemplateVersion",
-        "classification": "unreachable_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
-        "wrapper": "updateSettlementTemplateVersion",
-        "classification": "test_only"
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementPaymentDraft",
-        "classification": "test_only"
-      }
-    ],
-    "duplicateWriteWrappers": [
-      {
-        "normalizedKey": "POST /contracts",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "createWorkbenchDraft"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "createContractDraft"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /files",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordPaymentExecutionWithUpload"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectAffiliateCompanyContractWithUpload"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordProjectExpenseExecutionWithUpload"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "uploadPrivateFile"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "requestProjectFinancingQuotaWithUpload"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /projects/:param/contract-takeovers/:param/corrections",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "recordContractTakeoverCorrection"
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "submitContractTakeoverCorrection"
-          }
-        ]
-      }
-    ],
+    "orphanWrappers": [],
+    "duplicateWriteWrappers": [],
     "unresolvedRequests": [],
-    "frontendWithoutBackend": [
-      {
-        "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-        "wrapper": "createSpotProcurementPaymentDraft",
-        "normalizedKey": "POST /spot-procurements/:param/payments"
-      }
-    ],
+    "frontendWithoutBackend": [],
     "consumerIssues": [],
     "authWithoutBackend": []
   }

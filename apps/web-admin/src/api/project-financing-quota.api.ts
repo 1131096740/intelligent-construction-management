@@ -1437,6 +1437,7 @@ async function executeProjectFinancingQuotaRequest(
     const upload =
       state.uploadPromise ??
       uploadProjectFinancingQuotaAttachment(
+        submission.projectId,
         submission.file,
         submission.fileName,
         submission.idempotencyKey
@@ -1512,6 +1513,7 @@ async function postProjectFinancingQuotaRequest(
 }
 
 async function uploadProjectFinancingQuotaAttachment(
+  projectId: string,
   file: Blob,
   fileName: string,
   idempotencyKey: string
@@ -1519,10 +1521,13 @@ async function uploadProjectFinancingQuotaAttachment(
   const form = new FormData();
   form.append("file", file, fileName);
   form.append("idempotencyKey", idempotencyKey);
-  const response = await apiFetch("/files", {
-    method: "POST",
-    body: form
-  });
+  const response = await apiFetch(
+    `/projects/${encodeURIComponent(projectId)}/financing-quotas/file-uploads`,
+    {
+      method: "POST",
+      body: form
+    }
+  );
   if (!response.ok) {
     throw await responseError(response, "上传项目垫资额度申请依据失败");
   }

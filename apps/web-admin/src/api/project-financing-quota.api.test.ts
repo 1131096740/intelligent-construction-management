@@ -671,7 +671,7 @@ describe("project financing quota API", () => {
     expect(result.workbench.rows.map((row) => row.id)).toEqual(["quota-1"]);
     expect(mockApiFetch.mock.calls.map((call) => call[0])).toEqual([
       "/projects/project%2F1/financing-quotas",
-      "/files",
+      "/projects/project%2F1/financing-quotas/file-uploads",
       "/projects/project%2F1/financing-quotas",
       "/projects/project%2F1/financing-quotas",
       "/projects/project%2F1/financing-quotas"
@@ -717,7 +717,7 @@ describe("project financing quota API", () => {
 
     expect(second).toBe(first);
     await vi.waitFor(() => {
-      expect(mockApiFetch.mock.calls.filter((call) => call[0] === "/files"))
+      expect(mockApiFetch.mock.calls.filter((call) => call[0] === "/projects/project-1/financing-quotas/file-uploads"))
         .toHaveLength(1);
     });
     upload.resolve(jsonResponse(uploadedFile(), 201));
@@ -757,7 +757,7 @@ describe("project financing quota API", () => {
       requestProjectFinancingQuotaWithUpload("project-1", input, state)
     ).resolves.toMatchObject({ receipt: { kind: "replayed" } });
 
-    expect(mockApiFetch.mock.calls.filter((call) => call[0] === "/files"))
+    expect(mockApiFetch.mock.calls.filter((call) => call[0] === "/projects/project-1/financing-quotas/file-uploads"))
       .toHaveLength(1);
     const postBodies = mockApiFetch.mock.calls
       .filter(
@@ -810,7 +810,7 @@ describe("project financing quota API", () => {
       createProjectFinancingQuotaRequestAttemptState()
     );
     await vi.waitFor(() => {
-      expect(mockApiFetch.mock.calls.filter((call) => call[0] === "/files"))
+      expect(mockApiFetch.mock.calls.filter((call) => call[0] === "/projects/project-1/financing-quotas/file-uploads"))
         .toHaveLength(1);
     });
     context.current = false;

@@ -70,7 +70,6 @@ import {
   recordProjectExpenseExecutionWithUpload,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
-  createContractDraft,
   createContractChangeDraft,
   createContractTakeover,
   abandonContractTakeover,
@@ -150,7 +149,6 @@ import {
   createApprovalDelegation,
   attachContractTakeoverEvidenceFile,
   attachHistoricalPaymentVoucher,
-  recordContractTakeoverCorrection,
   reviewContractTakeoverCorrection,
   reviewContractTakeoverCompanyEntityCorrection,
   fetchApprovalDelegationUserOptions,
@@ -1726,40 +1724,6 @@ describe("core flow read API client", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("creates contract drafts through the backend", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ contract: { code: "HT-2026-002" } })
-    } as Response);
-
-    await createContractDraft({
-      projectId: "seed-project-jgxm-001",
-      code: "HT-2026-002",
-      name: "测试合同",
-      counterparty: "测试供应商",
-      amountCents: "1000000",
-      paymentTermsOriginalText: "结算归档确认后30天内付款。",
-      paymentStages: [
-        {
-          name: "当期结算款",
-          stageType: "progress",
-          triggerAnchor: "settlement_effective",
-          basis: "current_settlement",
-          ratioBps: 8000,
-          triggerEvent: "结算归档确认生效",
-          dueDays: 30,
-          requiresInvoice: true,
-          allowsEarlyPayment: false,
-          allowsInstallments: true,
-          originalText: "结算归档确认后30天内付款80%。"
-        }
-      ]
-    });
-
-    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/contracts"]);
-    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
-  });
-
   it("manages historical contract takeover workflow through the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -1829,12 +1793,17 @@ describe("core flow read API client", () => {
       purpose: "historical_contract_scan"
     });
     await attachHistoricalPaymentVoucher("project-1", "takeover-1", { fileId: "file-2" });
-    await recordContractTakeoverCorrection("project-1", "takeover-1", {
-      correctionType: "evidence",
+    await submitContractTakeoverCorrection("project-1", "takeover-1", {
+      correctionScope: "historical_payment",
+      correctionOperation: "correction",
+      targetRevision: 3,
+      targetHistoricalPaymentId: "historical-payment-1",
+      targetAllocationId: "allocation-1",
+      deltaCents: "0",
       reason: "补充历史付款凭证复核说明",
       responsibleUserId: "contract-director-1",
-      afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
       attachmentFileId: "file-1",
+      applicationIdempotencyKey: "55555555-5555-4555-8555-555555555555",
       currentPassword: "current-password"
     });
     await submitContractTakeoverReview("project-1", "takeover-1");
@@ -1901,11 +1870,16 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({
-        correctionType: "evidence",
+        correctionScope: "historical_payment",
+        correctionOperation: "correction",
+        targetRevision: 3,
+        targetHistoricalPaymentId: "historical-payment-1",
+        targetAllocationId: "allocation-1",
+        deltaCents: "0",
         reason: "补充历史付款凭证复核说明",
         responsibleUserId: "contract-director-1",
-        afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
         attachmentFileId: "file-1",
+        applicationIdempotencyKey: "55555555-5555-4555-8555-555555555555",
         currentPassword: "current-password"
       })
     );
@@ -2992,8 +2966,8 @@ describe("core flow read API client", () => {
     );
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/files",
-      "/api/files",
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
       "/api/projects/project-1/affiliate-company-contracts"
     ]);
     const firstUpload = fetchMock.mock.calls[0]?.[1]?.body;
@@ -3048,7 +3022,7 @@ describe("core flow read API client", () => {
     ).rejects.toThrow("文件上传幂等响应不一致");
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/files"
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads"
     ]);
     expect(state.uploadedFileId).toBeNull();
   });
@@ -3116,7 +3090,7 @@ describe("core flow read API client", () => {
     );
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/files",
+      "/api/projects/project%2F1/affiliate-company-contracts/file-uploads",
       "/api/projects/project%2F1/affiliate-company-contracts",
       "/api/projects/project%2F1/affiliate-company-contracts"
     ]);
@@ -3192,7 +3166,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/payments/payment%2F1",
-      "/api/files",
+      "/api/payments/payment%2F1/execution-voucher-file-uploads",
       "/api/payments/payment%2F1/executions"
     ]);
     const uploadBody = fetchMock.mock.calls[1]?.[1]?.body;
@@ -3265,7 +3239,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/payments/payment-a",
-      "/api/files",
+      "/api/payments/payment-a/execution-voucher-file-uploads",
       "/api/payments/payment-a/executions"
     ]);
   });
@@ -3369,7 +3343,7 @@ describe("core flow read API client", () => {
     ).rejects.toThrow("实际付款上下文已失效");
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/payments/payment-a",
-      "/api/files"
+      "/api/payments/payment-a/execution-voucher-file-uploads"
     ]);
   });
 
@@ -3411,7 +3385,7 @@ describe("core flow read API client", () => {
     ).rejects.toThrow("付款凭证上传幂等响应不一致");
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/payments/payment-a",
-      "/api/files"
+      "/api/payments/payment-a/execution-voucher-file-uploads"
     ]);
   });
 
@@ -3514,7 +3488,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/payments/payment-a",
-      "/api/files",
+      "/api/payments/payment-a/execution-voucher-file-uploads",
       "/api/payments/payment-a/executions",
       "/api/payments/payment-a/executions"
     ]);
@@ -3582,7 +3556,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/payments/payment-a",
-      "/api/files",
+      "/api/payments/payment-a/execution-voucher-file-uploads",
       "/api/payments/payment-a/executions",
       "/api/payments/payment-a/executions"
     ]);
@@ -3645,7 +3619,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/projects/project%2F1/expense-requests/expense%2F1/approval-detail",
-      "/api/files",
+      "/api/projects/project%2F1/expense-requests/expense%2F1/execution-voucher-file-uploads",
       "/api/projects/project%2F1/expense-requests/expense%2F1/executions"
     ]);
     expect(
@@ -3708,7 +3682,7 @@ describe("core flow read API client", () => {
     expect(replay).toBe(first);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/projects/project-a/expense-requests/expense-a/approval-detail",
-      "/api/files",
+      "/api/projects/project-a/expense-requests/expense-a/execution-voucher-file-uploads",
       "/api/projects/project-a/expense-requests/expense-a/executions"
     ]);
   });
@@ -3798,7 +3772,7 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/projects/project-a/expense-requests/expense-a/approval-detail",
-      "/api/files",
+      "/api/projects/project-a/expense-requests/expense-a/execution-voucher-file-uploads",
       "/api/projects/project-a/expense-requests/expense-a/executions",
       "/api/projects/project-a/expense-requests/expense-a/executions"
     ]);
@@ -3931,7 +3905,7 @@ describe("core flow read API client", () => {
     ).rejects.toThrow("登记重试项目已变化");
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/files",
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
       "/api/projects/project-1/affiliate-company-contracts"
     ]);
   });
@@ -3998,7 +3972,7 @@ describe("core flow read API client", () => {
     await Promise.all([first, second]);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/files",
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
       "/api/projects/project-1/affiliate-company-contracts"
     ]);
   });
@@ -4044,7 +4018,7 @@ describe("core flow read API client", () => {
       )
     ).rejects.toThrow("线下合同登记上下文已失效");
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/files"
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads"
     ]);
   });
 

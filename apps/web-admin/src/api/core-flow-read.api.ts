@@ -403,48 +403,6 @@ export function fetchContractPaymentApplication(contractVersionId: string) {
   );
 }
 
-// 操作人统一来自登录态（access token），写入负载不再携带 *ByUserId。
-export interface CreatePaymentTermsStagePayload {
-  name: string;
-  stageType?: "advance" | "progress" | "final" | "retention" | "other";
-  basis:
-    | "contract_amount"
-    | "current_settlement"
-    | "cumulative_settlement"
-    | "fixed_amount"
-    | "manual_amount";
-  ratioBps?: number;
-  fixedAmountCents?: string;
-  triggerAnchor?: "contract_effective" | "settlement_effective" | "final_settlement_effective";
-  triggerEvent: string;
-  dueDays: number;
-  advanceDeductionMode?: "none" | "per_settlement_ratio" | "after_cumulative_settlement_ratio";
-  advanceDeductionRatioBps?: number;
-  advanceDeductionStartRatioBps?: number;
-  requiresInvoice: boolean;
-  allowsEarlyPayment: boolean;
-  allowsInstallments: boolean;
-  retentionBps?: number;
-  originalText: string;
-}
-
-export interface CreateContractPayload {
-  projectId: string;
-  code: string;
-  name: string;
-  counterparty: string;
-  companyEntityId?: string;
-  amountCents: string;
-  paymentTermsOriginalText: string;
-  paymentStages: CreatePaymentTermsStagePayload[];
-}
-
-export interface CreateContractReadModel {
-  contract: { id: string; code: string };
-  version: { id: string };
-  terms: { id: string };
-}
-
 export type ContractTakeoverLevel = "A" | "B" | "C";
 
 export type ContractLifecycleStatus =
@@ -1001,17 +959,6 @@ export interface AttachContractTakeoverEvidencePayload {
 
 export interface AttachHistoricalPaymentVoucherPayload {
   fileId: string;
-}
-
-export type ContractTakeoverCorrectionType = "amount" | "payment_terms" | "evidence" | "other";
-
-export interface RecordContractTakeoverCorrectionPayload {
-  correctionType: ContractTakeoverCorrectionType;
-  reason: string;
-  responsibleUserId: string;
-  afterSummary: string;
-  attachmentFileId: string;
-  currentPassword: string;
 }
 
 export interface SubmitContractTakeoverCompanyEntityCorrectionPayload {
@@ -3679,7 +3626,6 @@ export function uploadPrivateFile(
   if (idempotencyKey !== undefined) {
     form.append("idempotencyKey", idempotencyKey);
   }
-
   return postForm<PrivateFileReadModel>("/files", form);
 }
 
@@ -3708,6 +3654,19 @@ export function uploadProjectExpensePrivateFile(
 ) {
   return postForm<PrivateFileReadModel>(
     `/projects/${encodeURIComponent(projectId)}/expense-requests/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
+}
+
+export function uploadProjectExpenseExecutionPrivateFile(
+  projectId: string,
+  expenseRequestId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/expense-requests/${encodeURIComponent(expenseRequestId)}/execution-voucher-file-uploads`,
     projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
   );
 }
@@ -3746,6 +3705,18 @@ export function uploadProjectAffiliateContractPrivateFile(
 ) {
   return postForm<PrivateFileReadModel>(
     `/projects/${encodeURIComponent(projectId)}/affiliate-contract-facts/file-uploads`,
+    projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
+  );
+}
+
+export function uploadProjectAffiliateCompanyContractPrivateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return postForm<PrivateFileReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/affiliate-company-contracts/file-uploads`,
     projectDomainPrivateFileForm(file, fileName, undefined, idempotencyKey)
   );
 }
@@ -3829,6 +3800,23 @@ export function uploadPaymentPdfArchivePrivateFile(
   }
   return postForm<PrivateFileReadModel>(
     `/payments/${encodeURIComponent(paymentId)}/pdf-archive-file-uploads`,
+    form
+  );
+}
+
+export function uploadPaymentExecutionPrivateFile(
+  paymentId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<PrivateFileReadModel>(
+    `/payments/${encodeURIComponent(paymentId)}/execution-voucher-file-uploads`,
     form
   );
 }
@@ -3968,7 +3956,8 @@ async function executePaymentExecutionRecord(
   if (fileId === null) {
     const upload =
       state.uploadPromise ??
-      uploadPrivateFile(
+      uploadPaymentExecutionPrivateFile(
+        submission.paymentId,
         submission.file,
         submission.fileName,
         submission.idempotencyKey
@@ -4228,7 +4217,9 @@ async function executeProjectExpenseExecutionRecord(
   if (fileId === null) {
     const upload =
       state.uploadPromise ??
-      uploadPrivateFile(
+      uploadProjectExpenseExecutionPrivateFile(
+        submission.projectId,
+        submission.expenseRequestId,
         submission.file,
         submission.fileName,
         submission.idempotencyKey
@@ -5158,7 +5149,8 @@ async function executeAffiliateCompanyContractRecord(
   if (fileId === null) {
     const upload =
       state.uploadPromise ??
-      uploadPrivateFile(
+      uploadProjectAffiliateCompanyContractPrivateFile(
+        submission.projectId,
         submission.file,
         submission.fileName,
         submission.idempotencyKey
@@ -5226,10 +5218,6 @@ export function createPrivateFileDownloadTicket(
   body: CreatePrivateFileDownloadTicketPayload
 ) {
   return postJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`, body);
-}
-
-export function createContractDraft(body: CreateContractPayload) {
-  return postJson<CreateContractReadModel>("/contracts", body);
 }
 
 export function listContractTakeovers(projectId: string) {
@@ -5465,17 +5453,6 @@ export function attachHistoricalPaymentVoucher(
 ) {
   return postJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/payment-evidence-files`,
-    body
-  );
-}
-
-export function recordContractTakeoverCorrection(
-  projectId: string,
-  takeoverId: string,
-  body: RecordContractTakeoverCorrectionPayload
-) {
-  return postJson<{ id: string; message: string }>(
-    `/projects/${projectId}/contract-takeovers/${takeoverId}/corrections`,
     body
   );
 }

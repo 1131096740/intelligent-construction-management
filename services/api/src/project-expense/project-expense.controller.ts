@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Optional,
   Param,
@@ -203,6 +204,46 @@ export class ProjectExpenseController {
     @Body() body: RecordProjectExpenseExecutionDto
   ) {
     return this.expenses.recordExecution(projectId, expenseRequestId, user.id, body);
+  }
+
+  @Post(":expenseRequestId/execution-voucher-file-uploads")
+  @RequireProjectRole("project_expense.execution")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  async uploadExecutionVoucherPrivateFile(
+    @Param("projectId") projectId: string,
+    @Param("expenseRequestId") expenseRequestId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    const detail = await this.expenses.getApprovalDetail(
+      projectId,
+      expenseRequestId,
+      user.id
+    );
+    if (
+      !detail.availableActions.some(
+        (action) => action.key === "record_execution" && action.enabled
+      )
+    ) {
+      throw new ForbiddenException("当前项目支出不可上传执行凭证");
+    }
+    if (!file) throw new BadRequestException("请选择项目支出实付凭证");
+    if (!this.files) {
+      throw new BadRequestException("项目支出文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: user.id,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 
   @Post(":expenseRequestId/purchase-execution")

@@ -146,6 +146,43 @@ export class PaymentController {
     return this.payments.recordExecution(paymentId, user.id, body);
   }
 
+  @Post(":paymentId/execution-voucher-file-uploads")
+  @RequireProjectRole("payment.execution")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  async uploadExecutionVoucherPrivateFile(
+    @Param("paymentId") paymentId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    const detail = await this.paymentRead.getDetail(
+      paymentId,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+    if (!detail.availableActionKeys.includes("record_execution")) {
+      throw new ForbiddenException("当前付款不可上传执行凭证");
+    }
+    if (!file) throw new BadRequestException("请选择付款执行凭证");
+    if (!this.files) {
+      throw new BadRequestException("付款文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: user.id,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
+  }
+
   @Post(":paymentId/finance-records")
   @RequireProjectRole("payment.finance_record")
   recordFinance(

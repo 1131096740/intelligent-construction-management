@@ -47,7 +47,11 @@ GLR-07
 
 ### GLR-03 — 收敛治理 blocker 与重复 mutation route
 
+状态：已完成（本地候选，尚未 push/合并/部署）。
+
 前置：GLR-00。验收：99 blocker 有逐项归属；3 个重复 mutation route 要么合并为唯一语义路由、要么明确迁移/退出并有消费者证据；manifest `--check` 与 `--require-ready` 对真实问题 fail closed，最终不靠豁免隐藏。
+
+证据：3 个重复写路由已收敛为业务域唯一上传/提交入口，新增 `retired-web-api-wrappers.json` 对原 93 个无生产消费者 wrapper 逐项记录文件、名称、分类和理由；manifest 当前 `ready`、432 wrappers/452 bindings、0 orphan、0 duplicate write、0 frontend-without-backend，页面动作 manifest 当前 `ready`、0 blocker。新增 live gate `scripts/go-live-remediation-manifest.test.mjs` 通过；manifest/capability/route-usage Node tests 83/83、API 控制器 321/321、Web API 定向测试 221/221、API/Web typecheck、lint、UI check、`git diff --check` 通过。本票未连接生产、未 push、未合并或部署。
 
 ### GLR-04 — 加固动态数据库和 require-ready CI 门
 
