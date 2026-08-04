@@ -16,7 +16,8 @@ const path = require("node:path");
 const {
   createCommandRuntime,
   createRunnerCleanup,
-  runInterruption
+  runInterruption,
+  withLocalPostgresHost
 } = require("./money-bigint-runner-runtime.cjs");
 
 const DATABASE_NAME =
@@ -564,7 +565,7 @@ async function main() {
   );
   const dockerCommand = (args, options = {}) => {
     const { extraEnv = {}, ...commandOptions } = options;
-    return command(docker, args, {
+    return command(docker, withLocalPostgresHost(args), {
       ...commandOptions,
       env: { ...dockerEnv, ...extraEnv }
     });

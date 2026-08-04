@@ -6,7 +6,8 @@ const localRequire = createRequire(__filename);
 const {
   createCommandRuntime,
   createRunnerCleanup,
-  runInterruption
+  runInterruption,
+  withLocalPostgresHost
 } = localRequire("../../prisma/money-bigint-runner-runtime.cjs") as {
   createCommandRuntime: (options: Record<string, unknown>) => {
     command: (commandName: string, args: string[], options?: Record<string, unknown>) => Promise<unknown>;
@@ -24,6 +25,7 @@ const {
     reportError: (message: string) => void;
     exit: (code: number) => void;
   }) => Promise<void>;
+  withLocalPostgresHost: (args: string[]) => string[];
 };
 
 class FakeChild extends EventEmitter {
@@ -40,6 +42,47 @@ class FakeChild extends EventEmitter {
 }
 
 describe("money bigint runner runtime", () => {
+  it("pins disposable PostgreSQL client commands to the container TCP loopback", () => {
+    expect(
+      withLocalPostgresHost([
+        "exec",
+        "container",
+        "createdb",
+        "-U",
+        "jiangkong",
+        "database"
+      ])
+    ).toEqual([
+      "exec",
+      "container",
+      "createdb",
+      "-h",
+      "127.0.0.1",
+      "-U",
+      "jiangkong",
+      "database"
+    ]);
+    expect(
+      withLocalPostgresHost([
+        "exec",
+        "container",
+        "psql",
+        "-h",
+        "127.0.0.1",
+        "-U",
+        "jiangkong"
+      ])
+    ).toEqual([
+      "exec",
+      "container",
+      "psql",
+      "-h",
+      "127.0.0.1",
+      "-U",
+      "jiangkong"
+    ]);
+  });
+
   it("tracks command children immediately and removes them on close or error", async () => {
     const first = new FakeChild();
     const second = new FakeChild();

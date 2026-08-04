@@ -15,6 +15,19 @@ function resolveCorepackHome(sourceEnv, fallbackHome) {
   return cacheRoot ? path.join(cacheRoot, "node", "corepack") : undefined;
 }
 
+function withLocalPostgresHost(args) {
+  const clientIndex = args.findIndex((argument) =>
+    ["pg_isready", "createdb", "psql"].includes(argument)
+  );
+  if (clientIndex < 0 || args[clientIndex + 1] === "-h") return args;
+  return [
+    ...args.slice(0, clientIndex + 1),
+    "-h",
+    "127.0.0.1",
+    ...args.slice(clientIndex + 1)
+  ];
+}
+
 function createCommandRuntime(options = {}) {
   const spawnCommand = options.spawnCommand ?? spawn;
   const defaultCwd = options.defaultCwd;
@@ -210,5 +223,6 @@ module.exports = {
   createCommandRuntime,
   createRunnerCleanup,
   resolveCorepackHome,
-  runInterruption
+  runInterruption,
+  withLocalPostgresHost
 };
