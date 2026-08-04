@@ -97,16 +97,48 @@ describe("project funding PostgreSQL evidence", () => {
           1_000n,
           "general_contractor_payment"
         );
+        const rollbackBusinessId = businessId("rollback");
+        const rollbackExecutionId = executionId("rollback");
+        const rollbackPaidAt = new Date();
+        await clients[0]!.projectExpenseRequest.create({
+          data: {
+            id: rollbackBusinessId,
+            projectId: rollbackProjectId,
+            code: `PF-EXP-${marker}`,
+            expenseType: "project_expense",
+            expenseSubtype: "general",
+            paymentSubject: "our_company",
+            reason: "资金回滚门禁夹具",
+            requestedAmountCents: 600n,
+            approvedAmountCents: 600n,
+            paymentMethod: "bank_transfer",
+            handlerUserId: actorId,
+            applicantUserId: actorId,
+            status: "approved_pending_payment"
+          }
+        });
+        await clients[0]!.projectExpenseExecution.create({
+          data: {
+            id: rollbackExecutionId,
+            idempotencyKey: `pf-exp-exec-${marker}`,
+            projectExpenseRequestId: rollbackBusinessId,
+            projectId: rollbackProjectId,
+            amountCents: 600n,
+            paidAt: rollbackPaidAt,
+            executedByUserId: actorId,
+            voucherFileId: `pf-exp-voucher-${marker}`
+          }
+        });
         await expect(
           clients[0]!.$transaction(async (tx) => {
             await service.allocateExecution(tx, {
               projectId: rollbackProjectId,
               executionType: "project_expense_execution",
-              executionId: executionId("rollback"),
+              executionId: rollbackExecutionId,
               businessType: "project_expense_request",
-              businessId: businessId("rollback"),
+              businessId: rollbackBusinessId,
               amountCents: 600n,
-              occurredAt: new Date(),
+              occurredAt: rollbackPaidAt,
               actorUserId: actorId
             });
             throw new Error("voucher binding failed");
