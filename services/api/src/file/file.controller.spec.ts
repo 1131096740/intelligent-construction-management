@@ -238,6 +238,7 @@ describe("FileController authorization wiring", () => {
   it("requires an approved business position to use the generic private upload route", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, FileController.prototype.upload)).toEqual([
       "contract_staff",
+      "contract_director",
       "finance_staff",
       "finance_director"
     ]);

@@ -30,7 +30,12 @@ export class FileController {
   constructor(private readonly files: FileService, private readonly auth: AuthService) {}
 
   @Post()
-  @RequirePositions("contract_staff", "finance_staff", "finance_director")
+  @RequirePositions(
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  )
   @UseInterceptors(
     FileInterceptor("file", {
       limits: {

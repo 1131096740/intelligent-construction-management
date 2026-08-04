@@ -37,7 +37,7 @@ GLR-07
 
 状态：已完成（本地候选，尚未 push/合并/部署）。
 
-前置：GLR-00。验收：未授权岗位稳定拒绝；授权业务路径保持可用；测试证明 Guard → ValidationPipe → Service 顺序；上传仍是私有对象并保留审计和幂等。证据：48/48 `services/api/src/file/file.controller.spec.ts`、API typecheck、API lint、`git diff --check`。
+前置：GLR-00。验收：未授权岗位稳定拒绝；授权业务路径保持可用；测试证明 Guard → ValidationPipe → Service 顺序；上传仍是私有对象并保留审计和幂等。通用上传精确允许 `contract_staff`、`contract_director`、`finance_staff`、`finance_director`，以覆盖合同模板治理中“合同主管本人上传并创建”的所有权约束，不放行 `employee` 等无关岗位。证据：48/48 `services/api/src/file/file.controller.spec.ts`、API typecheck、API lint、`git diff --check`。
 
 ### GLR-02 — 结算审批过期状态返回 409
 
@@ -67,7 +67,7 @@ GLR-07
 
 前置：GLR-01、GLR-02、GLR-05。验收：真实岗位长链在桌面与移动视口通过；包含 503、400/403/409、双击/重试幂等、移动端上传下载；无控制台错误、404、重复 POST；失败时保留证据并不宣称通过。
 
-当前进展：真实隔离治理 UAT 已连续修复签名领域上传、合同版式上传和合同主管发起场景的合同所有者文件上传路径；审批前授权/审批正式文件走 `POST /contract-drafts/:versionId/files`，审批后最终正式文件保持通用 `POST /files`，并修复领域 multipart 入口的 `@Body("idempotencyKey")` 全局校验 400 问题，不放宽通用入口。随后 P0-5B 发现结算签名准备仍使用通用入口，现已改为 `/me/signature/canvas` 并按 `signatureFileId` 绑定。驱动器回归 4/4、runner 规格 5/5、领域控制器 12/12 通过，包含本修复的最终精确 SHA 尚未完成双浏览器长链复跑，故本票仍未完成。
+当前进展：真实隔离治理 UAT 已连续修复签名领域上传、合同版式上传和合同主管发起场景的合同所有者文件上传路径；审批前授权/审批正式文件走 `POST /contract-drafts/:versionId/files`，审批后最终正式文件保持通用 `POST /files`，并修复领域 multipart 入口的 `@Body("idempotencyKey")` 全局校验 400 问题。随后 P0-5B 发现结算签名准备仍使用通用入口，已改为 `/me/signature/canvas` 并按 `signatureFileId` 绑定；当前又确认结算模板治理要求 `contract_director` 本人拥有源 XLSX，故通用上传精确补入 `contract_director`，同时保留无关岗位拒绝。驱动器回归 4/4、runner 规格 5/5、文件控制器 48/48、领域控制器 12/12 通过，包含本修复的最终精确 SHA 尚未完成双浏览器长链复跑，故本票仍未完成。
 
 ### GLR-07 — RC-09 与阶段 F 演练
 
