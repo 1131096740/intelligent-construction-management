@@ -61,6 +61,16 @@ describe("settlement contract cap database concurrency", () => {
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ContractSettlementProcess" (
         "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT, "settlementId" TEXT
       )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "SettlementDraftLine" (
+        "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT NOT NULL, "lineKey" TEXT NOT NULL,
+        "sourceType" TEXT NOT NULL, "adjustmentKind" TEXT, "contractBillRowId" TEXT,
+        "contractBillRowLineageId" TEXT, "relatedSettlementLineId" TEXT, "sourceItemType" TEXT,
+        "occurredOn" DATE, "name" TEXT NOT NULL, "description" TEXT, "unit" TEXT,
+        "quantity" NUMERIC, "unitPriceCents" BIGINT, "directAmountCents" BIGINT,
+        "calculationMode" TEXT NOT NULL, "status" TEXT NOT NULL, "pricingBasis" TEXT,
+        "overageReason" TEXT, "reason" TEXT, "remark" TEXT, "sortOrder" INTEGER NOT NULL,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "Project" ("id" TEXT PRIMARY KEY)`);
       await clients[0]!.$executeRaw`INSERT INTO "Project" VALUES ('project-1')`;
       await clients[0]!.$executeRaw`INSERT INTO "Contract" VALUES ('contract-1','project-1','material_purchase')`;
