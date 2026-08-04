@@ -180,6 +180,21 @@ async function main() {
         forwardOutput: true,
         timeoutMs: 15 * 60 * 1000
       });
+      if (process.env.TRIAL_RUN_BROWSER_SCRIPT) {
+        await command(process.execPath, [path.resolve(process.env.TRIAL_RUN_BROWSER_SCRIPT)], {
+          cwd: root,
+          env: {
+            ...runtimeEnv,
+            REAL_API_BASE_URL: apiBaseUrl,
+            REAL_ROLE_PASSWORD: trialPassword,
+            REAL_BROWSER_CANDIDATE_SHA: candidateSha,
+            REAL_BROWSER_EVIDENCE_PATH: path.resolve(process.env.REAL_BROWSER_EVIDENCE_PATH ||
+              path.join(temporaryRoot, "real-browser-evidence.json"))
+          },
+          forwardOutput: true,
+          timeoutMs: 30 * 60 * 1000
+        });
+      }
     } catch (error) {
       throw new Error(`${error.message}\n本地 API 尾部日志：\n${apiOutput.slice(-80).join("")}`);
     }

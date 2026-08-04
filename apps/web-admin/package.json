@@ -17,6 +17,7 @@
     "test:e2e:p0": "playwright test --config playwright.config.ts e2e/p0-browser-smoke.e2e.ts",
     "pretest:e2e:rc06:mock": "pnpm build",
     "test:e2e:rc06:mock": "playwright test --config playwright.rc06.config.ts",
+    "test:e2e:rc06:real": "playwright test --config playwright.rc06-real.config.ts",
     "test:e2e:workbench-canary": "playwright test --config playwright.workbench-canary.config.ts",
     "test:e2e:contract-detail-canary": "playwright test --config playwright.contract-detail-canary.config.ts",
     "test:e2e:contract-bill-transitions": "playwright test --config playwright.contract-bill-transitions.config.ts",
