@@ -238,7 +238,7 @@ async function prepareSharedFixtures(tokens) {
 
 async function createContractFixture(config, shared, tokens, applicantRole = "contractStaff") {
   const applicant = users[applicantRole];
-  const layoutFile = await uploadPdf(tokens[applicantRole], `UAT-${runId}-${config.type}-layout.pdf`);
+  const layoutFile = await uploadPdf(tokens.contractStaff, `UAT-${runId}-${config.type}-layout.pdf`);
   const layout = await prisma.contractLayoutTemplate.create({
     data: { name: `UAT版式-${config.type}-${runId}`, contractTypeKey: config.type, createdByUserId: applicant.id }
   });
