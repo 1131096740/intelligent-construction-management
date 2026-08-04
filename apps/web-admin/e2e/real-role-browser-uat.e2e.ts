@@ -350,7 +350,10 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       counts[String(entry.status)] = (counts[String(entry.status)] ?? 0) + 1;
       return counts;
     }, {});
-    const badStatuses = ledger.filter((entry) => entry.status >= 500 || entry.status === 404);
+    const badStatuses = ledger.filter((entry) => {
+      const expectedWriteFreeze = entry.role === "rc06-freeze" && entry.status === 503;
+      return (!expectedWriteFreeze && entry.status >= 500) || entry.status === 404;
+    });
     const evidence = {
       schemaVersion: 1,
       gate: "rc06-real-api-backed-browser",
