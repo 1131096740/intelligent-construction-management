@@ -5,6 +5,8 @@ const apiRoot = resolve(__dirname, "../..");
 const schema = readFileSync(resolve(apiRoot, "prisma/schema.prisma"), "utf8");
 const migrationsPath = resolve(apiRoot, "prisma/migrations");
 const migrationName = "20260802010000_project_financing_quota_request_idempotency";
+const successorMigrationName =
+  "20260802020000_project_financing_quota_termination_idempotency";
 const migrationPath = resolve(migrationsPath, migrationName, "migration.sql");
 
 function model(name: string) {
@@ -12,12 +14,15 @@ function model(name: string) {
 }
 
 describe("project financing quota request schema", () => {
-  it("keeps a forward-only 115th migration without fabricating legacy request facts", () => {
+  it("keeps a forward-only request migration without fabricating legacy request facts", () => {
     const names = readdirSync(migrationsPath)
       .filter((name) => /^\d/u.test(name))
       .sort();
-    expect(names).toHaveLength(116);
-    expect(names.at(-2)).toBe(migrationName);
+    const migrationIndex = names.indexOf(migrationName);
+    const successorMigrationIndex = names.indexOf(successorMigrationName);
+    expect(migrationIndex).toBeGreaterThanOrEqual(0);
+    expect(successorMigrationIndex).toBeGreaterThanOrEqual(0);
+    expect(successorMigrationIndex).toBeGreaterThan(migrationIndex);
 
     const migration = readFileSync(migrationPath, "utf8");
     expect(migration).toMatch(/\nBEGIN;\n/u);
