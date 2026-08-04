@@ -131,7 +131,9 @@ describe("project financing quota F0/F1/F2 workbench", () => {
       name: "requestProjectFinancingQuotaWithUpload"
     }]);
     expect(apiSource).toContain("uploadProjectFinancingQuotaAttachment");
-    expect(apiSource).toContain('apiFetch("/files"');
+    expect(apiSource).toContain("financing-quotas/file-uploads");
+    expect(apiSource).toContain("encodeURIComponent(projectId)");
+    expect(apiSource).not.toContain('apiFetch("/files"');
     expect(apiSource).not.toContain('from "./core-flow-read.api"');
     expect(apiSource).not.toContain("globalRoleKeys");
   });
