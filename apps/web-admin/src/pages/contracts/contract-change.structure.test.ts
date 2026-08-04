@@ -7,8 +7,10 @@ const draft = readFileSync(new URL("./workbench/use-contract-draft.ts", import.m
 
 describe("contract change Web closure", () => {
   it("creates only after a fresh eligibility check and carries the expected version coordinate", () => {
-    expect(detail).toContain("fetchContractChangeEligibility(capturedBaseVersionId)");
-    expect(detail).toContain("latest.currentEffective?.id !== capturedBaseVersionId");
+    expect(detail).toContain("fetchContractChangeEligibility(contractVersionId)");
+    expect(detail).toContain("createContractChangeDraftWithCapability(\n      capturedBaseVersionId,");
+    expect(detail).toContain("currentEffective.id === contractVersionId");
+    expect(detail).toContain("currentEffective.contractId === contractId");
     expect(detail).toContain("created.baseVersionId !== capturedBaseVersionId");
     expect(detail).toContain("if (!submissionIsCurrent()) return");
     expect(detail).toContain("workbench?versionId=${created.id}");

@@ -20,12 +20,61 @@ describe("BusinessPartyService", () => {
     };
   }
 
+  function contractPartyBoundaryQuery(
+    hardFormal: Partial<Record<
+      | "hasSignedFormalFile"
+      | "hasActiveSealTask"
+      | "hasArchiveFile"
+      | "hasSettlement"
+      | "hasPaymentRequest",
+      boolean
+    >> = {},
+    hasHistoricalTakeoverRelation = false
+  ) {
+    return jest.fn().mockImplementation(async (query: { strings?: string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes('FROM "Contract" c')) {
+        return [{ id: "contract-1", contractId: "contract-1" }];
+      }
+      if (sql.includes("FOR UPDATE OF cv")) {
+        return [{
+          id: "contract-version-1",
+          contractId: "contract-1",
+          hasHistoricalTakeoverRelation
+        }];
+      }
+      return [{
+        hasSignedFormalFile: false,
+        hasActiveSealTask: false,
+        hasArchiveFile: false,
+        hasSettlement: false,
+        hasPaymentRequest: false,
+        ...hardFormal
+      }];
+    });
+  }
+
+  function expectContractPartyBoundaryLockOrder(query: jest.Mock) {
+    const statements = query.mock.calls
+      .slice(0, 3)
+      .map(([sql]) => (sql?.strings as string[] | undefined)?.join(" ") ?? "");
+    expect(statements[0]).toContain('FROM "Contract" c');
+    expect(statements[0]).toContain("FOR UPDATE OF c");
+    expect(statements[1]).toContain('FROM "ContractVersion" cv');
+    expect(statements[1]).toContain("FOR UPDATE OF cv");
+    expect(statements[2]).toContain('FROM "ContractFormalFile"');
+  }
+
   function prismaWithTransaction<T extends object>(tx: T) {
     const client = tx as T & {
+      $queryRaw?: jest.Mock;
       contractVersion?: { updateMany?: jest.Mock };
       contract?: { updateMany?: jest.Mock };
       contractGeneratedDocument?: { updateMany: jest.Mock };
     };
+    if (client.contractVersion && !client.$queryRaw) {
+      client.$queryRaw = contractPartyBoundaryQuery();
+    }
     if (client.contractVersion && !client.contractVersion.updateMany) {
       client.contractVersion.updateMany = jest.fn().mockResolvedValue({ count: 1 });
     }
@@ -38,6 +87,75 @@ describe("BusinessPartyService", () => {
     return {
       $transaction: jest.fn(async (callback: (client: T) => unknown) => callback(tx))
     } as unknown as PrismaService;
+  }
+
+  function guardedContractPartyTx(
+    changeType: string,
+    hardFormal: Parameters<typeof contractPartyBoundaryQuery>[0] = {},
+    hasHistoricalTakeoverRelation = false
+  ) {
+    return {
+      $queryRaw: contractPartyBoundaryQuery(
+        hardFormal,
+        hasHistoricalTakeoverRelation
+      ),
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType,
+          draftRevision: 4
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractPartySnapshot: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "snapshot-1",
+          roleKey: "party_b",
+          displayOrder: 1
+        }),
+        create: jest.fn().mockResolvedValue({ id: "snapshot-new" }),
+        update: jest.fn().mockResolvedValue({ id: "snapshot-1" }),
+        delete: jest.fn().mockResolvedValue({ id: "snapshot-1" })
+      },
+      contractGeneratedDocument: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    };
+  }
+
+  function mutateContractParty(
+    service: BusinessPartyService,
+    action: "add" | "updateRole" | "remove"
+  ) {
+    if (action === "add") {
+      return service.addContractParty("contract-version-1", "owner-1", {
+        roleKey: "other",
+        snapshot: { name: "临时单位", attachments: [] }
+      });
+    }
+    if (action === "updateRole") {
+      return service.updateContractPartyRole(
+        "contract-version-1",
+        "snapshot-1",
+        "owner-1",
+        "party_b"
+      );
+    }
+    return service.removeContractParty(
+      "contract-version-1",
+      "snapshot-1",
+      "owner-1"
+    );
   }
 
   const snapshot = {
@@ -149,6 +267,89 @@ describe("BusinessPartyService", () => {
       }).contractGeneratedDocument.updateMany
     ).not.toHaveBeenCalled();
   });
+
+  it.each(
+    ([
+      "hasSignedFormalFile",
+      "hasActiveSealTask",
+      "hasArchiveFile",
+      "hasSettlement",
+      "hasPaymentRequest"
+    ] as const).flatMap((formalFlag) =>
+      (["add", "updateRole", "remove"] as const).map((action) => [
+        action,
+        formalFlag
+      ] as const)
+    )
+  )(
+    "fails closed before contract party %s when %s is already present",
+    async (action, formalFlag) => {
+      const tx = guardedContractPartyTx("original", {
+        [formalFlag]: true
+      });
+      const service = new BusinessPartyService(
+        prismaWithTransaction(tx),
+        audit as never
+      );
+
+      await expect(mutateContractParty(service, action)).rejects.toThrow(
+        "合同已存在正式业务事实，不能变更合作单位"
+      );
+
+      expectContractPartyBoundaryLockOrder(tx.$queryRaw);
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.update).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["add", "updateRole", "remove"] as const)(
+    "routes contract party %s for a historical takeover draft to its dedicated workbench",
+    async (action) => {
+      const tx = guardedContractPartyTx("historical_takeover");
+      const service = new BusinessPartyService(
+        prismaWithTransaction(tx),
+        audit as never
+      );
+
+      await expect(mutateContractParty(service, action)).rejects.toThrow(
+        "历史接管草稿必须在历史接管工作台办理"
+      );
+
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.update).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["add", "updateRole", "remove"] as const)(
+    "blocks relation-only takeover before contract party %s writes",
+    async (action) => {
+      const tx = guardedContractPartyTx("original", {}, true);
+      const service = new BusinessPartyService(
+        prismaWithTransaction(tx),
+        audit as never
+      );
+
+      await expect(mutateContractParty(service, action)).rejects.toMatchObject({
+        response: {
+          code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+          projectId: null,
+          takeoverId: null
+        }
+      });
+
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.update).not.toHaveBeenCalled();
+      expect(tx.contractPartySnapshot.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
 
   it("rejects adding a new party_a snapshot to a governed draft", async () => {
     const tx = {

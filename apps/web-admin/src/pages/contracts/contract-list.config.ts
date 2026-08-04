@@ -27,6 +27,15 @@ export interface ContractSummaryItem {
 
 export interface ContractLedgerRow {
   id: string;
+  contractId?: string;
+  projectId?: string;
+  source?: "system" | "historical_takeover";
+  changeType?: string | null;
+  historicalTakeoverFlow?: boolean;
+  takeoverId?: string | null;
+  takeoverStatus?: string | null;
+  takeoverReadable?: boolean;
+  takeoverRelationMismatch?: boolean;
   contractNo: string;
   name: string;
   project: string;
@@ -43,6 +52,62 @@ export interface ContractLedgerRow {
   nextAction: string;
   updatedAt: string;
   paymentTermsVersion?: string;
+}
+
+export function contractWorkbenchRouteContractId(
+  row: Pick<ContractLedgerRow, "id" | "contractId">
+) {
+  return row.contractId?.trim() || row.id;
+}
+
+export function isHistoricalTakeoverLedgerRow(
+  row: Pick<ContractLedgerRow, "source" | "changeType" | "historicalTakeoverFlow">
+) {
+  if (typeof row.historicalTakeoverFlow === "boolean") {
+    return row.historicalTakeoverFlow;
+  }
+  if (row.changeType) return row.changeType === "historical_takeover";
+  return row.source === "historical_takeover";
+}
+
+export function historicalTakeoverRouteForContractLedgerRow(
+  row: Pick<
+    ContractLedgerRow,
+    "projectId" | "source" | "changeType" | "historicalTakeoverFlow" |
+    "takeoverId" | "takeoverStatus" | "takeoverRelationMismatch"
+  >
+) {
+  if (!isHistoricalTakeoverLedgerRow(row)) return null;
+  if (row.takeoverRelationMismatch === true) return null;
+  if (row.takeoverStatus === "abandoned") return null;
+  const projectId = row.projectId?.trim();
+  const takeoverId = row.takeoverId?.trim();
+  if (!projectId || !takeoverId) return null;
+  return {
+    path: "/历史合同接管",
+    query: { projectId, takeoverId }
+  };
+}
+
+export function historicalTakeoverOperationLabel(
+  row: Pick<ContractLedgerRow, "takeoverStatus" | "takeoverRelationMismatch">
+) {
+  if (row.takeoverRelationMismatch === true) return "检查关联";
+  if (row.takeoverStatus === "abandoned") return "查看详情";
+  return row.takeoverStatus === "confirmed" || row.takeoverStatus === "voided"
+    ? "查看接管"
+    : "继续接管";
+}
+
+export function historicalTakeoverReturnTargetFromError(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const projectId = "projectId" in error && typeof error.projectId === "string"
+    ? error.projectId.trim()
+    : "";
+  const takeoverId = "takeoverId" in error && typeof error.takeoverId === "string"
+    ? error.takeoverId.trim()
+    : "";
+  return projectId && takeoverId ? { projectId, takeoverId } : null;
 }
 
 export const contractFilterFields: ContractFilterField[] = [

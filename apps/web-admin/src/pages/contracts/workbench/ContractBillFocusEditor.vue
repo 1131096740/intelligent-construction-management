@@ -5,12 +5,14 @@ import {
   type ComputedRef,
   type Ref
 } from "vue";
+import type { DetailActionReadModel } from "@jiangkong/shared-domain";
 import {
   downloadContractDraftBillExcelTemplate,
+  fetchContractDraftOperationCapabilities,
   previewContractDraftBillExcelImport,
+  uploadContractWorkbenchPrivateFile,
   type ContractDraftBillExcelImportPreview
 } from "../../../api/contract-workbench.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   addBillCandidateRow,
   authoritativeBillTotals,
@@ -18,12 +20,69 @@ import {
   fromWorkbenchBill,
   invalidateChangedAuthoritativePricing,
   moveBillCandidateRow,
+  preservesGovernedBillRowKeys,
   removeBillCandidateRow,
+  rowHasRemainderCancellationCapability,
   validateBillCandidateRows,
   type ContractBillCandidateRow,
   type ContractBillCellError
 } from "./contract-bill-grid";
 import type { WorkbenchBill } from "./contract-bill-editor";
+
+async function uploadContractBillImportFileWithCapability(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单导入能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同清单文件");
+  }
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+}
+
+async function previewContractDraftBillExcelImportWithCapability(
+  contractVersionId: string,
+  billKey: string,
+  body: { fileId: string }
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单导入能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "preview_contract_draft_bill_excel_import"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能预检合同清单 Excel");
+  }
+  return previewContractDraftBillExcelImport(contractVersionId, billKey, body);
+}
+
+export interface ContractBillRemainderCancellationRequest {
+  billId: string;
+  billKey: string;
+  rowKey: string;
+  reason: string;
+}
+
+export type ContractBillRemainderCancellationExecutionResult =
+  | { status: "completed" }
+  | { status: "submitted_refresh_failed"; message: string };
+
+interface SelectedRowRemainderCancellationCapability {
+  availableActions: DetailActionReadModel[];
+  action: DetailActionReadModel;
+  facts: NonNullable<ContractBillCandidateRow["remainderCancellation"]>;
+}
 
 interface UploadedFileReadModel {
   id: string;
@@ -34,7 +93,11 @@ interface FocusControllerDependencies {
     contractVersionId: string,
     billKey: string
   ) => Promise<void>;
-  uploadFile: (file: Blob, fileName: string) => Promise<UploadedFileReadModel>;
+  uploadFile: (
+    contractVersionId: string,
+    file: Blob,
+    fileName: string
+  ) => Promise<UploadedFileReadModel>;
   previewImport: (
     contractVersionId: string,
     billKey: string,
@@ -50,6 +113,9 @@ export interface ContractBillFocusControllerOptions {
     event: "close" | "update:rows" | "edited",
     value?: ContractBillCandidateRow[]
   ) => void;
+  executeRemainderCancellation?: (
+    request: ContractBillRemainderCancellationRequest
+  ) => Promise<ContractBillRemainderCancellationExecutionResult | void>;
   deps?: Partial<FocusControllerDependencies>;
 }
 
@@ -64,11 +130,21 @@ export interface ContractBillFocusController {
   replaceConfirmVisible: Ref<boolean>;
   pendingImportRows: Ref<ContractBillCandidateRow[] | null>;
   selectedClientRowKey: Ref<string>;
+  selectedRowCapability: ComputedRef<SelectedRowRemainderCancellationCapability | null>;
+  selectedRowHasRemainderCancellationCapability: ComputedRef<boolean>;
+  remainderCancellationVisible: Ref<boolean>;
+  remainderCancellationBusy: Ref<boolean>;
+  remainderCancellationError: Ref<string>;
+  remainderCancellationRetryLocked: ComputedRef<boolean>;
   totals: ComputedRef<ReturnType<typeof authoritativeBillTotals>>;
   replacePrompt: ComputedRef<string>;
   addRow: () => void;
   copySelectedRow: () => void;
   deleteSelectedRow: () => void;
+  openRemainderCancellation: () => void;
+  confirmRemainderCancellation: (
+    values: { reason: string; password: string }
+  ) => Promise<void>;
   moveSelectedRow: (offset: -1 | 1) => void;
   setRows: (rows: ContractBillCandidateRow[]) => void;
   previewExcel: (file: File) => Promise<void>;
@@ -92,8 +168,8 @@ export function createContractBillFocusController(
 ): ContractBillFocusController {
   const dependencies: FocusControllerDependencies = {
     downloadTemplate: downloadContractDraftBillExcelTemplate,
-    uploadFile: uploadPrivateFile,
-    previewImport: previewContractDraftBillExcelImport,
+    uploadFile: uploadContractBillImportFileWithCapability,
+    previewImport: previewContractDraftBillExcelImportWithCapability,
     ...options.deps
   };
   const billSnapshot = ref(cloneBill(options.bill()));
@@ -106,6 +182,49 @@ export function createContractBillFocusController(
   const replaceConfirmVisible = ref(false);
   const pendingImportRows = ref<ContractBillCandidateRow[] | null>(null);
   const selectedClientRowKey = ref(rows.value[0]?.clientRowKey ?? "");
+  const selectedRowCapability = computed(() =>
+    remainderCancellationCapability(
+      rows.value.find(
+        (row) => row.clientRowKey === selectedClientRowKey.value
+      )
+    )
+  );
+  const selectedRowHasRemainderCancellationCapability = computed(() => {
+    const selected = rows.value.find(
+      (row) => row.clientRowKey === selectedClientRowKey.value
+    );
+    return selected ? rowHasRemainderCancellationCapability(selected) : false;
+  });
+  const remainderCancellationVisible = ref(false);
+  const remainderCancellationBusy = ref(false);
+  const remainderCancellationError = ref("");
+  const remainderCancellationRetryLock = ref<{
+    billId: string;
+    billKey: string;
+    rowKey: string;
+    message: string;
+  } | null>(null);
+  const remainderCancellationRetryLocked = computed(() => {
+    const locked = remainderCancellationRetryLock.value;
+    const selected = rows.value.find(
+      (row) => row.clientRowKey === selectedClientRowKey.value
+    );
+    return Boolean(
+      locked &&
+      selected?.rowKey === locked.rowKey &&
+      billSnapshot.value.id === locked.billId &&
+      billSnapshot.value.billKey === locked.billKey
+    );
+  });
+  let remainderCancellationDialogGeneration = 0;
+  let pendingRemainderCancellation: {
+    generation: number;
+    clientRowKey: string;
+    billId: string;
+    billKey: string;
+    rowKey: string;
+    fingerprint: string;
+  } | null = null;
   const totals = computed(() => authoritativeBillTotals(billSnapshot.value));
   const replacePrompt = computed(
     () =>
@@ -135,10 +254,124 @@ export function createContractBillFocusController(
 
   function deleteSelectedRow() {
     if (locked()) return;
+    if (selectedRowHasRemainderCancellationCapability.value) {
+      setError("该行已有历史履约占用，不能使用普通删除；请使用“取消未实施余量”。");
+      return;
+    }
     replaceCandidateRows(
       removeBillCandidateRow(rows.value, selectedClientRowKey.value)
     );
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
+  }
+
+  function openRemainderCancellation() {
+    if (locked()) return;
+    if (remainderCancellationRetryLocked.value) {
+      setError(
+        remainderCancellationRetryLock.value?.message ??
+          "操作已提交，请手动刷新核对，不要重复提交。"
+      );
+      return;
+    }
+    const capability = selectedRowCapability.value;
+    const row = rows.value.find(
+      (candidate) => candidate.clientRowKey === selectedClientRowKey.value
+    );
+    if (!capability || !row?.rowKey || !capability.action.enabled) {
+      setError(
+        capability?.action.disabledReason ||
+          "当前行不允许取消未实施余量，请刷新后重试"
+      );
+      return;
+    }
+    remainderCancellationDialogGeneration += 1;
+    pendingRemainderCancellation = {
+      generation: remainderCancellationDialogGeneration,
+      clientRowKey: row.clientRowKey,
+      billId: billSnapshot.value.id,
+      billKey: billSnapshot.value.billKey,
+      rowKey: row.rowKey,
+      fingerprint: remainderCancellationCapabilityFingerprint(capability)
+    };
+    remainderCancellationError.value = "";
+    remainderCancellationVisible.value = true;
+  }
+
+  async function confirmRemainderCancellation(values: {
+    reason: string;
+    password: string;
+  }) {
+    if (remainderCancellationBusy.value) return;
+    const pending = pendingRemainderCancellation;
+    const row = pending
+      ? rows.value.find((candidate) => candidate.clientRowKey === pending.clientRowKey)
+      : undefined;
+    const capability = remainderCancellationCapability(row);
+    const reason = values.reason.trim();
+    if (
+      !pending ||
+      !row?.rowKey ||
+      row.rowKey !== pending.rowKey ||
+      billSnapshot.value.id !== pending.billId ||
+      billSnapshot.value.billKey !== pending.billKey ||
+      !capability ||
+      !capability.action.enabled ||
+      remainderCancellationCapabilityFingerprint(capability) !== pending.fingerprint
+    ) {
+      remainderCancellationError.value =
+        "当前清单余量能力已变化，请关闭后按最新行重新确认";
+      return;
+    }
+    if (!reason || reason.length > 500) {
+      remainderCancellationError.value = reason
+        ? "操作原因不能超过 500 字"
+        : "请填写取消未实施余量的原因";
+      return;
+    }
+    if (!options.executeRemainderCancellation) {
+      remainderCancellationError.value =
+        "当前页面未连接余量取消操作，请刷新后重试";
+      return;
+    }
+    const generation = pending.generation;
+    remainderCancellationBusy.value = true;
+    remainderCancellationError.value = "";
+    try {
+      const result = await options.executeRemainderCancellation({
+        billId: pending.billId,
+        billKey: pending.billKey,
+        rowKey: pending.rowKey,
+        reason
+      });
+      if (generation !== remainderCancellationDialogGeneration) return;
+      if (result?.status === "submitted_refresh_failed") {
+        remainderCancellationRetryLock.value = {
+          billId: pending.billId,
+          billKey: pending.billKey,
+          rowKey: pending.rowKey,
+          message: result.message
+        };
+        remainderCancellationVisible.value = false;
+        pendingRemainderCancellation = null;
+        message.value = result.message;
+        messageDanger.value = true;
+        return;
+      }
+      remainderCancellationVisible.value = false;
+      pendingRemainderCancellation = null;
+      message.value = "未实施余量已按历史完成量收敛";
+      messageDanger.value = false;
+    } catch (error) {
+      if (generation !== remainderCancellationDialogGeneration) return;
+      remainderCancellationError.value = errorMessage(
+        error,
+        "取消未实施余量失败，请核对服务端最新状态"
+      );
+    } finally {
+      if (generation === remainderCancellationDialogGeneration) {
+        remainderCancellationBusy.value = false;
+      }
+    }
   }
 
   function moveSelectedRow(offset: -1 | 1) {
@@ -169,7 +402,11 @@ export function createContractBillFocusController(
     }
     busy.value = true;
     try {
-      const uploaded = await dependencies.uploadFile(file, file.name);
+      const uploaded = await dependencies.uploadFile(
+        contractVersionId,
+        file,
+        file.name
+      );
       const result = normalizeImportPreview(
         await dependencies.previewImport(
           contractVersionId,
@@ -193,6 +430,14 @@ export function createContractBillFocusController(
         setError(result.errors.map((error) => error.message).join("；"));
         return;
       }
+      if (!preservesGovernedBillRowKeys(rows.value, result.candidateRows)) {
+        pendingImportRows.value = null;
+        replaceConfirmVisible.value = false;
+        setError(
+          "Excel 预检候选遗漏了已有历史履约占用行，不能整表替换；请刷新后保留该行。"
+        );
+        return;
+      }
       pendingImportRows.value = cloneRows(result.candidateRows);
       replaceConfirmVisible.value = true;
       message.value = "Excel 预检完成，请确认是否载入当前合同草稿";
@@ -212,6 +457,14 @@ export function createContractBillFocusController(
 
   function confirmImportReplace() {
     if (!pendingImportRows.value || locked()) return;
+    if (!preservesGovernedBillRowKeys(rows.value, pendingImportRows.value)) {
+      pendingImportRows.value = null;
+      replaceConfirmVisible.value = false;
+      setError(
+        "Excel 预检候选遗漏了已有历史履约占用行，不能整表替换；请刷新后保留该行。"
+      );
+      return;
+    }
     replaceCandidateRows(pendingImportRows.value);
     selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     pendingImportRows.value = null;
@@ -251,6 +504,22 @@ export function createContractBillFocusController(
       selectedClientRowKey.value = rows.value[0]?.clientRowKey ?? "";
     }
     errors.value = validateBillCandidateRows(rows.value, billSnapshot.value);
+    if (pendingRemainderCancellation) {
+      const pendingRow = rows.value.find(
+        (row) => row.clientRowKey === pendingRemainderCancellation?.clientRowKey
+      );
+      const capability = remainderCancellationCapability(pendingRow);
+      if (
+        !capability ||
+        remainderCancellationCapabilityFingerprint(capability) !==
+          pendingRemainderCancellation.fingerprint
+      ) {
+        remainderCancellationDialogGeneration += 1;
+        pendingRemainderCancellation = null;
+        remainderCancellationVisible.value = false;
+        remainderCancellationBusy.value = false;
+      }
+    }
   }
 
   function replaceCandidateRows(
@@ -284,11 +553,19 @@ export function createContractBillFocusController(
     replaceConfirmVisible,
     pendingImportRows,
     selectedClientRowKey,
+    selectedRowCapability,
+    selectedRowHasRemainderCancellationCapability,
+    remainderCancellationVisible,
+    remainderCancellationBusy,
+    remainderCancellationError,
+    remainderCancellationRetryLocked,
     totals,
     replacePrompt,
     addRow,
     copySelectedRow,
     deleteSelectedRow,
+    openRemainderCancellation,
+    confirmRemainderCancellation,
     moveSelectedRow,
     setRows,
     previewExcel,
@@ -378,7 +655,13 @@ function cloneRows(
 ): ContractBillCandidateRow[] {
   return rows.map((row) => ({
     ...row,
-    customData: { ...row.customData }
+    customData: { ...row.customData },
+    ...(row.availableActions
+      ? { availableActions: row.availableActions.map((action) => ({ ...action })) }
+      : {}),
+    ...(row.remainderCancellation
+      ? { remainderCancellation: { ...row.remainderCancellation } }
+      : {})
   }));
 }
 
@@ -390,9 +673,60 @@ function cloneBill(bill: WorkbenchBill): WorkbenchBill {
       : bill.schemaSnapshot,
     rows: bill.rows.map((row) => ({
       ...row,
-      customData: { ...(row.customData ?? {}) }
+      customData: { ...(row.customData ?? {}) },
+      ...(row.availableActions
+        ? { availableActions: row.availableActions.map((action) => ({ ...action })) }
+        : {}),
+      ...(row.remainderCancellation
+        ? { remainderCancellation: { ...row.remainderCancellation } }
+        : {})
     }))
   };
+}
+
+function remainderCancellationCapability(
+  row: ContractBillCandidateRow | undefined
+): SelectedRowRemainderCancellationCapability | null {
+  if (!row?.remainderCancellation) return null;
+  const availableActions = (row.availableActions ?? []).filter(
+    (action) => action.key === "contract-bill.remainder-cancellation"
+  );
+  if (availableActions.length !== 1) return null;
+  const action = availableActions[0]!;
+  const facts = row.remainderCancellation;
+  const expectedOccupancyToken = facts.expectedOccupancyToken;
+  const historicalQuantity = facts.historicalQuantity;
+  const historicalAmountCents = facts.historicalAmountCents;
+  if (
+    !Number.isInteger(facts.expectedBillRevision) ||
+    !Number.isInteger(facts.expectedDraftRevision) ||
+    typeof expectedOccupancyToken !== "string" ||
+    !expectedOccupancyToken.trim() ||
+    typeof historicalQuantity !== "string" ||
+    !historicalQuantity.trim() ||
+    typeof historicalAmountCents !== "string" ||
+    !/^\d+$/u.test(historicalAmountCents)
+  ) {
+    return null;
+  }
+  return { availableActions, action, facts };
+}
+
+function remainderCancellationCapabilityFingerprint(
+  capability: SelectedRowRemainderCancellationCapability
+) {
+  return [
+    capability.action.key,
+    Number(capability.action.enabled),
+    capability.action.disabledReason ?? "",
+    Number(Boolean(capability.action.requiresComment)),
+    Number(Boolean(capability.action.requiresPassword)),
+    capability.facts.expectedBillRevision,
+    capability.facts.expectedDraftRevision,
+    capability.facts.expectedOccupancyToken,
+    capability.facts.historicalQuantity,
+    capability.facts.historicalAmountCents
+  ].join("\u0000");
 }
 
 function candidateDigest(rows: readonly ContractBillCandidateRow[]) {
@@ -425,6 +759,7 @@ function errorMessage(error: unknown, fallback: string) {
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
 import { nextTick, watch } from "vue";
+import SensitiveActionDialog from "../../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText } from "../../../lib/money";
 import ContractBillGrid from "./ContractBillGrid.vue";
 
@@ -432,6 +767,10 @@ const props = defineProps<{
   bill: WorkbenchBill;
   contractVersionId: string;
   disabled: boolean;
+  actionDisabled?: boolean;
+  actionHandler?: (
+    request: ContractBillRemainderCancellationRequest
+  ) => Promise<ContractBillRemainderCancellationExecutionResult | void>;
 }>();
 
 const emit = defineEmits<{
@@ -447,6 +786,10 @@ const controller = createContractBillFocusController({
   bill: () => props.bill,
   contractVersionId: () => props.contractVersionId,
   disabled: () => props.disabled,
+  executeRemainderCancellation: (request) =>
+    props.actionHandler
+      ? props.actionHandler(request)
+      : Promise.reject(new Error("当前页面未连接余量取消操作")),
   emit: (event, value) => {
     if (event === "close") emit("close");
     if (event === "update:rows") {
@@ -466,6 +809,12 @@ const {
   preview,
   replaceConfirmVisible,
   selectedClientRowKey,
+  selectedRowCapability,
+  selectedRowHasRemainderCancellationCapability,
+  remainderCancellationVisible,
+  remainderCancellationBusy,
+  remainderCancellationError,
+  remainderCancellationRetryLocked,
   totals,
   replacePrompt
 } = controller;
@@ -479,6 +828,14 @@ const totalsText = computed(() =>
       }
     : { exclusive: "—", tax: "—", inclusive: "—" }
 );
+
+const remainderCancellationDescription = computed(() => {
+  const capability = selectedRowCapability.value;
+  if (!capability) {
+    return "将未实施余量收敛到服务端核定的历史完成量。";
+  }
+  return `将当前合同数量收敛为历史完成量 ${capability.facts.historicalQuantity}，历史金额 ${moneyText(capability.facts.historicalAmountCents)}。该操作不删除历史履约记录。`;
+});
 
 watch(
   () => props.bill,
@@ -503,6 +860,13 @@ async function onFileSelected(files: UploadFile[]) {
   const file = raw instanceof File ? raw : null;
   importFiles.value = [];
   if (file) await controller.previewExcel(file);
+}
+
+async function confirmRemainderCancellation(values: {
+  reason: string;
+  password: string;
+}) {
+  await controller.confirmRemainderCancellation(values);
 }
 
 function moneyText(value: string) {
@@ -561,10 +925,20 @@ defineExpose({ openImportPicker, focusReadinessIssue });
       </t-button>
       <t-button
         data-testid="bill-delete-row"
-        :disabled="disabled || busy || !selectedClientRowKey"
+        :disabled="disabled || busy || !selectedClientRowKey || selectedRowHasRemainderCancellationCapability"
         @click="controller.deleteSelectedRow"
       >
         删除行
+      </t-button>
+      <t-button
+        v-if="selectedRowHasRemainderCancellationCapability"
+        theme="danger"
+        data-testid="bill-cancel-remainder"
+        :disabled="disabled || actionDisabled || busy || remainderCancellationBusy || remainderCancellationRetryLocked || !selectedRowCapability?.action.enabled"
+        :title="remainderCancellationRetryLocked ? message : selectedRowCapability?.action.disabledReason ?? undefined"
+        @click="controller.openRemainderCancellation"
+      >
+        {{ selectedRowCapability?.action.label ?? "取消未实施余量" }}
       </t-button>
       <t-button
         data-testid="bill-move-up"
@@ -663,6 +1037,19 @@ defineExpose({ openImportPicker, focusReadinessIssue });
         </t-button>
       </template>
     </t-dialog>
+
+    <SensitiveActionDialog
+      v-model="remainderCancellationVisible"
+      title="取消未实施余量"
+      :description="remainderCancellationDescription"
+      confirm-text="确认取消余量"
+      confirm-theme="danger"
+      :require-reason="true"
+      reason-label="取消原因"
+      :loading="remainderCancellationBusy"
+      :error="remainderCancellationError"
+      @confirm="confirmRemainderCancellation"
+    />
   </section>
 </template>
 

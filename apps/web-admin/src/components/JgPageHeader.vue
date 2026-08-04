@@ -29,7 +29,17 @@ const emit = defineEmits<{
 
 <template>
   <BusinessDetailHeader
-    v-bind="props"
+    :business-code="props.businessCode"
+    :title="props.title"
+    :status="props.status"
+    :status-tone="props.statusTone"
+    :owner="props.owner"
+    :current-node="props.currentNode"
+    :next-step="props.nextStep"
+    :requested-amount="props.requestedAmount"
+    :amount-label="props.amountLabel"
+    :primary-action-label="props.primaryActionLabel"
+    :primary-action-disabled="props.primaryActionDisabled"
     @primary-action="emit('primary-action')"
   >
     <template #actions>

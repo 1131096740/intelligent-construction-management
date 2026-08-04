@@ -12,11 +12,19 @@ describe("ContractDraftAggregateService", () => {
     id: "cv-1",
     contractId: "contract-1",
     status: "draft",
+    changeType: "original",
+    baseVersionId: null as string | null,
+    contractGovernanceVersion: 1,
     draftRevision: 3,
     draftData: { fieldValues: { name: "精确版本一" } }
   };
   const legacyReadModel = {
-    contract: { id: "contract-1", code: null, temporaryCode: "DRAFT-001" },
+    contract: {
+      id: "contract-1",
+      code: null,
+      temporaryCode: "DRAFT-001",
+      ownerUserId: "actor-1"
+    },
     version: { ...version },
     lifecycleKind: "pristine_draft",
     checkpoints: [{ id: "legacy-checkpoint" }],
@@ -29,6 +37,7 @@ describe("ContractDraftAggregateService", () => {
 
   function makeService(overrides: {
     foundVersion?: typeof version | null;
+    foundTakeover?: { id: string; projectId: string } | null;
     readError?: Error;
     lease?: {
       holderUserId: string;
@@ -41,6 +50,19 @@ describe("ContractDraftAggregateService", () => {
         findUnique: jest.fn().mockResolvedValue(
           overrides.foundVersion === undefined ? version : overrides.foundVersion
         )
+      },
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(
+          overrides.foundTakeover === undefined
+            ? null
+            : overrides.foundTakeover
+        )
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1"
+        })
       },
       contractDraftAttachment: {
         findMany: jest.fn().mockResolvedValue([])
@@ -90,6 +112,7 @@ describe("ContractDraftAggregateService", () => {
       where: { id: "cv-1" }
     });
     expect(workbench.getDraftFromExactVersion).toHaveBeenCalledWith(version, "actor-1");
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
     expect(result.version.id).toBe("cv-1");
     expect(result.draft).toEqual(version.draftData);
     expect(result).not.toHaveProperty("checkpoints");
@@ -99,6 +122,51 @@ describe("ContractDraftAggregateService", () => {
       expiresAt: null,
       canTakeOver: false
     });
+    expect(result.draftOperationAvailableActions).toEqual([
+      "acquire_contract_draft_edit_lease",
+      "apply_contract_type_change",
+      "check_contract_submission_readiness",
+      "close_contract_negotiation_round",
+      "dispose_contract_document_difference",
+      "heartbeat_contract_draft_edit_lease",
+      "open_contract_negotiation_round",
+      "open_contract_revision_preview",
+      "preview_contract_draft_bill_excel_import",
+      "preview_contract_type_change",
+      "queue_contract_document",
+      "queue_contract_draft_preview",
+      "release_contract_draft_edit_lease",
+      "retry_contract_document",
+      "retry_contract_offline_revision",
+      "save_contract_draft",
+      "set_contract_authorization",
+      "submit_contract_draft",
+      "upload_contract_formal_approval_file",
+      "upload_contract_negotiation_revision",
+      "upload_contract_workbench_private_file"
+    ]);
+  });
+
+  it("publishes bill-transition actions only to the matching owner or contract director", async () => {
+    const owner = makeService({
+      foundVersion: { ...version, changeType: "change", baseVersionId: "cv-base" }
+    });
+    const director = makeService({
+      foundVersion: { ...version, changeType: "change", baseVersionId: "cv-base" },
+      director: true
+    });
+
+    await expect(owner.service.getWorkbench("cv-1", "actor-1")).resolves.toMatchObject({
+      draftOperationAvailableActions: expect.arrayContaining([
+        "save_contract_bill_transitions",
+        "discard_contract_bill_transitions"
+      ])
+    });
+    await expect(director.service.getWorkbench("cv-1", "director-1")).resolves.toMatchObject({
+      draftOperationAvailableActions: expect.arrayContaining([
+        "confirm_contract_bill_transitions"
+      ])
+    });
   });
 
   it("returns stable errors for a missing or non-editable version", async () => {
@@ -106,19 +174,103 @@ describe("ContractDraftAggregateService", () => {
       makeService({ foundVersion: null }).service.getWorkbench("missing", "actor-1")
     ).rejects.toBeInstanceOf(NotFoundException);
     await expect(
-      makeService({ foundVersion: { ...version, status: "effective" } }).service.getWorkbench(
-        "cv-1",
-        "actor-1"
-      )
+      makeService({
+        foundVersion: { ...version, status: "effective" },
+        readError: new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试")
+      }).service.getWorkbench("cv-1", "actor-1")
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("preserves the workbench permission failure", async () => {
+  it("rejects a historical takeover version before opening the generic workbench", async () => {
+    const legacyError = new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: "project-1",
+      takeoverId: "takeover-1"
+    });
+    const { prisma, workbench, service } = makeService({
+      foundVersion: { ...version, changeType: "historical_takeover" },
+      foundTakeover: { id: "takeover-1", projectId: "project-1" },
+      readError: legacyError
+    });
+
     await expect(
-      makeService({
+      service.getWorkbench("cv-1", "actor-1")
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        message: "历史接管草稿必须在历史接管工作台办理",
+        projectId: "project-1",
+        takeoverId: "takeover-1"
+      }
+    });
+    expect(workbench.getDraftFromExactVersion).toHaveBeenCalledWith(
+      { ...version, changeType: "historical_takeover" },
+      "actor-1"
+    );
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without inventing a historical takeover return target", async () => {
+    const legacyError = new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: "project-1",
+      takeoverId: null
+    });
+    const { prisma, service, workbench } = makeService({
+      foundVersion: { ...version, changeType: "historical_takeover" },
+      foundTakeover: null,
+      readError: legacyError
+    });
+
+    await expect(service.getWorkbench("cv-1", "actor-1")).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: "project-1",
+        takeoverId: null
+      }
+    });
+    expect(workbench.getDraftFromExactVersion).toHaveBeenCalledTimes(1);
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects a relation-drift takeover before ordinary status validation", async () => {
+    const legacyError = new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: null,
+      takeoverId: null
+    });
+    const { prisma, service, workbench } = makeService({
+      foundVersion: { ...version, status: "effective", changeType: "original" },
+      foundTakeover: { id: "takeover-drift", projectId: "project-2" },
+      readError: legacyError
+    });
+
+    await expect(service.getWorkbench("cv-1", "actor-1")).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(workbench.getDraftFromExactVersion).toHaveBeenCalledTimes(1);
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("preserves the workbench permission failure", async () => {
+    const { prisma, service } = makeService({
         readError: new ForbiddenException("无权查看该合同草稿")
-      }).service.getWorkbench("cv-1", "actor-2")
-    ).rejects.toBeInstanceOf(ForbiddenException);
+      });
+    await expect(service.getWorkbench("cv-1", "actor-2"))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.contractTakeover.findUnique).not.toHaveBeenCalled();
   });
 
   it("exposes an active lease as readonly and allows explicit director takeover", async () => {
@@ -137,6 +289,11 @@ describe("ContractDraftAggregateService", () => {
       holderDisplayName: "当前编辑人",
       canTakeOver: true
     });
+    expect(result.draftOperationAvailableActions).toEqual([
+      "confirm_contract_settlement_mode",
+      "transfer_contract_draft",
+      "take_over_contract_draft_edit_lease"
+    ]);
   });
 
   it("reports a naturally expired lease without silently reacquiring it", async () => {
@@ -195,8 +352,18 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     leaseMissing?: boolean;
     versionRevision?: number;
     versionStatus?: string;
+    versionChangeType?: string;
+    ownerUserId?: string;
+    foundTakeover?: { id: string; projectId: string } | null;
     fieldChanged?: boolean;
     referencesChanged?: boolean;
+    formalEvidence?: Partial<{
+      hasSignedFormalFile: boolean;
+      hasActiveSealTask: boolean;
+      hasArchiveFile: boolean;
+      hasSettlement: boolean;
+      hasPaymentRequest: boolean;
+    }>;
     failParties?: boolean;
     validationError?: boolean;
     failFiles?: boolean;
@@ -236,19 +403,47 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       },
       clauseSnapshot: [],
       templateSnapshot: {},
-      changeType: "initial",
+      changeType: options.versionChangeType ?? "original",
       baseVersionId: null,
       settlementMode: "settlement_required"
     };
     const contract = {
       id: "contract-1",
-      ownerUserId: "owner-1",
+      projectId: "project-1",
+      ownerUserId: options.ownerUserId ?? "owner-1",
       voidedAt: null,
       contractTypeKey: "material_purchase",
       code: null
     };
+    const takeoverRelationState = {
+      present: Boolean(options.foundTakeover)
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes('FROM "ContractFormalFile"')) {
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false,
+            ...options.formalEvidence
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "cv-1",
+            contractId: "contract-1",
+            changeType: version.changeType,
+            hasHistoricalTakeoverRelation: takeoverRelationState.present
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", contractId: "contract-1" }];
+        }
+        return [];
+      }),
       contractVersion: {
         findUnique: jest.fn().mockImplementation(async (query) =>
           query.select ? { id: "cv-1", contractId: "contract-1" } : version
@@ -326,13 +521,16 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const files = {
       assertCanBindContractDraftAttachments: options.failFiles
         ? jest.fn().mockRejectedValue(new ConflictException("文件已绑定其他业务"))
-        : jest.fn().mockResolvedValue(undefined)
+        : jest.fn().mockResolvedValue(undefined),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
     return {
       tx,
+      takeoverRelationState,
       prisma,
       workbench,
+      files,
       audit,
       service: new ContractDraftAggregateService(
         prisma as never,
@@ -344,6 +542,39 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       )
     };
   }
+
+  it("uploads a private file only after the exact draft owner boundary passes", async () => {
+    const { files, service } = makeSaveService();
+    const input = {
+      originalName: "授权书.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 128,
+      buffer: Buffer.from("private-file"),
+      idempotencyKey: "upload-key-1"
+    };
+
+    await expect(
+      service.uploadPrivateFile("cv-1", "owner-1", input)
+    ).resolves.toEqual({ id: "file-1" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      ...input,
+      uploadedByUserId: "owner-1"
+    });
+  });
+
+  it("rejects a non-owner before creating a private file", async () => {
+    const { files, service } = makeSaveService({ ownerUserId: "other-owner" });
+
+    await expect(
+      service.uploadPrivateFile("cv-1", "owner-1", {
+        originalName: "授权书.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 128,
+        buffer: Buffer.from("private-file")
+      })
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
 
   it("computes effective changes from server facts and increments the draft once", async () => {
     const { service, tx, audit } = makeSaveService();
@@ -373,6 +604,102 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     );
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a historical takeover before replaying or writing a generic save", async () => {
+    const { service, tx } = makeSaveService({
+      versionChangeType: "historical_takeover"
+    });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractDraftSaveRequest.findUnique).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("blocks relation drift before replaying an older idempotency receipt", async () => {
+    const { service, tx, takeoverRelationState } = makeSaveService();
+    const input = aggregateInput();
+
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    takeoverRelationState.present = true;
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractDraftSaveRequest.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["signed final", { hasSignedFormalFile: true }],
+    ["active seal", { hasActiveSealTask: true }],
+    ["archive", { hasArchiveFile: true }],
+    ["settlement", { hasSettlement: true }],
+    ["payment", { hasPaymentRequest: true }]
+  ])(
+    "rejects a draft-status aggregate save after %s becomes formal evidence",
+    async (_case, formalEvidence) => {
+      const { service, tx } = makeSaveService({ formalEvidence });
+
+      await expect(
+        service.saveAggregate(
+          "cv-1",
+          "owner-1",
+          leaseToken,
+          aggregateInput() as never
+        )
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: "DRAFT_NOT_EDITABLE"
+        })
+      });
+      expect(tx.contractDraftSaveRequest.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    }
+  );
+
+  it("replays a committed save receipt after the draft later gains formal evidence", async () => {
+    const formalEvidence = { hasArchiveFile: false };
+    const { service, tx } = makeSaveService({ formalEvidence });
+    const input = aggregateInput();
+
+    const first = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      input as never
+    );
+    formalEvidence.hasArchiveFile = true;
+    const replay = await service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      input as never
+    );
+
+    expect(replay).toEqual(first);
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
   });
 
   it("returns the original authoritative receipt for an identical retry", async () => {

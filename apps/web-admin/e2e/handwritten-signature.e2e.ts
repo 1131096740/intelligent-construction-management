@@ -24,6 +24,12 @@ test("本人可在设置页直接手写并提交透明 PNG 签名", async ({ pag
     contentType: "application/json",
     body: "null"
   }));
+  await page.route("**/api/me/signature/canvas-capabilities", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      availableActions: ["upload_canvas_signature", "create_canvas_signature_handoff"]
+    })
+  }));
   await page.route("**/api/me/signature/canvas", async (route) => {
     saved += 1;
     expect(await route.request().headerValue("content-type")).toContain("multipart/form-data");

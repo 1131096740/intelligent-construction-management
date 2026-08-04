@@ -81,4 +81,29 @@ describe("ContractSettlementProcessService", () => {
       ConflictException
     );
   });
+
+  it("ends the process when the linked settlement becomes effective", async () => {
+    const current = context();
+
+    await current.service.completeSettlement(
+      current.tx as never,
+      "process-1",
+      "settlement-1",
+      "user-contract-director"
+    );
+
+    expect(current.process.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "process-1",
+        status: "open",
+        settlementId: "settlement-1"
+      },
+      data: {
+        status: "effective",
+        endedAt: expect.any(Date),
+        endedByUserId: "user-contract-director",
+        endedReason: "结算归档确认生效"
+      }
+    });
+  });
 });

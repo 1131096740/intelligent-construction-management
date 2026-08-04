@@ -39,6 +39,7 @@ import {
 import { CreateContractDraftDto } from "./dto/create-contract.dto";
 import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
 import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import { WithdrawContractApprovalDto } from "./dto/withdraw-contract-approval.dto";
 import { SubmitContractApprovalDto } from "./dto/submit-contract-approval.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
@@ -79,6 +80,15 @@ export class ContractController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     return this.contracts.createDraft(body, user.id);
+  }
+
+  @Get("create-capability")
+  @RequireProjectRole("contract.create")
+  createCapability(@Query("projectId") projectId: string) {
+    return {
+      projectId,
+      availableActions: ["create_contract_draft"]
+    };
   }
 
   @Post(":contractVersionId/change-drafts")
@@ -290,9 +300,10 @@ export class ContractController {
   @Post(":contractVersionId/approval-withdrawal")
   withdrawApproval(
     @Param("contractVersionId") contractVersionId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawContractApprovalDto
   ) {
-    return this.contracts.withdrawApproval(contractVersionId, user.id);
+    return this.contracts.withdrawApproval(contractVersionId, user.id, body);
   }
 
   // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。

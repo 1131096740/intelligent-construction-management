@@ -2,14 +2,18 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Optional,
   Param,
   Post,
   Query,
   Res,
-  StreamableFile
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS,
   DRAFT_LEDGER_VIEWS,
@@ -19,7 +23,10 @@ import {
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
-import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import {
+  RequirePositions,
+  UseAnyProjectPositionScope
+} from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
@@ -31,6 +38,7 @@ import { DownloadSettlementApprovalPdfDto } from "./dto/download-settlement-appr
 import { GenerateSettlementPdfArchiveDto } from "./dto/generate-settlement-pdf-archive.dto";
 import { ReviewSettlementApprovalDto } from "./dto/review-settlement-approval.dto";
 import { UploadSettlementArchiveFileDto } from "./dto/upload-settlement-archive-file.dto";
+import { WithdrawSettlementApprovalDto } from "./dto/withdraw-settlement-approval.dto";
 import { SettlementReadService } from "./settlement-read.service";
 import {
   SETTLEMENT_ATTACHMENT_TEMPLATE_MIME,
@@ -42,6 +50,11 @@ import { SettlementSignedDocumentService } from "./settlement-signed-document.se
 import { RegenerateSettlementSignedDocumentDto } from "./dto/settlement-signed-document-action.dto";
 import { RecordSettlementRecoveryDto, ReverseSettlementRecoveryDto } from "./dto/record-settlement-recovery.dto";
 import { SettlementRecoveryService } from "./settlement-recovery.service";
+import { FileService } from "../file/file.service";
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "../file/uploaded-file";
 
 @Controller("settlements")
 export class SettlementController {
@@ -52,7 +65,8 @@ export class SettlementController {
     private readonly projectVisibility: ProjectVisibilityService,
     private readonly submissions: SettlementSubmissionService,
     @Optional() private readonly signedDocuments?: SettlementSignedDocumentService,
-    @Optional() private readonly recoveries?: SettlementRecoveryService
+    @Optional() private readonly recoveries?: SettlementRecoveryService,
+    @Optional() private readonly files?: FileService
   ) {}
 
   @Post()
@@ -166,6 +180,30 @@ export class SettlementController {
     return this.requireRecoveries().record(settlementId, user.id, body);
   }
 
+  @Post(":settlementId/recovery-file-uploads")
+  @RequirePositions("finance_staff")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  async uploadRecoveryFile(
+    @Param("settlementId") settlementId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    await this.requireSettlementUploadAction(
+      settlementId,
+      user,
+      ["record_recovery", "reverse_recovery"],
+      "当前结算状态或操作权限不允许上传回收凭证"
+    );
+    return this.uploadPrivateFile(file, user, idempotencyKey);
+  }
+
   @Post(":settlementId/recovery-entries/:entryId/reversal")
   @RequirePositions("finance_staff")
   reverseRecovery(
@@ -192,6 +230,22 @@ export class SettlementController {
     );
   }
 
+  @Get(":settlementId/capability")
+  async capability(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const detail = await this.settlementRead.getDetail(
+      settlementId,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+    return {
+      settlementId: detail.settlementId,
+      availableActions: detail.availableActionKeys
+    };
+  }
+
   @Post(":settlementId/approval")
   @RequireProjectRole("settlement.approve")
   reviewApproval(
@@ -203,8 +257,14 @@ export class SettlementController {
   }
 
   @Post(":settlementId/approval-withdrawal")
-  withdrawApproval(@Param("settlementId") settlementId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.settlements.withdrawApproval(settlementId, user.id);
+  @RequirePositions(...LEDGER_READ_POSITION_KEYS)
+  @UseAnyProjectPositionScope()
+  withdrawApproval(
+    @Param("settlementId") settlementId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawSettlementApprovalDto
+  ) {
+    return this.settlements.withdrawApproval(settlementId, user.id, body);
   }
 
   // 超时催办：由申请人发起，督促当前节点审批人；是否超时/重复节流在 service 内判定。
@@ -241,6 +301,30 @@ export class SettlementController {
     @Body() body: UploadSettlementArchiveFileDto
   ) {
     return this.settlements.uploadArchiveFile(settlementId, user.id, body);
+  }
+
+  @Post(":settlementId/archive-file-uploads")
+  @RequireProjectRole("settlement.archive.upload")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  async uploadArchivePrivateFile(
+    @Param("settlementId") settlementId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    await this.requireSettlementUploadAction(
+      settlementId,
+      user,
+      ["upload_archive"],
+      "当前结算状态或操作权限不允许上传归档资料"
+    );
+    return this.uploadPrivateFile(file, user, idempotencyKey);
   }
 
   @Post(":settlementId/archive-confirmation")
@@ -343,5 +427,41 @@ export class SettlementController {
   private asciiFallback(fileName: string): string {
     const ascii = fileName.replace(/[^\x20-\x7E]+/g, "_").replace(/"/g, "'");
     return ascii.trim() || "settlement-draft.xlsx";
+  }
+
+  private uploadPrivateFile(
+    file: MemoryUploadedFile | undefined,
+    user: AuthenticatedUser,
+    idempotencyKey?: string
+  ) {
+    if (!file) throw new BadRequestException("请选择要上传的结算资料文件");
+    if (!this.files) {
+      throw new BadRequestException("结算文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: user.id,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
+  }
+
+  private async requireSettlementUploadAction(
+    settlementId: string,
+    user: AuthenticatedUser,
+    allowedActions: string[],
+    message: string
+  ) {
+    const detail = await this.settlementRead.getDetail(
+      settlementId,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      user.id
+    );
+    const operationAllowed = allowedActions.some((action) =>
+      detail.availableActionKeys.includes(action)
+    );
+    if (!operationAllowed) throw new ForbiddenException(message);
   }
 }

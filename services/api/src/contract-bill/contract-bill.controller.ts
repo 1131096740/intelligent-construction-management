@@ -1,13 +1,14 @@
-import { Body, Controller, Delete, Param, Patch, Post, Put } from "@nestjs/common";
+import { Body, Controller, Delete, Headers, Param, Patch, Post, Put } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import { ContractBillService } from "./contract-bill.service";
+import { CancelBillRowRemainderDto } from "./dto/contract-bill.dto";
 import type {
   ReorderBillRowsDto,
   ReplaceBillRowsDto,
-  SaveBillRowDto,
-  CancelBillRowRemainderDto
+  SaveBillRowDto
 } from "./dto/contract-bill.dto";
 
 @ContractCutoverSurface()
@@ -50,13 +51,15 @@ export class ContractBillController {
   }
 
   @Post(":billId/rows/:rowKey/remainder-cancellation")
+  @RequireProjectRole("contract.create")
   cancelRemainder(
     @Param("billId") billId: string,
     @Param("rowKey") rowKey: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Headers("x-contract-draft-lease") leaseToken: string,
     @Body() body: CancelBillRowRemainderDto
   ) {
-    return this.bills.cancelRemainder(billId, rowKey, user.id, body);
+    return this.bills.cancelRemainder(billId, rowKey, user.id, leaseToken, body);
   }
 
   @Post(":billId/rows/reorder")

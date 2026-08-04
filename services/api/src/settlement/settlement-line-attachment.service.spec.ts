@@ -3,10 +3,22 @@ import { SettlementLineAttachmentService } from "./settlement-line-attachment.se
 describe("SettlementLineAttachmentService", () => {
   function context() {
     const audit = { record: jest.fn() };
+    const draft = {
+      id: "draft-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      code: "JS-DRAFT-001",
+      processId: null,
+      ownerUserId: "owner-1",
+      status: "draft",
+      revision: 3,
+      submittedSettlementId: null,
+      submittedAt: null,
+      abandonReason: null
+    };
     const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([{
-        id: "draft-1", projectId: "project-1", ownerUserId: "owner-1", status: "draft", revision: 3
-      }]),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "draft-1" }]),
       settlementDraftLine: {
         findFirst: jest.fn().mockResolvedValue({ id: "draft-line-1", lineKey: "visa:visa-1" }),
         findMany: jest.fn()
@@ -19,8 +31,18 @@ describe("SettlementLineAttachmentService", () => {
         findMany: jest.fn(),
         update: jest.fn()
       },
-      settlementDraft: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUnique: jest.fn() },
-      settlementSignedDocument: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      settlementDraft: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue(draft)
+      },
+      contractSettlementProcess: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
       settlementLine: { findMany: jest.fn() }
     };
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)), settlementDraft: tx.settlementDraft };
@@ -56,5 +78,37 @@ describe("SettlementLineAttachmentService", () => {
       data: [{ settlementLineId: "settlement-line-1", fileId: "file-1", purpose: "现场签证单", uploadedByUserId: "owner-1" }]
     });
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "settlement.line_attachment.copy_to_settlement" }));
+  });
+
+  it("fails closed before attaching to a marker-drift formal draft", async () => {
+    const { tx, service } = context();
+    tx.contractSettlementProcess.findMany.mockResolvedValueOnce([{
+      id: "process-1",
+      settlementDraftId: "draft-1",
+      settlementId: "settlement-1"
+    }]);
+    tx.settlement.findMany.mockResolvedValueOnce([{
+      id: "settlement-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      code: "JS-DRAFT-001",
+      processId: "process-1"
+    }]);
+
+    await expect(service.attachToDraftLine(
+      "project-1",
+      "draft-1",
+      "visa:visa-1",
+      "owner-1",
+      {
+        fileId: "file-1",
+        purpose: "现场签证单",
+        expectedRevision: 3
+      }
+    )).rejects.toThrow("已形成正式结算");
+
+    expect(tx.settlementLineAttachment.create).not.toHaveBeenCalled();
+    expect(tx.settlementDraft.updateMany).not.toHaveBeenCalled();
   });
 });

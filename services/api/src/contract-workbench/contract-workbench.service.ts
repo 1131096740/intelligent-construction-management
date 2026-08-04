@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException
@@ -24,6 +25,10 @@ import {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { assertContractChangeContentAllowed } from "../contract/contract-change-policy";
+import {
+  loadContractDraftLifecycle,
+  lockContractDraftMutationBoundary
+} from "../contract/contract-draft-lifecycle";
 import { ContractBillLineageService } from "../contract-bill/contract-bill-lineage.service";
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { PrismaService } from "../database/prisma.service";
@@ -136,11 +141,43 @@ export class ContractWorkbenchService {
     private readonly lineage: ContractBillLineageService = new ContractBillLineageService()
   ) {}
 
-  checkReadiness(contractVersionId: string, actorUserId: string) {
+  async checkReadiness(contractVersionId: string, actorUserId: string) {
     if (!this.readiness) {
       throw new BadRequestException("合同资料检查服务暂不可用，请稍后重试或联系管理员");
     }
+    await this.assertNotHistoricalTakeoverVersionId(
+      this.prisma,
+      contractVersionId,
+      actorUserId
+    );
     return this.readiness.checkAndStore(contractVersionId, actorUserId);
+  }
+
+  async getTransferCapability(contractId: string, actorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertGlobalContractDirector(tx, actorUserId);
+      const contract = await tx.contract.findUnique({
+        where: { id: contractId },
+        select: { id: true, voidedAt: true }
+      });
+      if (!contract) {
+        throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
+      }
+      const version = await tx.contractVersion.findFirst({
+        where: {
+          contractId,
+          status: { in: [...EDITABLE_STATUSES] }
+        },
+        select: { id: true },
+        orderBy: { versionNo: "desc" }
+      });
+      return {
+        contractId,
+        contractVersionId: version?.id ?? null,
+        availableActions:
+          version && !contract.voidedAt ? ["transfer_contract_draft"] : []
+      };
+    });
   }
 
   async listDrafts(actorUserId: string, scope: "my" | "voided") {
@@ -150,11 +187,28 @@ export class ContractWorkbenchService {
     const isDirector = await this.hasGlobalContractDirector(this.prisma, actorUserId);
     const versions = await this.prisma.contractVersion.findMany({
       where: { status: { in: [...EDITABLE_STATUSES] } },
-      select: { contractId: true }
+      select: { id: true, contractId: true, changeType: true }
     });
+    const versionIds = versions.map((version) => version.id);
+    const lookupClient = this.historicalTakeoverLookupClient(this.prisma);
+    const takeoverRows = lookupClient.contractTakeover && versionIds.length
+      ? await lookupClient.contractTakeover.findMany({
+          where: { contractVersionId: { in: versionIds } },
+          select: { contractVersionId: true }
+        })
+      : [];
+    const takeoverVersionIds = new Set(
+      takeoverRows.map((takeover) => takeover.contractVersionId)
+    );
+    const ordinaryVersions = versions.filter((version) =>
+      version.changeType !== "historical_takeover" &&
+      !takeoverVersionIds.has(version.id)
+    );
     return this.toReadModel(await this.prisma.contract.findMany({
       where: {
-        id: { in: [...new Set(versions.map((version) => version.contractId))] },
+        id: {
+          in: [...new Set(ordinaryVersions.map((version) => version.contractId))]
+        },
         voidedAt: scope === "voided" ? { not: null } : null,
         ...(isDirector ? {} : { ownerUserId: actorUserId })
       },
@@ -167,9 +221,6 @@ export class ContractWorkbenchService {
   }
 
   async getDraftFromExactVersion(version: ContractVersion, actorUserId: string) {
-    if (!EDITABLE_STATUSES.has(version.status)) {
-      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
-    }
     return this.loadDraft(version.contractId, actorUserId, version);
   }
 
@@ -190,6 +241,19 @@ export class ContractWorkbenchService {
       orderBy: { versionNo: "desc" }
     });
     if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
+    await this.assertNotHistoricalTakeoverVersion(
+      this.prisma,
+      version,
+      contract
+    );
+    if (!EDITABLE_STATUSES.has(version.status)) {
+      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
+    }
+    const lifecycle = await loadContractDraftLifecycle(this.prisma, version);
+    const lifecycleAction = lifecycle.expectedAction;
+    if (!lifecycleAction) {
+      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
+    }
 
     const [
       bills,
@@ -271,6 +335,11 @@ export class ContractWorkbenchService {
         })
       : [];
     assertContractBillDerivedUnitPrices(rows);
+    const remainderCancellationFacts = await this.lineage.remainderCancellationFacts(
+      this.prisma,
+      { id: version.id, baseVersionId: version.baseVersionId },
+      rows
+    );
     const baseVersion = version.baseVersionId
       ? await this.prisma.contractVersion.findUnique({
           where: { id: version.baseVersionId },
@@ -278,33 +347,66 @@ export class ContractWorkbenchService {
         })
       : null;
     const isChangeVersion = version.changeType === "change" || version.changeType === "supplement";
-    const approvalLifecycle = isChangeVersion || version.status === "approval_rejected" ||
-      formalFiles.length > 0 || authorizations.length > 0;
-    const lifecycleBlockers = [
-      ...(isChangeVersion ? ["合同变更或派生版本"] : []),
-      ...(version.status === "approval_rejected" ? ["合同曾进入审批"] : []),
-      ...(formalFiles.length ? ["存在正式合同文件"] : []),
-      ...(authorizations.length ? ["存在授权委托书"] : [])
-    ];
     const isOwner = contract.ownerUserId === actorUserId;
-    const lifecycleDisabledReasons = isOwner ? [] : ["只有当前合同经办人可以结束该草稿"];
+    const isDirectorProxyCleanup =
+      !isOwner &&
+      lifecycleAction === "delete_pristine_draft" &&
+      await this.hasGlobalContractDirector(this.prisma, actorUserId);
+    const canExecuteLifecycleAction =
+      Boolean(lifecycleAction) && (isOwner || isDirectorProxyCleanup);
+    const lifecycleDisabledReasons = lifecycleAction && !canExecuteLifecycleAction
+      ? ["只有当前合同经办人可以结束该草稿"]
+      : [];
     const changePolicy = isChangeVersion
       ? this.parseTemplateSnapshot(version.templateSnapshot).supplementChangePolicy ?? null
       : null;
+    const remainderFacts = [...remainderCancellationFacts.values()].filter(
+      (facts) => facts.hasHistoricalOccupancy
+    );
+    const hasCompleteCancellableRemainder = remainderFacts.some(
+      (facts) =>
+        facts.canCancel &&
+        facts.historicalQuantity !== null &&
+        Boolean(facts.expectedOccupancyToken?.trim())
+    );
+    const remainderActionEnabled =
+      isOwner &&
+      EDITABLE_STATUSES.has(version.status) &&
+      hasCompleteCancellableRemainder;
+    const remainderAction = remainderFacts.length
+      ? {
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: remainderActionEnabled,
+          disabledReason: remainderActionEnabled
+            ? null
+            : !isOwner
+              ? "只有当前合同经办人可以取消未实施余量"
+              : !EDITABLE_STATUSES.has(version.status)
+                ? "合同版本当前不可编辑"
+                : "当前没有事实完整且可取消的未实施余量",
+          requiresComment: true,
+          requiresPassword: false
+        }
+      : null;
     return this.toReadModel({
-      lifecycleKind: approvalLifecycle ? "approval_draft" : "pristine_draft",
-      availableLifecycleActions: [
-        approvalLifecycle ? "abandon_application" : "delete_pristine_draft"
+      lifecycleKind: lifecycle.lifecycleKind,
+      availableLifecycleActions: lifecycleAction ? [lifecycleAction] : [],
+      availableActions: [
+        ...(lifecycleAction ? [{
+          key: lifecycleAction,
+          label: lifecycleAction === "abandon_application" ? "放弃合同申请" : "删除草稿",
+          kind: "danger",
+          enabled: canExecuteLifecycleAction,
+          disabledReason: lifecycleDisabledReasons.length ? lifecycleDisabledReasons.join("；") : null,
+          requiresComment:
+            lifecycleAction === "abandon_application" || isDirectorProxyCleanup,
+          requiresPassword: isDirectorProxyCleanup
+        }] : []),
+        ...(remainderAction ? [remainderAction] : [])
       ],
-      availableActions: [{
-        key: approvalLifecycle ? "abandon_application" : "delete_pristine_draft",
-        label: approvalLifecycle ? "放弃合同申请" : "删除草稿",
-        kind: "danger",
-        enabled: lifecycleDisabledReasons.length === 0,
-        disabledReason: lifecycleDisabledReasons.length ? lifecycleDisabledReasons.join("；") : null,
-        requiresComment: approvalLifecycle
-      }],
-      lifecycleBlockers: [...lifecycleBlockers, ...lifecycleDisabledReasons],
+      lifecycleBlockers: [...lifecycle.blockers, ...lifecycleDisabledReasons],
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       expectedDraftRevision: version.draftRevision,
       contract,
@@ -355,11 +457,56 @@ export class ContractWorkbenchService {
         ...bill,
         rows: rows
           .filter((row) => row.contractBillId === bill.id)
-          .map((row) => ({
-            ...row,
-            unitPrice: this.formatUnitPrice(row.unitPrice),
-            taxRatePercent: row.taxRate?.toString() ?? null
-          }))
+          .map((row) => {
+            const facts = remainderCancellationFacts.get(row.id);
+            if (!facts?.hasHistoricalOccupancy) {
+              return {
+                ...row,
+                unitPrice: this.formatUnitPrice(row.unitPrice),
+                taxRatePercent: row.taxRate?.toString() ?? null
+              };
+            }
+            const factsComplete =
+              facts.historicalQuantity !== null &&
+              Boolean(facts.expectedOccupancyToken?.trim());
+            const enabled =
+              isOwner &&
+              EDITABLE_STATUSES.has(version.status) &&
+              facts.canCancel &&
+              factsComplete;
+            const disabledReason = enabled
+              ? null
+              : !isOwner
+                ? "只有当前合同经办人可以取消未实施余量"
+                : !EDITABLE_STATUSES.has(version.status)
+                  ? "合同版本当前不可编辑"
+                  : facts.disabledReason ?? (
+                    factsComplete
+                      ? "该清单行当前没有可取消的未实施余量"
+                      : "历史结算占用事实不完整，请刷新后重试"
+                  );
+            return {
+              ...row,
+              unitPrice: this.formatUnitPrice(row.unitPrice),
+              taxRatePercent: row.taxRate?.toString() ?? null,
+              availableActions: [{
+                key: "contract-bill.remainder-cancellation",
+                label: "取消未实施余量",
+                kind: "danger",
+                enabled,
+                disabledReason,
+                requiresComment: true,
+                requiresPassword: false
+              }],
+              remainderCancellation: {
+                expectedBillRevision: bill.revision,
+                expectedDraftRevision: version.draftRevision,
+                expectedOccupancyToken: facts.expectedOccupancyToken,
+                historicalQuantity: facts.historicalQuantity,
+                historicalAmountCents: facts.historicalAmountCents
+              }
+            };
+          })
       })),
       checkpoints,
       parties,
@@ -955,18 +1102,11 @@ export class ContractWorkbenchService {
     }
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalContractDirector(tx, actorUserId);
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "ContractVersion"
-        WHERE "id" = ${contractVersionId}
-        FOR UPDATE
-      `);
-      const version = await tx.contractVersion.findUnique({
-        where: { id: contractVersionId }
-      });
-      if (!version) throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
-      if (!EDITABLE_STATUSES.has(version.status)) {
-        throw new BadRequestException("合同草稿当前不可确认结算方式，请刷新后查看最新状态");
-      }
+      const version = await this.lockAndReloadEditableVersion(
+        tx,
+        contractVersionId,
+        "合同草稿当前不可确认结算方式，请刷新后查看最新状态"
+      );
       this.assertRevision(version.draftRevision, input.expectedRevision);
       const updated = await tx.contractVersion.updateMany({
         where: {
@@ -1113,6 +1253,10 @@ export class ContractWorkbenchService {
           "保存点中的我方公司主体版本已变更，不能恢复，请重新选择并保存"
         );
       }
+      await this.lineage.assertVersionRowsReplaceableByCheckpoint(tx, {
+        id: version.id,
+        baseVersionId: version.baseVersionId
+      });
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: contractVersionId,
@@ -1186,8 +1330,8 @@ export class ContractWorkbenchService {
   async voidDraft(contractId: string, actorUserId: string, rawInput: unknown) {
     const { reason } = this.parseVoidInput(rawInput);
     return this.runSerializableWithRetry(async (tx) => {
+      await this.lockLatestEditableVersionForContract(tx, contractId);
       await this.loadOwnedContract(tx, contractId, actorUserId);
-      await this.assertEditableVersionGate(tx, contractId);
       const updated = await tx.contract.updateMany({
         where: { id: contractId, ownerUserId: actorUserId, voidedAt: null },
         data: { voidedAt: new Date(), voidedReason: reason }
@@ -1206,8 +1350,8 @@ export class ContractWorkbenchService {
 
   async restoreDraft(contractId: string, actorUserId: string) {
     return this.runSerializableWithRetry(async (tx) => {
+      await this.lockLatestEditableVersionForContract(tx, contractId);
       await this.loadOwnedContract(tx, contractId, actorUserId);
-      await this.assertEditableVersionGate(tx, contractId);
       const updated = await tx.contract.updateMany({
         where: { id: contractId, ownerUserId: actorUserId, voidedAt: { not: null } },
         data: { voidedAt: null, voidedReason: null }
@@ -1231,9 +1375,17 @@ export class ContractWorkbenchService {
     const input = this.parseTransferInput(rawInput);
     return this.runSerializableWithRetry(async (tx) => {
       await this.assertGlobalContractDirector(tx, actorUserId);
+      const version = await this.lockLatestEditableVersionForContract(tx, contractId);
+      if (
+        input.expectedContractVersionId &&
+        version.id !== input.expectedContractVersionId
+      ) {
+        throw new ConflictException(
+          "合同草稿版本已变化，请刷新合同工作台后重试转交"
+        );
+      }
       const contract = await tx.contract.findUnique({ where: { id: contractId } });
       if (!contract) throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
-      await this.assertEditableVersionGate(tx, contractId);
       const targetUser = await tx.user.findUnique({ where: { id: input.toUserId } });
       if (!targetUser?.isActive) {
         throw new BadRequestException("请选择有效的转交接收人");
@@ -1293,7 +1445,7 @@ export class ContractWorkbenchService {
   ) {
     const input = this.parseApplyTypeChangeInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
-      const { version, contract } = await this.loadOwnedEditableVersion(
+      const { version, contract } = await this.lockAndReloadOwnedEditableVersion(
         tx,
         contractVersionId,
         actorUserId
@@ -1510,6 +1662,11 @@ export class ContractWorkbenchService {
     if (contract.ownerUserId !== actorUserId) {
       throw new ForbiddenException("只有合同经办人可以编辑该草稿");
     }
+    await this.assertNotHistoricalTakeoverVersion(
+      tx,
+      version,
+      contract
+    );
     if (!EDITABLE_STATUSES.has(version.status)) {
       throw new BadRequestException("合同草稿当前不可编辑，请刷新后查看最新状态");
     }
@@ -1522,91 +1679,223 @@ export class ContractWorkbenchService {
     contractVersionId: string,
     actorUserId: string
   ) {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id"
-      FROM "ContractVersion"
-      WHERE "id" = ${contractVersionId}
-      FOR UPDATE
-    `);
-    return this.loadOwnedEditableVersion(tx, contractVersionId, actorUserId);
+    const version = await this.lockAndReloadEditableVersion(
+      tx,
+      contractVersionId,
+      "合同草稿当前不可编辑，请刷新后查看最新状态"
+    );
+    const contract = await tx.contract.findUnique({
+      where: { id: version.contractId }
+    });
+    if (!contract) {
+      throw new NotFoundException("未找到合同草稿，请刷新合同工作台后重试");
+    }
+    if (contract.ownerUserId !== actorUserId) {
+      throw new ForbiddenException("只有合同经办人可以编辑该草稿");
+    }
+    if (contract.voidedAt) {
+      throw new BadRequestException("合同草稿已作废，不能继续编辑");
+    }
+    return { version, contract };
   }
 
-  private loadGeneratedDocumentsForDraft(version: {
+  private async lockAndReloadEditableVersion(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    invalidStatusMessage: string
+  ) {
+    const mutationBoundary = await lockContractDraftMutationBoundary(
+      tx,
+      contractVersionId
+    );
+    if (!mutationBoundary) {
+      throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
+    }
+    const version = await tx.contractVersion.findUnique({
+      where: { id: contractVersionId }
+    });
+    if (!version) {
+      throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
+    }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException(
+        "合同已存在正式业务事实，不能继续编辑草稿"
+      );
+    }
+    if (!EDITABLE_STATUSES.has(version.status)) {
+      throw new BadRequestException(invalidStatusMessage);
+    }
+    return version;
+  }
+
+  private historicalTakeoverLookupClient(client: unknown) {
+    return client as {
+      contractTakeover?: {
+        findUnique(args: {
+          where: { contractVersionId: string };
+          select: { id: true; contractId: true; projectId: true };
+        }): Promise<{ id: string; contractId: string; projectId: string } | null>;
+        findMany(args: {
+          where: { contractVersionId: { in: string[] } };
+          select: { contractVersionId: true };
+        }): Promise<Array<{ contractVersionId: string }>>;
+      };
+      contractVersion?: {
+        findUnique(args: {
+          where: { id: string };
+          select: { id: true; contractId: true; changeType: true };
+        }): Promise<{
+          id: string;
+          contractId: string;
+          changeType: string | null;
+        } | null>;
+      };
+      contract?: {
+        findUnique(args: {
+          where: { id: string };
+          select: { id: true; ownerUserId: true; projectId: true };
+        }): Promise<{
+          id: string;
+          ownerUserId: string | null;
+          projectId: string;
+        } | null>;
+      };
+    };
+  }
+
+  private async assertNotHistoricalTakeoverVersionId(
+    client: unknown,
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    const lookupClient = this.historicalTakeoverLookupClient(client);
+    if (!lookupClient.contractVersion) return;
+    const version = await lookupClient.contractVersion.findUnique({
+      where: { id: contractVersionId },
+      select: { id: true, contractId: true, changeType: true }
+    });
+    if (!version) return;
+    if (!lookupClient.contract) return;
+    const contract = await lookupClient.contract.findUnique({
+      where: { id: version.contractId },
+      select: { id: true, ownerUserId: true, projectId: true }
+    });
+    if (!contract) return;
+    await this.assertCanView(
+      client as PrismaService,
+      contract.ownerUserId,
+      actorUserId
+    );
+    await this.assertNotHistoricalTakeoverVersion(client, version, contract);
+  }
+
+  private async assertNotHistoricalTakeoverVersion(
+    client: unknown,
+    version: { id: string; contractId: string; changeType: string | null },
+    contract: { id: string; projectId?: string | null }
+  ) {
+    const lookupClient = this.historicalTakeoverLookupClient(client);
+    const takeover = lookupClient.contractTakeover
+      ? await lookupClient.contractTakeover.findUnique({
+          where: { contractVersionId: version.id },
+          select: { id: true, contractId: true, projectId: true }
+        })
+      : null;
+    if (version.changeType !== "historical_takeover" && !takeover) return;
+
+    const relationCoordinatesMatch = Boolean(
+      takeover &&
+      takeover.contractId === version.contractId &&
+      takeover.contractId === contract.id &&
+      takeover.projectId === contract.projectId
+    );
+    const relationCoordinatesDrifted = Boolean(takeover) && !relationCoordinatesMatch;
+    throw new BadRequestException({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: relationCoordinatesDrifted
+        ? null
+        : contract.projectId ?? null,
+      takeoverId: relationCoordinatesMatch ? takeover?.id ?? null : null
+    });
+  }
+
+  private async lockLatestEditableVersionForContract(
+    tx: Prisma.TransactionClient,
+    contractId: string
+  ) {
+    const candidate = await tx.contractVersion.findFirst({
+      where: {
+        contractId,
+        status: { in: [...EDITABLE_STATUSES] }
+      },
+      orderBy: { versionNo: "desc" },
+      select: { id: true }
+    });
+    if (!candidate) {
+      throw new BadRequestException(
+        "合同没有可编辑的草稿版本，请刷新后重试"
+      );
+    }
+    const version = await this.lockAndReloadEditableVersion(
+      tx,
+      candidate.id,
+      "合同没有可编辑的草稿版本，请刷新后重试"
+    );
+    if (version.contractId !== contractId) {
+      throw new NotFoundException(
+        "合同草稿版本与合同不匹配，请刷新合同工作台后重试"
+      );
+    }
+    return version;
+  }
+
+  private async loadGeneratedDocumentsForDraft(version: {
     id: string;
     status: string;
     changeType: string | null;
     draftData: Prisma.JsonValue;
   }) {
-    const findDocuments = (client: Prisma.TransactionClient | PrismaService) =>
-      client.contractGeneratedDocument.findMany({
-        where: { contractVersionId: version.id },
-        orderBy: { createdAt: "desc" as const },
-        select: {
-          id: true,
-          purpose: true,
-          status: true,
-          sourceRevision: true,
-          docxFileId: true,
-          pdfFileId: true,
-          createdAt: true,
-          completedAt: true
-        }
-      });
+    const documents = await this.prisma.contractGeneratedDocument.findMany({
+      where: { contractVersionId: version.id },
+      orderBy: { createdAt: "desc" as const },
+      select: {
+        id: true,
+        purpose: true,
+        status: true,
+        sourceRevision: true,
+        docxFileId: true,
+        pdfFileId: true,
+        createdAt: true,
+        completedAt: true
+      }
+    });
     const selection = this.companySelectionFromDraft(version.draftData);
     if (
       !selection ||
       version.changeType === "change" ||
       version.changeType === "supplement"
     ) {
-      return findDocuments(this.prisma);
+      return documents;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id"
-        FROM "ContractVersion"
-        WHERE "id" = ${version.id}
-        FOR UPDATE
-      `);
-      const lockedVersion = await tx.contractVersion.findUnique({
-        where: { id: version.id }
-      });
-      if (!lockedVersion || !EDITABLE_STATUSES.has(lockedVersion.status)) {
-        throw new BadRequestException("合同草稿状态已变化，请刷新后重试");
-      }
-      const lockedSelection = this.companySelectionFromDraft(lockedVersion.draftData);
-      if (
-        lockedVersion.changeType === "change" ||
-        lockedVersion.changeType === "supplement" ||
-        !lockedSelection
-      ) {
-        return findDocuments(tx);
-      }
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id"
-        FROM "CompanyEntity"
-        WHERE "id" = ${lockedSelection.id}
-        FOR UPDATE
-      `);
-      const entity = await tx.companyEntity.findUnique({
-        where: { id: lockedSelection.id }
-      });
-      if (
-        !entity ||
-        !entity.isActive ||
-        entity.dataStatus !== "complete" ||
-        entity.currentVersionNo !== lockedSelection.versionNo
-      ) {
-        await tx.contractGeneratedDocument.updateMany({
-          where: {
-            contractVersionId: lockedVersion.id,
-            status: { in: ["queued", "processing", "success"] }
-          },
-          data: { status: "stale" }
-        });
-      }
-      return findDocuments(tx);
+    const entity = await this.prisma.companyEntity.findUnique({
+      where: { id: selection.id }
     });
+    if (
+      entity &&
+      entity.isActive &&
+      entity.dataStatus === "complete" &&
+      entity.currentVersionNo === selection.versionNo
+    ) {
+      return documents;
+    }
+    return documents.map((document) =>
+      ["queued", "processing", "success"].includes(document.status)
+        ? { ...document, status: "stale" }
+        : document
+    );
   }
 
   private async loadOwnedContract(
@@ -1620,19 +1909,6 @@ export class ContractWorkbenchService {
       throw new ForbiddenException("只有合同经办人可以编辑该草稿");
     }
     return contract;
-  }
-
-  private async assertEditableVersionGate(
-    tx: Prisma.TransactionClient,
-    contractId: string
-  ) {
-    const editableVersions = await tx.contractVersion.updateMany({
-      where: { contractId, status: { in: [...EDITABLE_STATUSES] } },
-      data: { draftRevision: { increment: 0 } }
-    });
-    if (editableVersions.count === 0) {
-      throw new BadRequestException("合同没有可编辑的草稿版本，请刷新后重试");
-    }
   }
 
   private async assertTargetInContractProject(
@@ -2072,7 +2348,19 @@ export class ContractWorkbenchService {
     if (typeof input.toUserId !== "string" || !input.toUserId.trim()) {
       throw new BadRequestException("请选择合同草稿转交接收人");
     }
-    return { toUserId: input.toUserId.trim() };
+    if (
+      input.expectedContractVersionId !== undefined &&
+      (typeof input.expectedContractVersionId !== "string" ||
+        !input.expectedContractVersionId.trim())
+    ) {
+      throw new BadRequestException("合同草稿版本编号不正确，请刷新后重试");
+    }
+    return {
+      toUserId: input.toUserId.trim(),
+      ...(typeof input.expectedContractVersionId === "string"
+        ? { expectedContractVersionId: input.expectedContractVersionId.trim() }
+        : {})
+    };
   }
 
   private parseClause(value: unknown, index: number): ContractClauseDefinition {

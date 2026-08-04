@@ -1,7 +1,24 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Optional,
+  Param,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { FileService } from "../file/file.service";
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "../file/uploaded-file";
 import {
   SaveSettlementDraftDto,
   SubmitSettlementDraftDto
@@ -20,6 +37,20 @@ import {
 } from "./dto/settlement-line-attachment.dto";
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
 
+const SETTLEMENT_PROJECT_ACTIONS = [
+  "save_draft",
+  "copy_abandoned_draft",
+  "submit_draft",
+  "preview_lines",
+  "preview_import",
+  "apply_import",
+  "generate_frozen_document",
+  "link_counterparty_signed_document",
+  "attach_line_file",
+  "invalidate_line_attachment",
+  "upload_settlement_file"
+] as const;
+
 @Controller("projects/:projectId/settlement-drafts")
 export class SettlementDraftController {
   constructor(
@@ -27,8 +58,46 @@ export class SettlementDraftController {
     private readonly submissions: SettlementSubmissionService,
     private readonly counterpartyDocuments: SettlementCounterpartyDocumentService,
     private readonly frozenDocuments: SettlementFrozenDocumentService,
-    private readonly lineAttachments: SettlementLineAttachmentService
+    private readonly lineAttachments: SettlementLineAttachmentService,
+    @Optional() private readonly files?: FileService
   ) {}
+
+  @Get("capability")
+  @RequireProjectRole("settlement.create")
+  capability(@Param("projectId") projectId: string) {
+    return {
+      projectId,
+      availableActions: [...SETTLEMENT_PROJECT_ACTIONS]
+    };
+  }
+
+  @Post("files")
+  @RequireProjectRole("settlement.create")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  uploadPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    if (!file) throw new BadRequestException("请选择要上传的结算资料文件");
+    if (!this.files) {
+      throw new BadRequestException("结算文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: user.id,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
+  }
 
   @Post()
   @RequireProjectRole("settlement.create")

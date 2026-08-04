@@ -6,11 +6,16 @@ import {
   confirmProjectAffiliatePaymentFact,
   confirmProjectAffiliateSettlementFact,
   fetchProjectAffiliateBusinessFacts,
+  fetchProjectAffiliateFactCapability,
+  fetchProjectAffiliateRecordCapability,
   recordProjectAffiliateContractFact,
   recordProjectAffiliatePaymentFact,
   recordProjectAffiliateSettlementFact,
   supplementProjectAffiliateBusinessEvidence,
-  uploadPrivateFile,
+  uploadProjectAffiliateBusinessPrivateFile,
+  uploadProjectAffiliateContractPrivateFile,
+  uploadProjectAffiliatePaymentPrivateFile,
+  uploadProjectAffiliateSettlementPrivateFile,
   type ProjectAffiliateBusinessFactType,
   type ProjectAffiliateBusinessFactsReadModel,
   type ProjectAffiliateContractFactReadModel,
@@ -274,10 +279,20 @@ async function submitRecord() {
   recordBusy.value = true;
   recordError.value = "";
   try {
-    const evidenceFileId = await uploadSelectedEvidence(evidenceFiles.value);
+    const evidenceFile = selectedEvidenceFile(evidenceFiles.value);
     if (recordType.value === "contract") {
       const form = contractForm.value;
-      await recordProjectAffiliateContractFact(props.projectId, {
+      const evidenceFileId = evidenceFile
+        ? (
+            await uploadProjectAffiliateContractEvidenceWithCapability(
+              props.projectId,
+              recordMode.value,
+              form.adjustsFactId || undefined,
+              evidenceFile
+            )
+          ).id
+        : undefined;
+      await recordProjectAffiliateContractFactWithCapability(props.projectId, {
         contractType: form.contractType,
         externalContractReference: required(form.externalContractReference, "外部合同编号"),
         counterpartyName: required(form.counterpartyName, "合同相对方"),
@@ -287,7 +302,7 @@ async function submitRecord() {
           ? { amountCents: positiveCents(form.amountYuan, "合同金额") }
           : {}),
         basisType: form.basisType,
-        ...(evidenceFileId ? { evidenceFileId } : {}),
+        evidenceFileId,
         advanceAllowed: form.advanceAllowed,
         ...(form.advanceAllowed
           ? {
@@ -308,14 +323,24 @@ async function submitRecord() {
       });
     } else if (recordType.value === "settlement") {
       const form = settlementForm.value;
-      await recordProjectAffiliateSettlementFact(props.projectId, {
+      const evidenceFileId = evidenceFile
+        ? (
+            await uploadProjectAffiliateSettlementEvidenceWithCapability(
+              props.projectId,
+              recordMode.value,
+              form.adjustsFactId || undefined,
+              evidenceFile
+            )
+          ).id
+        : undefined;
+      await recordProjectAffiliateSettlementFactWithCapability(props.projectId, {
         contractLedgerId: required(form.contractLedgerId, "关联挂靠合同"),
         counterpartyName: required(form.counterpartyName, "结算相对方"),
         settledAt: required(form.settledAt, "外部结算日期"),
         periodLabel: required(form.periodLabel, "结算期间"),
         amountCents: positiveCents(form.amountYuan, "结算金额"),
         basisType: form.basisType,
-        ...(evidenceFileId ? { evidenceFileId } : {}),
+        evidenceFileId,
         idempotencyKey: crypto.randomUUID(),
         entryKind: recordMode.value,
         ...(form.adjustsFactId ? { adjustsFactId: form.adjustsFactId } : {}),
@@ -326,7 +351,17 @@ async function submitRecord() {
       });
     } else {
       const form = paymentForm.value;
-      await recordProjectAffiliatePaymentFact(props.projectId, {
+      const evidenceFileId = evidenceFile
+        ? (
+            await uploadProjectAffiliatePaymentEvidenceWithCapability(
+              props.projectId,
+              recordMode.value,
+              form.adjustsFactId || undefined,
+              evidenceFile
+            )
+          ).id
+        : undefined;
+      await recordProjectAffiliatePaymentFactWithCapability(props.projectId, {
         contractLedgerId: required(form.contractLedgerId, "关联挂靠合同"),
         ...(form.settlementLedgerId
           ? { settlementLedgerId: form.settlementLedgerId }
@@ -344,7 +379,7 @@ async function submitRecord() {
             }
           : {}),
         basisType: form.basisType,
-        ...(evidenceFileId ? { evidenceFileId } : {}),
+        evidenceFileId,
         idempotencyKey: crypto.randomUUID(),
         entryKind: recordMode.value,
         ...(form.adjustsFactId ? { adjustsFactId: form.adjustsFactId } : {}),
@@ -364,6 +399,156 @@ async function submitRecord() {
   }
 }
 
+async function recordProjectAffiliateContractFactWithCapability(
+  projectId: string,
+  body: Parameters<typeof recordProjectAffiliateContractFact>[1] & {
+    entryKind: ProjectAffiliateEntryKind;
+  }
+) {
+  const capability = await fetchProjectAffiliateRecordCapability(
+    projectId,
+    "contract",
+    body.entryKind,
+    body.adjustsFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedBusinessType = capability.businessType === "contract";
+  if (!matchesRequestedBusinessType) {
+    throw new Error("挂靠合同登记上下文已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_affiliate_contract_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能登记该挂靠合同事实");
+  return recordProjectAffiliateContractFact(projectId, body);
+}
+
+async function recordProjectAffiliateSettlementFactWithCapability(
+  projectId: string,
+  body: Parameters<typeof recordProjectAffiliateSettlementFact>[1] & {
+    entryKind: ProjectAffiliateEntryKind;
+  }
+) {
+  const capability = await fetchProjectAffiliateRecordCapability(
+    projectId,
+    "settlement",
+    body.entryKind,
+    body.adjustsFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedBusinessType = capability.businessType === "settlement";
+  if (!matchesRequestedBusinessType) {
+    throw new Error("挂靠结算登记上下文已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_affiliate_settlement_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能登记该挂靠结算事实");
+  return recordProjectAffiliateSettlementFact(projectId, body);
+}
+
+async function recordProjectAffiliatePaymentFactWithCapability(
+  projectId: string,
+  body: Parameters<typeof recordProjectAffiliatePaymentFact>[1] & {
+    entryKind: ProjectAffiliateEntryKind;
+  }
+) {
+  const capability = await fetchProjectAffiliateRecordCapability(
+    projectId,
+    "payment",
+    body.entryKind,
+    body.adjustsFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedBusinessType = capability.businessType === "payment";
+  if (!matchesRequestedBusinessType) {
+    throw new Error("挂靠付款登记上下文已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_affiliate_payment_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能登记该挂靠付款事实");
+  return recordProjectAffiliatePaymentFact(projectId, body);
+}
+
+async function uploadProjectAffiliateContractEvidenceWithCapability(
+  projectId: string,
+  entryKind: ProjectAffiliateEntryKind,
+  adjustsFactId: string | undefined,
+  file: File
+) {
+  const capability = await fetchProjectAffiliateRecordCapability(
+    projectId,
+    "contract",
+    entryKind,
+    adjustsFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedBusinessType = capability.businessType === "contract";
+  if (!matchesRequestedBusinessType) {
+    throw new Error("挂靠合同登记上下文已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_affiliate_contract_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传该挂靠合同依据");
+  return uploadProjectAffiliateContractPrivateFile(projectId, file, file.name);
+}
+
+async function uploadProjectAffiliateSettlementEvidenceWithCapability(
+  projectId: string,
+  entryKind: ProjectAffiliateEntryKind,
+  adjustsFactId: string | undefined,
+  file: File
+) {
+  const capability = await fetchProjectAffiliateRecordCapability(
+    projectId,
+    "settlement",
+    entryKind,
+    adjustsFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedBusinessType = capability.businessType === "settlement";
+  if (!matchesRequestedBusinessType) {
+    throw new Error("挂靠结算登记上下文已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_affiliate_settlement_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传该挂靠结算依据");
+  return uploadProjectAffiliateSettlementPrivateFile(projectId, file, file.name);
+}
+
+async function uploadProjectAffiliatePaymentEvidenceWithCapability(
+  projectId: string,
+  entryKind: ProjectAffiliateEntryKind,
+  adjustsFactId: string | undefined,
+  file: File
+) {
+  const capability = await fetchProjectAffiliateRecordCapability(
+    projectId,
+    "payment",
+    entryKind,
+    adjustsFactId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedBusinessType = capability.businessType === "payment";
+  if (!matchesRequestedBusinessType) {
+    throw new Error("挂靠付款登记上下文已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "record_affiliate_payment_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传该挂靠付款依据");
+  return uploadProjectAffiliatePaymentPrivateFile(projectId, file, file.name);
+}
+
 function openConfirmation(target: ConfirmTarget) {
   confirmTarget.value = target;
   confirmError.value = "";
@@ -381,19 +566,19 @@ async function submitConfirmation(values: { password: string }) {
       confirmationActionId: crypto.randomUUID()
     };
     if (target.businessType === "contract") {
-      await confirmProjectAffiliateContractFact(
+      await confirmProjectAffiliateContractFactWithCapability(
         props.projectId,
         target.fact.id,
         body
       );
     } else if (target.businessType === "settlement") {
-      await confirmProjectAffiliateSettlementFact(
+      await confirmProjectAffiliateSettlementFactWithCapability(
         props.projectId,
         target.fact.id,
         body
       );
     } else {
-      await confirmProjectAffiliatePaymentFact(
+      await confirmProjectAffiliatePaymentFactWithCapability(
         props.projectId,
         target.fact.id,
         body
@@ -410,6 +595,69 @@ async function submitConfirmation(values: { password: string }) {
   }
 }
 
+async function confirmProjectAffiliateContractFactWithCapability(
+  projectId: string,
+  factId: string,
+  body: Parameters<typeof confirmProjectAffiliateContractFact>[2]
+) {
+  const capability = await fetchProjectAffiliateFactCapability(
+    projectId,
+    "contract",
+    factId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedFact = capability.factId === factId;
+  if (!matchesRequestedFact) throw new Error("挂靠合同事实已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "confirm_affiliate_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能确认该挂靠外部事实");
+  return confirmProjectAffiliateContractFact(projectId, factId, body);
+}
+
+async function confirmProjectAffiliateSettlementFactWithCapability(
+  projectId: string,
+  factId: string,
+  body: Parameters<typeof confirmProjectAffiliateSettlementFact>[2]
+) {
+  const capability = await fetchProjectAffiliateFactCapability(
+    projectId,
+    "settlement",
+    factId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedFact = capability.factId === factId;
+  if (!matchesRequestedFact) throw new Error("挂靠结算事实已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "confirm_affiliate_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能确认该挂靠外部事实");
+  return confirmProjectAffiliateSettlementFact(projectId, factId, body);
+}
+
+async function confirmProjectAffiliatePaymentFactWithCapability(
+  projectId: string,
+  factId: string,
+  body: Parameters<typeof confirmProjectAffiliatePaymentFact>[2]
+) {
+  const capability = await fetchProjectAffiliateFactCapability(
+    projectId,
+    "payment",
+    factId
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedFact = capability.factId === factId;
+  if (!matchesRequestedFact) throw new Error("挂靠付款事实已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "confirm_affiliate_fact"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能确认该挂靠外部事实");
+  return confirmProjectAffiliatePaymentFact(projectId, factId, body);
+}
+
 function openSupplement(target: ConfirmTarget) {
   supplementTarget.value = target;
   supplementFiles.value = [];
@@ -424,17 +672,13 @@ async function submitSupplement() {
   supplementBusy.value = true;
   supplementError.value = "";
   try {
-    const fileId = await uploadSelectedEvidence(supplementFiles.value, true);
-    if (!fileId) throw new Error("请选择补充外部依据文件");
-    await supplementProjectAffiliateBusinessEvidence(
+    const file = selectedEvidenceFile(supplementFiles.value, true);
+    if (!file) throw new Error("请选择补充外部依据文件");
+    await supplementProjectAffiliateBusinessEvidenceWithCapability(
       props.projectId,
-      target.fact.id,
-      {
-        businessType: target.businessType,
-        fileId,
-        idempotencyKey: crypto.randomUUID(),
-        description: required(supplementDescription.value, "补充依据说明")
-      }
+      target,
+      file,
+      required(supplementDescription.value, "补充依据说明")
     );
     supplementVisible.value = false;
     supplementTarget.value = null;
@@ -445,6 +689,46 @@ async function submitSupplement() {
   } finally {
     supplementBusy.value = false;
   }
+}
+
+async function supplementProjectAffiliateBusinessEvidenceWithCapability(
+  projectId: string,
+  target: ConfirmTarget,
+  file: File,
+  description: string
+) {
+  const capability = await fetchProjectAffiliateFactCapability(
+    projectId,
+    target.businessType,
+    target.fact.id
+  );
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
+  const matchesRequestedFact = capability.factId === target.fact.id;
+  if (!matchesRequestedFact) {
+    throw new Error("挂靠外部事实已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "supplement_affiliate_evidence"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能为该挂靠外部事实补充依据");
+  const uploaded = await uploadProjectAffiliateBusinessPrivateFile(
+    projectId,
+    target.businessType,
+    target.fact.id,
+    file,
+    file.name
+  );
+  return supplementProjectAffiliateBusinessEvidence(
+    projectId,
+    target.fact.id,
+    {
+      businessType: target.businessType,
+      fileId: uploaded.id,
+      idempotencyKey: crypto.randomUUID(),
+      description
+    }
+  );
 }
 
 function targetOf(
@@ -531,7 +815,7 @@ function createPaymentForm() {
   };
 }
 
-async function uploadSelectedEvidence(files: UploadFile[], requiredFile = false) {
+function selectedEvidenceFile(files: UploadFile[], requiredFile = false) {
   const raw = files[0]?.raw;
   if (!(raw instanceof File)) {
     if (requiredFile) throw new Error("请选择外部依据文件");
@@ -544,8 +828,7 @@ async function uploadSelectedEvidence(files: UploadFile[], requiredFile = false)
     if (basis === "written") throw new Error("书面依据必须上传外部文件");
     return undefined;
   }
-  const uploaded = await uploadPrivateFile(raw, raw.name);
-  return uploaded.id;
+  return raw;
 }
 
 function positiveCents(value: string, label: string) {

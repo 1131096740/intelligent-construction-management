@@ -3,6 +3,7 @@ import {
   abandonSettlementDraftRecord,
   attachSettlementDraftLineFile,
   createSettlementDraftRecord,
+  executeSettlementDraftLifecycleAction,
   fetchSettlementDraftRecord,
   generateSettlementFrozenDocument,
   linkSettlementCounterpartySignedDocument,
@@ -41,9 +42,75 @@ const body = {
   ]
 };
 
+function deferred<T>() {
+  let resolvePromise!: (value: T | PromiseLike<T>) => void;
+  let rejectPromise!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve: resolvePromise,
+    reject: rejectPromise
+  };
+}
+
+function lifecycleDraft(
+  overrides: {
+    projectId?: string;
+    draftId?: string;
+    revision?: number;
+    status?: "draft" | "abandoned";
+    action?: "delete_pristine_draft" | "abandon_application";
+    requiresComment?: boolean;
+  } = {}
+) {
+  const action = overrides.action ?? "delete_pristine_draft";
+  return {
+    id: overrides.draftId ?? "draft-1",
+    projectId: overrides.projectId ?? "project-1",
+    revision: overrides.revision ?? 5,
+    status: overrides.status ?? "draft",
+    availableActions: [{
+      key: action,
+      label: action,
+      kind: "danger",
+      enabled: true,
+      disabledReason: null,
+      requiresComment:
+        overrides.requiresComment ?? action === "abandon_application"
+    }]
+  };
+}
+
+function lifecycleInput(
+  overrides: Partial<
+    Parameters<typeof executeSettlementDraftLifecycleAction>[0]
+  > = {}
+) {
+  return {
+    ownerScope: "workbench-instance-a",
+    generation: 3,
+    projectId: "project-1",
+    draftId: "draft-1",
+    expectedRevision: 5,
+    action: "delete_pristine_draft",
+    reason: "用户确认结束",
+    expectedRequiresComment: false,
+    isCurrent: vi.fn(() => true),
+    beforeWrite: vi.fn(() => true),
+    onResult: vi.fn(),
+    onCapabilityFailure: vi.fn(),
+    onOperationFailure: vi.fn(),
+    onOperationSettled: vi.fn(),
+    ...overrides
+  };
+}
+
 describe("settlement drafts API", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockApiFetch.mockReset();
     mockApiFetch.mockImplementation(() =>
       Promise.resolve(
         new Response(JSON.stringify({ id: "draft-1", revision: 1 }), {
@@ -116,6 +183,399 @@ describe("settlement drafts API", () => {
         })
       }
     );
+  });
+
+  it("rejects a missing workbench owner scope before reading the draft", async () => {
+    const onCapabilityFailure = vi.fn();
+    const onOperationSettled = vi.fn();
+
+    await expect(executeSettlementDraftLifecycleAction(lifecycleInput({
+      ownerScope: " ",
+      onCapabilityFailure,
+      onOperationSettled
+    }))).rejects.toMatchObject({
+      code: "SETTLEMENT_DRAFT_LIFECYCLE_INVALID_CONTEXT"
+    });
+    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+    expect(onOperationSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces one governed lifecycle operation, keeps result owner-only and settles every caller", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          draftId: "draft-1",
+          status: "abandoned",
+          action: "delete_pristine_draft",
+          idempotent: false
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+    );
+    const ownerResult = vi.fn();
+    const duplicateResult = vi.fn();
+    const ownerSettled = vi.fn();
+    const duplicateSettled = vi.fn();
+
+    const first = executeSettlementDraftLifecycleAction(
+      lifecycleInput({
+        onResult: ownerResult,
+        onOperationSettled: ownerSettled
+      })
+    );
+    const duplicate = executeSettlementDraftLifecycleAction(
+      lifecycleInput({
+        onResult: duplicateResult,
+        onOperationSettled: duplicateSettled
+      })
+    );
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    pendingRead.resolve(
+      new Response(JSON.stringify(lifecycleDraft()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      undefined,
+      undefined
+    ]);
+    expect(ownerResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed" })
+    );
+    expect(duplicateResult).not.toHaveBeenCalled();
+    expect(ownerSettled).toHaveBeenCalledTimes(1);
+    expect(duplicateSettled).toHaveBeenCalledTimes(1);
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not coalesce the same coordinates across remounted workbench instances", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          draftId: "draft-1",
+          status: "abandoned",
+          action: "delete_pristine_draft",
+          idempotent: false
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const first = executeSettlementDraftLifecycleAction(lifecycleInput({
+      ownerScope: "workbench-instance-old"
+    }));
+    const remountedOutcome = executeSettlementDraftLifecycleAction(
+      lifecycleInput({
+        ownerScope: "workbench-instance-new"
+      })
+    ).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error })
+    );
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    pendingRead.resolve(
+      new Response(JSON.stringify(lifecycleDraft()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    await first;
+    await expect(remountedOutcome).resolves.toMatchObject({
+      ok: false,
+      error: { code: "SETTLEMENT_DRAFT_LIFECYCLE_BUSY" }
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("settles a rejected caller without settling the active owner", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          draftId: "draft-1",
+          status: "abandoned",
+          action: "delete_pristine_draft",
+          idempotent: false
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const ownerSettled = vi.fn();
+    const rejectedSettled = vi.fn();
+    const first = executeSettlementDraftLifecycleAction(lifecycleInput({
+      onOperationSettled: ownerSettled
+    }));
+
+    await expect(executeSettlementDraftLifecycleAction(lifecycleInput({
+      reason: "另一项结束原因",
+      onOperationSettled: rejectedSettled
+    }))).rejects.toMatchObject({
+      code: "SETTLEMENT_DRAFT_LIFECYCLE_BUSY"
+    });
+    expect(ownerSettled).not.toHaveBeenCalled();
+    expect(rejectedSettled).toHaveBeenCalledTimes(1);
+
+    pendingRead.resolve(
+      new Response(JSON.stringify(lifecycleDraft()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    await first;
+    expect(ownerSettled).toHaveBeenCalledTimes(1);
+    expect(rejectedSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before POST when the fresh draft coordinates or action change", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(lifecycleDraft({
+        revision: 6,
+        action: "abandon_application"
+      })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    const beforeWrite = vi.fn(() => true);
+    const onCapabilityFailure = vi.fn();
+
+    await expect(executeSettlementDraftLifecycleAction(lifecycleInput({
+      beforeWrite,
+      onCapabilityFailure
+    }))).rejects.toMatchObject({
+      code: "SETTLEMENT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(beforeWrite).not.toHaveBeenCalled();
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before POST when the fresh draft is no longer active", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(lifecycleDraft({
+        status: "abandoned"
+      })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    const beforeWrite = vi.fn(() => true);
+    const onCapabilityFailure = vi.fn();
+
+    await expect(executeSettlementDraftLifecycleAction(lifecycleInput({
+      beforeWrite,
+      onCapabilityFailure
+    }))).rejects.toMatchObject({
+      code: "SETTLEMENT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(beforeWrite).not.toHaveBeenCalled();
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before POST when the fresh action comment requirement changes", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(lifecycleDraft({
+        requiresComment: true
+      })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    const beforeWrite = vi.fn(() => true);
+    const onCapabilityFailure = vi.fn();
+
+    await expect(executeSettlementDraftLifecycleAction(lifecycleInput({
+      beforeWrite,
+      onCapabilityFailure
+    }))).rejects.toMatchObject({
+      code: "SETTLEMENT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(beforeWrite).not.toHaveBeenCalled();
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns stale without POST after the page generation changes", async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify(lifecycleDraft()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    const onResult = vi.fn();
+
+    await executeSettlementDraftLifecycleAction(lifecycleInput({
+      isCurrent: vi.fn(() => false),
+      onResult
+    }));
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "stale" })
+    );
+  });
+
+  it("returns stale without success effects when the page changes during POST", async () => {
+    const pendingWrite = deferred<Response>();
+    mockApiFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(lifecycleDraft()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockReturnValueOnce(pendingWrite.promise);
+    const isCurrent = vi.fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+    const onResult = vi.fn();
+
+    const operation = executeSettlementDraftLifecycleAction(lifecycleInput({
+      isCurrent,
+      onResult
+    }));
+    await vi.waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    });
+    pendingWrite.resolve(
+      new Response(JSON.stringify({
+        draftId: "draft-1",
+        status: "abandoned",
+        action: "delete_pristine_draft",
+        idempotent: false
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(operation).resolves.toBeUndefined();
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "stale" })
+    );
+    expect(onResult).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed" })
+    );
+  });
+
+  it("suppresses a stale POST failure after the page coordinates change", async () => {
+    const pendingWrite = deferred<Response>();
+    mockApiFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(lifecycleDraft()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockReturnValueOnce(pendingWrite.promise);
+    const isCurrent = vi.fn()
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false);
+    const onResult = vi.fn();
+    const onOperationFailure = vi.fn();
+
+    const operation = executeSettlementDraftLifecycleAction(lifecycleInput({
+      isCurrent,
+      onResult,
+      onOperationFailure
+    }));
+    await vi.waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    });
+    pendingWrite.resolve(
+      new Response(JSON.stringify({ message: "旧草稿写入失败" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+
+    await expect(operation).resolves.toBeUndefined();
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "stale" })
+    );
+    expect(onOperationFailure).not.toHaveBeenCalled();
+  });
+
+  it("fails closed after a mismatched abandonment response", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(lifecycleDraft()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          draftId: "draft-other",
+          status: "abandoned",
+          action: "delete_pristine_draft",
+          idempotent: false
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const onCapabilityFailure = vi.fn();
+
+    await expect(executeSettlementDraftLifecycleAction(lifecycleInput({
+      onCapabilityFailure
+    }))).rejects.toMatchObject({
+      code: "SETTLEMENT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+    });
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the owner after a POST failure so the action can be retried", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(lifecycleDraft()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "结束接口暂时不可用" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(lifecycleDraft()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          draftId: "draft-1",
+          status: "abandoned",
+          action: "delete_pristine_draft",
+          idempotent: false
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+
+    await expect(
+      executeSettlementDraftLifecycleAction(lifecycleInput())
+    ).rejects.toThrow("结束接口暂时不可用");
+    await expect(
+      executeSettlementDraftLifecycleAction(lifecycleInput())
+    ).resolves.toBeUndefined();
+    expect(mockApiFetch).toHaveBeenCalledTimes(4);
   });
 
   it("uses scoped, revision-protected endpoints for settlement line attachments", async () => {

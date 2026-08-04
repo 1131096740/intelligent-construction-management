@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "apiPrefix": "/api",
+  "routes": [
+    "GET /contract-workbench",
+    "GET /contract-workbench/:param",
+    "PATCH /contract-workbench/:param",
+    "POST /contract-workbench/:param/checkpoints",
+    "POST /contract-workbench/:param/checkpoints/:param/restore",
+    "POST /contract-workbench/:param/void",
+    "POST /contract-workbench/:param/restore",
+    "DELETE /contract-drafts/:param",
+    "POST /contract-bills/:param/rows",
+    "PATCH /contract-bills/:param/rows/:param",
+    "DELETE /contract-bills/:param/rows/:param",
+    "POST /contract-bills/:param/rows/reorder",
+    "POST /auth/wx-login"
+  ]
+}

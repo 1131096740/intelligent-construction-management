@@ -14,35 +14,28 @@ import {
 import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { Public } from "../auth/decorators/public.decorator";
+import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { AuthService } from "../auth/auth.service";
 import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
+import { UploadPrivateFileDto } from "./dto/upload-private-file.dto";
 import { FileService } from "./file.service";
-
-interface MemoryUploadedFile {
-  originalname: string;
-  mimetype: string;
-  size: number;
-  buffer: Buffer;
-}
-
-function normalizeUploadedOriginalName(originalName: string) {
-  const decoded = Buffer.from(originalName, "latin1").toString("utf8");
-  const looksLikeMojibake = /[\u00c0-\u00ff]/.test(originalName);
-  const decodedToChinese = /[\u4e00-\u9fff]/.test(decoded);
-  const alreadyChinese = /[\u4e00-\u9fff]/.test(originalName);
-
-  if (looksLikeMojibake && decodedToChinese && !alreadyChinese && !decoded.includes("\uFFFD")) {
-    return decoded;
-  }
-  return originalName;
-}
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "./uploaded-file";
 
 @Controller("files")
 export class FileController {
   constructor(private readonly files: FileService, private readonly auth: AuthService) {}
 
   @Post()
+  @RequirePositions(
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  )
   @UseInterceptors(
     FileInterceptor("file", {
       limits: {
@@ -52,7 +45,8 @@ export class FileController {
   )
   upload(
     @UploadedFile() file: MemoryUploadedFile | undefined,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UploadPrivateFileDto = new UploadPrivateFileDto()
   ) {
     if (!file) {
       throw new Error("请选择要上传的资料文件");
@@ -63,7 +57,10 @@ export class FileController {
       mimeType: file.mimetype,
       sizeBytes: file.size,
       uploadedByUserId: user.id,
-      buffer: file.buffer
+      buffer: file.buffer,
+      ...(body.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: body.idempotencyKey })
     });
   }
 
@@ -86,6 +83,14 @@ export class FileController {
       downloadReason: input.downloadReason,
       ...(input.accessMode ? { accessMode: input.accessMode } : {})
     });
+  }
+
+  @Get(":fileId/download-ticket-capability")
+  downloadTicketCapability(
+    @Param("fileId") fileId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.files.getDownloadTicketCapability(fileId, user.id);
   }
 
   // 下载走短时效票据（expiresAt + token），用于可直接打开的链接，因此不强制 Bearer。

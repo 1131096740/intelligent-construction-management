@@ -63,10 +63,21 @@ const validPaymentCreateBody = {
   code: "FK-2026-001",
   requestedAmountCents: "10000"
 };
+const validPaymentReviewCoordinates = {
+  expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z",
+  expectedApprovalInstanceId: "approval-instance-1",
+  expectedNodeIndex: 0,
+  expectedApprovalUpdatedAt: "2026-07-31T01:01:00.000Z"
+};
+const validPaymentExecutionCoordinates = {
+  expectedPaymentUpdatedAt: "2026-07-31T02:00:00.000Z",
+  idempotencyKey: "11111111-1111-4111-8111-111111111111"
+};
 
 describe("PaymentController authorization wiring", () => {
   it("保留付款领导自审原因和当前密码", async () => {
     const value = {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: "项目紧急且由本人发起",
       confirmationPassword: "current-password"
@@ -79,6 +90,7 @@ describe("PaymentController authorization wiring", () => {
     const boundary = "❤️".repeat(250);
     await expect(
       validatePaymentBody("reviewApproval", 2, {
+        ...validPaymentReviewCoordinates,
         decision: "approve",
         selfReviewReason: boundary,
         confirmationPassword: "❤️".repeat(128)
@@ -86,12 +98,14 @@ describe("PaymentController authorization wiring", () => {
     ).resolves.toBeDefined();
 
     const reasonResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: `${boundary}原`
     });
     expect(reasonResponse.errors).toContain("自审原因不能超过 500 个字符");
 
     const passwordResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       confirmationPassword: `${"❤️".repeat(128)}密`
     });
@@ -111,6 +125,7 @@ describe("PaymentController authorization wiring", () => {
     ["confirmationPassword", "密".repeat(257), "当前密码格式不正确"]
   ] as const)("拒绝付款自审字段 %s 的非法值", async (field, value, message) => {
     const response = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       [field]: value
     });
@@ -120,6 +135,7 @@ describe("PaymentController authorization wiring", () => {
 
   it("拒绝付款审批未知字段且不回显当前密码", async () => {
     const response = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: "业务紧急",
       confirmationPassword: "current-password",
@@ -155,13 +171,40 @@ describe("PaymentController authorization wiring", () => {
   it.each(["approve", "reject", "reject_previous", "return_to_applicant"] as const)(
     "accepts the %s approval decision through the controller runtime DTO",
     async (decision) => {
-      const value = { decision, approvedAmountCents: "0", comment: "审批意见" };
+      const value = {
+        ...validPaymentReviewCoordinates,
+        decision,
+        approvedAmountCents: "0",
+        comment: "审批意见"
+      };
       const result = await validatePaymentBody("reviewApproval", 2, value);
 
       expect(result).toEqual(value);
       expect(result).toBeInstanceOf(paymentBodyMetatype("reviewApproval", 2));
     }
   );
+
+  it.each([
+    ["expectedPaymentUpdatedAt", undefined, "缺少预期付款申请版本"],
+    ["expectedPaymentUpdatedAt", "not-a-date", "预期付款申请版本格式不正确"],
+    ["expectedApprovalInstanceId", undefined, "缺少预期审批实例"],
+    ["expectedApprovalInstanceId", "   ", "预期审批实例不能为空白"],
+    ["expectedNodeIndex", undefined, "预期审批节点必须是整数"],
+    ["expectedNodeIndex", -1, "预期审批节点不能小于 0"],
+    ["expectedApprovalUpdatedAt", undefined, "缺少预期审批版本"],
+    ["expectedApprovalUpdatedAt", "not-a-date", "预期审批版本格式不正确"]
+  ] as const)("付款审批拒绝非法坐标 %s=%p", async (field, value, message) => {
+    const body: Record<string, unknown> = {
+      ...validPaymentReviewCoordinates,
+      decision: "approve",
+      [field]: value
+    };
+    if (value === undefined) delete body[field];
+
+    const response = await getPaymentValidationResponse("reviewApproval", 2, body);
+
+    expect(response.errors).toContain(message);
+  });
 
   it.each([
     [
@@ -173,6 +216,7 @@ describe("PaymentController authorization wiring", () => {
     [
       "recordExecution",
       {
+        ...validPaymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-07-11",
         voucherFileId: "file-1",
@@ -245,6 +289,7 @@ describe("PaymentController authorization wiring", () => {
 
   it.each(["not-a-date", "2026-13-40"])("rejects an invalid execution date: %s", async (paidAt) => {
     const response = await getPaymentValidationResponse("recordExecution", 2, {
+      ...validPaymentExecutionCoordinates,
       amountCents: "10000",
       paidAt,
       voucherFileId: "file-1",
@@ -257,7 +302,13 @@ describe("PaymentController authorization wiring", () => {
   it.each([
     [
       "recordExecution",
-      { amountCents: "100", paidAt: "2026-02-30", voucherFileId: "file-1", confirmationPassword: "pwd" },
+      {
+        ...validPaymentExecutionCoordinates,
+        amountCents: "100",
+        paidAt: "2026-02-30",
+        voucherFileId: "file-1",
+        confirmationPassword: "pwd"
+      },
       "付款日期格式不正确"
     ],
     [
@@ -276,6 +327,7 @@ describe("PaymentController authorization wiring", () => {
     async (paidAt) => {
       await expect(
         validatePaymentBody("recordExecution", 2, {
+          ...validPaymentExecutionCoordinates,
           amountCents: "10000",
           paidAt,
           voucherFileId: "file-1",
@@ -287,7 +339,16 @@ describe("PaymentController authorization wiring", () => {
 
   it.each([
     ["transferApproval", { toUserId: "" }],
-    ["recordExecution", { amountCents: "100", paidAt: "2026-07-11", voucherFileId: "", confirmationPassword: "pwd" }],
+    [
+      "recordExecution",
+      {
+        ...validPaymentExecutionCoordinates,
+        amountCents: "100",
+        paidAt: "2026-07-11",
+        voucherFileId: "",
+        confirmationPassword: "pwd"
+      }
+    ],
     ["recordFinance", { amountCents: "100", occurredAt: "2026-07-11", confirmationPassword: "" }],
     ["recordPdfArchive", { fileId: "" }]
   ] as const)("rejects empty required fields for %s", async (method, value) => {
@@ -302,6 +363,7 @@ describe("PaymentController authorization wiring", () => {
       sourceType: "invoice"
     });
     const decisionResponse = await getPaymentValidationResponse("reviewApproval", 2, {
+      ...validPaymentReviewCoordinates,
       decision: "skip"
     });
 
@@ -340,6 +402,7 @@ describe("PaymentController authorization wiring", () => {
       toUserId: "   "
     });
     const executionResponse = await getPaymentValidationResponse("recordExecution", 2, {
+      ...validPaymentExecutionCoordinates,
       amountCents: "100",
       paidAt: "2026-07-11",
       voucherFileId: "   ",
@@ -418,6 +481,7 @@ describe("PaymentController authorization wiring", () => {
 
   it.each([
     ["create", "payment.create"],
+    ["createCapability", "payment.create"],
     ["contractApplication", "payment.create"],
     ["reviewApproval", "payment.approve"],
     ["transferApproval", "payment.approve"],
@@ -425,6 +489,7 @@ describe("PaymentController authorization wiring", () => {
     ["recordExecution", "payment.execution"],
     ["recordFinance", "payment.finance_record"],
     ["recordPdfArchive", "payment.pdf_archive"],
+    ["uploadPdfArchivePrivateFile", "payment.pdf_archive"],
     ["generatePdfArchive", "payment.pdf_archive"]
   ])("guards %s with the %s action", (method, action) => {
     const handler = (PaymentController.prototype as unknown as Record<string, object>)[method];
@@ -441,19 +506,13 @@ describe("PaymentController authorization wiring", () => {
     }
   );
 
-  it("guards payment list and detail with the shared ledger read policy", () => {
+  it("guards the payment list with the shared ledger policy and lets detail enforce ledger-or-review access", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.list)).toEqual(
       LEDGER_READ_POSITION_KEYS
     );
-    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.detail)).toEqual(
-      LEDGER_READ_POSITION_KEYS
-    );
-  });
-
-  it("lets the comprehensive director open payment details", () => {
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, PaymentController.prototype.detail)
-    ).toContain("comprehensive_director");
+    ).toBeUndefined();
   });
 
   it("forwards contract application preview requests to the payment read service", async () => {
@@ -466,6 +525,105 @@ describe("PaymentController authorization wiring", () => {
       contract: { contractVersionId: "contract-version-1" }
     });
     expect(paymentRead.getContractApplication).toHaveBeenCalledWith("contract-version-1");
+  });
+
+  it("returns a project-scoped payment create capability", () => {
+    const controller = new PaymentController({} as never, {} as never, {} as never);
+
+    expect(controller.createCapability("project-1")).toEqual({
+      projectId: "project-1",
+      availableActions: ["create_payment"]
+    });
+  });
+
+  it("returns fresh payment actions for a visible payment", async () => {
+    const paymentRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        id: "FK-2026-011",
+        availableActionKeys: ["record_finance"]
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(paymentRead as never, {} as never, projectVisibility as never);
+
+    await expect(
+      controller.capability("FK-2026-011", { id: "user-1" } as never)
+    ).resolves.toEqual({
+      paymentId: "FK-2026-011",
+      availableActions: ["record_finance"]
+    });
+    expect(paymentRead.getDetail).toHaveBeenCalledWith(
+      "FK-2026-011",
+      ["project-1"],
+      "user-1"
+    );
+  });
+
+  it("uploads a payment PDF through the scoped file service after a fresh action check", async () => {
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }) };
+    const paymentRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        id: "FK-2026-011",
+        availableActionKeys: ["archive_pdf"]
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(
+      paymentRead as never,
+      {} as never,
+      projectVisibility as never,
+      files as never
+    );
+    const file = {
+      originalname: "付款归档.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("payment")
+    };
+
+    await expect(
+      controller.uploadPdfArchivePrivateFile(
+        "FK-2026-011",
+        file,
+        { id: "finance-1" } as never,
+        "upload-1"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadedByUserId: "finance-1", idempotencyKey: "upload-1" })
+    );
+  });
+
+  it("rejects payment PDF uploads before storage when the action is unavailable", async () => {
+    const files = { uploadPrivateFile: jest.fn() };
+    const paymentRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        id: "FK-2026-011",
+        availableActionKeys: []
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new PaymentController(
+      paymentRead as never,
+      {} as never,
+      projectVisibility as never,
+      files as never
+    );
+    const file = {
+      originalname: "付款归档.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("payment")
+    };
+
+    await expect(
+      controller.uploadPdfArchivePrivateFile(
+        "FK-2026-011",
+        file,
+        { id: "finance-1" } as never
+      )
+    ).rejects.toThrow("当前付款状态或操作权限不允许上传财务归档");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
   it("forwards visible project ids to payment detail reads", async () => {

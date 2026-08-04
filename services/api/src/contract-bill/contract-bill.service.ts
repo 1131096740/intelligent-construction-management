@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -12,7 +13,7 @@ import {
 import { AuditService } from "../audit/audit.service";
 import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
-import { moneyCentsToApi } from "../money/decimal-money";
+import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
 import {
   ContractBillRowFactsValidationException,
   resolveContractBillRowFacts
@@ -24,6 +25,7 @@ import {
 import { loadOwnedEditableBill } from "./contract-bill-guards";
 import { ContractBillLineageService } from "./contract-bill-lineage.service";
 import type {
+  CancelBillRowRemainderDto,
   ReorderBillRowsDto,
   ReplaceBillRowDto,
   SaveContractBillRowDto,
@@ -106,6 +108,7 @@ export class ContractBillService {
     version: {
       id: string;
       contractId: string;
+      baseVersionId: string | null;
       amountSource: string;
       pricingNature: string;
       amountLimitType: string;
@@ -164,6 +167,29 @@ export class ContractBillService {
         rows: existingRows
       };
     }
+    if (updatedRows.some((row) =>
+      existingByKey.get(row.rowKey!)?.remainderDisposition === "cancelled"
+    )) {
+      throw new BadRequestException("已取消未实施余量的清单行不能通过普通编辑修改");
+    }
+    if (updatedRows.length) {
+      await this.lineage.assertRowsOrdinarilyMutable(
+        tx,
+        { id: version.id, baseVersionId: version.baseVersionId },
+        updatedRows.map((row) => ({
+          row: existingByKey.get(row.rowKey!)!,
+          nextUnit: row.unit,
+          nextQuantity: row.facts.quantity
+        }))
+      );
+    }
+    if (deletedRows.length) {
+      await this.lineage.assertRowsDeletable(
+        tx,
+        deletedRows.map((row) => row.id),
+        { id: version.id, baseVersionId: version.baseVersionId }
+      );
+    }
 
     const billGate = await tx.contractBill.updateMany({
       where: {
@@ -177,10 +203,6 @@ export class ContractBillService {
       throw new BadRequestException("合同清单已变化或当前状态不可编辑，请刷新后重试");
     }
     if (deletedRows.length) {
-      await this.lineage.assertRowsDeletable(
-        tx,
-        deletedRows.map((row) => row.id)
-      );
       await tx.contractBillRow.deleteMany({
         where: {
           contractBillId: bill.id,
@@ -277,6 +299,42 @@ export class ContractBillService {
       if ([...requestedKeys].some((rowKey) => !existingByKey.has(rowKey))) {
         throw new BadRequestException("清单已有行已变化，请刷新后重试");
       }
+      const deletedKeys = existingRows
+        .map((row) => row.rowKey)
+        .filter((rowKey) => !requestedKeys.has(rowKey));
+      if (input.rows.some((row) => {
+        if (!row.rowKey) return false;
+        const existing = existingByKey.get(row.rowKey)!;
+        return existing.remainderDisposition === "cancelled" &&
+          this.batchRowChanged(existing, this.batchRowData(row));
+      })) {
+        throw new BadRequestException("已取消未实施余量的清单行不能通过普通编辑修改");
+      }
+      const updatedRows = input.rows.filter((row) => {
+        if (!row.rowKey) return false;
+        return this.batchRowChanged(
+          existingByKey.get(row.rowKey)!,
+          this.batchRowData(row)
+        );
+      });
+      if (updatedRows.length) {
+        await this.lineage.assertRowsOrdinarilyMutable(
+          tx,
+          { id: version.id, baseVersionId: version.baseVersionId },
+          updatedRows.map((row) => ({
+            row: existingByKey.get(row.rowKey!)!,
+            nextUnit: row.unit,
+            nextQuantity: row.facts.quantity
+          }))
+        );
+      }
+      if (deletedKeys.length) {
+        await this.lineage.assertRowsDeletable(
+          tx,
+          existingRows.filter((row) => deletedKeys.includes(row.rowKey)).map((row) => row.id),
+          { id: version.id, baseVersionId: version.baseVersionId }
+        );
+      }
       const renderRevision = await this.lockMutation(
         tx,
         bill,
@@ -284,14 +342,7 @@ export class ContractBillService {
         actorUserId,
         input.expectedBillRevision
       );
-      const deletedKeys = existingRows
-        .map((row) => row.rowKey)
-        .filter((rowKey) => !requestedKeys.has(rowKey));
       if (deletedKeys.length) {
-        await this.lineage.assertRowsDeletable(
-          tx,
-          existingRows.filter((row) => deletedKeys.includes(row.rowKey)).map((row) => row.id)
-        );
         await tx.contractBillRow.deleteMany({
           where: { contractBillId: bill.id, rowKey: { in: deletedKeys } }
         });
@@ -405,7 +456,19 @@ export class ContractBillService {
     return this.prisma.$transaction(async (tx) => {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       const row = await this.findRow(tx, billId, rowKey);
+      if (row.remainderDisposition === "cancelled") {
+        throw new BadRequestException("已取消未实施余量的清单行不能通过普通编辑修改");
+      }
       const input = this.parseRowInput(rawInput, bill, version, row);
+      await this.lineage.assertRowsOrdinarilyMutable(
+        tx,
+        { id: version.id, baseVersionId: version.baseVersionId },
+        [{
+          row,
+          nextUnit: input.unit,
+          nextQuantity: input.facts.quantity
+        }]
+      );
       const newRevision = await this.lockMutation(
         tx,
         bill,
@@ -458,7 +521,11 @@ export class ContractBillService {
       const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
       this.assertExpectedRevision(expectedBillRevision);
       const row = await this.findRow(tx, billId, rowKey);
-      await this.lineage.assertRowsDeletable(tx, [row.id]);
+      await this.lineage.assertRowsDeletable(
+        tx,
+        [row.id],
+        { id: version.id, baseVersionId: version.baseVersionId }
+      );
       const newRevision = await this.lockMutation(
         tx,
         bill,
@@ -482,27 +549,115 @@ export class ContractBillService {
     });
   }
 
-  cancelRemainder(
+  async cancelRemainder(
     billId: string,
     rowKey: string,
     actorUserId: string,
-    input: { expectedBillRevision: number; reason: string }
+    rawLeaseToken: string,
+    input: CancelBillRowRemainderDto
   ) {
     const reason = input.reason?.trim();
     if (!reason) throw new BadRequestException("取消未实施余量必须填写原因");
-    return this.prisma.$transaction(async (tx) => {
-      const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
-      this.assertExpectedRevision(input.expectedBillRevision);
+    if (reason.length > 500) {
+      throw new BadRequestException("取消未实施余量原因不能超过 500 个字符");
+    }
+    this.assertExpectedRevision(input.expectedBillRevision);
+    this.assertExpectedRevision(input.expectedDraftRevision);
+    if (!/^[a-f0-9]{64}$/.test(input.expectedOccupancyToken ?? "")) {
+      throw new BadRequestException("历史占用校验令牌无效，请刷新后重试");
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { bill, version } = await loadOwnedEditableBill(tx, billId, actorUserId);
+      if (version.draftRevision !== input.expectedDraftRevision) {
+        throw new BadRequestException("合同草稿已变化，请刷新后重试");
+      }
+      await tx.$queryRaw(Prisma.sql`
+        SELECT "contractVersionId" FROM "ContractDraftEditLease"
+        WHERE "contractVersionId" = ${version.id}
+        FOR UPDATE
+      `);
+      const lease = await tx.contractDraftEditLease.findUnique({
+        where: { contractVersionId: version.id }
+      });
+      if (!rawLeaseToken || !lease) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "EDIT_LEASE_REQUIRED",
+          message: "请先取得合同草稿编辑权"
+        });
+      }
+      const now = new Date();
+      if (
+        lease.holderUserId !== actorUserId ||
+        lease.tokenHash !== sha256(rawLeaseToken) ||
+        lease.expiresAt.getTime() <= now.getTime()
+      ) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "EDIT_LEASE_LOST",
+          message: "合同草稿编辑权已失效，请重新取得编辑权后再试"
+        });
+      }
       const row = await this.findRow(tx, billId, rowKey);
-      if (!await this.lineage.hasHistoricalOccupancy(tx, [row.id])) {
+      if (row.remainderDisposition === "cancelled") {
+        throw new BadRequestException("该清单行的未实施余量已经取消");
+      }
+      const targetBills = await tx.contractBill.findMany({
+        where: { contractVersionId: version.id },
+        select: { id: true }
+      });
+      const targetRows = await tx.contractBillRow.findMany({
+        where: { contractBillId: { in: targetBills.map((item) => item.id) } },
+        orderBy: { sortOrder: "asc" }
+      });
+      const facts = (await this.lineage.remainderCancellationFacts(
+        tx,
+        { id: version.id, baseVersionId: version.baseVersionId },
+        targetRows
+      )).get(row.id);
+      if (!facts?.hasHistoricalOccupancy) {
         throw new BadRequestException("清单行尚无历史结算占用，应直接删除而不是取消未实施余量");
       }
-      const newRevision = await this.lockMutation(
+      if (!facts.canCancel || facts.historicalQuantity === null) {
+        throw new BadRequestException(
+          facts.disabledReason ?? "历史累计数量尚未核清，不能取消未实施余量"
+        );
+      }
+      if (facts.expectedOccupancyToken !== input.expectedOccupancyToken) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "SETTLEMENT_SOURCE_OCCUPANCY_CHANGED",
+          message: "历史占用或跨版本映射已变化，请刷新后重试"
+        });
+      }
+      if (row.unitPrice === null || row.taxRate === null) {
+        throw new BadRequestException("清单行计价事实不完整，不能取消未实施余量");
+      }
+      const previousQuantity = row.quantity?.toString() ?? null;
+      const amounts = facts.historicalQuantity.isZero()
+        ? {
+            taxInclusiveAmountCents: 0n,
+            taxExclusiveAmountCents: 0n,
+            taxAmountCents: 0n,
+            taxExclusiveUnitPrice: null
+          }
+        : calculateBillRow({
+            quantity: facts.historicalQuantity.toString(),
+            unitPrice: row.unitPrice.toString(),
+            taxRatePercent: row.taxRate.toString(),
+            pricingMode: bill.pricingMode === "tax_inclusive"
+              ? "tax_inclusive"
+              : "tax_exclusive"
+          });
+      const renderRevision = await this.lockMutation(
         tx, bill, version, actorUserId, input.expectedBillRevision
       );
       const updated = await tx.contractBillRow.updateMany({
         where: { id: row.id, contractBillId: billId, rowKey },
         data: {
+          quantity: facts.historicalQuantity.toString(),
+          ...amounts,
           remainderDisposition: "cancelled",
           remainderDispositionReason: reason,
           remainderDispositionByUserId: actorUserId,
@@ -510,8 +665,50 @@ export class ContractBillService {
         }
       });
       if (updated.count !== 1) throw new NotFoundException("合同清单行不存在");
-      return this.finishMutation(tx, bill, version, actorUserId, "update", rowKey, newRevision);
-    });
+      const rows = await recalculateBillAndContractAmount(tx, bill, version);
+      const newBillRevision = input.expectedBillRevision + 1;
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "contract.bill.row.remainder_cancellation",
+        businessType: "contract_bill",
+        businessId: bill.id,
+        metadata: {
+          rowKey,
+          contractVersionId: version.id,
+          lineageId: row.lineageId ?? null,
+          previousQuantity,
+          historicalQuantity: facts.historicalQuantity.toString(),
+          historicalAmountCents: facts.historicalAmountCents.toString(),
+          occupancyTokenDigest: sha256(input.expectedOccupancyToken),
+          reason,
+          previousBillRevision: input.expectedBillRevision,
+          newRevision: newBillRevision,
+          previousDraftRevision: input.expectedDraftRevision,
+          renderRevision
+        }
+      });
+      const updatedBill = await tx.contractBill.findUnique({ where: { id: bill.id } });
+        return this.toReadModel({ bill: updatedBill, rows });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      const candidate = typeof error === "object" && error !== null
+        ? error as { code?: unknown; meta?: { code?: unknown } }
+        : {};
+      const code = String(candidate.code ?? "");
+      const databaseCode = String(candidate.meta?.code ?? "");
+      if (
+        code === "P2034" ||
+        ["40001", "40P01"].includes(code) ||
+        ["40001", "40P01"].includes(databaseCode)
+      ) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "REMAINDER_CANCELLATION_CONFLICT",
+          message: "合同清单或历史占用正在更新，请刷新后重试"
+        });
+      }
+      throw error;
+    }
   }
 
   reorderRows(billId: string, actorUserId: string, rawInput: unknown) {

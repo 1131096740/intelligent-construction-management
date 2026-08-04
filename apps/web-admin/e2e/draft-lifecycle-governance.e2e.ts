@@ -420,6 +420,632 @@ test("项目支出作废成功后刷新详情并移除重复动作", async ({ pa
   await expect(page.getByRole("button", { name: "作废支出单" })).toHaveCount(0);
 });
 
+test("P0 项目支出撤回以 fresh GET 四坐标提交且双击只产生一次 POST", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const withdrawalBodies: Record<string, unknown>[] = [];
+  let withdrawn = false;
+  let releaseWithdrawalPost!: () => void;
+  const withdrawalPostGate = new Promise<void>((resolve) => {
+    releaseWithdrawalPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      browserErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  const detail = () => ({
+    id: "expense-withdraw",
+    projectId: "project-1",
+    code: "ZC-WITHDRAW-001",
+    title: "ZC-WITHDRAW-001 · 项目临时支出",
+    status: withdrawn ? "withdrawn" : "approval_pending",
+    statusLabel: withdrawn ? "已撤回" : "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "报销",
+    paymentSubject: "项目临时支出",
+    reason: "现场临时费用",
+    requestedAmountCents: "120000",
+    approvedAmountCents: null,
+    currentNodeName: withdrawn ? null : "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: withdrawn ? "ended" : "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T09:00:00.000Z",
+    hasPersistentDraft: false,
+    withdrawalContext: withdrawn
+      ? null
+      : {
+          expectedExpenseUpdatedAt:
+            "2026-07-31T09:00:00.000Z",
+          expectedApprovalInstanceId:
+            "approval-expense-withdraw",
+          expectedNodeIndex: 1,
+          expectedApprovalUpdatedAt:
+            "2026-07-31T09:00:01.000Z"
+        },
+    availableActions: withdrawn
+      ? []
+      : [{
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null
+        }],
+    blockedReasons: withdrawn
+      ? ["项目支出申请已结束，只能查看历史记录"]
+      : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批",
+      kind: "primary",
+      enabled: false,
+      disabledReason: withdrawn
+        ? "当前项目支出状态不可审批"
+        : "申请人不能审批自己发起的业务",
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-withdraw/approval-detail",
+    (route) => {
+      requestOrder.push("GET");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-withdraw/approval-withdrawal",
+    async (route) => {
+      requestOrder.push("POST");
+      withdrawalBodies.push(
+        route.request().postDataJSON() as Record<string, unknown>
+      );
+      await withdrawalPostGate;
+      withdrawn = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: "expense-withdraw", status: "withdrawn" })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-withdraw");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "撤回项目支出申请" })
+    .click();
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "撤回项目支出申请" });
+  await expect(dialog).toBeVisible();
+  const confirm = dialog.getByRole("button", {
+    name: "确认撤回",
+    exact: true
+  });
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-withdraw-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => withdrawalBodies).toHaveLength(1);
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseWithdrawalPost();
+
+  await expect(page.getByText("已撤回", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "撤回项目支出申请" })
+  ).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET",
+    "GET",
+    "POST",
+    "GET"
+  ]);
+  expect(withdrawalBodies).toEqual([{
+    expectedExpenseUpdatedAt: "2026-07-31T09:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-withdraw",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T09:00:01.000Z"
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("P0 项目支出审批在 Chromium 桌面通过并在 WebKit 390 驳回", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  const approve = browserName === "chromium";
+  await page.setViewportSize(
+    approve
+      ? { width: 1366, height: 768 }
+      : { width: 390, height: 844 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const reviewBodies: Record<string, unknown>[] = [];
+  let reviewed = false;
+  let releaseReviewPost!: () => void;
+  const reviewPostGate = new Promise<void>((resolve) => {
+    releaseReviewPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  const detail = () => ({
+    id: "expense-review",
+    projectId: "project-1",
+    code: "ZC-REVIEW-001",
+    title: "ZC-REVIEW-001 · 项目支出审批",
+    status: reviewed ? (approve ? "approval_pending" : "rejected") : "approval_pending",
+    statusLabel: reviewed ? (approve ? "已通过当前节点" : "已驳回") : "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "差旅费",
+    paymentSubject: "项目差旅支出",
+    reason: "现场协调差旅",
+    requestedAmountCents: "100000",
+    approvedAmountCents: reviewed && approve ? "80000" : null,
+    currentNodeName: reviewed ? null : "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: reviewed && !approve ? "ended" : "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T10:00:00.000Z",
+    hasPersistentDraft: false,
+    reviewApprovalContext: reviewed
+      ? null
+      : {
+          expectedExpenseUpdatedAt: "2026-07-31T10:00:00.000Z",
+          expectedApprovalInstanceId: "approval-expense-review",
+          expectedNodeIndex: 2,
+          expectedApprovalUpdatedAt: "2026-07-31T10:00:01.000Z"
+        },
+    withdrawalContext: null,
+    availableActions: reviewed
+      ? []
+      : [{
+          key: "review_approval",
+          label: "审批项目支出",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiresSelfReviewConfirmation: false
+        }],
+    blockedReasons: reviewed ? ["当前审批节点已办理"] : [],
+    canSetApprovedAmount: approve,
+    reviewAction: {
+      key: "review",
+      label: "审批项目支出",
+      kind: "primary",
+      enabled: !reviewed,
+      disabledReason: reviewed ? "当前审批节点已办理" : null,
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review/approval-detail",
+    (route) => {
+      requestOrder.push("GET");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review/approval",
+    async (route) => {
+      requestOrder.push("POST");
+      reviewBodies.push(
+        route.request().postDataJSON() as Record<string, unknown>
+      );
+      await reviewPostGate;
+      reviewed = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: "expense-review" })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-review");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const comment = approve ? "同意按核定金额支付" : "资料不足，请补充凭证";
+  await page
+    .getByPlaceholder("审批意见；驳回时必填")
+    .fill(comment);
+  if (approve) {
+    await page
+      .getByPlaceholder("终审批准金额（元，不填则按申请金额）")
+      .fill("800.00");
+  }
+  await page
+    .getByRole("button", { name: approve ? "审批通过" : "审批驳回" })
+    .click();
+  const dialog = page.locator(".t-dialog").filter({
+    hasText: approve ? "确认通过项目支出审批" : "确认驳回项目支出审批"
+  });
+  await expect(dialog).toBeVisible();
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-review-${approve ? "approve-chromium-1366x768" : "reject-webkit-390x844"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: approve ? "确认通过" : "确认驳回",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => reviewBodies).toHaveLength(1);
+  await expect(confirm).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseReviewPost();
+
+  await expect(
+    page.getByText(
+      approve
+        ? "项目支出审批已通过，详情已刷新。"
+        : "项目支出审批已驳回，详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText(approve ? "已通过当前节点" : "已驳回", { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "审批通过" })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "审批驳回" })
+  ).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET",
+    "GET",
+    "POST",
+    "GET"
+  ]);
+  expect(reviewBodies).toEqual([{
+    decision: approve ? "approve" : "reject",
+    ...(approve ? { approvedAmountCents: "80000" } : {}),
+    comment,
+    expectedExpenseUpdatedAt: "2026-07-31T10:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-review",
+    expectedNodeIndex: 2,
+    expectedApprovalUpdatedAt: "2026-07-31T10:00:01.000Z"
+  }]);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (!approve) {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("P0 项目支出审批 A 的迟到 preflight 不得在 B 路由发出 POST", async ({
+  browserName,
+  page
+}) => {
+  test.skip(browserName !== "chromium");
+  await installSession(page);
+  let expenseAGetCount = 0;
+  let reviewPostCount = 0;
+  let releaseExpenseAPreflight!: () => void;
+  const expenseAPreflightGate = new Promise<void>((resolve) => {
+    releaseExpenseAPreflight = resolve;
+  });
+  let markExpenseAPreflightStarted!: () => void;
+  const expenseAPreflightStarted = new Promise<void>((resolve) => {
+    markExpenseAPreflightStarted = resolve;
+  });
+  const detail = (id: "expense-review-A" | "expense-review-B") => ({
+    id,
+    projectId: "project-1",
+    code: id === "expense-review-A" ? "ZC-REVIEW-A" : "ZC-REVIEW-B",
+    title: id === "expense-review-A" ? "ZC-REVIEW-A · 待审批" : "ZC-REVIEW-B · 当前详情",
+    status: "approval_pending",
+    statusLabel: "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "差旅费",
+    paymentSubject: id === "expense-review-A" ? "A 支出" : "B 支出",
+    reason: "审批路由归属验收",
+    requestedAmountCents: "100000",
+    approvedAmountCents: null,
+    currentNodeName: "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T10:10:00.000Z",
+    hasPersistentDraft: false,
+    reviewApprovalContext: id === "expense-review-A"
+      ? {
+          expectedExpenseUpdatedAt: "2026-07-31T10:10:00.000Z",
+          expectedApprovalInstanceId: "approval-expense-review-A",
+          expectedNodeIndex: 1,
+          expectedApprovalUpdatedAt: "2026-07-31T10:10:01.000Z"
+        }
+      : null,
+    withdrawalContext: null,
+    availableActions: id === "expense-review-A"
+      ? [{
+          key: "review_approval",
+          label: "审批项目支出",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiresSelfReviewConfirmation: false
+        }]
+      : [],
+    blockedReasons: id === "expense-review-B" ? ["当前账号无此审批权限"] : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批项目支出",
+      kind: "primary",
+      enabled: id === "expense-review-A",
+      disabledReason: id === "expense-review-B" ? "当前账号无此审批权限" : null,
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review-A/approval-detail",
+    async (route) => {
+      expenseAGetCount += 1;
+      if (expenseAGetCount > 1) {
+        markExpenseAPreflightStarted();
+        await expenseAPreflightGate;
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail("expense-review-A"))
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review-B/approval-detail",
+    (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(detail("expense-review-B"))
+    })
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-review-A/approval",
+    (route) => {
+      reviewPostCount += 1;
+      return route.fulfill({ contentType: "application/json", body: "{}" });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-review-A");
+  await page.getByRole("button", { name: "审批通过" }).click();
+  const dialog = page.locator(".t-dialog").filter({
+    hasText: "确认通过项目支出审批"
+  });
+  await dialog.getByRole("button", { name: "确认通过", exact: true }).click();
+  await expenseAPreflightStarted;
+  await page.evaluate(() => {
+    window.history.pushState(
+      {},
+      "",
+      "/项目支出/project-1/expense-review-B"
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page.getByText("ZC-REVIEW-B", { exact: true })).toBeVisible();
+  releaseExpenseAPreflight();
+  await page.waitForTimeout(100);
+
+  expect(reviewPostCount).toBe(0);
+  await expect(page.getByText("ZC-REVIEW-B", { exact: true })).toBeVisible();
+  await expect(page.getByText("ZC-REVIEW-A", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "审批通过" })
+  ).toHaveCount(0);
+});
+
+test("P0 项目支出 A 路由迟到响应不能覆盖 B 详情", async ({
+  browserName,
+  page
+}) => {
+  test.skip(browserName !== "chromium");
+  await installSession(page);
+  let releaseExpenseA!: () => void;
+  const expenseAGate = new Promise<void>((resolve) => {
+    releaseExpenseA = resolve;
+  });
+  let markExpenseAStarted!: () => void;
+  const expenseAStarted = new Promise<void>((resolve) => {
+    markExpenseAStarted = resolve;
+  });
+  const detail = (id: "expense-A" | "expense-B") => ({
+    id,
+    projectId: "project-1",
+    code: id === "expense-A" ? "ZC-LATE-A" : "ZC-CURRENT-B",
+    title:
+      id === "expense-A"
+        ? "ZC-LATE-A · 迟到支出"
+        : "ZC-CURRENT-B · 当前支出",
+    status: "approval_pending",
+    statusLabel: "审批中",
+    expenseTypeLabel: "报销",
+    expenseSubtypeLabel: "报销",
+    paymentSubject:
+      id === "expense-A" ? "迟到支出" : "当前支出",
+    reason: "路由归属验收",
+    requestedAmountCents: "10000",
+    approvedAmountCents: null,
+    currentNodeName: "财务审核",
+    lifecycleKind: "formal_record",
+    ledgerView: "formal_ledger",
+    lifecycleUpdatedAt: "2026-07-31T09:10:00.000Z",
+    hasPersistentDraft: false,
+    withdrawalContext:
+      id === "expense-A"
+        ? {
+            expectedExpenseUpdatedAt:
+              "2026-07-31T09:10:00.000Z",
+            expectedApprovalInstanceId: "approval-expense-A",
+            expectedNodeIndex: 1,
+            expectedApprovalUpdatedAt:
+              "2026-07-31T09:10:01.000Z"
+          }
+        : null,
+    availableActions:
+      id === "expense-A"
+        ? [{
+            key: "withdraw",
+            label: "撤回迟到支出",
+            kind: "danger",
+            enabled: true,
+            disabledReason: null
+          }]
+        : [],
+    blockedReasons:
+      id === "expense-B"
+        ? ["当前账号不具备撤回权限"]
+        : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批",
+      kind: "primary",
+      enabled: false,
+      disabledReason: "当前岗位无权审批此节点",
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-A/approval-detail",
+    async (route) => {
+      markExpenseAStarted();
+      await expenseAGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail("expense-A"))
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-B/approval-detail",
+    (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail("expense-B"))
+      })
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-A");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  await expenseAStarted;
+  await page.evaluate(() => {
+    window.history.pushState(
+      {},
+      "",
+      "/项目支出/project-1/expense-B"
+    );
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(
+    page.getByText("ZC-CURRENT-B", { exact: true })
+  ).toBeVisible();
+  releaseExpenseA();
+  await page.waitForTimeout(100);
+
+  await expect(
+    page.getByText("ZC-CURRENT-B", { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText("ZC-LATE-A", { exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "撤回迟到支出" })
+  ).toHaveCount(0);
+});
+
 test("合同工作台丢弃未保存修改后直接删除服务端草稿", async ({ page }) => {
   await installSession(page);
   let saveCalls = 0;
@@ -550,16 +1176,8 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
     .toBe("/合同工作台?view=all");
 });
 
-test("合同已放弃记录可携带保存时间复制为全新草稿", async ({ page }, testInfo) => {
+test("合同已放弃记录保持只读且不开放复制", async ({ page }, testInfo) => {
   await installSession(page);
-  let copyBody: Record<string, unknown> | null = null;
-  await page.route("**/api/contracts/contract-version-abandoned-1/copies", (route) => {
-    copyBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ contract: { id: "contract-copy-1" }, version: { id: "contract-version-copy-1" } })
-    });
-  });
   await page.route("**/api/contracts/workbench?*", (route) => {
     const view = new URL(route.request().url()).searchParams.get("view") ?? "all";
     const endedRows = view === "all" ? [{
@@ -583,8 +1201,7 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
       draftRevision: 3,
       lifecycleUpdatedAt: savedAt,
       abandonedAt: savedAt,
-      abandonReason: "供应计划取消",
-      copyAvailable: true
+      abandonReason: "供应计划取消"
     }] : [];
     return route.fulfill({
       contentType: "application/json",
@@ -599,8 +1216,8 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
   await page.goto("/合同工作台?view=all");
   await expect(page.getByText("HT-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("供应计划取消", { exact: true })).toBeVisible();
-  await expect(page.getByText("复制为新草稿", { exact: true })).toBeVisible();
-  await expect(page.getByText("进入工作台", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("复制为新草稿", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("查看详情", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 900, height: 768 });
   await expectNoDocumentHorizontalOverflow(page);
@@ -609,11 +1226,6 @@ test("合同已放弃记录可携带保存时间复制为全新草稿", async ({
     path: path.join(process.env.UI_RESPONSIVE_SCREENSHOT_DIR ?? testInfo.outputDir, "draft-lifecycle-contract-ended-900x768.png"),
     fullPage: true
   });
-
-  await page.getByText("复制为新草稿", { exact: true }).click();
-  await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
-  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/合同工作台/contract-copy-1?versionId=contract-version-copy-1");
 });
 
 test("结算已放弃记录可携带保存时间复制为全新草稿", async ({ page }) => {
@@ -667,4 +1279,726 @@ test("结算已放弃记录可携带保存时间复制为全新草稿", async ({
   await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
   await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
     .toBe("/结算工作台?project=project-1&draftId=settlement-draft-copy-1");
+});
+
+test("P0 项目支出实付在 Chromium 桌面与 WebKit 390 只提交一个原子事实", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const uploadIdempotencyKeys: string[] = [];
+  const executionBodies: Record<string, unknown>[] = [];
+  let executed = false;
+  let releaseExecutionPost!: () => void;
+  const executionPostGate = new Promise<void>((resolve) => {
+    releaseExecutionPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const detail = () => {
+    const expectedExpenseUpdatedAt = executed
+      ? "2026-07-31T11:00:02.000Z"
+      : "2026-07-31T11:00:00.000Z";
+    return {
+      id: "expense-execution",
+      projectId: "project-1",
+      code: "ZC-EXECUTION-001",
+      title: "ZC-EXECUTION-001 · 项目支出实付",
+      status: executed ? "paid" : "partially_paid",
+      statusLabel: executed ? "已付清" : "部分付款",
+      expenseTypeLabel: "零星付款",
+      expenseSubtypeLabel: "其他",
+      paymentSubject: "项目现场支出",
+      reason: "现场临时费用",
+      requestedAmountCents: "50000",
+      approvedAmountCents: "50000",
+      paidAmountCents: executed ? "50000" : "20000",
+      remainingAmountCents: executed ? "0" : "30000",
+      currentNodeName: null,
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+      hasPersistentDraft: false,
+      withdrawalContext: null,
+      reviewApprovalContext: null,
+      executionContext: executed
+        ? null
+        : { expectedExpenseUpdatedAt },
+      availableActions: executed
+        ? []
+        : [{
+            key: "record_execution",
+            label: "登记实付",
+            kind: "primary",
+            enabled: true,
+            disabledReason: null,
+            requiredAction: "project_expense.execution"
+          }],
+      blockedReasons: executed ? ["项目支出已全部付清"] : [],
+      canSetApprovedAmount: false,
+      reviewAction: {
+        key: "review",
+        label: "审批",
+        kind: "primary",
+        enabled: false,
+        disabledReason: "当前项目支出状态不可审批",
+        requiresSelfReviewConfirmation: false
+      },
+      approvalTimeline: []
+    };
+  };
+
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-execution/approval-detail",
+    (route) => {
+      requestOrder.push("GET /approval-detail");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route("**/api/files", (route) => {
+    const requestBody =
+      route.request().postDataBuffer()?.toString("utf8") ?? "";
+    const idempotencyKey =
+      /name="idempotencyKey"\r\n\r\n([^\r\n]+)/u.exec(
+        requestBody
+      )?.[1] ?? "";
+    requestOrder.push("POST /files");
+    uploadIdempotencyKeys.push(idempotencyKey);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ id: idempotencyKey })
+    });
+  });
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-execution/executions",
+    async (route) => {
+      requestOrder.push("POST /executions");
+      executionBodies.push(
+        route.request().postDataJSON() as Record<string, unknown>
+      );
+      await executionPostGate;
+      executed = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ id: "project-expense-execution-p0" })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-execution");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const executionCard = page
+    .locator(".section-card")
+    .filter({ hasText: "实付办理" });
+  await expect(executionCard).toBeVisible();
+  await executionCard.locator(".money-input input").fill("300.00");
+  const paidAt = executionCard.locator(".t-date-picker input");
+  const paidAtInput = await paidAt.inputValue();
+  expect(paidAtInput).not.toBe("");
+  await executionCard.locator('input[type="file"]').setInputFiles({
+    name: "项目支出实付凭证.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("project-expense-execution-p0")
+  });
+  await executionCard
+    .getByRole("button", { name: "确认登记实付", exact: true })
+    .click();
+
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "确认登记项目支出实付？" });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByPlaceholder("用于确认当前操作者身份")
+    .fill("Draft@2026");
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-execution-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: "确认登记实付",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => executionBodies).toHaveLength(1);
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true })
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseExecutionPost();
+
+  await expect(
+    page.getByText(
+      "项目支出实付已登记，权威详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText("已付清", { exact: true })
+  ).toBeVisible();
+  await expect(executionCard).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET /approval-detail",
+    "GET /approval-detail",
+    "POST /files",
+    "POST /executions",
+    "GET /approval-detail"
+  ]);
+  expect(uploadIdempotencyKeys).toHaveLength(1);
+  expect(uploadIdempotencyKeys[0]).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+  );
+  const submittedPaidAt = executionBodies[0]?.paidAt;
+  expect(submittedPaidAt).toEqual(expect.any(String));
+  expect(
+    await page.evaluate((value) => {
+      const date = new Date(value);
+      const pad = (part: number) => String(part).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }, submittedPaidAt as string)
+  ).toBe(paidAtInput);
+  expect(executionBodies).toEqual([{
+    amountCents: "30000",
+    paidAt: submittedPaidAt,
+    voucherFileId: uploadIdempotencyKeys[0],
+    confirmationPassword: "Draft@2026",
+    expectedExpenseUpdatedAt:
+      "2026-07-31T11:00:00.000Z",
+    idempotencyKey: uploadIdempotencyKeys[0]
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("P0 项目支出财务入账在 Chromium 桌面与 WebKit 390 只提交一个单调事实", async ({
+  browserName,
+  page
+}, testInfo) => {
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const financeBodies: Record<string, unknown>[] = [];
+  let financed = false;
+  let releaseFinancePost!: () => void;
+  const financePostGate = new Promise<void>((resolve) => {
+    releaseFinancePost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const detail = () => {
+    const expectedExpenseUpdatedAt = financed
+      ? "2026-07-31T12:00:02.000Z"
+      : "2026-07-31T12:00:00.000Z";
+    return {
+      id: "expense-finance",
+      projectId: "project-1",
+      code: "ZC-FINANCE-001",
+      title: "ZC-FINANCE-001 · 项目支出财务入账",
+      status: "paid",
+      statusLabel: "已付清",
+      expenseTypeLabel: "零星付款",
+      expenseSubtypeLabel: "其他",
+      paymentSubject: "项目现场支出",
+      reason: "现场临时费用",
+      requestedAmountCents: "50000",
+      approvedAmountCents: "50000",
+      paidAmountCents: "50000",
+      remainingAmountCents: "0",
+      financeRecordedAmountCents: financed ? "50000" : "20000",
+      financeRemainingAmountCents: financed ? "0" : "30000",
+      currentNodeName: null,
+      lifecycleKind: "formal_record",
+      ledgerView: "formal_ledger",
+      lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+      hasPersistentDraft: false,
+      withdrawalContext: null,
+      reviewApprovalContext: null,
+      executionContext: null,
+      financeContext: financed
+        ? null
+        : { expectedExpenseUpdatedAt },
+      availableActions: financed
+        ? []
+        : [{
+            key: "record_finance",
+            label: "财务入账",
+            kind: "primary",
+            enabled: true,
+            disabledReason: null,
+            requiredAction: "project_expense.finance_record",
+            requiresPassword: true
+          }],
+      blockedReasons: financed ? ["项目支出已全部入账"] : [],
+      canSetApprovedAmount: false,
+      reviewAction: {
+        key: "review",
+        label: "审批",
+        kind: "primary",
+        enabled: false,
+        disabledReason: "当前项目支出状态不可审批",
+        requiresSelfReviewConfirmation: false
+      },
+      approvalTimeline: []
+    };
+  };
+
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-finance/approval-detail",
+    (route) => {
+      requestOrder.push("GET /approval-detail");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-finance/finance-records",
+    async (route) => {
+      requestOrder.push("POST /finance-records");
+      const body =
+        route.request().postDataJSON() as Record<string, unknown>;
+      financeBodies.push(body);
+      await financePostGate;
+      financed = true;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "project-expense-finance-p0",
+          idempotencyKey: body.idempotencyKey,
+          projectId: "project-1",
+          projectExpenseRequestId: "expense-finance",
+          paymentRequestId: null,
+          settlementId: null,
+          direction: "outflow",
+          amountCents: body.amountCents,
+          occurredAt: body.occurredAt,
+          createdByUserId: "draft-governance-user"
+        })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-finance");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const financeCard = page
+    .locator(".section-card")
+    .filter({
+      has: page.getByRole("button", {
+        name: "确认财务入账",
+        exact: true
+      })
+    });
+  await expect(financeCard).toBeVisible();
+  await financeCard.locator(".money-input input").fill("300.00");
+  const occurredAt = financeCard.locator(".t-date-picker input");
+  const occurredAtInput = await occurredAt.inputValue();
+  expect(occurredAtInput).not.toBe("");
+  await financeCard
+    .getByRole("button", { name: "确认财务入账", exact: true })
+    .click();
+
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "确认项目支出财务入账？" });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByPlaceholder("用于确认当前操作者身份")
+    .fill("Draft@2026");
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-finance-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: "确认财务入账",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => financeBodies).toHaveLength(1);
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true })
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseFinancePost();
+
+  await expect(
+    page.getByText(
+      "项目支出财务入账已登记，权威详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".summary-grid > div")
+      .filter({ hasText: "已入账金额" })
+  ).toContainText("¥500.00");
+  await expect(
+    page
+      .locator(".summary-grid > div")
+      .filter({ hasText: "待入账金额" })
+  ).toContainText("¥0.00");
+  await expect(financeCard).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET /approval-detail",
+    "GET /approval-detail",
+    "POST /finance-records",
+    "GET /approval-detail",
+    "GET /approval-detail"
+  ]);
+  expect(financeBodies).toHaveLength(1);
+  expect(financeBodies[0]?.idempotencyKey).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+  );
+  const submittedOccurredAt = financeBodies[0]?.occurredAt;
+  expect(submittedOccurredAt).toEqual(expect.any(String));
+  expect(
+    await page.evaluate((value) => {
+      const date = new Date(value);
+      const pad = (part: number) => String(part).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }, submittedOccurredAt as string)
+  ).toBe(occurredAtInput);
+  expect(financeBodies).toEqual([{
+    amountCents: "30000",
+    occurredAt: submittedOccurredAt,
+    confirmationPassword: "Draft@2026",
+    expectedExpenseUpdatedAt:
+      "2026-07-31T12:00:00.000Z",
+    idempotencyKey: financeBodies[0]?.idempotencyKey
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("P0 项目支出收货在 Chromium 1366 与 WebKit 390 只提交一个 CAS 事实", async ({
+  browserName,
+  page
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await installSession(page);
+  await page.setViewportSize(
+    browserName === "webkit"
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 }
+  );
+  const browserErrors: string[] = [];
+  const pageErrors: string[] = [];
+  const requestOrder: string[] = [];
+  const receiptBodies: Record<string, unknown>[] = [];
+  let confirmed = false;
+  let confirmedIdempotencyKey: string | null = null;
+  let releaseReceiptPost!: () => void;
+  const receiptPostGate = new Promise<void>((resolve) => {
+    releaseReceiptPost = resolve;
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+
+  const initialUpdatedAt = "2026-08-01T04:00:00.000Z";
+  const completedUpdatedAt = "2026-08-01T04:00:02.000Z";
+  const detail = () => ({
+    id: "expense-receipt",
+    projectId: "project-1",
+    code: "CG-RECEIPT-001",
+    title: "CG-RECEIPT-001 · 零星采购收货",
+    status: "paid",
+    statusLabel: "已付清",
+    expenseTypeLabel: "零星采购",
+    expenseSubtypeLabel: "零星材料采购",
+    paymentSubject: "现场零星材料",
+    reason: "现场急用材料",
+    requestedAmountCents: "50000",
+    approvedAmountCents: "50000",
+    paidAmountCents: "50000",
+    remainingAmountCents: "0",
+    financeRecordedAmountCents: "50000",
+    financeRemainingAmountCents: "0",
+    receiptConfirmedAt: confirmed
+      ? "2026-08-01T04:00:01.000Z"
+      : null,
+    receiptConfirmedByUserId: confirmed
+      ? "draft-governance-user"
+      : null,
+    receiptConfirmationIdempotencyKey:
+      confirmedIdempotencyKey,
+    receiptConfirmationNote: confirmed
+      ? "数量、质量与现场交付无误"
+      : null,
+    currentNodeName: null,
+    lifecycleKind: "formal_record",
+    ledgerView: "formal_ledger",
+    lifecycleUpdatedAt: confirmed
+      ? completedUpdatedAt
+      : initialUpdatedAt,
+    hasPersistentDraft: false,
+    withdrawalContext: null,
+    reviewApprovalContext: null,
+    executionContext: null,
+    financeContext: null,
+    receiptContext: confirmed
+      ? null
+      : { expectedExpenseUpdatedAt: initialUpdatedAt },
+    availableActions: confirmed
+      ? []
+      : [{
+          key: "confirm_receipt",
+          label: "确认收货",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiredAction: "project_expense.receipt_confirm",
+          requiresPassword: true
+        }],
+    blockedReasons: confirmed ? ["零星采购已确认收货"] : [],
+    canSetApprovedAmount: false,
+    reviewAction: {
+      key: "review",
+      label: "审批",
+      kind: "primary",
+      enabled: false,
+      disabledReason: "当前项目支出状态不可审批",
+      requiresSelfReviewConfirmation: false
+    },
+    approvalTimeline: []
+  });
+
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-receipt/approval-detail",
+    (route) => {
+      requestOrder.push("GET /approval-detail");
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(detail())
+      });
+    }
+  );
+  await page.route(
+    "**/api/projects/project-1/expense-requests/expense-receipt/receipt-confirmation",
+    async (route) => {
+      requestOrder.push("POST /receipt-confirmation");
+      const body =
+        route.request().postDataJSON() as Record<string, unknown>;
+      receiptBodies.push(body);
+      await receiptPostGate;
+      confirmed = true;
+      confirmedIdempotencyKey = String(body.idempotencyKey);
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          projectId: "project-1",
+          expenseRequestId: "expense-receipt",
+          idempotencyKey: body.idempotencyKey,
+          confirmedByUserId: "draft-governance-user",
+          confirmedAt: "2026-08-01T04:00:01.000Z",
+          note: body.note,
+          updatedAt: completedUpdatedAt
+        })
+      });
+    }
+  );
+
+  await login(page);
+  await page.goto("/项目支出/project-1/expense-receipt");
+  await expect(
+    page.getByRole("heading", { name: "项目支出审批详情" })
+  ).toBeVisible();
+  const receiptCard = page
+    .locator(".section-card")
+    .filter({
+      has: page.getByRole("button", {
+        name: "确认收货",
+        exact: true
+      })
+    });
+  await expect(receiptCard).toBeVisible();
+  await receiptCard
+    .locator("textarea")
+    .fill("数量、质量与现场交付无误");
+  await receiptCard
+    .getByRole("button", { name: "确认收货", exact: true })
+    .click();
+
+  const dialog = page
+    .locator(".t-dialog")
+    .filter({ hasText: "确认历史项目支出已收货？" });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByPlaceholder("用于确认当前操作者身份")
+    .fill("Draft@2026");
+  await page.screenshot({
+    path: path.join(
+      testInfo.outputDir,
+      `project-expense-receipt-${browserName}-${browserName === "webkit" ? "390x844" : "1366x768"}.png`
+    ),
+    fullPage: false
+  });
+  const confirm = dialog.getByRole("button", {
+    name: "确认收货",
+    exact: true
+  });
+  await confirm.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+    (element as HTMLButtonElement).click();
+  });
+  await expect.poll(() => receiptBodies).toHaveLength(1);
+  await expect(
+    page.getByRole("button", { name: "刷新", exact: true })
+  ).toBeDisabled();
+  await expect(
+    dialog.getByRole("button", { name: "取消", exact: true })
+  ).toBeDisabled();
+  await expect(dialog.locator(".t-dialog__close")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseReceiptPost();
+
+  await expect(
+    page.getByText(
+      "项目支出收货已确认，权威详情已刷新。",
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".summary-grid > div")
+      .filter({ hasText: "收货状态" })
+  ).toContainText("已确认");
+  await expect(receiptCard).toHaveCount(0);
+  await expect.poll(() => requestOrder).toEqual([
+    "GET /approval-detail",
+    "GET /approval-detail",
+    "POST /receipt-confirmation",
+    "GET /approval-detail"
+  ]);
+  expect(receiptBodies).toHaveLength(1);
+  expect(receiptBodies[0]?.idempotencyKey).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+  );
+  expect(receiptBodies).toEqual([{
+    confirmationPassword: "Draft@2026",
+    note: "数量、质量与现场交付无误",
+    expectedExpenseUpdatedAt: initialUpdatedAt,
+    idempotencyKey: receiptBodies[0]?.idempotencyKey
+  }]);
+  await expect(
+    page.locator(
+      "vite-error-overlay, #webpack-dev-server-client-overlay"
+    )
+  ).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalScrollers(page);
+  if (browserName === "webkit") {
+    expect(
+      await page.evaluate(() => ({
+        height: window.innerHeight,
+        userAgent: navigator.userAgent,
+        width: window.innerWidth
+      }))
+    ).toEqual(expect.objectContaining({
+      height: 844,
+      width: 390,
+      userAgent: expect.not.stringContaining("Chrome/")
+    }));
+  }
+  expect(browserErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });

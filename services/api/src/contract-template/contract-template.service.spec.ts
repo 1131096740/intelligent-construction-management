@@ -128,9 +128,135 @@ describe("ContractTemplateService", () => {
     expect(result.versions[0]?.availableActions).toContainEqual(
       expect.objectContaining({ key: "discard_version", enabled: true })
     );
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        enabled: false,
+        disabledReason: expect.stringContaining("只有已发布的业务模板版本可以风险停用")
+      })
+    );
     expect(result.versions[1]?.availableActions).toContainEqual(
       expect.objectContaining({ key: "discard_version", enabled: false })
     );
+    expect(result.versions[1]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        enabled: false,
+        disabledReason: "只有合同主管可以风险停用已发布模板版本"
+      })
+    );
+  });
+
+  it("only enables the server risk-stop action for a director and an unmapped published version", async () => {
+    const version = {
+      id: "version-1",
+      templateId: "template-1",
+      versionNo: 1,
+      status: "published",
+      fieldSchema: [],
+      billSchema: [],
+      clauseSchema: [],
+      attachmentSchema: [],
+      validationSchema: [],
+      submittedByUserId: "staff-1",
+      publishedByUserId: "director-1",
+      publishedAt: new Date("2026-07-10T08:00:00.000Z"),
+      stoppedAt: null,
+      revokedAt: null,
+      changeSummary: "首次发布",
+      createdAt: new Date("2026-07-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T08:00:00.000Z")
+    };
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      contractBusinessTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-1",
+          code: "TPL-001",
+          name: "采购合同模板",
+          contractTypeKey: "material_purchase",
+          status: "published"
+        })
+      },
+      contractBusinessTemplateVersion: { findMany: jest.fn().mockResolvedValue([version]) },
+      contractScenarioTemplateMapping: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never
+    );
+
+    const result = await service.getTemplate("template-1", "director-1");
+
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        label: "风险停用",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null
+      })
+    );
+  });
+
+  it("disables the server risk-stop action while an active scenario mapping exists", async () => {
+    const version = {
+      id: "version-1",
+      templateId: "template-1",
+      versionNo: 1,
+      status: "published",
+      fieldSchema: [],
+      billSchema: [],
+      clauseSchema: [],
+      attachmentSchema: [],
+      validationSchema: [],
+      submittedByUserId: "staff-1",
+      publishedByUserId: "director-1",
+      publishedAt: new Date("2026-07-10T08:00:00.000Z"),
+      stoppedAt: null,
+      revokedAt: null,
+      changeSummary: "首次发布",
+      createdAt: new Date("2026-07-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-10T08:00:00.000Z")
+    };
+    const tx = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }]) },
+      contractBusinessTemplate: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "template-1",
+          code: "TPL-001",
+          name: "采购合同模板",
+          contractTypeKey: "material_purchase",
+          status: "published"
+        })
+      },
+      contractBusinessTemplateVersion: { findMany: jest.fn().mockResolvedValue([version]) },
+      contractScenarioTemplateMapping: {
+        findFirst: jest.fn().mockResolvedValue({ id: "mapping-1", active: true })
+      },
+      contractVersion: { findFirst: jest.fn().mockResolvedValue(null) }
+    };
+    const service = new ContractTemplateService(
+      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
+      audit as never
+    );
+
+    const result = await service.getTemplate("template-1", "director-1");
+
+    expect(result.versions[0]?.availableActions).toContainEqual(
+      expect.objectContaining({
+        key: "risk_stop",
+        enabled: false,
+        disabledReason: "该模板版本仍有启用的业务场景映射，请先停用映射"
+      })
+    );
+    expect(tx.contractScenarioTemplateMapping.findFirst).toHaveBeenCalledWith({
+      where: { businessTemplateVersionId: "version-1", active: true },
+      select: { id: true }
+    });
   });
 
   it("returns a fixed not-found error for missing template detail", async () => {
@@ -675,6 +801,10 @@ describe("ContractTemplateService", () => {
     expect(tx.contractScenarioTemplateMapping.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
       tx.contractBusinessTemplateVersion.update.mock.invocationCallOrder[0]
     );
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
     // Should NOT touch any contract rows
     expect(Object.keys(tx)).not.toContain("contract");
     expect(audit.record).toHaveBeenCalledWith(
@@ -734,6 +864,16 @@ describe("ContractTemplateService", () => {
         }),
         update: jest.fn().mockResolvedValue({ id: "version-1", status: "revoked" })
       },
+      contractScenarioTemplateMapping: {
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "template-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "published"
+        }]),
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -750,6 +890,13 @@ describe("ContractTemplateService", () => {
       where: { id: "version-1" },
       data: expect.objectContaining({ status: "revoked" })
     });
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.contractBusinessTemplateVersion.update.mock.invocationCallOrder[0]
+    );
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
@@ -759,6 +906,46 @@ describe("ContractTemplateService", () => {
         businessId: "version-1"
       })
     );
+  });
+
+  it("rejects revoking a version while an active scenario mapping still points to it", async () => {
+    const tx = {
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "pos-dir" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_director" }])
+      },
+      contractBusinessTemplateVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          templateId: "template-1",
+          status: "published"
+        }),
+        update: jest.fn()
+      },
+      contractScenarioTemplateMapping: {
+        findFirst: jest.fn().mockResolvedValue({ id: "mapping-1" })
+      },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "template-1" }])
+        .mockResolvedValueOnce([{
+          id: "version-1",
+          templateId: "template-1",
+          status: "published"
+        }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractTemplateService(prisma, audit as never);
+
+    await expect(
+      service.revokeVersion("version-1", "contract-director-1")
+    ).rejects.toThrow("请先停用映射");
+    expect(tx.contractBusinessTemplateVersion.update).not.toHaveBeenCalled();
   });
 
   it("publishes a standard clause version", async () => {

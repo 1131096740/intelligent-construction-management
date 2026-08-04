@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "purpose": "PR1-GLR-03 explicit non-production wrapper retirement evidence",
+  "entries": [
+    {
+      "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "createCompanyEntity",
+        "updateCompanyEntity",
+        "updateCompanyEntityStatus"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-scenario.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "createContractBusinessScenario",
+        "createContractScenarioMapping",
+        "updateContractBusinessScenario",
+        "updateContractScenarioMapping"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "abandonContractDraft",
+        "addBillRow",
+        "cloneContractTemplateVersion",
+        "cloneLayoutTemplateVersion",
+        "createBusinessParty",
+        "createBusinessPartyVersion",
+        "createContractNumberRule",
+        "createContractTemplate",
+        "createDraftCheckpoint",
+        "createLayoutTemplate",
+        "createStandardClause",
+        "deleteBillRow",
+        "deletePristineContractDraft",
+        "discardContractTemplateVersion",
+        "discardLayoutTemplateVersion",
+        "discardStandardClauseVersion",
+        "fetchContractWorkbench",
+        "getLatestLayoutTemplatePreview",
+        "inspectLayoutTemplateVersion",
+        "listContractDrafts",
+        "listStandardClauseHistory",
+        "publishContractTemplateVersion",
+        "publishLayoutTemplateVersion",
+        "publishStandardClauseVersion",
+        "queueLayoutTemplatePreview",
+        "reorderBillRows",
+        "restoreDraftCheckpoint",
+        "revokeContractTemplateVersion",
+        "revokeLayoutTemplateVersion",
+        "saveContractDraft",
+        "stopContractNumberRule",
+        "stopContractTemplateVersion",
+        "stopLayoutTemplateVersion",
+        "submitContractTemplateVersion",
+        "submitLayoutTemplateVersion",
+        "submitStandardClauseVersion",
+        "updateBillRow",
+        "updateContractNumberRule",
+        "updateContractTemplateVersion",
+        "updateLayoutTemplateVersion",
+        "voidContractDraft"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "classification": "unreferenced",
+      "reason": "No production or test consumer; not part of the active Phase 1 UI surface.",
+      "wrappers": [
+        "restoreContractDraft"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "assignProjectAffiliate",
+        "confirmProjectOwnerContract",
+        "confirmProjectUpstreamSettlement",
+        "copyAbandonedContractDraft",
+        "createApprovalDelegation",
+        "createSettlementDraft",
+        "fetchActiveContractNumberRules",
+        "fetchContractLifecycleLedger",
+        "fetchProjectAffiliateMappingReport",
+        "fetchSettlementLifecycleLedger",
+        "fetchWorkbenchSummary",
+        "recordPaymentExecution",
+        "recordProjectAffiliateCompanyContract",
+        "recordProjectExpenseExecution",
+        "recordProjectExpenseFinance",
+        "recordProjectOwnerContract",
+        "recordProjectProxyPayment",
+        "recordProjectUpstreamSettlement",
+        "requestSettlementExceptionQuota",
+        "reviewSettlementExceptionQuota",
+        "revokeApprovalDelegation"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "classification": "unreferenced",
+      "reason": "No production or test consumer; not part of the active Phase 1 UI surface.",
+      "wrappers": [
+        "uploadPaymentExecutionPrivateFile",
+        "uploadProjectAffiliateCompanyContractPrivateFile",
+        "uploadProjectExpenseExecutionPrivateFile"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/organization.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "applyOrganizationRoleAddition",
+        "applyOrganizationRoleRemoval",
+        "createOrganizationDepartment",
+        "createOrganizationUser",
+        "previewOrganizationRoleAddition",
+        "previewOrganizationRoleRemoval",
+        "previewOrganizationRoleRemovalBatch",
+        "updateOrganizationDepartment",
+        "updateOrganizationUser"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "abandonSettlementDraftRecord"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "classification": "unreachable_only",
+      "reason": "Only referenced from an unreachable page; not part of the active Phase 1 UI surface.",
+      "wrappers": [
+        "cloneSettlementTemplateVersion",
+        "createSettlementTemplate",
+        "generateSettlementTemplatePreview",
+        "inspectSettlementTemplateVersion",
+        "stopSettlementTemplateVersion",
+        "submitSettlementTemplateVersion"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests.",
+      "wrappers": [
+        "discardSettlementTemplateVersion",
+        "downloadSettlementTemplatePreview",
+        "publishSettlementTemplateVersion",
+        "updateSettlementTemplateVersion"
+      ]
+    }
+  ]
+}

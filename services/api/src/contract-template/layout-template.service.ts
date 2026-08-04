@@ -120,7 +120,11 @@ export class LayoutTemplateService {
 
   async getLayoutTemplate(templateId: string, actorUserId: string, includeHistory = false) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertAnyGlobalRole(tx, actorUserId, ["contract_staff", "contract_director"]);
+      const roleKeys = await this.assertAnyGlobalRole(
+        tx,
+        actorUserId,
+        ["contract_staff", "contract_director"]
+      );
       const template = await tx.contractLayoutTemplate.findUnique({ where: { id: templateId } });
       if (!template) throw new NotFoundException("未找到合同版式模板，请刷新后重试");
       const versions = await tx.contractLayoutTemplateVersion.findMany({
@@ -163,7 +167,8 @@ export class LayoutTemplateService {
         ]);
         return this.discardAction(
           version,
-          contract || generatedDocument ? "该版本已被合同或生成文件引用" : null
+          contract || generatedDocument ? "该版本已被合同或生成文件引用" : null,
+          roleKeys.includes("contract_director")
         );
       }));
       return {
@@ -525,7 +530,8 @@ export class LayoutTemplateService {
       stoppedAt?: Date | null;
       revokedAt?: Date | null;
     },
-    referenceReason: string | null
+    referenceReason: string | null,
+    canRiskStop: boolean
   ): { availableActions: DetailActionReadModel[]; blockedReasons: string[] } {
     const blockedReasons: string[] = [];
     if (version.status === "discarded") blockedReasons.push("该草稿版本已废弃");
@@ -534,15 +540,33 @@ export class LayoutTemplateService {
       blockedReasons.push("该版本已形成提交、发布、停用或撤销历史");
     }
     if (referenceReason) blockedReasons.push(referenceReason);
+    const riskStopBlockedReasons: string[] = [];
+    if (!canRiskStop) {
+      riskStopBlockedReasons.push("只有合同主管可以风险停用已发布版式版本");
+    }
+    if (version.status !== "published") {
+      riskStopBlockedReasons.push("只有已发布的合同版式版本可以风险停用");
+    }
     return {
-      availableActions: [{
-        key: "discard_version",
-        label: "废弃草稿版本",
-        kind: "danger",
-        enabled: blockedReasons.length === 0,
-        disabledReason: blockedReasons.length ? blockedReasons.join("；") : null,
-        requiresComment: true
-      }],
+      availableActions: [
+        {
+          key: "discard_version",
+          label: "废弃草稿版本",
+          kind: "danger",
+          enabled: blockedReasons.length === 0,
+          disabledReason: blockedReasons.length ? blockedReasons.join("；") : null,
+          requiresComment: true
+        },
+        {
+          key: "risk_stop",
+          label: "风险停用",
+          kind: "danger",
+          enabled: riskStopBlockedReasons.length === 0,
+          disabledReason: riskStopBlockedReasons.length
+            ? riskStopBlockedReasons.join("；")
+            : null
+        }
+      ],
       blockedReasons
     };
   }
@@ -772,6 +796,7 @@ export class LayoutTemplateService {
     if (!positions.some((position) => roleKeys.includes(position.key as typeof roleKeys[number]))) {
       throw new ForbiddenException("只有合同经办人或合同主管可以执行该版式操作");
     }
+    return positions.map((position) => position.key);
   }
 
   private assertTemplateMaintenanceRole(tx: RoleClient, actorUserId: string) {

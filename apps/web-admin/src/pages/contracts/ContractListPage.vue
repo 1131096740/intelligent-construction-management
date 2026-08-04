@@ -187,9 +187,15 @@
           <template #operation="{ row }">
             <t-link
               theme="primary"
-              @click="row.copyAvailable ? copyEndedContract(row) : row.workbenchEditable ? openLifecycleRow(row) : openDetail(row.id)"
+              @click="isHistoricalTakeoverLedgerRow(row)
+                ? openHistoricalTakeoverRow(row)
+                : row.workbenchEditable
+                  ? openLifecycleRow(row)
+                  : openDetail(row.id)"
             >
-              {{ row.copyAvailable ? (copyingId === row.contractVersionId ? '复制中' : '复制为新草稿') : row.workbenchEditable ? '继续办理' : '查看详情' }}
+              {{ isHistoricalTakeoverLedgerRow(row)
+                ? historicalTakeoverLedgerOperationLabel(row)
+                : row.workbenchEditable ? '继续办理' : '查看详情' }}
             </t-link>
           </template>
         </t-table>
@@ -271,17 +277,13 @@
           <t-space size="small">
             <t-link
               theme="primary"
-              @click="openLifecycleRow(row)"
+              @click="isHistoricalTakeoverLedgerRow(row)
+                ? openHistoricalTakeoverRow(row)
+                : openLifecycleRow(row)"
             >
-              进入工作台
-            </t-link>
-            <t-link
-              v-if="canDeleteDraftFromLedger(row)"
-              theme="danger"
-              :disabled="deletingDraftId === row.contractVersionId"
-              @click="requestDraftDeletion(row)"
-            >
-              删除草稿
+              {{ isHistoricalTakeoverLedgerRow(row)
+                ? historicalTakeoverLedgerOperationLabel(row)
+                : canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台" }}
             </t-link>
           </t-space>
         </template>
@@ -301,37 +303,6 @@
         description="当前视图没有符合条件的合同记录。"
       />
     </section>
-
-    <SensitiveActionDialog
-      :model-value="Boolean(selectedDraftForDeletion)"
-      :title="deleteDraftAction.label"
-      :description="deleteDraftAction.description"
-      :confirm-text="deleteDraftAction.confirmText"
-      confirm-theme="danger"
-      :loading="Boolean(deletingDraftId)"
-      :error="deleteDraftError"
-      @update:model-value="(value) => { if (!value) closeDraftDeletionDialog(); }"
-      @cancel="closeDraftDeletionDialog"
-      @confirm="confirmDraftDeletion"
-    >
-      <dl
-        v-if="selectedDraftForDeletion"
-        class="draft-delete-subject"
-      >
-        <div>
-          <dt>合同编号</dt>
-          <dd>{{ selectedDraftForDeletion.contractNo }}</dd>
-        </div>
-        <div>
-          <dt>合同名称</dt>
-          <dd>{{ selectedDraftForDeletion.name }}</dd>
-        </div>
-        <div>
-          <dt>影响范围</dt>
-          <dd>仅结束当前纯净草稿，不影响正式合同或历史审计。</dd>
-        </div>
-      </dl>
-    </SensitiveActionDialog>
   </section>
 </template>
 
@@ -341,12 +312,10 @@ import type { ContractWorkbenchView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  copyAbandonedContractDraft,
   downloadContractLedgerExport,
   fetchContractWorkbenchLedger,
   type ContractLifecycleLedgerRow
 } from "../../api/core-flow-read.api";
-import { abandonContractDraft } from "../../api/contract-workbench.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -356,10 +325,8 @@ import { useAuthStore } from "../../auth/auth.store";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
-import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import JgFilterBar from "../../components/JgFilterBar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
-import { businessDraftActionConfig } from "../../components/business-draft-action.config";
 import {
   canExportContractSettlementLedger,
   canManageContractRecords,
@@ -374,6 +341,10 @@ import {
   contractFilterFields,
   contractLedgerColumns,
   contractLedgerFilterOptions,
+  contractWorkbenchRouteContractId,
+  historicalTakeoverOperationLabel,
+  historicalTakeoverRouteForContractLedgerRow,
+  isHistoricalTakeoverLedgerRow,
   contractPaginationBlockReason,
   contractSummaryItems,
   emptyContractLedgerFilters,
@@ -413,11 +384,6 @@ const contractLedgerRows = ref<Array<ContractLedgerRow & ContractLifecycleLedger
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
-const copyingId = ref("");
-const deletingDraftId = ref("");
-const selectedDraftForDeletion = ref<(ContractLedgerRow & ContractLifecycleLedgerRow) | null>(null);
-const deleteDraftError = ref("");
-const deleteDraftAction = businessDraftActionConfig.delete_pristine_draft;
 const showColumnSettings = ref(false);
 const configurableContractColumnKeys = contractLedgerColumns
   .map((column) => String(column.colKey))
@@ -558,9 +524,38 @@ function openDetail(contractId: string) {
 
 function openLifecycleRow(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
   void router.push({
-    path: `/contracts/${row.id}/workbench`,
+    path: `/contracts/${contractWorkbenchRouteContractId(row)}/workbench`,
     query: row.contractVersionId ? { versionId: row.contractVersionId } : undefined
   });
+}
+
+function historicalTakeoverLedgerOperationLabel(
+  row: ContractLedgerRow & ContractLifecycleLedgerRow
+) {
+  return canReadTakeovers.value && row.takeoverReadable !== false
+    ? historicalTakeoverOperationLabel(row)
+    : "查看详情";
+}
+
+async function openHistoricalTakeoverRow(
+  row: ContractLedgerRow & ContractLifecycleLedgerRow
+) {
+  if (
+    !canReadTakeovers.value ||
+    row.takeoverReadable === false ||
+    row.takeoverStatus === "abandoned"
+  ) {
+    openDetail(row.id);
+    return;
+  }
+  const target = historicalTakeoverRouteForContractLedgerRow(row);
+  if (!target) {
+    await MessagePlugin.error(
+      "历史接管关联未完整读取，已停止进入普通合同工作台，请刷新后重试或联系管理员。"
+    );
+    return;
+  }
+  await router.push(target);
 }
 
 function canDeleteDraftFromLedger(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
@@ -570,56 +565,6 @@ function canDeleteDraftFromLedger(row: ContractLedgerRow & ContractLifecycleLedg
     row.workbenchEditable === true &&
     Boolean(row.contractVersionId) &&
     Number.isInteger(row.draftRevision);
-}
-
-function requestDraftDeletion(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
-  if (!canDeleteDraftFromLedger(row) || deletingDraftId.value) return;
-  deleteDraftError.value = "";
-  selectedDraftForDeletion.value = row;
-}
-
-function closeDraftDeletionDialog() {
-  if (deletingDraftId.value) return;
-  selectedDraftForDeletion.value = null;
-  deleteDraftError.value = "";
-}
-
-async function confirmDraftDeletion() {
-  const row = selectedDraftForDeletion.value;
-  const draftRevision = row?.draftRevision;
-  if (!row || !canDeleteDraftFromLedger(row) || !row.contractVersionId ||
-    typeof draftRevision !== "number" || !Number.isInteger(draftRevision) || deletingDraftId.value) {
-    return;
-  }
-  deletingDraftId.value = row.contractVersionId;
-  deleteDraftError.value = "";
-  try {
-    await abandonContractDraft(row.contractVersionId, {
-      action: "delete_pristine_draft",
-      expectedRevision: draftRevision
-    });
-    selectedDraftForDeletion.value = null;
-    await MessagePlugin.success("草稿已删除，历史审计记录仍保留。");
-    await loadContractLifecycleLedger();
-  } catch (error) {
-    deleteDraftError.value = error instanceof Error ? error.message : "删除草稿失败，请刷新后重试。";
-  } finally {
-    deletingDraftId.value = "";
-  }
-}
-
-async function copyEndedContract(row: ContractLedgerRow & ContractLifecycleLedgerRow) {
-  if (!row.copyAvailable || !row.contractVersionId || !row.lifecycleUpdatedAt) return;
-  copyingId.value = row.contractVersionId;
-  try {
-    const result = await copyAbandonedContractDraft(row.contractVersionId, row.lifecycleUpdatedAt);
-    await MessagePlugin.success("已复制为新的合同草稿，旧记录保持只读历史。");
-    await router.push({ path: `/contracts/${result.contract.id}/workbench`, query: { versionId: result.version.id } });
-  } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : "合同草稿复制失败，请刷新后重试。");
-  } finally {
-    copyingId.value = "";
-  }
 }
 
 function resetContractFilters() {
@@ -820,27 +765,6 @@ onMounted(() => {
 :deep(.t-select-input:focus-within) {
   outline: 2px solid var(--jg-color-focus-outline);
   outline-offset: 2px;
-}
-
-.draft-delete-subject {
-  display: grid;
-  gap: var(--jg-space-sm);
-  margin: 0;
-}
-
-.draft-delete-subject div {
-  display: grid;
-  grid-template-columns: minmax(96px, auto) 1fr;
-  gap: var(--jg-space-md);
-}
-
-.draft-delete-subject dt {
-  color: var(--jg-color-text-tertiary);
-}
-
-.draft-delete-subject dd {
-  margin: 0;
-  color: var(--jg-color-text-primary);
 }
 
 @media (max-width: 720px) {

@@ -27,17 +27,78 @@ describe("coreFlowSeedData", () => {
       "final_settlement_effective"
     ]);
     expect(coreFlowSeedData.settlement.code).toBe("JS-2026-018");
-    expect(coreFlowSeedData.settlement.status).toBe("effective");
+    expect(coreFlowSeedData.settlement.status).toBe("partially_paid");
     expect(coreFlowSeedData.settlement.isFinal).toBe(false);
     expect(coreFlowSeedData.paymentRequest.code).toBe("FK-2026-006");
-    expect(coreFlowSeedData.paymentRequest.status).toBe("approved_pending_payment");
+    expect(coreFlowSeedData.paymentRequest.status).toBe("partially_paid");
     expect(coreFlowSeedData.paymentExecution.amountCents).toBe(12800000);
+    expect(coreFlowSeedData.companyEntity).toMatchObject({
+      dataStatus: "complete",
+      currentVersionNo: 1,
+      isActive: true
+    });
+    expect(coreFlowSeedData.companyEntityVersion).toMatchObject({
+      companyEntityId: coreFlowSeedData.companyEntity.id,
+      versionNo: 1,
+      isActive: true
+    });
+    expect(coreFlowSeedData.contractVersion).toMatchObject({
+      signingSubjectType: "our_company",
+      companyEntityIdSnapshot: coreFlowSeedData.companyEntity.id,
+      companyEntityVersionId: coreFlowSeedData.companyEntityVersion.id,
+      companyEntityNameSnapshot: coreFlowSeedData.companyEntity.name,
+      companyEntityCreditCodeSnapshot:
+        coreFlowSeedData.companyEntity.unifiedSocialCreditCode
+    });
+    expect(coreFlowSeedData.paymentExecution).toMatchObject({
+      idempotencyKey: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+      ),
+      paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: coreFlowSeedData.companyEntity.id,
+      companyEntityNameSnapshot: coreFlowSeedData.companyEntity.name,
+      companyEntityCreditCodeSnapshot:
+        coreFlowSeedData.companyEntity.unifiedSocialCreditCode
+    });
+    expect(coreFlowSeedData.ownerContract).toMatchObject({
+      documentVersion: 1,
+      status: "effective",
+      confirmedAt: expect.any(Date)
+    });
+    expect(coreFlowSeedData.upstreamSettlement).toMatchObject({
+      documentVersion: 1,
+      status: "legacy_recorded"
+    });
     expect(coreFlowSeedData.upstreamSettlement.approvedAmountCents).toBeGreaterThanOrEqual(
       coreFlowSeedData.settlement.amountCents
     );
     expect(coreFlowSeedData.projectReceipt.amountCents).toBeGreaterThanOrEqual(
       coreFlowSeedData.paymentRequest.approvedAmountCents
     );
+    expect(coreFlowSeedData.projectReceipt.sourceType).toBe(
+      "general_contractor_payment"
+    );
+  });
+
+  it("seeds the immutable payment execution with funding and audit facts", () => {
+    const seedScript = readFileSync(
+      join(process.cwd(), "prisma", "seed.cjs"),
+      "utf8"
+    );
+
+    expect(seedScript).toContain("seedPaymentExecutionClosedLoop");
+    expect(seedScript).toContain("assertExactPaymentExecutionFacts");
+    expect(seedScript).toContain("paymentExecution.findMany");
+    expect(seedScript).toContain("paymentExecution.create");
+    expect(seedScript).not.toMatch(/paymentExecution\.upsert/u);
+    expect(seedScript).toContain("projectFundingAllocation.findMany");
+    expect(seedScript).toContain("projectFundingAllocation.create");
+    expect(seedScript).toContain('executionType: "payment_execution"');
+    expect(seedScript).toContain('sourceType: "project_cash"');
+    expect(seedScript).toContain('reversalKey: "original"');
+    expect(seedScript).toContain("auditLog.findUnique");
+    expect(seedScript).toContain("auditLog.create");
+    expect(seedScript).toContain('action: "payment.execution.record"');
   });
 
   it("describes the material purchase workbench template seed", () => {

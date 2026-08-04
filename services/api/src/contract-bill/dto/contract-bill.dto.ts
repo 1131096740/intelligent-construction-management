@@ -1,6 +1,8 @@
 import {
   IsBoolean,
   IsIn,
+  Matches,
+  MaxLength,
   IsObject,
   IsOptional,
   IsString
@@ -53,9 +55,38 @@ export interface ReplaceBillRowsDto {
   rows: ReplaceBillRowDto[];
 }
 
-export interface CancelBillRowRemainderDto {
-  expectedBillRevision: number;
-  reason: string;
+export class CancelBillRowRemainderDto {
+  @IsIntegerInRange({
+    min: 1,
+    max: 2_147_483_647,
+    typeMessage: "合同清单修订号必须是整数",
+    rangeMessage: "合同清单修订号必须大于等于 1"
+  })
+  expectedBillRevision!: number;
+
+  @IsIntegerInRange({
+    min: 1,
+    max: 2_147_483_647,
+    typeMessage: "合同草稿修订号必须是整数",
+    rangeMessage: "合同草稿修订号必须大于等于 1"
+  })
+  expectedDraftRevision!: number;
+
+  @IsRequiredText({
+    requiredMessage: "历史占用校验令牌不能为空",
+    typeMessage: "历史占用校验令牌必须是文字",
+    blankMessage: "历史占用校验令牌不能为空白"
+  })
+  @Matches(/^[a-f0-9]{64}$/, { message: "历史占用校验令牌格式无效" })
+  expectedOccupancyToken!: string;
+
+  @IsRequiredText({
+    requiredMessage: "取消未实施余量必须填写原因",
+    typeMessage: "取消未实施余量原因必须是文字",
+    blankMessage: "取消未实施余量必须填写原因"
+  })
+  @MaxLength(500, { message: "取消未实施余量原因不能超过 500 个字符" })
+  reason!: string;
 }
 
 export class SaveContractBillRowDto {

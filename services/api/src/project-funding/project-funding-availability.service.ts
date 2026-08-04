@@ -8,6 +8,10 @@ import {
   dbMoneyToBigInt,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
+import {
+  assertProjectFinancingQuotaApprovalLifecycle,
+  indexProjectFinancingQuotaApprovalInstances
+} from "../project/project-financing-quota-approval";
 
 export type ProjectFundingExecutionType =
   | "payment_execution"
@@ -53,7 +57,7 @@ interface FundingAllocationResult {
   allocations: FundingAllocationFact[];
 }
 
-interface FundingAllocationRow {
+export interface FundingAllocationRow {
   id: string;
   projectId: string;
   executionType: string;
@@ -72,6 +76,17 @@ interface FundingAllocationRow {
   reason: string | null;
 }
 
+export interface ProjectFundingAllocationSummary {
+  debitBySource: ReadonlyMap<string, bigint>;
+  creditBySource: ReadonlyMap<string, bigint>;
+  netUsedBySource: ReadonlyMap<string, bigint>;
+}
+
+export interface ProjectFundingLedgerCoverage {
+  projectCashSourceAmountCents: bigint;
+  allocationSummary: ProjectFundingAllocationSummary;
+}
+
 @Injectable()
 export class ProjectFundingAvailabilityService {
   async lockFundingContext(
@@ -80,6 +95,135 @@ export class ProjectFundingAvailabilityService {
   ): Promise<void> {
     await this.lockActiveProject(tx, projectId);
     await this.lockAvailableQuotas(tx, projectId);
+  }
+
+  async assertPersistedProjectFundingLedgerCoverage(
+    tx: Prisma.TransactionClient,
+    projectId: string
+  ): Promise<ProjectFundingLedgerCoverage> {
+    const [receipts, affiliateRemittances, quotas, allocations] = await Promise.all([
+      tx.projectReceipt.findMany({
+        where: {
+          projectId,
+          voidedAt: null,
+          sourceType: { in: ["general_contractor_payment", "other"] }
+        },
+        select: { amountCents: true }
+      }),
+      tx.projectUpstreamFundFact.findMany({
+        where: {
+          projectId,
+          factType: "affiliate_remittance_to_company",
+          status: "confirmed"
+        },
+        select: { amountCents: true, effectDirection: true }
+      }),
+      tx.projectFinancingQuota.findMany({
+        where: { projectId },
+        select: {
+          id: true,
+          amountCents: true,
+          status: true,
+          requestedByUserId: true,
+          approvedByUserId: true,
+          approvedAt: true
+        }
+      }),
+      tx.projectFundingAllocation.findMany({
+        where: { projectId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      })
+    ]);
+    const quotaIds = quotas.map((quota) => quota.id);
+    const approvalInstances = quotaIds.length
+      ? await tx.approvalInstance.findMany({
+          where: {
+            businessType: "project_financing_quota",
+            flowType: "project_financing_quota.approve",
+            businessId: { in: quotaIds }
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }]
+        })
+      : [];
+    const approvalByQuotaId = indexProjectFinancingQuotaApprovalInstances(
+      approvalInstances
+    );
+    for (const quota of quotas) {
+      assertProjectFinancingQuotaApprovalLifecycle(
+        quota,
+        approvalByQuotaId.get(quota.id)
+      );
+    }
+    return this.assertFundingLedgerCoverage({
+      receipts,
+      affiliateRemittances,
+      quotas,
+      allocations
+    });
+  }
+
+  assertFundingLedgerCoverage(input: {
+    receipts: ReadonlyArray<{ amountCents: bigint }>;
+    affiliateRemittances: ReadonlyArray<{
+      amountCents: bigint;
+      effectDirection: string;
+    }>;
+    quotas: ReadonlyArray<{ id: string; amountCents: bigint; status: string }>;
+    allocations: readonly FundingAllocationRow[];
+  }): ProjectFundingLedgerCoverage {
+    const projectCashSourceAmountCents =
+      sumDbMoneyToBigInt(
+        input.receipts.map((receipt) => receipt.amountCents),
+        "项目自有资金到账"
+      ) +
+      input.affiliateRemittances.reduce(
+        (total, fact) => {
+          if (
+            fact.effectDirection !== "increase" &&
+            fact.effectDirection !== "decrease"
+          ) {
+            throw new ConflictException("挂靠企业向我方拨款方向无效");
+          }
+          return total +
+            (fact.effectDirection === "decrease" ? -1n : 1n) *
+              dbMoneyToBigInt(fact.amountCents, "挂靠企业向我方拨款");
+        },
+        0n
+      );
+    if (projectCashSourceAmountCents < 0n) {
+      throw new ConflictException("项目自有资金到账净额不能为负，请先核对资金事实");
+    }
+    const allocationSummary = this.summarizeAllocations(input.allocations);
+    if (
+      (allocationSummary.netUsedBySource.get("project_cash") ?? 0n) >
+      projectCashSourceAmountCents
+    ) {
+      throw new ConflictException("项目自有资金占用超过当前确认资金来源");
+    }
+    const quotaBySource = new Map(input.quotas.map((quota) => {
+      const amountCents = dbMoneyToBigInt(quota.amountCents, "项目垫资额度");
+      if (amountCents <= 0n) {
+        throw new ConflictException("项目垫资额度金额必须大于 0");
+      }
+      return [this.financingSourceKey(quota.id), {
+        amountCents,
+        status: quota.status
+      }] as const;
+    }));
+    for (const [sourceKey, netUsedAmountCents] of allocationSummary.netUsedBySource) {
+      if (sourceKey === "project_cash") continue;
+      const quota = quotaBySource.get(sourceKey);
+      if (!quota) {
+        throw new ConflictException("项目垫资额度资金账本引用了不存在的额度");
+      }
+      if (quota.status !== "approved" && quota.status !== "terminated") {
+        throw new ConflictException("项目垫资额度资金账本引用了未批准额度");
+      }
+      if (netUsedAmountCents > quota.amountCents) {
+        throw new ConflictException("项目垫资额度占用超过批准金额");
+      }
+    }
+    return { projectCashSourceAmountCents, allocationSummary };
   }
 
   async allocateExecution(
@@ -100,32 +244,12 @@ export class ProjectFundingAvailabilityService {
 
     await this.lockActiveProject(tx, input.projectId);
     const quotas = await this.lockAvailableQuotas(tx, input.projectId);
-    const [receipts, projectAllocations] =
-      await Promise.all([
-        tx.projectReceipt.findMany({
-          where: {
-            projectId: input.projectId,
-            voidedAt: null,
-            sourceType: {
-              in: ["general_contractor_payment", "other"]
-            }
-          },
-          select: { amountCents: true }
-        }),
-        tx.projectFundingAllocation.findMany({
-          where: { projectId: input.projectId },
-          orderBy: [{ createdAt: "asc" }, { id: "asc" }]
-        })
-      ]);
-
-    const projectCashReceipts = sumDbMoneyToBigInt(
-      receipts.map((receipt) => receipt.amountCents),
-      "项目自有资金到账"
-    );
-    const netUsedBySource = this.netUsedBySource(projectAllocations);
-    const projectCashAvailable = this.nonNegative(
-      projectCashReceipts - (netUsedBySource.get("project_cash") ?? 0n)
-    );
+    const {
+      projectCashSourceAmountCents: projectCashReceipts,
+      allocationSummary: { netUsedBySource }
+    } = await this.assertPersistedProjectFundingLedgerCoverage(tx, input.projectId);
+    const projectCashUsed = netUsedBySource.get("project_cash") ?? 0n;
+    const projectCashAvailable = projectCashReceipts - projectCashUsed;
     let remaining = input.amountCents;
     const allocations: FundingAllocationFact[] = [];
 
@@ -143,10 +267,12 @@ export class ProjectFundingAvailabilityService {
     let availableQuotaCents = 0n;
     for (const quota of quotas) {
       const sourceKey = this.financingSourceKey(quota.id);
-      const available = this.nonNegative(
-        dbMoneyToBigInt(quota.amountCents, "项目垫资额度") -
-        (netUsedBySource.get(sourceKey) ?? 0n)
-      );
+      const quotaAmount = dbMoneyToBigInt(quota.amountCents, "项目垫资额度");
+      const quotaUsed = netUsedBySource.get(sourceKey) ?? 0n;
+      if (quotaUsed > quotaAmount) {
+        throw new ConflictException("项目垫资额度占用超过批准金额");
+      }
+      const available = quotaAmount - quotaUsed;
       availableQuotaCents += available;
       if (remaining === 0n || available === 0n) continue;
       const amount = available >= remaining ? remaining : available;
@@ -318,6 +444,78 @@ export class ProjectFundingAvailabilityService {
     );
   }
 
+  summarizeAllocations(
+    rows: readonly FundingAllocationRow[]
+  ): ProjectFundingAllocationSummary {
+    const debitBySource = new Map<string, bigint>();
+    const creditBySource = new Map<string, bigint>();
+    const debitById = new Map<string, FundingAllocationRow>();
+    for (const row of rows) {
+      const amountCents = dbMoneyToBigInt(row.amountCents, "项目资金分配金额");
+      if (amountCents <= 0n || (row.direction !== "debit" && row.direction !== "credit")) {
+        throw new ConflictException("项目资金分配账本存在无效金额或方向");
+      }
+      if (
+        (row.sourceType === "project_cash" &&
+          (row.sourceKey !== "project_cash" || row.sourceId !== null)) ||
+        (row.sourceType === "financing_quota" &&
+          (!row.sourceId || row.sourceKey !== this.financingSourceKey(row.sourceId))) ||
+        (row.sourceType !== "project_cash" && row.sourceType !== "financing_quota")
+      ) {
+        throw new ConflictException("项目资金分配账本存在无效资金来源");
+      }
+      if (row.direction === "debit") {
+        if (row.reversalOfAllocationId !== null || row.reversalKey !== "original") {
+          throw new ConflictException("项目资金分配账本存在无效原始占用");
+        }
+        debitById.set(row.id, row);
+      }
+      const target = row.direction === "debit" ? debitBySource : creditBySource;
+      target.set(row.sourceKey, (target.get(row.sourceKey) ?? 0n) + amountCents);
+    }
+    const creditedByDebitId = new Map<string, bigint>();
+    for (const credit of rows.filter((row) => row.direction === "credit")) {
+      if (!credit.reversalOfAllocationId || credit.reversalKey === "original") {
+        throw new ConflictException("项目资金分配账本存在无效冲销记录");
+      }
+      const debit = debitById.get(credit.reversalOfAllocationId);
+      if (!debit) {
+        throw new ConflictException("项目资金分配账本冲销金额超过原始占用");
+      }
+      if (
+        credit.projectId !== debit.projectId ||
+        credit.executionType !== debit.executionType ||
+        credit.executionId !== debit.executionId ||
+        credit.businessType !== debit.businessType ||
+        credit.businessId !== debit.businessId ||
+        credit.sourceType !== debit.sourceType ||
+        credit.sourceKey !== debit.sourceKey ||
+        credit.sourceId !== debit.sourceId
+      ) {
+        throw new ConflictException("项目资金分配账本冲销记录与原始占用不一致");
+      }
+      const credited =
+        (creditedByDebitId.get(debit.id) ?? 0n) +
+        dbMoneyToBigInt(credit.amountCents, "项目资金分配金额");
+      if (credited > dbMoneyToBigInt(debit.amountCents, "项目资金分配金额")) {
+        throw new ConflictException("项目资金分配账本冲销金额超过原始占用");
+      }
+      creditedByDebitId.set(debit.id, credited);
+    }
+    const sourceKeys = new Set([...debitBySource.keys(), ...creditBySource.keys()]);
+    const netUsedBySource = new Map<string, bigint>();
+    for (const sourceKey of sourceKeys) {
+      const netUsed =
+        (debitBySource.get(sourceKey) ?? 0n) -
+        (creditBySource.get(sourceKey) ?? 0n);
+      if (netUsed < 0n) {
+        throw new ConflictException("项目资金分配账本冲销金额超过原始占用");
+      }
+      netUsedBySource.set(sourceKey, netUsed);
+    }
+    return { debitBySource, creditBySource, netUsedBySource };
+  }
+
   private async lockActiveProject(
     tx: Prisma.TransactionClient,
     projectId: string
@@ -375,18 +573,6 @@ export class ProjectFundingAvailabilityService {
     return this.result("replayed", this.facts(debits));
   }
 
-  private netUsedBySource(rows: FundingAllocationRow[]) {
-    return rows.reduce((totals, row) => {
-      const signedAmount =
-        row.direction === "credit" ? -row.amountCents : row.amountCents;
-      totals.set(
-        row.sourceKey,
-        (totals.get(row.sourceKey) ?? 0n) + signedAmount
-      );
-      return totals;
-    }, new Map<string, bigint>());
-  }
-
   private facts(rows: FundingAllocationRow[]): FundingAllocationFact[] {
     return rows.map((row) => ({
       sourceType: row.sourceType as FundingSourceType,
@@ -429,7 +615,4 @@ export class ProjectFundingAvailabilityService {
     return `financing_quota:${quotaId}`;
   }
 
-  private nonNegative(value: bigint) {
-    return value > 0n ? value : 0n;
-  }
 }

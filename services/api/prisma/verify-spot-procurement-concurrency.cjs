@@ -1,6 +1,9 @@
 const { createHash } = require("node:crypto");
 const { ConflictException } = require("@nestjs/common");
 const { Prisma, PrismaClient } = require("@prisma/client");
+const {
+  deriveFixtureUnifiedSocialCreditCode
+} = require("./spot-procurement-concurrency-fixtures.cjs");
 const { AuditService } = require("../dist/audit/audit.service");
 const {
   acquireFileBusinessBindingTransactionLock,
@@ -10,11 +13,17 @@ const {
   SpotProcurementBalanceService
 } = require("../dist/spot-procurement/spot-procurement-balance.service");
 const {
+  SpotProcurementApplicationService
+} = require("../dist/spot-procurement/spot-procurement-application.service");
+const {
   SpotProcurementClosureService
 } = require("../dist/spot-procurement/spot-procurement-closure.service");
 const {
   InvoiceLedgerService
 } = require("../dist/invoice-ledger/invoice-ledger.service");
+const {
+  ProjectFundingAvailabilityService
+} = require("../dist/project-funding/project-funding-availability.service");
 const {
   SpotProcurementPaymentService
 } = require("../dist/spot-procurement/spot-procurement-payment.service");
@@ -33,16 +42,40 @@ const {
 } = require("../dist/money/decimal-money");
 
 const DATABASE_NAME = "jiangkong_spot_procurement_concurrency_verify";
+const APPLICATION_REVIEW_APPROVE_SCOPE = "application-review-approve";
+const PAYMENT_REVIEW_APPROVE_SCOPE = "payment-review-approve";
+const verificationScope =
+  process.env.SPOT_PROCUREMENT_CONCURRENCY_SCOPE?.trim() || "full";
 const PROJECT_ID = "concurrency-project";
 const EXECUTION_PROJECT_ID = "concurrency-execution-project";
 const CASH_SHORT_PROJECT_ID = "concurrency-cash-short-project";
 const HANDLER_USER_ID = "concurrency-material-staff";
 const MATERIAL_DIRECTOR_USER_ID =
   "concurrency-material-director";
+const APPLICATION_REVIEWER_USER_ID =
+  "concurrency-application-reviewer";
+const APPLICATION_NO_SIGNATURE_USER_ID =
+  "concurrency-application-reviewer-no-signature";
+const APPLICATION_BAD_SIGNATURE_USER_ID =
+  "concurrency-application-reviewer-bad-signature";
+const APPLICATION_AUDIT_ROLLBACK_USER_ID =
+  "concurrency-application-reviewer-audit-rollback";
+const PAYMENT_REVIEWER_USER_ID =
+  "concurrency-payment-reviewer";
+const PAYMENT_NO_SIGNATURE_USER_ID =
+  "concurrency-payment-reviewer-no-signature";
+const PAYMENT_BAD_SIGNATURE_USER_ID =
+  "concurrency-payment-reviewer-bad-signature";
+const PAYMENT_AUDIT_ROLLBACK_USER_ID =
+  "concurrency-payment-reviewer-audit-rollback";
 const FINANCE_USER_ID = "concurrency-finance-staff";
 const FINANCE_DIRECTOR_USER_ID =
   "concurrency-finance-director";
 const SUPPORT_FILE_ID = "spot-procurement-concurrency-support";
+const APPLICATION_SIGNATURE_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
+  "base64"
+);
 const ACTIVE_PAYMENT_STATUSES = new Set([
   "approval_pending",
   "approved",
@@ -54,6 +87,7 @@ const ACTIVE_PAYMENT_STATUSES = new Set([
 
 const clientA = new PrismaClient();
 const clientB = new PrismaClient();
+const observerClient = new PrismaClient();
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -174,6 +208,16 @@ function assertLocalRuntime() {
       (projectId) => pilotProjectIds.has(projectId)
     ),
     "零星采购并发验收未显式开放全部专用临时项目"
+  );
+  assert(
+    [
+      "full",
+      APPLICATION_REVIEW_APPROVE_SCOPE,
+      PAYMENT_REVIEW_APPROVE_SCOPE
+    ].includes(
+      verificationScope
+    ),
+    `零星采购并发验收不支持范围：${verificationScope}`
   );
 }
 
@@ -373,11 +417,15 @@ function fileAccessFor(prisma) {
   };
 }
 
-function servicesFor(prisma) {
-  const audit = new AuditService();
-  const balances = new SpotProcurementBalanceService(prisma, audit);
-  const closure = new SpotProcurementClosureService(audit);
-  const pilot = new SpotProcurementPilotService();
+function paymentServicesFor(prisma, audit, dependencies = {}) {
+  const balances = dependencies.balances ??
+    new SpotProcurementBalanceService(prisma, audit);
+  const closure = dependencies.closure ??
+    new SpotProcurementClosureService(audit);
+  const pilot = dependencies.pilot ??
+    new SpotProcurementPilotService();
+  const projectFunding = dependencies.projectFunding ??
+    new ProjectFundingAvailabilityService();
   const payment = new SpotProcurementPaymentService(
     prisma,
     audit,
@@ -394,8 +442,24 @@ function servicesFor(prisma) {
     {
       tryRefreshLatestForBusiness: async () => undefined
     },
-    closure
+    closure,
+    projectFunding
   );
+  return { balances, payment };
+}
+
+function servicesFor(prisma) {
+  const audit = new AuditService();
+  const balances = new SpotProcurementBalanceService(prisma, audit);
+  const closure = new SpotProcurementClosureService(audit);
+  const pilot = new SpotProcurementPilotService();
+  const projectFunding = new ProjectFundingAvailabilityService();
+  const { payment } = paymentServicesFor(prisma, audit, {
+    balances,
+    closure,
+    pilot,
+    projectFunding
+  });
   const receipt = new SpotProcurementReceiptService(
     prisma,
     audit,
@@ -416,6 +480,112 @@ function servicesFor(prisma) {
     closure
   );
   return { balances, payment, receipt, invoices };
+}
+
+function applicationReviewSignatureFixture(userId) {
+  return {
+    fileId: `${userId}-signature-file`,
+    versionId: `${userId}-signature-version`,
+    sha256: createHash("sha256")
+      .update(APPLICATION_SIGNATURE_BYTES)
+      .digest("hex"),
+    sizeBytes: APPLICATION_SIGNATURE_BYTES.length
+  };
+}
+
+async function seedApplicationReviewSignature(
+  prisma,
+  userId,
+  overrides = {}
+) {
+  const signature = applicationReviewSignatureFixture(userId);
+  await prisma.fileObject.create({
+    data: {
+      id: signature.fileId,
+      bucket: "local-private",
+      objectKey: `spot-procurement-concurrency/${signature.fileId}.png`,
+      originalName: `${userId}.png`,
+      mimeType: "image/png",
+      sizeBytes: signature.sizeBytes,
+      uploadedByUserId: userId,
+      contentSha256:
+        overrides.fileSha256 ?? signature.sha256,
+      storageStatus: "active"
+    }
+  });
+  await prisma.handwrittenSignatureVersion.create({
+    data: {
+      id: signature.versionId,
+      userId,
+      fileId: signature.fileId,
+      contentSha256:
+        overrides.versionSha256 ?? signature.sha256,
+      source: "canvas"
+    }
+  });
+  return signature;
+}
+
+async function seedApplicationReviewActor({
+  userId,
+  name,
+  signatureOverrides
+}) {
+  await clientA.user.create({
+    data: {
+      id: userId,
+      name,
+      isActive: true,
+      mustChangePassword: false
+    }
+  });
+  await clientA.projectMember.create({
+    data: {
+      projectId: PROJECT_ID,
+      userId,
+      positionKey: "material_director"
+    }
+  });
+  if (signatureOverrides !== null) {
+    await seedApplicationReviewSignature(
+      clientA,
+      userId,
+      signatureOverrides
+    );
+  }
+}
+
+function paymentReviewSignatureFixture(userId) {
+  return applicationReviewSignatureFixture(userId);
+}
+
+async function seedPaymentReviewActor({
+  userId,
+  name,
+  signatureOverrides
+}) {
+  await clientA.user.create({
+    data: {
+      id: userId,
+      name,
+      isActive: true,
+      mustChangePassword: false
+    }
+  });
+  await clientA.projectMember.create({
+    data: {
+      projectId: PROJECT_ID,
+      userId,
+      positionKey: "project_manager"
+    }
+  });
+  if (signatureOverrides !== null) {
+    await seedApplicationReviewSignature(
+      clientA,
+      userId,
+      signatureOverrides
+    );
+  }
 }
 
 async function seedVerificationFacts() {
@@ -468,6 +638,10 @@ async function seedVerificationFacts() {
       positionKey: "material_director"
     }
   });
+  await seedApplicationReviewSignature(
+    clientA,
+    MATERIAL_DIRECTOR_USER_ID
+  );
   await clientA.user.create({
     data: {
       id: FINANCE_USER_ID,
@@ -634,7 +808,245 @@ async function createPaymentDraft(prisma, input) {
   });
 }
 
+async function createPendingPaymentApprovalFixture({
+  procurementId,
+  code
+}) {
+  const versionId = `${procurementId}-v1`;
+  const paymentId = `${procurementId}-payment`;
+  const approvalInstanceId = `${paymentId}-approval`;
+  const supplierKey = `${procurementId}-supplier`;
+  const supplierName = "付款审批签名验收供应商";
+  const accountId = `${paymentId}-balance-account`;
+  const reservationId = `${paymentId}-balance-reservation`;
+  const procurementLineId = `${versionId}-line-1`;
+  const paymentChannelId = `${paymentId}-channel-1`;
+  const payerCompanyEntityId = `${paymentId}-payer-company`;
+  const payerUnifiedSocialCreditCode =
+    deriveFixtureUnifiedSocialCreditCode(procurementId);
+  const now = new Date();
+
+  await createApprovedProcurement(clientA, {
+    procurementId,
+    versionId,
+    code,
+    supplierKey,
+    supplierName,
+    totalAmountCents: 10_000n
+  });
+  await clientA.$transaction(async (tx) => {
+    await tx.companyEntity.create({
+      data: {
+        id: payerCompanyEntityId,
+        name: "付款审批签名验收公司",
+        unifiedSocialCreditCode: payerUnifiedSocialCreditCode,
+        dataStatus: "complete",
+        isActive: true
+      }
+    });
+    await tx.spotProcurementLine.create({
+      data: {
+        id: procurementLineId,
+        versionId,
+        sortOrder: 1,
+        materialName: "付款审批签名验收材料",
+        specification: "PG-16",
+        unit: "批",
+        quantity: new Prisma.Decimal("1")
+      }
+    });
+    await tx.spotProcurementPayment.create({
+      data: {
+        id: paymentId,
+        projectId: PROJECT_ID,
+        procurementId,
+        procurementVersionId: versionId,
+        code: `${code}-P001`,
+        status: "approval_pending",
+        settlementAmountCents: 10_000n,
+        supplierBalanceAmountCents: 1_000n,
+        companyPaymentAmountCents: 9_000n,
+        paymentPath: "supplier_direct",
+        paymentMethod: "bank_transfer",
+        paymentType: "company_direct",
+        merchantNameSnapshot: supplierName,
+        payeeNameSnapshot: supplierName,
+        payeeAccountNameSnapshot: supplierName,
+        payeeBankNameSnapshot: "付款审批签名验收银行",
+        payeeBankAccountSnapshot: "6222000000000001",
+        expectedPaymentAt: new Date(
+          now.getTime() + 24 * 60 * 60 * 1000
+        ),
+        paymentNote: "付款审批签名 PostgreSQL 16 门禁",
+        payerCompanyEntityId,
+        payerCompanyNameSnapshot: "付款审批签名验收公司",
+        payerUnifiedSocialCreditCodeSnapshot:
+          payerUnifiedSocialCreditCode,
+        approvalAmountCents: 10_000n,
+        submittedVersionNo: 1,
+        factsFrozenAt: now,
+        handlerUserId: HANDLER_USER_ID,
+        createdByUserId: HANDLER_USER_ID,
+        submittedAt: now
+      }
+    });
+    await tx.spotProcurementPaymentLine.create({
+      data: {
+        id: `${paymentId}-line-1`,
+        paymentId,
+        procurementVersionId: versionId,
+        procurementLineId,
+        sortOrder: 1,
+        approvedQuantitySnapshot: new Prisma.Decimal("1"),
+        paymentQuantity: new Prisma.Decimal("1"),
+        unitPrice: new Prisma.Decimal("100"),
+        amountCents: 10_000n,
+        expectedInvoiceCondition: "no_invoice"
+      }
+    });
+    await tx.spotProcurementPaymentChannel.create({
+      data: {
+        id: paymentChannelId,
+        paymentId,
+        sortOrder: 1,
+        channelType: "bank_transfer",
+        accountNameSnapshot: supplierName,
+        accountNumberSnapshot: "6222000000000001",
+        bankNameSnapshot: "付款审批签名验收银行",
+        isPrimary: true
+      }
+    });
+    await tx.spotProcurementPaymentMethodOption.create({
+      data: {
+        id: `${paymentId}-method-1`,
+        paymentId,
+        paymentMethod: "bank_transfer",
+        sortOrder: 1
+      }
+    });
+    await tx.spotProcurementPayment.update({
+      where: { id: paymentId },
+      data: { primaryPaymentChannelId: paymentChannelId }
+    });
+    await tx.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "spot_procurement.payment.approve",
+        businessType: "spot_procurement_payment",
+        businessId: paymentId,
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }
+        ],
+        applicantUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.supplierBalanceAccount.create({
+      data: {
+        id: accountId,
+        projectId: PROJECT_ID,
+        supplierKey,
+        supplierNameSnapshot: supplierName,
+        availableAmountCents: 5_000n,
+        reservedAmountCents: 1_000n
+      }
+    });
+    await tx.supplierBalanceReservation.create({
+      data: {
+        id: reservationId,
+        accountId,
+        paymentId,
+        amountCents: 1_000n,
+        status: "reserved",
+        reservedByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.supplierBalanceEntry.create({
+      data: {
+        accountId,
+        sequenceNo: 1n,
+        reservationId,
+        paymentId,
+        procurementId,
+        entryType: "reserve",
+        availableDeltaCents: 0n,
+        reservedDeltaCents: 1_000n,
+        availableAmountAfterCents: 5_000n,
+        reservedAmountAfterCents: 1_000n,
+        actorUserId: HANDLER_USER_ID,
+        reason: "付款审批前已冻结的供应商余额"
+      }
+    });
+  });
+
+  return {
+    procurementId,
+    versionId,
+    paymentId,
+    approvalInstanceId,
+    accountId,
+    reservationId
+  };
+}
+
+async function snapshotPaymentReviewState(fixture) {
+  const [
+    payment,
+    approval,
+    actionLogs,
+    auditLogs,
+    balanceAccount,
+    balanceReservation,
+    balanceEntries
+  ] = await Promise.all([
+    clientA.spotProcurementPayment.findUniqueOrThrow({
+      where: { id: fixture.paymentId }
+    }),
+    clientA.approvalInstance.findUniqueOrThrow({
+      where: { id: fixture.approvalInstanceId }
+    }),
+    clientA.approvalActionLog.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    }),
+    clientA.auditLog.findMany({
+      where: {
+        businessType: "spot_procurement_payment",
+        businessId: fixture.paymentId
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    }),
+    clientA.supplierBalanceAccount.findUniqueOrThrow({
+      where: { id: fixture.accountId }
+    }),
+    clientA.supplierBalanceReservation.findUniqueOrThrow({
+      where: { id: fixture.reservationId }
+    }),
+    clientA.supplierBalanceEntry.findMany({
+      where: { accountId: fixture.accountId },
+      orderBy: [{ sequenceNo: "asc" }, { id: "asc" }]
+    })
+  ]);
+  return {
+    payment,
+    approval,
+    actionLogs,
+    auditLogs,
+    balanceAccount,
+    balanceReservation,
+    balanceEntries
+  };
+}
+
 async function createExecutionVoucher(fileId) {
+  const contentSha256 = createHash("sha256")
+    .update(fileId)
+    .digest("hex");
   return clientA.fileObject.create({
     data: {
       id: fileId,
@@ -644,7 +1056,8 @@ async function createExecutionVoucher(fileId) {
       mimeType: "application/pdf",
       sizeBytes: 1,
       uploadedByUserId: FINANCE_USER_ID,
-      storageStatus: "active"
+      storageStatus: "active",
+      contentSha256
     }
   });
 }
@@ -1008,21 +1421,72 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-async function waitForBlockedQueries(prisma, queryNeedle, expectedCount) {
+async function waitForBlockedQueries(
+  prisma,
+  queryNeedle,
+  expectedCount,
+  rootBlockerPid
+) {
+  let bestSnapshot = [];
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const rows = await prisma.$queryRaw`
-      SELECT COUNT(*)::int AS "count"
+      SELECT
+        pid::int AS "pid",
+        wait_event_type AS "waitEventType",
+        query,
+        pg_blocking_pids(pid) AS "blockingPids"
       FROM pg_stat_activity
       WHERE datname = current_database()
         AND pid <> pg_backend_pid()
-        AND wait_event_type = 'Lock'
-        AND query LIKE ${`%${queryNeedle}%`}
     `;
-    if ((rows[0]?.count ?? 0) >= expectedCount) return;
+    const sessionByPid = new Map(
+      rows.map((row) => [Number(row.pid), row])
+    );
+    const reachesRootBlocker = (originPid) => {
+      const pending = [originPid];
+      const visited = new Set();
+      while (pending.length) {
+        const pid = pending.pop();
+        if (pid === rootBlockerPid) return true;
+        if (visited.has(pid)) continue;
+        visited.add(pid);
+        const blockers = sessionByPid.get(pid)?.blockingPids;
+        if (Array.isArray(blockers)) {
+          pending.push(...blockers.map(Number));
+        }
+      }
+      return false;
+    };
+    const chainedWaiters = rows.filter(
+      (row) =>
+        row.waitEventType === "Lock" &&
+        reachesRootBlocker(Number(row.pid))
+    );
+    const snapshot = rows
+      .filter((row) => row.waitEventType === "Lock")
+      .map((row) => ({
+        pid: Number(row.pid),
+        blockingPids: Array.isArray(row.blockingPids)
+          ? row.blockingPids.map(Number)
+          : [],
+        reachesRootBlocker: reachesRootBlocker(Number(row.pid)),
+        query: String(row.query).replace(/\s+/gu, " ").slice(0, 180)
+      }));
+    if (snapshot.length > bestSnapshot.length) {
+      bestSnapshot = snapshot;
+    }
+    if (
+      chainedWaiters.length >= expectedCount &&
+      chainedWaiters.some((row) =>
+        String(row.query).includes(queryNeedle)
+      )
+    ) {
+      return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(
-    `未观察到 ${expectedCount} 个等待 ${queryNeedle} 行锁的真实 PostgreSQL 会话`
+    `未观察到 ${expectedCount} 个经 pg_blocking_pids 直接或传递追溯到 backend ${rootBlockerPid}、且至少一个等待 ${queryNeedle} 目标锁的真实 PostgreSQL 会话；最接近快照 ${JSON.stringify(bestSnapshot)}`
   );
 }
 
@@ -1035,23 +1499,2333 @@ async function runBehindDatabaseLock({
 }) {
   const acquired = deferred();
   const release = deferred();
+  const blockerBackendPid = deferred();
   const blocker = blockerClient.$transaction(
     async (tx) => {
       await acquireLock(tx);
+      const rows = await tx.$queryRaw(
+        Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+      );
+      blockerBackendPid.resolve(Number(rows[0]?.pid));
       acquired.resolve();
       await release.promise;
     },
     { timeout: 15_000, maxWait: 10_000 }
   );
   await acquired.promise;
+  const rootBlockerPid = await blockerBackendPid.promise;
+  assert(
+    Number.isInteger(rootBlockerPid),
+    "真实 PostgreSQL 外置 blocker 必须具备 backend PID"
+  );
   const resultsPromise = Promise.allSettled(start());
+  let blockingEvidenceError = null;
   try {
-    await waitForBlockedQueries(observerClient, queryNeedle, 2);
+    await waitForBlockedQueries(
+      observerClient,
+      queryNeedle,
+      2,
+      rootBlockerPid
+    );
+  } catch (error) {
+    blockingEvidenceError = error;
   } finally {
     release.resolve();
     await blocker;
   }
-  return resultsPromise;
+  const results = await resultsPromise;
+  if (blockingEvidenceError) {
+    throw new Error(
+      `${errorText(blockingEvidenceError)}；并发操作结果 ${results
+        .map((result) =>
+          result.status === "fulfilled"
+            ? "fulfilled"
+            : `rejected:${errorText(result.reason)}`
+        )
+        .join("/")}`
+    );
+  }
+  return results;
+}
+
+async function createPendingApplicationApprovalFixture({
+  procurementId,
+  code
+}) {
+  const versionId = `${procurementId}-v1`;
+  const approvalInstanceId = `${procurementId}-approval`;
+  const attachmentFileId = `${procurementId}-attachment`;
+  const submittedAt = new Date();
+  await clientA.$transaction(async (tx) => {
+    await tx.fileObject.create({
+      data: {
+        id: attachmentFileId,
+        bucket: "local-private",
+        objectKey: `spot-procurement-concurrency/${attachmentFileId}.pdf`,
+        originalName: `${attachmentFileId}.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: 1,
+        uploadedByUserId: HANDLER_USER_ID,
+        storageStatus: "active"
+      }
+    });
+    await tx.spotProcurement.create({
+      data: {
+        id: procurementId,
+        projectId: PROJECT_ID,
+        code,
+        applicantUserId: HANDLER_USER_ID,
+        handlerUserId: HANDLER_USER_ID,
+        status: "approval_pending"
+      }
+    });
+    await tx.spotProcurementVersion.create({
+      data: {
+        id: versionId,
+        procurementId,
+        versionNo: 1,
+        status: "approval_pending",
+        reason: "正式零星采购审批撤回并发验收",
+        note: "冻结版本备注",
+        handlerUserId: HANDLER_USER_ID,
+        applicationDepartmentSnapshot: "物资部",
+        applicationNameSnapshot: "并发验收申请人",
+        purchaserNameSnapshot: "并发验收采购人",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: submittedAt,
+        submittedAt,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurementLine.create({
+      data: {
+        versionId,
+        sortOrder: 1,
+        materialName: "冻结免烧砖",
+        specification: "240×115×53",
+        unit: "块",
+        quantity: new Prisma.Decimal("12.5"),
+        note: "冻结明细备注"
+      }
+    });
+    await tx.spotProcurementAttachment.create({
+      data: {
+        versionId,
+        fileId: attachmentFileId,
+        category: "merchant_quote",
+        uploadedByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurement.update({
+      where: { id: procurementId },
+      data: { currentVersionId: versionId }
+    });
+    await tx.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: versionId,
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }
+        ],
+        applicantUserId: HANDLER_USER_ID
+      }
+    });
+  });
+  return {
+    procurementId,
+    versionId,
+    approvalInstanceId,
+    attachmentFileId,
+    coordinates: {
+      expectedVersionId: versionId,
+      expectedApprovalInstanceId: approvalInstanceId,
+      expectedNodeIndex: 0
+    }
+  };
+}
+
+async function createLegacyPendingApplicationApprovalFixture({
+  procurementId,
+  code
+}) {
+  const versionId = `${procurementId}-v1`;
+  const approvalInstanceId = `${procurementId}-approval`;
+  const supplierPartyId = `${procurementId}-supplier-party`;
+  const supplierKey = `${procurementId}-supplier-key`;
+  const supplierNameSnapshot = "历史混合表单供应商";
+  const totalAmountCents = 21_432n;
+  const attachmentFileIds = [
+    `${procurementId}-quote`,
+    `${procurementId}-support`
+  ];
+  const submittedAt = new Date();
+
+  await clientA.$transaction(async (tx) => {
+    await tx.fileObject.createMany({
+      data: attachmentFileIds.map((fileId) => ({
+        id: fileId,
+        bucket: "local-private",
+        objectKey: `spot-procurement-concurrency/${fileId}.pdf`,
+        originalName: `${fileId}.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: 1,
+        uploadedByUserId: HANDLER_USER_ID,
+        storageStatus: "active"
+      }))
+    });
+    await tx.businessParty.create({
+      data: {
+        id: supplierPartyId,
+        name: supplierNameSnapshot,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurement.create({
+      data: {
+        id: procurementId,
+        projectId: PROJECT_ID,
+        code,
+        supplierPartyId,
+        supplierKey,
+        supplierNameSnapshot,
+        applicantUserId: HANDLER_USER_ID,
+        handlerUserId: HANDLER_USER_ID,
+        status: "approval_pending",
+        approvedAmountCents: totalAmountCents,
+        actualCostCents: null
+      }
+    });
+    await tx.spotProcurementVersion.create({
+      data: {
+        id: versionId,
+        procurementId,
+        versionNo: 1,
+        status: "approval_pending",
+        reason: "历史混合零采审批必须保守失败",
+        note: "完整历史字段不得在失败后变化",
+        supplierPartyId,
+        supplierKey,
+        supplierNameSnapshot,
+        handlerUserId: HANDLER_USER_ID,
+        applicationDepartmentSnapshot: "物资部",
+        applicationNameSnapshot: "历史混合申请人",
+        purchaserNameSnapshot: "历史混合采购人",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: submittedAt,
+        totalAmountCents,
+        submittedAt,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurementLine.createMany({
+      data: [
+        {
+          versionId,
+          sortOrder: 1,
+          materialName: "历史混合水泥",
+          specification: "P.O 42.5",
+          unit: "吨",
+          quantity: new Prisma.Decimal("12.5"),
+          invoiceMode: "invoice",
+          invoiceType: "vat_special",
+          vatRateOptionId: "concurrency-vat-13",
+          vatRateValueSnapshot: new Prisma.Decimal("13"),
+          vatRateLabelSnapshot: "13%",
+          unitPrice: new Prisma.Decimal("12.3456"),
+          amountCents: 15_432n,
+          usageLocation: "一标段东区",
+          note: "历史混合明细一"
+        },
+        {
+          versionId,
+          sortOrder: 2,
+          materialName: "历史混合砂石",
+          specification: "中砂",
+          unit: "方",
+          quantity: new Prisma.Decimal("3"),
+          invoiceMode: "invoice",
+          invoiceType: "vat_general",
+          vatRateOptionId: "concurrency-vat-9",
+          vatRateValueSnapshot: new Prisma.Decimal("9"),
+          vatRateLabelSnapshot: "9%",
+          unitPrice: new Prisma.Decimal("20"),
+          amountCents: 6_000n,
+          usageLocation: "一标段西区",
+          note: "历史混合明细二"
+        }
+      ]
+    });
+    await tx.spotProcurementAttachment.createMany({
+      data: attachmentFileIds.map((fileId, index) => ({
+        versionId,
+        fileId,
+        category: index === 0 ? "merchant_quote" : "other",
+        uploadedByUserId: HANDLER_USER_ID
+      }))
+    });
+    await tx.spotProcurement.update({
+      where: { id: procurementId },
+      data: { currentVersionId: versionId }
+    });
+    await tx.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: versionId,
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }
+        ],
+        applicantUserId: HANDLER_USER_ID
+      }
+    });
+  });
+
+  return {
+    procurementId,
+    versionId,
+    approvalInstanceId,
+    coordinates: {
+      expectedVersionId: versionId,
+      expectedApprovalInstanceId: approvalInstanceId,
+      expectedNodeIndex: 0
+    }
+  };
+}
+
+async function snapshotApplicationApprovalState(fixture) {
+  const [root, versions, approval, actionLogs, auditLogs] =
+    await Promise.all([
+      clientA.spotProcurement.findUniqueOrThrow({
+        where: { id: fixture.procurementId }
+      }),
+      clientA.spotProcurementVersion.findMany({
+        where: { procurementId: fixture.procurementId },
+        orderBy: { versionNo: "asc" }
+      }),
+      clientA.approvalInstance.findUniqueOrThrow({
+        where: { id: fixture.approvalInstanceId }
+      }),
+      clientA.approvalActionLog.findMany({
+        where: { approvalInstanceId: fixture.approvalInstanceId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      }),
+      clientA.auditLog.findMany({
+        where: {
+          businessId: {
+            in: [fixture.procurementId, fixture.versionId]
+          }
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      })
+    ]);
+  const versionIds = versions.map((version) => version.id);
+  const [lines, attachments] = await Promise.all([
+    clientA.spotProcurementLine.findMany({
+      where: { versionId: { in: versionIds } },
+      orderBy: [{ versionId: "asc" }, { sortOrder: "asc" }]
+    }),
+    clientA.spotProcurementAttachment.findMany({
+      where: { versionId: { in: versionIds } },
+      orderBy: [
+        { versionId: "asc" },
+        { createdAt: "asc" },
+        { id: "asc" }
+      ]
+    })
+  ]);
+
+  return {
+    root,
+    versions,
+    versionCount: versions.length,
+    lines,
+    attachments,
+    approval,
+    actionLogs,
+    auditLogs
+  };
+}
+
+function assertLegacyApplicationFixtureComplete(
+  snapshot,
+  fixture,
+  label
+) {
+  const sourceVersion = snapshot.versions[0];
+  assert(
+    snapshot.root.status === "approval_pending" &&
+      snapshot.root.currentVersionId === fixture.versionId &&
+      snapshot.root.supplierPartyId !== null &&
+      snapshot.root.supplierKey !== null &&
+      snapshot.root.supplierNameSnapshot !== null &&
+      snapshot.root.approvedAmountCents === 21_432n &&
+      snapshot.root.actualCostCents === null,
+    `${label}必须具备冻结的根供应商、金额、当前版本与 approval_pending 状态`
+  );
+  assert(
+    snapshot.versionCount === 1 &&
+      snapshot.versions.length === 1 &&
+      sourceVersion?.id === fixture.versionId &&
+      sourceVersion.versionNo === 1 &&
+      sourceVersion.status === "approval_pending" &&
+      sourceVersion.supplierPartyId !== null &&
+      sourceVersion.supplierKey !== null &&
+      sourceVersion.supplierNameSnapshot !== null &&
+      sourceVersion.totalAmountCents === 21_432n,
+    `${label}必须只有一个包含历史供应商和总额的 approval_pending V1`
+  );
+  assert(
+    snapshot.lines.length === 2 &&
+      snapshot.lines.every(
+        (line) =>
+          line.invoiceMode !== null &&
+          line.invoiceType !== null &&
+          line.vatRateOptionId !== null &&
+          line.vatRateValueSnapshot !== null &&
+          line.vatRateLabelSnapshot !== null &&
+          line.unitPrice !== null &&
+          line.amountCents !== null &&
+          line.usageLocation !== null
+      ),
+    `${label}必须冻结两行完整的历史发票、税率、单价、金额和使用地点事实`
+  );
+  assert(
+    snapshot.attachments.length === 2,
+    `${label}必须冻结两个历史附件`
+  );
+  assert(
+    snapshot.approval.status === "approval_pending" &&
+      snapshot.approval.currentNodeIndex === 0 &&
+      Array.isArray(snapshot.approval.frozenNodes) &&
+      snapshot.approval.frozenNodes.length === 2,
+    `${label}必须冻结 approval_pending 审批实例和当前节点`
+  );
+  assert(
+    snapshot.actionLogs.length === 0 &&
+      snapshot.auditLogs.length === 0,
+    `${label}失败门禁的基线不得预先存在 ActionLog 或 AuditLog`
+  );
+}
+
+function applicationServiceTransactionWithBackendPid(
+  client,
+  backendPid
+) {
+  return {
+    $transaction: (operation, options) =>
+      client.$transaction(
+        async (tx) => {
+          const rows = await tx.$queryRaw(
+            Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+          );
+          backendPid.resolve(Number(rows[0]?.pid));
+          return operation(tx);
+        },
+        {
+          ...(options ?? {}),
+          maxWait: 10_000,
+          timeout: 15_000
+        }
+      )
+  };
+}
+
+async function waitForDirectBackendPidBlock({
+  blockerPid,
+  blockedPid,
+  label
+}) {
+  let bestSnapshot = [];
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const sessions = await observerClient.$queryRaw(
+      Prisma.sql`
+        SELECT
+          pid::int AS "pid",
+          state,
+          wait_event_type AS "waitEventType",
+          pg_blocking_pids(pid) AS "blockingPids"
+        FROM pg_stat_activity
+        WHERE pid IN (${blockerPid}, ${blockedPid})
+      `
+    );
+    const snapshot = sessions.map((session) => ({
+      pid: Number(session.pid),
+      state: session.state,
+      waitEventType: session.waitEventType,
+      blockingPids: Array.isArray(session.blockingPids)
+        ? session.blockingPids.map(Number)
+        : []
+    }));
+    if (snapshot.length >= bestSnapshot.length) {
+      bestSnapshot = snapshot;
+    }
+    const blocked = snapshot.find(
+      (session) => session.pid === blockedPid
+    );
+    if (
+      blocked?.waitEventType === "Lock" &&
+      blocked.blockingPids.includes(blockerPid)
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(
+    `${label} 未观察到 backend ${blockedPid} 被 backend ${blockerPid} 直接阻塞；最接近快照 ${JSON.stringify(bestSnapshot)}`
+  );
+}
+
+function frozenApplicationLineFacts(lines) {
+  return lines.map((line) => ({
+    sortOrder: line.sortOrder,
+    materialName: line.materialName,
+    specification: line.specification,
+    unit: line.unit,
+    quantity: String(line.quantity),
+    note: line.note
+  }));
+}
+
+function assertRealApplicationLegacyFieldsNull({
+  root,
+  versions,
+  lines,
+  label
+}) {
+  assert(
+    root.supplierPartyId === null &&
+      root.supplierKey === null &&
+      root.supplierNameSnapshot === null &&
+      root.approvedAmountCents === null &&
+      root.actualCostCents === null,
+    `${label}后的正式申请根不得混入历史供应商或金额字段`
+  );
+  assert(
+    versions.every(
+      (version) =>
+        version.supplierPartyId === null &&
+        version.supplierKey === null &&
+        version.supplierNameSnapshot === null &&
+        version.totalAmountCents === null
+    ),
+    `${label}后的正式申请版本不得混入历史供应商或总额字段`
+  );
+  assert(
+    lines.every(
+      (line) =>
+        line.invoiceMode === null &&
+        line.invoiceType === null &&
+        line.vatRateOptionId === null &&
+        line.vatRateValueSnapshot === null &&
+        line.vatRateLabelSnapshot === null &&
+        line.unitPrice === null &&
+        line.amountCents === null &&
+        line.usageLocation === null
+    ),
+    `${label}后的正式申请明细不得混入历史发票、税率、单价、金额或使用地点字段`
+  );
+}
+
+function frozenApplicationAttachmentFacts(attachments) {
+  return attachments.map((attachment) => ({
+    fileId: attachment.fileId,
+    category: attachment.category,
+    uploadedByUserId: attachment.uploadedByUserId
+  }));
+}
+
+async function verifyApplicationWithdrawalCoordinateConcurrency() {
+  const fixture = await createPendingApplicationApprovalFixture({
+    procurementId: "spot-application-withdraw-coordinate-race",
+    code: "LXCG-CONC-WITHDRAW-COORDINATE"
+  });
+  const firstWithdrawalBackendPid = deferred();
+  const secondWithdrawalBackendPid = deferred();
+  const firstWithdrawalAuditEntered = deferred();
+  const releaseFirstWithdrawalAudit = deferred();
+  const persistedAudit = new AuditService();
+  let pausedFirstWithdrawalAudit = false;
+  const firstAudit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action === "spot_procurement.approval.withdraw" &&
+        !pausedFirstWithdrawalAudit
+      ) {
+        pausedFirstWithdrawalAudit = true;
+        firstWithdrawalAuditEntered.resolve(undefined);
+        await releaseFirstWithdrawalAudit.promise;
+      }
+    }
+  };
+  const approvalForms = {
+    tryRefreshLatestForBusiness: async () => undefined
+  };
+  const firstService = new SpotProcurementApplicationService(
+    applicationServiceTransactionWithBackendPid(
+      clientA,
+      firstWithdrawalBackendPid
+    ),
+    firstAudit,
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const secondService = new SpotProcurementApplicationService(
+    applicationServiceTransactionWithBackendPid(
+      clientB,
+      secondWithdrawalBackendPid
+    ),
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+
+  const firstRequest = firstService.withdrawApproval(
+    fixture.procurementId,
+    HANDLER_USER_ID,
+    fixture.coordinates
+  );
+  let auditEntryTimeout;
+  try {
+    await Promise.race([
+      firstWithdrawalAuditEntered.promise,
+      firstRequest.then(
+        () => {
+          throw new Error(
+            "第一笔正式零采撤回在进入 Audit 门闩前意外完成"
+          );
+        },
+        (error) => {
+          throw new Error(
+            `第一笔正式零采撤回在进入 Audit 门闩前失败：${errorText(error)}`
+          );
+        }
+      ),
+      new Promise((_, reject) => {
+        auditEntryTimeout = setTimeout(
+          () => reject(new Error("等待第一笔正式零采撤回进入 Audit 门闩超时")),
+          5_000
+        );
+      })
+    ]);
+  } catch (error) {
+    releaseFirstWithdrawalAudit.resolve(undefined);
+    await Promise.allSettled([firstRequest]);
+    throw error;
+  } finally {
+    clearTimeout(auditEntryTimeout);
+  }
+  const firstWithdrawalBackendPidValue =
+    await firstWithdrawalBackendPid.promise;
+  const secondRequest = secondService.withdrawApproval(
+    fixture.procurementId,
+    HANDLER_USER_ID,
+    fixture.coordinates
+  );
+  const secondWithdrawalBackendPidValue =
+    await secondWithdrawalBackendPid.promise;
+  assert(
+    Number.isInteger(firstWithdrawalBackendPidValue) &&
+      Number.isInteger(secondWithdrawalBackendPidValue) &&
+      firstWithdrawalBackendPidValue !==
+        secondWithdrawalBackendPidValue,
+    "正式零采撤回并发验收必须捕获两个不同的 PostgreSQL backend PID"
+  );
+
+  let directBlockObservationError = null;
+  try {
+    await waitForDirectBackendPidBlock({
+      blockerPid: firstWithdrawalBackendPidValue,
+      blockedPid: secondWithdrawalBackendPidValue,
+      label: "相同三坐标双撤回"
+    });
+  } catch (error) {
+    directBlockObservationError = error;
+  } finally {
+    releaseFirstWithdrawalAudit.resolve(undefined);
+  }
+  const results = await Promise.allSettled([
+    firstRequest,
+    secondRequest
+  ]);
+  if (directBlockObservationError) {
+    throw directBlockObservationError;
+  }
+  assert(
+    results[0].status === "fulfilled",
+    `第一笔正式零采撤回必须成功，实际 ${
+      results[0].status === "rejected"
+        ? errorText(results[0].reason)
+        : results[0].status
+    }`
+  );
+  assert(
+    results[1].status === "rejected" &&
+      typeof results[1].reason?.getStatus === "function" &&
+      results[1].reason.getStatus() === 409,
+    `第二笔相同旧坐标撤回必须严格返回 409，实际 ${
+      results[1].status === "rejected"
+        ? errorText(results[1].reason)
+        : results[1].status
+    }`
+  );
+
+  const [
+    root,
+    versions,
+    approval,
+    actionLogs,
+    auditLogs,
+    paymentCount,
+    receiptCount
+  ] = await Promise.all([
+    clientA.spotProcurement.findUnique({
+      where: { id: fixture.procurementId },
+      select: {
+        status: true,
+        currentVersionId: true,
+        supplierPartyId: true,
+        supplierKey: true,
+        supplierNameSnapshot: true,
+        approvedAmountCents: true,
+        actualCostCents: true
+      }
+    }),
+    clientA.spotProcurementVersion.findMany({
+      where: { procurementId: fixture.procurementId },
+      orderBy: { versionNo: "asc" }
+    }),
+    clientA.approvalInstance.findUnique({
+      where: { id: fixture.approvalInstanceId }
+    }),
+    clientA.approvalActionLog.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId }
+    }),
+    clientA.auditLog.findMany({
+      where: {
+        businessType: "spot_procurement_version",
+        businessId: fixture.versionId,
+        action: "spot_procurement.approval.withdraw"
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId: fixture.procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId: fixture.procurementId }
+    })
+  ]);
+  const sourceVersion = versions.find(
+    (version) => version.id === fixture.versionId
+  );
+  const drafts = versions.filter(
+    (version) =>
+      version.versionNo === 2 && version.status === "draft"
+  );
+  const draft = drafts[0];
+  assert(
+    versions.length === 2 && drafts.length === 1 && draft,
+    `相同三坐标双撤回必须只生成一个 V2 草稿，实际版本 ${versions
+      .map((version) => `${version.versionNo}:${version.status}`)
+      .join(",")}`
+  );
+  assert(
+    root?.status === "draft" &&
+      root.currentVersionId === draft.id,
+    "撤回 winner 必须把采购根切换到唯一 V2 草稿"
+  );
+  assert(
+    sourceVersion?.status === "withdrawn" &&
+      approval?.status === "withdrawn",
+    "撤回 winner 必须同时冻结源版本和审批实例为 withdrawn"
+  );
+  assert(
+    actionLogs.length === 1 &&
+      actionLogs[0].action === "withdraw" &&
+      actionLogs[0].actorUserId === HANDLER_USER_ID,
+    `相同三坐标双撤回必须只保留一条 withdraw ActionLog，实际 ${actionLogs.length}`
+  );
+  assert(
+    auditLogs.length === 1 &&
+      auditLogs[0].actorUserId === HANDLER_USER_ID &&
+      auditLogs[0].metadata?.sourceVersionId === fixture.versionId &&
+      auditLogs[0].metadata?.newVersionId === draft.id &&
+      auditLogs[0].metadata?.expectedVersionId === fixture.versionId &&
+      auditLogs[0].metadata?.expectedApprovalInstanceId ===
+        fixture.approvalInstanceId &&
+      Number(auditLogs[0].metadata?.expectedNodeIndex) === 0,
+    `相同三坐标双撤回必须只保留一条绑定源、新草稿和三坐标的 Audit，实际 ${auditLogs.length}`
+  );
+  assert(
+    paymentCount === 0 && receiptCount === 0,
+    `正式零采撤回不得生成付款或收货事实，实际 ${paymentCount}/${receiptCount}`
+  );
+
+  const [sourceLines, draftLines, sourceAttachments, draftAttachments] =
+    await Promise.all([
+      clientA.spotProcurementLine.findMany({
+        where: { versionId: fixture.versionId },
+        orderBy: { sortOrder: "asc" }
+      }),
+      clientA.spotProcurementLine.findMany({
+        where: { versionId: draft.id },
+        orderBy: { sortOrder: "asc" }
+      }),
+      clientA.spotProcurementAttachment.findMany({
+        where: { versionId: fixture.versionId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      }),
+      clientA.spotProcurementAttachment.findMany({
+        where: { versionId: draft.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      })
+    ]);
+  assertRealApplicationLegacyFieldsNull({
+    root,
+    versions,
+    lines: [...sourceLines, ...draftLines],
+    label: "撤回"
+  });
+  assert(
+    comparable(frozenApplicationLineFacts(draftLines)) ===
+      comparable(frozenApplicationLineFacts(sourceLines)),
+    "撤回生成的 V2 草稿必须完整复制冻结材料明细"
+  );
+  assert(
+    comparable(frozenApplicationAttachmentFacts(draftAttachments)) ===
+      comparable(
+        frozenApplicationAttachmentFacts(sourceAttachments)
+      ),
+    "撤回生成的 V2 草稿必须完整复制冻结附件"
+  );
+  console.log(
+    "ok spot application withdrawal coordinates: direct backend PID block, one V2 draft, strict loser 409, frozen facts copied, one action/audit, zero payment/receipt"
+  );
+}
+
+async function verifyApplicationWithdrawalMidTransactionRollback() {
+  const fixture = await createPendingApplicationApprovalFixture({
+    procurementId: "spot-application-withdraw-audit-rollback",
+    code: "LXCG-CONC-WITHDRAW-AUDIT-ROLLBACK"
+  });
+  const applicationService = new SpotProcurementApplicationService(
+    clientA,
+    {
+      record: async (_tx, input) => {
+        if (
+          input.action === "spot_procurement.approval.withdraw"
+        ) {
+          throw new Error("injected withdrawal audit failure");
+        }
+      }
+    },
+    new SpotProcurementPilotService(),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
+  );
+
+  const failure = await applicationService.withdrawApproval(
+    fixture.procurementId,
+    HANDLER_USER_ID,
+    {
+      expectedVersionId: fixture.coordinates.expectedVersionId,
+      expectedApprovalInstanceId:
+        fixture.coordinates.expectedApprovalInstanceId,
+      expectedNodeIndex: fixture.coordinates.expectedNodeIndex
+    }
+  )
+    .then(
+      () => null,
+      (error) => error
+    );
+  assert(
+    errorText(failure) === "injected withdrawal audit failure",
+    `撤回 Audit 中段故障必须原样返回，实际 ${errorText(failure)}`
+  );
+
+  const [
+    root,
+    versions,
+    approval,
+    actionLogCount,
+    auditLogCount,
+    paymentCount,
+    receiptCount
+  ] = await Promise.all([
+    clientA.spotProcurement.findUnique({
+      where: { id: fixture.procurementId },
+      select: { status: true, currentVersionId: true }
+    }),
+    clientA.spotProcurementVersion.findMany({
+      where: { procurementId: fixture.procurementId },
+      orderBy: { versionNo: "asc" }
+    }),
+    clientA.approvalInstance.findUnique({
+      where: { id: fixture.approvalInstanceId }
+    }),
+    clientA.approvalActionLog.count({
+      where: { approvalInstanceId: fixture.approvalInstanceId }
+    }),
+    clientA.auditLog.count({
+      where: {
+        businessType: "spot_procurement_version",
+        businessId: fixture.versionId
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId: fixture.procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId: fixture.procurementId }
+    })
+  ]);
+  const sourceVersion = versions.find(
+    (version) => version.id === fixture.versionId
+  );
+  assert(
+    versions.length === 1 && sourceVersion?.versionNo === 1,
+    `撤回 Audit 中段故障后不得保留 V2，实际版本 ${versions
+      .map((version) => `${version.versionNo}:${version.status}`)
+      .join(",")}`
+  );
+  assert(
+    root?.status === "approval_pending" &&
+      root.currentVersionId === fixture.versionId &&
+      sourceVersion?.status === "approval_pending" &&
+      approval?.status === "approval_pending" &&
+      approval.currentNodeIndex === 0,
+    "撤回 Audit 中段故障必须回滚根指针、V1 和审批实例的全部变更"
+  );
+  assert(
+    actionLogCount === 0 && auditLogCount === 0,
+    `撤回 Audit 中段故障后不得保留 ActionLog/Audit，实际 ${actionLogCount}/${auditLogCount}`
+  );
+  assert(
+    paymentCount === 0 && receiptCount === 0,
+    `撤回 Audit 中段故障后不得生成付款或收货事实，实际 ${paymentCount}/${receiptCount}`
+  );
+  console.log(
+    "ok spot application withdrawal rollback: injected audit failure leaves V1/root/approval pending, no V2/action/audit/payment/receipt"
+  );
+}
+
+async function verifyApplicationReturnToApplicantTerminalState() {
+  const fixture = await createPendingApplicationApprovalFixture({
+    procurementId: "spot-application-return-to-applicant",
+    code: "LXCG-CONC-RETURN-TO-APPLICANT"
+  });
+  const applicationService = new SpotProcurementApplicationService(
+    clientA,
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
+  );
+
+  await applicationService.review(
+    fixture.procurementId,
+    MATERIAL_DIRECTOR_USER_ID,
+    {
+      decision: "return_to_applicant",
+      comment: "真实 PostgreSQL 退回申请人终态验收",
+      expectedVersionId: fixture.coordinates.expectedVersionId,
+      expectedApprovalInstanceId:
+        fixture.coordinates.expectedApprovalInstanceId,
+      expectedNodeIndex: fixture.coordinates.expectedNodeIndex
+    }
+  );
+
+  const [
+    root,
+    versions,
+    approval,
+    actionLogs,
+    auditLogs,
+    paymentCount,
+    receiptCount
+  ] = await Promise.all([
+    clientA.spotProcurement.findUnique({
+      where: { id: fixture.procurementId },
+      select: {
+        status: true,
+        currentVersionId: true,
+        supplierPartyId: true,
+        supplierKey: true,
+        supplierNameSnapshot: true,
+        approvedAmountCents: true,
+        actualCostCents: true
+      }
+    }),
+    clientA.spotProcurementVersion.findMany({
+      where: { procurementId: fixture.procurementId },
+      orderBy: { versionNo: "asc" }
+    }),
+    clientA.approvalInstance.findUnique({
+      where: { id: fixture.approvalInstanceId }
+    }),
+    clientA.approvalActionLog.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId }
+    }),
+    clientA.auditLog.findMany({
+      where: {
+        businessType: "spot_procurement_version",
+        businessId: fixture.versionId,
+        action: "spot_procurement.approval.return_to_applicant"
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId: fixture.procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId: fixture.procurementId }
+    })
+  ]);
+  const sourceVersion = versions.find(
+    (version) => version.id === fixture.versionId
+  );
+  const drafts = versions.filter(
+    (version) =>
+      version.versionNo === 2 && version.status === "draft"
+  );
+  const draft = drafts[0];
+  assert(
+    versions.length === 2 && drafts.length === 1 && draft,
+    `退回申请人必须只生成一个 V2 草稿，实际版本 ${versions
+      .map((version) => `${version.versionNo}:${version.status}`)
+      .join(",")}`
+  );
+  assert(
+    sourceVersion?.status === "returned" &&
+      root?.status === "draft" &&
+      root.currentVersionId === draft.id &&
+      approval?.status === "returned_to_applicant" &&
+      approval.currentNodeIndex === 0,
+    "退回申请人后必须保持 V1 returned、唯一 V2 草稿根指针和审批 returned_to_applicant 终态"
+  );
+  assert(
+    actionLogs.length === 1 &&
+      actionLogs[0].action === "return_to_applicant" &&
+      actionLogs[0].actorUserId === MATERIAL_DIRECTOR_USER_ID &&
+      actionLogs[0].metadata?.reviewRoleKey === "material_director",
+    `退回申请人必须只保留一条角色绑定 ActionLog，实际 ${actionLogs.length}`
+  );
+  assert(
+    auditLogs.length === 1 &&
+      auditLogs[0].actorUserId === MATERIAL_DIRECTOR_USER_ID &&
+      auditLogs[0].metadata?.procurementId === fixture.procurementId &&
+      auditLogs[0].metadata?.reviewRoleKey === "material_director" &&
+      auditLogs[0].metadata?.sourceVersionId === fixture.versionId &&
+      auditLogs[0].metadata?.newVersionId === draft.id,
+    `退回申请人必须只保留一条绑定源版本与新草稿的 Audit，实际 ${auditLogs.length}`
+  );
+  assert(
+    paymentCount === 0 && receiptCount === 0,
+    `退回申请人不得生成付款或收货事实，实际 ${paymentCount}/${receiptCount}`
+  );
+
+  const [sourceLines, draftLines, sourceAttachments, draftAttachments] =
+    await Promise.all([
+      clientA.spotProcurementLine.findMany({
+        where: { versionId: fixture.versionId },
+        orderBy: { sortOrder: "asc" }
+      }),
+      clientA.spotProcurementLine.findMany({
+        where: { versionId: draft.id },
+        orderBy: { sortOrder: "asc" }
+      }),
+      clientA.spotProcurementAttachment.findMany({
+        where: { versionId: fixture.versionId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      }),
+      clientA.spotProcurementAttachment.findMany({
+        where: { versionId: draft.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      })
+    ]);
+  assertRealApplicationLegacyFieldsNull({
+    root,
+    versions,
+    lines: [...sourceLines, ...draftLines],
+    label: "退回申请人"
+  });
+  assert(
+    comparable(frozenApplicationLineFacts(draftLines)) ===
+      comparable(frozenApplicationLineFacts(sourceLines)),
+    "退回生成的 V2 草稿必须完整复制冻结材料明细"
+  );
+  assert(
+    comparable(frozenApplicationAttachmentFacts(draftAttachments)) ===
+      comparable(
+        frozenApplicationAttachmentFacts(sourceAttachments)
+      ),
+    "退回生成的 V2 草稿必须完整复制冻结附件"
+  );
+  console.log(
+    "ok spot application return to applicant: V1 returned, one copied V2 draft, approval returned, one action/audit, zero payment/receipt"
+  );
+}
+
+async function verifyLegacyApplicationWithdrawalFailsClosed() {
+  const fixture = await createLegacyPendingApplicationApprovalFixture({
+    procurementId: "spot-legacy-application-withdraw-fail-closed",
+    code: "LXCG-CONC-LEGACY-WITHDRAW-FAIL-CLOSED"
+  });
+  const applicationService = new SpotProcurementApplicationService(
+    clientA,
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
+  );
+  const before = await snapshotApplicationApprovalState(fixture);
+  assertLegacyApplicationFixtureComplete(
+    before,
+    fixture,
+    "历史混合表单撤回基线"
+  );
+
+  const failure = await applicationService.withdrawApproval(
+    fixture.procurementId,
+    HANDLER_USER_ID,
+    fixture.coordinates
+  ).then(
+    () => null,
+    (error) => error
+  );
+  assert(
+    failure &&
+      typeof failure.getStatus === "function" &&
+      failure.getStatus() === 409,
+    `历史混合表单撤回必须严格返回 409，实际 ${errorText(failure)}`
+  );
+
+  const after = await snapshotApplicationApprovalState(fixture);
+  assertUnchanged(before, after, "历史混合表单撤回失败后完整冻结状态");
+  assert(
+    after.versions.length === 1 &&
+      after.versionCount === 1 &&
+      after.versions[0]?.versionNo === 1 &&
+      after.versions[0]?.status === "approval_pending" &&
+      !after.versions.some((version) => version.versionNo === 2),
+    "历史混合表单撤回失败后必须仅保留 approval_pending V1，不得生成 V2"
+  );
+  console.log(
+    "ok legacy spot application withdrawal fails closed: strict 409, full root/version/line/attachment/approval/action/audit snapshot unchanged, no V2"
+  );
+}
+
+async function verifyLegacyApplicationReturnToApplicantFailsClosed() {
+  const fixture = await createLegacyPendingApplicationApprovalFixture({
+    procurementId: "spot-legacy-application-return-fail-closed",
+    code: "LXCG-CONC-LEGACY-RETURN-FAIL-CLOSED"
+  });
+  const applicationService = new SpotProcurementApplicationService(
+    clientA,
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
+  );
+  const before = await snapshotApplicationApprovalState(fixture);
+  assertLegacyApplicationFixtureComplete(
+    before,
+    fixture,
+    "历史混合表单退回基线"
+  );
+
+  const failure = await applicationService.review(
+    fixture.procurementId,
+    MATERIAL_DIRECTOR_USER_ID,
+    {
+      decision: "return_to_applicant",
+      comment: "历史混合表单退回必须保守失败",
+      ...fixture.coordinates
+    }
+  ).then(
+    () => null,
+    (error) => error
+  );
+  assert(
+    failure &&
+      typeof failure.getStatus === "function" &&
+      failure.getStatus() === 409,
+    `历史混合表单退回必须严格返回 409，实际 ${errorText(failure)}`
+  );
+
+  const after = await snapshotApplicationApprovalState(fixture);
+  assertUnchanged(before, after, "历史混合表单退回失败后完整冻结状态");
+  assert(
+    after.versions.length === 1 &&
+      after.versionCount === 1 &&
+      after.versions[0]?.versionNo === 1 &&
+      after.versions[0]?.status === "approval_pending" &&
+      !after.versions.some((version) => version.versionNo === 2),
+    "历史混合表单退回失败后必须仅保留 approval_pending V1，不得生成 V2"
+  );
+  console.log(
+    "ok legacy spot application return fails closed: strict 409, full root/version/line/attachment/approval/action/audit snapshot unchanged, no V2"
+  );
+}
+
+async function verifyApplicationWithdrawalVsNodeAdvanceCompetition() {
+  const fixture = await createPendingApplicationApprovalFixture({
+    procurementId: "spot-application-withdraw-vs-node-advance",
+    code: "LXCG-CONC-WITHDRAW-VS-REVIEW"
+  });
+  const approvalForms = {
+    tryRefreshLatestForBusiness: async () => undefined
+  };
+  const withdrawalService = new SpotProcurementApplicationService(
+    clientA,
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const reviewService = new SpotProcurementApplicationService(
+    clientB,
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const results = await runBehindDatabaseLock({
+    blockerClient: clientA,
+    observerClient,
+    acquireLock: (tx) =>
+      tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "SpotProcurement" WHERE "id" = ${fixture.procurementId} FOR UPDATE`
+      ),
+    queryNeedle: 'FROM "SpotProcurement"',
+    start: () => [
+      withdrawalService.withdrawApproval(
+        fixture.procurementId,
+        HANDLER_USER_ID,
+        fixture.coordinates
+      ),
+      reviewService.review(
+        fixture.procurementId,
+        MATERIAL_DIRECTOR_USER_ID,
+        {
+          decision: "approve",
+          ...fixture.coordinates
+        }
+      )
+    ]
+  });
+  const winnerIndex = assertOneWinner(
+    results,
+    "正式零采撤回与审批节点推进竞争"
+  );
+  const loser = results.find(
+    (result) => result.status === "rejected"
+  );
+  assert(
+    loser &&
+      typeof loser.reason?.getStatus === "function" &&
+      loser.reason.getStatus() === 409,
+    `正式零采撤回与节点推进竞争 loser 必须严格返回 409，实际 ${
+      loser?.status === "rejected"
+        ? errorText(loser.reason)
+        : loser?.status
+    }`
+  );
+
+  const [
+    root,
+    versions,
+    approval,
+    actionLogs,
+    auditLogs,
+    paymentCount,
+    receiptCount
+  ] = await Promise.all([
+    clientA.spotProcurement.findUnique({
+      where: { id: fixture.procurementId },
+      select: { status: true, currentVersionId: true }
+    }),
+    clientA.spotProcurementVersion.findMany({
+      where: { procurementId: fixture.procurementId },
+      orderBy: { versionNo: "asc" }
+    }),
+    clientA.approvalInstance.findUnique({
+      where: { id: fixture.approvalInstanceId }
+    }),
+    clientA.approvalActionLog.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId }
+    }),
+    clientA.auditLog.findMany({
+      where: {
+        businessType: "spot_procurement_version",
+        businessId: fixture.versionId,
+        action: {
+          in: [
+            "spot_procurement.approval.withdraw",
+            "spot_procurement.approval.approve"
+          ]
+        }
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId: fixture.procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId: fixture.procurementId }
+    })
+  ]);
+  const sourceVersion = versions.find(
+    (version) => version.id === fixture.versionId
+  );
+  assert(
+    actionLogs.length === 1 && auditLogs.length === 1,
+    `撤回与节点推进竞争只能提交一组 ActionLog/Audit，实际 ${actionLogs.length}/${auditLogs.length}`
+  );
+  assert(
+    paymentCount === 0 && receiptCount === 0,
+    `撤回与节点推进竞争不得生成付款或收货事实，实际 ${paymentCount}/${receiptCount}`
+  );
+  if (winnerIndex === 0) {
+    const drafts = versions.filter(
+      (version) =>
+        version.versionNo === 2 && version.status === "draft"
+    );
+    assert(
+      drafts.length === 1 &&
+        versions.length === 2 &&
+        root?.status === "draft" &&
+        root.currentVersionId === drafts[0].id &&
+        sourceVersion?.status === "withdrawn" &&
+        approval?.status === "withdrawn" &&
+        actionLogs[0].action === "withdraw" &&
+        auditLogs[0].action ===
+          "spot_procurement.approval.withdraw",
+      "撤回 winner 后必须保持唯一 V2 草稿、源版本/审批 withdrawn 的一致终态"
+    );
+  } else {
+    assert(
+      versions.length === 1 &&
+        root?.status === "approval_pending" &&
+        root.currentVersionId === fixture.versionId &&
+        sourceVersion?.status === "approval_pending" &&
+        approval?.status === "approval_pending" &&
+        approval.currentNodeIndex === 1 &&
+        actionLogs[0].action === "approve" &&
+        auditLogs[0].action ===
+          "spot_procurement.approval.approve",
+      "节点推进 winner 后必须保持原版本审批中、节点 0→1 且不生成 V2 的一致终态"
+    );
+  }
+  console.log(
+    `ok spot application withdrawal vs node advance: winner=${
+      winnerIndex === 0 ? "withdraw" : "review"
+    }, loser strict 409, one action/audit, consistent terminal state`
+  );
+}
+
+async function verifyApplicationReviewCoordinateConcurrency() {
+  const procurementId = "spot-application-review-coordinate-race";
+  const versionId = `${procurementId}-v1`;
+  const approvalInstanceId = `${procurementId}-approval`;
+  const signature =
+    applicationReviewSignatureFixture(APPLICATION_REVIEWER_USER_ID);
+  const submittedAt = new Date();
+  await clientA.$transaction(async (tx) => {
+    await tx.user.create({
+      data: {
+        id: APPLICATION_REVIEWER_USER_ID,
+        name: "并发验收双角色审批人",
+        isActive: true,
+        mustChangePassword: false
+      }
+    });
+    await seedApplicationReviewSignature(
+      tx,
+      APPLICATION_REVIEWER_USER_ID
+    );
+    await tx.projectMember.createMany({
+      data: [
+        {
+          projectId: PROJECT_ID,
+          userId: APPLICATION_REVIEWER_USER_ID,
+          positionKey: "material_director"
+        },
+        {
+          projectId: PROJECT_ID,
+          userId: APPLICATION_REVIEWER_USER_ID,
+          positionKey: "project_manager"
+        }
+      ]
+    });
+    await tx.spotProcurement.create({
+      data: {
+        id: procurementId,
+        projectId: PROJECT_ID,
+        code: "LXCG-CONC-REVIEW-COORDINATE",
+        applicantUserId: HANDLER_USER_ID,
+        handlerUserId: HANDLER_USER_ID,
+        status: "approval_pending"
+      }
+    });
+    await tx.spotProcurementVersion.create({
+      data: {
+        id: versionId,
+        procurementId,
+        versionNo: 1,
+        status: "approval_pending",
+        reason: "应用审批坐标并发验收",
+        handlerUserId: HANDLER_USER_ID,
+        applicationDepartmentSnapshot: "物资部",
+        applicationNameSnapshot: "并发验收申请人",
+        purchaserNameSnapshot: "并发验收采购人",
+        purchaserDepartmentNameSnapshot: "物资部",
+        requestedArrivalAt: submittedAt,
+        submittedAt,
+        createdByUserId: HANDLER_USER_ID
+      }
+    });
+    await tx.spotProcurementLine.create({
+      data: {
+        versionId,
+        sortOrder: 1,
+        materialName: "并发验收免烧砖",
+        specification: "240×115×53",
+        unit: "块",
+        quantity: new Prisma.Decimal("12.5"),
+        invoiceMode: null,
+        invoiceType: null,
+        vatRateOptionId: null,
+        vatRateValueSnapshot: null,
+        vatRateLabelSnapshot: null,
+        unitPrice: null,
+        amountCents: null,
+        usageLocation: null,
+        note: "并发审批冻结明细"
+      }
+    });
+    await tx.spotProcurement.update({
+      where: { id: procurementId },
+      data: { currentVersionId: versionId }
+    });
+    await tx.approvalInstance.create({
+      data: {
+        id: approvalInstanceId,
+        flowType: "spot_procurement.approve",
+        businessType: "spot_procurement_version",
+        businessId: versionId,
+        status: "approval_pending",
+        currentNodeIndex: 0,
+        frozenNodes: [
+          {
+            name: "物资主管审批",
+            mode: "any",
+            roleKeys: ["material_director"]
+          },
+          {
+            name: "项目经理审批",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }
+        ],
+        applicantUserId: HANDLER_USER_ID
+      }
+    });
+  });
+
+  const initialApproval = await clientA.approvalInstance.findUnique({
+    where: { id: approvalInstanceId },
+    select: { currentNodeIndex: true }
+  });
+  assert(
+    initialApproval?.currentNodeIndex === 0,
+    "应用审批坐标并发验收必须从第 0 节点开始"
+  );
+
+  const firstReviewBackendPid = deferred();
+  const secondReviewBackendPid = deferred();
+  const firstReviewAuditEntered = deferred();
+  const releaseFirstReviewAudit = deferred();
+  const createReviewPrisma = (client, backendPid) => ({
+    $transaction: (operation, options) =>
+      client.$transaction(
+        async (tx) => {
+          const rows = await tx.$queryRaw(
+            Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+          );
+          backendPid.resolve(Number(rows[0]?.pid));
+          return operation(tx);
+        },
+        {
+          ...(options ?? {}),
+          maxWait: 10_000,
+          timeout: 15_000
+        }
+      )
+  });
+  const persistedAudit = new AuditService();
+  let pausedFirstReviewAudit = false;
+  const firstAudit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action === "spot_procurement.approval.approve" &&
+        !pausedFirstReviewAudit
+      ) {
+        pausedFirstReviewAudit = true;
+        firstReviewAuditEntered.resolve(undefined);
+        await releaseFirstReviewAudit.promise;
+      }
+    }
+  };
+  const approvalForms = {
+    tryRefreshLatestForBusiness: async () => undefined
+  };
+  const firstService = new SpotProcurementApplicationService(
+    createReviewPrisma(clientA, firstReviewBackendPid),
+    firstAudit,
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const secondService = new SpotProcurementApplicationService(
+    createReviewPrisma(clientB, secondReviewBackendPid),
+    new AuditService(),
+    new SpotProcurementPilotService(),
+    approvalForms
+  );
+  const coordinates = {
+    decision: "approve",
+    expectedVersionId: versionId,
+    expectedApprovalInstanceId: approvalInstanceId,
+    expectedNodeIndex: 0
+  };
+
+  const firstRequest = firstService.review(
+    procurementId,
+    APPLICATION_REVIEWER_USER_ID,
+    coordinates
+  );
+  await firstReviewAuditEntered.promise;
+  const firstReviewBackendPidValue =
+    await firstReviewBackendPid.promise;
+  const secondRequest = secondService.review(
+    procurementId,
+    APPLICATION_REVIEWER_USER_ID,
+    coordinates
+  );
+  const secondReviewBackendPidValue =
+    await secondReviewBackendPid.promise;
+  assert(
+    Number.isInteger(firstReviewBackendPidValue) &&
+      Number.isInteger(secondReviewBackendPidValue) &&
+      firstReviewBackendPidValue !== secondReviewBackendPidValue,
+    "应用审批坐标并发验收必须捕获两个不同的 PostgreSQL backend PID"
+  );
+
+  let directBlockObserved = false;
+  let directBlockObservationError = null;
+  try {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const sessions = await observerClient.$queryRaw(
+        Prisma.sql`
+          SELECT
+            pid::int AS "pid",
+            state,
+            wait_event_type AS "waitEventType",
+            pg_blocking_pids(pid) AS "blockingPids"
+          FROM pg_stat_activity
+          WHERE pid IN (
+            ${firstReviewBackendPidValue},
+            ${secondReviewBackendPidValue}
+          )
+        `
+      );
+      const firstSession = sessions.find(
+        (session) =>
+          Number(session.pid) === firstReviewBackendPidValue
+      );
+      const secondSession = sessions.find(
+        (session) =>
+          Number(session.pid) === secondReviewBackendPidValue
+      );
+      const blockers = Array.isArray(secondSession?.blockingPids)
+        ? secondSession.blockingPids.map(Number)
+        : [];
+      if (
+        firstSession &&
+        secondSession?.waitEventType === "Lock" &&
+        blockers.includes(firstReviewBackendPidValue)
+      ) {
+        directBlockObserved = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  } catch (error) {
+    directBlockObservationError = error;
+  } finally {
+    releaseFirstReviewAudit.resolve(undefined);
+  }
+  const results = await Promise.allSettled([
+    firstRequest,
+    secondRequest
+  ]);
+  if (directBlockObservationError) {
+    throw directBlockObservationError;
+  }
+  assert(
+    directBlockObserved,
+    "第二笔应用审批必须由第一笔事务的 backend PID 直接阻塞"
+  );
+  assert(
+    results[0].status === "fulfilled",
+    `第一笔应用审批必须成功，实际 ${
+      results[0].status === "rejected"
+        ? errorText(results[0].reason)
+        : results[0].status
+    }`
+  );
+  assert(
+    results[1].status === "rejected" &&
+      typeof results[1].reason?.getStatus === "function" &&
+      results[1].reason.getStatus() === 409,
+    `第二笔旧坐标审批必须严格返回 409，实际 ${
+      results[1].status === "rejected"
+        ? errorText(results[1].reason)
+        : results[1].status
+    }`
+  );
+
+  const [
+    approval,
+    procurement,
+    version,
+    actionLogs,
+    auditCount,
+    paymentCount,
+    receiptCount
+  ] = await Promise.all([
+    clientA.approvalInstance.findUnique({
+      where: { id: approvalInstanceId }
+    }),
+    clientA.spotProcurement.findUnique({
+      where: { id: procurementId },
+      select: { status: true }
+    }),
+    clientA.spotProcurementVersion.findUnique({
+      where: { id: versionId },
+      select: { status: true }
+    }),
+    clientA.approvalActionLog.findMany({
+      where: {
+        approvalInstanceId,
+        action: "approve",
+        actorUserId: APPLICATION_REVIEWER_USER_ID
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    }),
+    clientA.auditLog.count({
+      where: {
+        action: "spot_procurement.approval.approve",
+        businessType: "spot_procurement_version",
+        businessId: versionId,
+        actorUserId: APPLICATION_REVIEWER_USER_ID
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId }
+    })
+  ]);
+  assert(
+    approval?.status === "approval_pending" &&
+      approval.currentNodeIndex === 1,
+    "相同旧坐标并发审批后只能从节点 0 前进到节点 1"
+  );
+  assert(
+    procurement?.status === "approval_pending" &&
+      version?.status === "approval_pending",
+    "非末节点审批后采购根与版本必须继续保持审批中"
+  );
+  assert(
+    actionLogs.length === 1 && auditCount === 1,
+    `相同旧坐标并发审批只能保留一条 ActionLog/Audit，实际 ${actionLogs.length}/${auditCount}`
+  );
+  const action = actionLogs[0];
+  assert(
+    action.approvedRoleKey === "material_director" &&
+      action.representedUserId === APPLICATION_REVIEWER_USER_ID &&
+      action.signatureFileIdSnapshot === signature.fileId &&
+      action.signatureSha256Snapshot === signature.sha256 &&
+      action.signatureVersionIdSnapshot === signature.versionId,
+    "并发审批 winner 必须冻结物资主管直接身份和精确手写签名版本"
+  );
+  assert(
+    paymentCount === 0 && receiptCount === 0,
+    `非末节点并发审批不得生成付款或收货草稿，实际 ${paymentCount}/${receiptCount}`
+  );
+  console.log(
+    "ok spot application review coordinates: direct backend block, node 0->1, stale replay strict 409, exact role/identity/signature snapshot, one action/audit, zero payment/receipt"
+  );
+}
+
+async function verifyApplicationReviewSignatureFailures() {
+  const mismatchedVersionSha256 = createHash("sha256")
+    .update("spot-procurement-application-signature-mismatch")
+    .digest("hex");
+  const cases = [
+    {
+      label: "signature-missing",
+      actorUserId: APPLICATION_NO_SIGNATURE_USER_ID,
+      actorName: "并发验收缺失签名审批人",
+      signatureOverrides: null,
+      expectedMessage: "审批手写签名未配置"
+    },
+    {
+      label: "signature-sha-mismatch",
+      actorUserId: APPLICATION_BAD_SIGNATURE_USER_ID,
+      actorName: "并发验收签名摘要漂移审批人",
+      signatureOverrides: {
+        versionSha256: mismatchedVersionSha256
+      },
+      expectedMessage: "审批手写签名版本校验失败"
+    }
+  ];
+
+  for (const item of cases) {
+    await seedApplicationReviewActor({
+      userId: item.actorUserId,
+      name: item.actorName,
+      signatureOverrides: item.signatureOverrides
+    });
+    const fixture = await createPendingApplicationApprovalFixture({
+      procurementId: `spot-application-review-${item.label}`,
+      code: `LXCG-CONC-REVIEW-${item.label.toUpperCase()}`
+    });
+    const before = await snapshotApplicationApprovalState(fixture);
+    const applicationService = new SpotProcurementApplicationService(
+      clientA,
+      new AuditService(),
+      new SpotProcurementPilotService(),
+      {
+        tryRefreshLatestForBusiness: async () => undefined
+      }
+    );
+    const failure = await applicationService.review(
+      fixture.procurementId,
+      item.actorUserId,
+      {
+        decision: "approve",
+        expectedVersionId: fixture.versionId,
+        expectedApprovalInstanceId: fixture.approvalInstanceId,
+        expectedNodeIndex: 0
+      }
+    )
+      .then(
+        () => null,
+        (error) => error
+      );
+    assert(
+      typeof failure?.getStatus === "function" &&
+        failure.getStatus() === 400 &&
+        errorText(failure).includes(item.expectedMessage),
+      `${item.label} 必须由签名门失败关闭，实际 ${errorText(failure)}`
+    );
+
+    const after = await snapshotApplicationApprovalState(fixture);
+    assertUnchanged(before, after, `${item.label} 审批冻结事实`);
+    const root = after.root;
+    const version = after.versions[0];
+    const approval = after.approval;
+    const [
+      actionLogCount,
+      auditLogCount,
+      paymentCount,
+      receiptCount
+    ] = await Promise.all([
+      clientA.approvalActionLog.count({
+        where: { approvalInstanceId: fixture.approvalInstanceId }
+      }),
+      clientA.auditLog.count({
+        where: { actorUserId: item.actorUserId }
+      }),
+      clientA.spotProcurementPayment.count({
+        where: { procurementId: fixture.procurementId }
+      }),
+      clientA.spotProcurementReceipt.count({
+        where: { procurementId: fixture.procurementId }
+      })
+    ]);
+    assert(
+      root.status === "approval_pending" &&
+        root.currentVersionId === fixture.versionId &&
+        after.versions.length === 1 &&
+        version.status === "approval_pending" &&
+        approval.status === "approval_pending" &&
+        approval.currentNodeIndex === 0,
+      `${item.label} 不得改变根单、版本或审批节点`
+    );
+    assert(
+      actionLogCount === 0 &&
+        auditLogCount === 0 &&
+        paymentCount === 0 &&
+        receiptCount === 0,
+      `${item.label} 不得写入 ActionLog/Audit/付款/收货，实际 ${actionLogCount}/${auditLogCount}/${paymentCount}/${receiptCount}`
+    );
+  }
+  console.log(
+    "ok spot application approval signatures: missing and version/file SHA mismatch both fail before action/node/root/version/payment/receipt/audit writes"
+  );
+}
+
+async function verifyApplicationReviewAuditRollback() {
+  await seedApplicationReviewActor({
+    userId: APPLICATION_AUDIT_ROLLBACK_USER_ID,
+    name: "并发验收审批审计回滚人",
+    signatureOverrides: {}
+  });
+  const fixture = await createPendingApplicationApprovalFixture({
+    procurementId: "spot-application-review-audit-rollback",
+    code: "LXCG-CONC-REVIEW-AUDIT-ROLLBACK"
+  });
+  await clientA.approvalInstance.update({
+    where: { id: fixture.approvalInstanceId },
+    data: {
+      frozenNodes: [
+        {
+          name: "物资主管审批",
+          mode: "any",
+          roleKeys: ["material_director"]
+        }
+      ]
+    }
+  });
+  const before = await snapshotApplicationApprovalState(fixture);
+  const signature = applicationReviewSignatureFixture(
+    APPLICATION_AUDIT_ROLLBACK_USER_ID
+  );
+  const persistedAudit = new AuditService();
+  let observedCompletePreFailureState = false;
+  const audit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action === "spot_procurement.approval.approve"
+      ) {
+        const [
+          actionLogs,
+          approval,
+          root,
+          version,
+          paymentCount,
+          receiptCount,
+          auditCount
+        ] = await Promise.all([
+          tx.approvalActionLog.findMany({
+            where: {
+              approvalInstanceId: fixture.approvalInstanceId
+            }
+          }),
+          tx.approvalInstance.findUniqueOrThrow({
+            where: { id: fixture.approvalInstanceId }
+          }),
+          tx.spotProcurement.findUniqueOrThrow({
+            where: { id: fixture.procurementId }
+          }),
+          tx.spotProcurementVersion.findUniqueOrThrow({
+            where: { id: fixture.versionId }
+          }),
+          tx.spotProcurementPayment.count({
+            where: { procurementId: fixture.procurementId }
+          }),
+          tx.spotProcurementReceipt.count({
+            where: { procurementId: fixture.procurementId }
+          }),
+          tx.auditLog.count({
+            where: {
+              actorUserId: APPLICATION_AUDIT_ROLLBACK_USER_ID
+            }
+          })
+        ]);
+        const action = actionLogs[0];
+        observedCompletePreFailureState =
+          actionLogs.length === 1 &&
+          action.approvedRoleKey === "material_director" &&
+          action.representedUserId ===
+            APPLICATION_AUDIT_ROLLBACK_USER_ID &&
+          action.signatureFileIdSnapshot === signature.fileId &&
+          action.signatureSha256Snapshot === signature.sha256 &&
+          action.signatureVersionIdSnapshot === signature.versionId &&
+          approval.status === "approved" &&
+          root.status === "approved_in_progress" &&
+          version.status === "approved" &&
+          paymentCount === 1 &&
+          receiptCount === 1 &&
+          auditCount === 3;
+        throw new Error("injected application approval audit failure");
+      }
+    }
+  };
+  const applicationService = new SpotProcurementApplicationService(
+    clientA,
+    audit,
+    new SpotProcurementPilotService(),
+    {
+      tryRefreshLatestForBusiness: async () => undefined
+    }
+  );
+  const failure = await applicationService.review(
+    fixture.procurementId,
+    APPLICATION_AUDIT_ROLLBACK_USER_ID,
+    {
+      decision: "approve",
+      expectedVersionId: fixture.versionId,
+      expectedApprovalInstanceId: fixture.approvalInstanceId,
+      expectedNodeIndex: 0
+    }
+  )
+    .then(
+      () => null,
+      (error) => error
+    );
+  assert(
+    errorText(failure) ===
+      "injected application approval audit failure",
+    `应用审批 Audit 中段故障必须原样返回，实际 ${errorText(failure)}`
+  );
+  assert(
+    observedCompletePreFailureState,
+    "Audit 故障必须注入在已签名 ActionLog、节点、根/版本、付款/收货和三条 Audit 全部写入之后"
+  );
+
+  const after = await snapshotApplicationApprovalState(fixture);
+  assertUnchanged(before, after, "应用审批 Audit 故障回滚");
+  const [
+    actionLogCount,
+    auditLogCount,
+    paymentCountAfter,
+    receiptCountAfter
+  ] = await Promise.all([
+    clientA.approvalActionLog.count({
+      where: { approvalInstanceId: fixture.approvalInstanceId }
+    }),
+    clientA.auditLog.count({
+      where: {
+        actorUserId: APPLICATION_AUDIT_ROLLBACK_USER_ID
+      }
+    }),
+    clientA.spotProcurementPayment.count({
+      where: { procurementId: fixture.procurementId }
+    }),
+    clientA.spotProcurementReceipt.count({
+      where: { procurementId: fixture.procurementId }
+    })
+  ]);
+  assert(
+    actionLogCount === 0 &&
+      auditLogCount === 0 &&
+      paymentCountAfter === 0 &&
+      receiptCountAfter === 0,
+    `Audit 故障后必须回滚签名 ActionLog/Audit/付款/收货，实际 ${actionLogCount}/${auditLogCount}/${paymentCountAfter}/${receiptCountAfter}`
+  );
+  console.log(
+    "ok spot application approval audit rollback: signed action, final node, root/version, payment/receipt, and three audits all roll back"
+  );
+}
+
+async function verifyPaymentReviewRowLockOneWinner() {
+  await seedPaymentReviewActor({
+    userId: PAYMENT_REVIEWER_USER_ID,
+    name: "付款审批行锁验收项目经理",
+    signatureOverrides: {}
+  });
+  const fixture = await createPendingPaymentApprovalFixture({
+    procurementId: "spot-payment-review-row-lock",
+    code: "LXCG-CONC-PAYMENT-REVIEW-LOCK"
+  });
+  const before = await snapshotPaymentReviewState(fixture);
+  const signature = paymentReviewSignatureFixture(
+    PAYMENT_REVIEWER_USER_ID
+  );
+  const firstReviewBackendPid = deferred();
+  const secondReviewBackendPid = deferred();
+  const firstReviewAuditEntered = deferred();
+  const releaseFirstReviewAudit = deferred();
+  const createReviewPrisma = (client, backendPid) => ({
+    $transaction: (operation, options) =>
+      client.$transaction(
+        async (tx) => {
+          const rows = await tx.$queryRaw(
+            Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+          );
+          backendPid.resolve(Number(rows[0]?.pid));
+          return operation(tx);
+        },
+        {
+          ...(options ?? {}),
+          maxWait: 10_000,
+          timeout: 15_000
+        }
+      )
+  });
+  const persistedAudit = new AuditService();
+  let pausedFirstReviewAudit = false;
+  const firstAudit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action ===
+          "spot_procurement.payment.approval.approve" &&
+        !pausedFirstReviewAudit
+      ) {
+        pausedFirstReviewAudit = true;
+        firstReviewAuditEntered.resolve(undefined);
+        await releaseFirstReviewAudit.promise;
+      }
+    }
+  };
+  const firstService = paymentServicesFor(
+    createReviewPrisma(clientA, firstReviewBackendPid),
+    firstAudit
+  ).payment;
+  const secondService = paymentServicesFor(
+    createReviewPrisma(clientB, secondReviewBackendPid),
+    new AuditService()
+  ).payment;
+  const reviewInput = {
+    decision: "approve",
+    comment: "同意"
+  };
+
+  const firstRequest = firstService.review(
+    fixture.paymentId,
+    PAYMENT_REVIEWER_USER_ID,
+    reviewInput
+  );
+  await firstReviewAuditEntered.promise;
+  const firstReviewBackendPidValue =
+    await firstReviewBackendPid.promise;
+  const secondRequest = secondService.review(
+    fixture.paymentId,
+    PAYMENT_REVIEWER_USER_ID,
+    reviewInput
+  );
+  const secondReviewBackendPidValue =
+    await secondReviewBackendPid.promise;
+  assert(
+    Number.isInteger(firstReviewBackendPidValue) &&
+      Number.isInteger(secondReviewBackendPidValue) &&
+      firstReviewBackendPidValue !== secondReviewBackendPidValue,
+    "付款审批行锁门禁必须捕获两个不同的 PostgreSQL backend PID"
+  );
+
+  let directBlockObservationError = null;
+  try {
+    await waitForDirectBackendPidBlock({
+      blockerPid: firstReviewBackendPidValue,
+      blockedPid: secondReviewBackendPidValue,
+      label: "付款审批行锁单赢家"
+    });
+  } catch (error) {
+    directBlockObservationError = error;
+  } finally {
+    releaseFirstReviewAudit.resolve(undefined);
+  }
+  const results = await Promise.allSettled([
+    firstRequest,
+    secondRequest
+  ]);
+  if (directBlockObservationError) {
+    throw directBlockObservationError;
+  }
+  assert(
+    results[0].status === "fulfilled",
+    `第一笔付款审批必须成功，实际 ${
+      results[0].status === "rejected"
+        ? errorText(results[0].reason)
+        : results[0].status
+    }`
+  );
+  assert(
+    results[1].status === "rejected" &&
+      typeof results[1].reason?.getStatus === "function" &&
+      results[1].reason.getStatus() === 409,
+    `第二笔付款审批必须严格返回 409，实际 ${
+      results[1].status === "rejected"
+        ? errorText(results[1].reason)
+        : results[1].status
+    }`
+  );
+
+  const after = await snapshotPaymentReviewState(fixture);
+  const action = after.actionLogs[0];
+  assert(
+    after.payment.status === "approved_pending_payment" &&
+      after.payment.approvedAt instanceof Date &&
+      after.approval.status === "approved",
+    "付款审批行锁 winner 必须推进付款与审批实例到最终通过状态"
+  );
+  assert(
+    after.actionLogs.length === 1 &&
+      action.action === "approve" &&
+      action.approvedRoleKey === "project_manager" &&
+      action.representedUserId === PAYMENT_REVIEWER_USER_ID &&
+      action.signatureFileIdSnapshot === signature.fileId &&
+      action.signatureSha256Snapshot === signature.sha256 &&
+      action.signatureVersionIdSnapshot === signature.versionId,
+    "付款审批行锁 winner 必须只冻结一条精确岗位、直接身份和签名三元组 ActionLog"
+  );
+  assert(
+    after.auditLogs.length === 1 &&
+      after.auditLogs[0].action ===
+        "spot_procurement.payment.approval.approve",
+    "付款审批行锁 winner 必须只写入一条 approve Audit"
+  );
+  assertUnchanged(
+    before.balanceAccount,
+    after.balanceAccount,
+    "付款审批行锁竞争余额账户"
+  );
+  assertUnchanged(
+    before.balanceReservation,
+    after.balanceReservation,
+    "付款审批行锁竞争余额 reservation"
+  );
+  assertUnchanged(
+    before.balanceEntries,
+    after.balanceEntries,
+    "付款审批行锁竞争余额流水"
+  );
+  console.log(
+    "ok spot payment review row lock: direct two-backend block, one winner, loser strict 409, exact role/identity/signature action, one audit, balance unchanged"
+  );
+}
+
+async function verifyPaymentReviewSignatureFailures() {
+  const mismatchedVersionSha256 = createHash("sha256")
+    .update("spot-procurement-payment-signature-mismatch")
+    .digest("hex");
+  const cases = [
+    {
+      label: "signature-missing",
+      actorUserId: PAYMENT_NO_SIGNATURE_USER_ID,
+      actorName: "付款审批缺失签名项目经理",
+      signatureOverrides: null,
+      expectedMessage: "审批手写签名未配置"
+    },
+    {
+      label: "signature-sha-mismatch",
+      actorUserId: PAYMENT_BAD_SIGNATURE_USER_ID,
+      actorName: "付款审批签名摘要漂移项目经理",
+      signatureOverrides: {
+        versionSha256: mismatchedVersionSha256
+      },
+      expectedMessage: "审批手写签名版本校验失败"
+    }
+  ];
+
+  for (const item of cases) {
+    await seedPaymentReviewActor({
+      userId: item.actorUserId,
+      name: item.actorName,
+      signatureOverrides: item.signatureOverrides
+    });
+    const fixture = await createPendingPaymentApprovalFixture({
+      procurementId: `spot-payment-review-${item.label}`,
+      code: `LXCG-CONC-PAY-REVIEW-${item.label.toUpperCase()}`
+    });
+    const before = await snapshotPaymentReviewState(fixture);
+    const service = paymentServicesFor(
+      clientA,
+      new AuditService()
+    ).payment;
+    const failure = await service.review(
+      fixture.paymentId,
+      item.actorUserId,
+      { decision: "approve", comment: "同意" }
+    )
+      .then(
+        () => null,
+        (error) => error
+      );
+    assert(
+      typeof failure?.getStatus === "function" &&
+        failure.getStatus() === 400 &&
+        errorText(failure).includes(item.expectedMessage),
+      `${item.label} 必须由付款审批签名门以 400 失败关闭，实际 ${errorText(failure)}`
+    );
+
+    const after = await snapshotPaymentReviewState(fixture);
+    assertUnchanged(before, after, `${item.label} 付款审批全部事实`);
+    assert(
+      after.payment.status === "approval_pending" &&
+        after.payment.approvedAt === null &&
+        after.approval.status === "approval_pending" &&
+        after.approval.currentNodeIndex === 0 &&
+        after.actionLogs.length === 0 &&
+        after.auditLogs.length === 0 &&
+        after.balanceAccount.reservedAmountCents === 1_000n &&
+        after.balanceReservation.status === "reserved" &&
+        after.balanceEntries.length === 1,
+      `${item.label} 不得改变付款、审批、ActionLog、Audit 或余额事实`
+    );
+  }
+  console.log(
+    "ok spot payment approval signatures: missing and version/file SHA mismatch both return 400 with payment/approval/action/audit/balance zero change"
+  );
+}
+
+async function verifyPaymentReviewAuditRollback() {
+  await seedPaymentReviewActor({
+    userId: PAYMENT_AUDIT_ROLLBACK_USER_ID,
+    name: "付款审批审计回滚项目经理",
+    signatureOverrides: {}
+  });
+  const fixture = await createPendingPaymentApprovalFixture({
+    procurementId: "spot-payment-review-audit-rollback",
+    code: "LXCG-CONC-PAY-REVIEW-AUDIT-ROLLBACK"
+  });
+  const before = await snapshotPaymentReviewState(fixture);
+  const signature = paymentReviewSignatureFixture(
+    PAYMENT_AUDIT_ROLLBACK_USER_ID
+  );
+  const persistedAudit = new AuditService();
+  let observedCompletePreFailureState = false;
+  const audit = {
+    record: async (tx, input) => {
+      await persistedAudit.record(tx, input);
+      if (
+        input.action ===
+        "spot_procurement.payment.approval.approve"
+      ) {
+        const [
+          actionLogs,
+          approval,
+          payment,
+          auditLogs,
+          balanceAccount,
+          balanceReservation,
+          balanceEntries
+        ] = await Promise.all([
+          tx.approvalActionLog.findMany({
+            where: {
+              approvalInstanceId: fixture.approvalInstanceId
+            }
+          }),
+          tx.approvalInstance.findUniqueOrThrow({
+            where: { id: fixture.approvalInstanceId }
+          }),
+          tx.spotProcurementPayment.findUniqueOrThrow({
+            where: { id: fixture.paymentId }
+          }),
+          tx.auditLog.findMany({
+            where: {
+              businessType: "spot_procurement_payment",
+              businessId: fixture.paymentId
+            }
+          }),
+          tx.supplierBalanceAccount.findUniqueOrThrow({
+            where: { id: fixture.accountId }
+          }),
+          tx.supplierBalanceReservation.findUniqueOrThrow({
+            where: { id: fixture.reservationId }
+          }),
+          tx.supplierBalanceEntry.findMany({
+            where: { accountId: fixture.accountId }
+          })
+        ]);
+        const action = actionLogs[0];
+        observedCompletePreFailureState =
+          actionLogs.length === 1 &&
+          action.action === "approve" &&
+          action.approvedRoleKey === "project_manager" &&
+          action.representedUserId ===
+            PAYMENT_AUDIT_ROLLBACK_USER_ID &&
+          action.signatureFileIdSnapshot === signature.fileId &&
+          action.signatureSha256Snapshot === signature.sha256 &&
+          action.signatureVersionIdSnapshot === signature.versionId &&
+          approval.status === "approved" &&
+          payment.status === "approved_pending_payment" &&
+          payment.approvedAt instanceof Date &&
+          auditLogs.length === 1 &&
+          auditLogs[0].action ===
+            "spot_procurement.payment.approval.approve" &&
+          comparable(balanceAccount) ===
+            comparable(before.balanceAccount) &&
+          comparable(balanceReservation) ===
+            comparable(before.balanceReservation) &&
+          comparable(balanceEntries) ===
+            comparable(before.balanceEntries);
+        throw new Error(
+          "injected payment approval audit failure"
+        );
+      }
+    }
+  };
+  const service = paymentServicesFor(clientA, audit).payment;
+  const failure = await service.review(
+    fixture.paymentId,
+    PAYMENT_AUDIT_ROLLBACK_USER_ID,
+    { decision: "approve", comment: "同意" }
+  )
+    .then(
+      () => null,
+      (error) => error
+    );
+  assert(
+    errorText(failure) ===
+      "injected payment approval audit failure",
+    `付款审批 Audit 中段故障必须原样返回，实际 ${errorText(failure)}`
+  );
+  assert(
+    observedCompletePreFailureState,
+    "付款审批 Audit 故障必须注入在已签名 ActionLog、最终审批/付款状态和 Audit 全部可见之后"
+  );
+
+  const after = await snapshotPaymentReviewState(fixture);
+  assertUnchanged(before, after, "付款审批 Audit 中段故障回滚");
+  assert(
+    after.payment.status === "approval_pending" &&
+      after.payment.approvedAt === null &&
+      after.approval.status === "approval_pending" &&
+      after.approval.currentNodeIndex === 0 &&
+      after.actionLogs.length === 0 &&
+      after.auditLogs.length === 0 &&
+      after.balanceAccount.reservedAmountCents === 1_000n &&
+      after.balanceReservation.status === "reserved" &&
+      after.balanceEntries.length === 1,
+    "付款审批 Audit 中段故障后必须回滚 ActionLog、审批、付款与 Audit，并保持余额不变"
+  );
+  console.log(
+    "ok spot payment approval audit rollback: signed action, final approval/payment states and audit observed inside transaction, then all rolled back with balance unchanged"
+  );
 }
 
 async function verifyCumulativeCapacityCompetition(servicesA, servicesB) {
@@ -1799,7 +4573,11 @@ async function createLegacyOwnerContractBinding(
       paymentTermsSummary: "并发验收",
       retentionSummary: "并发验收",
       fileId,
-      recordedByUserId: FINANCE_USER_ID
+      recordedByUserId: FINANCE_USER_ID,
+      status: "pending_confirm",
+      fileContentSha256Snapshot: createHash("sha256")
+        .update(fileId)
+        .digest("hex")
     }
   });
 }
@@ -1834,10 +4612,15 @@ async function runHeldFileBindingRace({
 }) {
   const acquired = deferred();
   const release = deferred();
+  const blockerBackendPid = deferred();
   const firstPromise = clientA.$transaction(
     async (tx) => {
       try {
         const result = await firstWrite(tx);
+        const rows = await tx.$queryRaw(
+          Prisma.sql`SELECT pg_backend_pid()::int AS "pid"`
+        );
+        blockerBackendPid.resolve(Number(rows[0]?.pid));
         acquired.resolve();
         await release.promise;
         return result;
@@ -1849,6 +4632,11 @@ async function runHeldFileBindingRace({
     { timeout: 15_000, maxWait: 10_000 }
   );
   await acquired.promise;
+  const rootBlockerPid = await blockerBackendPid.promise;
+  assert(
+    Number.isInteger(rootBlockerPid),
+    "文件绑定竞争 blocker 必须具备真实 PostgreSQL backend PID"
+  );
   // PrismaPromise is lazy until it is awaited/then'ed. Assimilate it through
   // a native Promise so the second statement really starts before observing
   // pg_stat_activity.
@@ -1857,7 +4645,8 @@ async function runHeldFileBindingRace({
     await waitForBlockedQueries(
       clientB,
       blockedQueryNeedle,
-      1
+      1,
+      rootBlockerPid
     );
   } finally {
     release.resolve();
@@ -2234,7 +5023,7 @@ async function verifyExecutionCashShortageZeroWrite(servicesA) {
     );
   assert(
     error?.message ===
-      "项目现金不足，当前最多可实际支付 0 分",
+      "项目可用资金不足，当前最多可实际支付 0 分",
     `现金不足必须固定中文阻断，实际 ${errorText(error)}`
   );
   const after = await readExecutionFacts([payment.id]);
@@ -3014,7 +5803,10 @@ async function verifyReceiptCrossColumnFileCompetition() {
       retentionSummary: "验收专用",
       fileId: "spot-receipt-restricted-owner-contract",
       recordedByUserId: HANDLER_USER_ID,
-      status: "effective"
+      status: "pending_confirm",
+      fileContentSha256Snapshot: hash(
+        buffers.get("spot-receipt-restricted-owner-contract")
+      )
     }
   });
 
@@ -3873,11 +6665,47 @@ async function verifyInvoiceLedgerConcurrency(
 
 async function main() {
   assertLocalRuntime();
-  await Promise.all([clientA.$connect(), clientB.$connect()]);
+  await Promise.all([
+    clientA.$connect(),
+    clientB.$connect(),
+    observerClient.$connect()
+  ]);
   await assertRealFormSchemaPrerequisites(clientA);
+  await seedVerificationFacts();
+  if (verificationScope === APPLICATION_REVIEW_APPROVE_SCOPE) {
+    await verifyApplicationReviewCoordinateConcurrency();
+    await verifyApplicationReviewSignatureFailures();
+    await verifyApplicationReviewAuditRollback();
+    console.log(
+      "零星采购申请审批签名 PostgreSQL 16 门禁通过：" +
+        "坐标并发、缺签/SHA 漂移零写、Audit 中段回滚"
+    );
+    return;
+  }
+  if (verificationScope === PAYMENT_REVIEW_APPROVE_SCOPE) {
+    await verifyPaymentReviewRowLockOneWinner();
+    await verifyPaymentReviewSignatureFailures();
+    await verifyPaymentReviewAuditRollback();
+    console.log(
+      "零星采购付款审批签名 PostgreSQL 16 门禁通过：" +
+        "行锁单赢家、缺签/SHA 漂移零写、Audit 中段回滚"
+    );
+    return;
+  }
   const servicesA = servicesFor(clientA);
   const servicesB = servicesFor(clientB);
-  await seedVerificationFacts();
+  await verifyApplicationReviewCoordinateConcurrency();
+  await verifyApplicationReviewSignatureFailures();
+  await verifyApplicationReviewAuditRollback();
+  await verifyPaymentReviewRowLockOneWinner();
+  await verifyPaymentReviewSignatureFailures();
+  await verifyPaymentReviewAuditRollback();
+  await verifyApplicationWithdrawalCoordinateConcurrency();
+  await verifyApplicationWithdrawalMidTransactionRollback();
+  await verifyApplicationReturnToApplicantTerminalState();
+  await verifyLegacyApplicationWithdrawalFailsClosed();
+  await verifyLegacyApplicationReturnToApplicantFailsClosed();
+  await verifyApplicationWithdrawalVsNodeAdvanceCompetition();
   await verifyCumulativeCapacityCompetition(servicesA, servicesB);
   await verifyBalanceCompetitionAndRelease(servicesA, servicesB);
   await verifyMismatchedReservationReleaseFailsClosed(servicesA);
@@ -3912,7 +6740,7 @@ async function main() {
   await verifyInvoiceLedgerConcurrency(servicesA, servicesB);
   await verifyRawP2034Sentinel();
   console.log(
-    "零星采购真实 PostgreSQL 16 并发验收通过：付款提交、历史余额隔离、补货或退款差异约束、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、票据覆盖账本与 P2034"
+    "零星采购真实 PostgreSQL 16 并发验收通过：应用审批坐标、正式审批撤回/退回的历史字段全 null、历史混合表单撤回/退回严格 409 零写、撤回与节点推进竞争、付款提交、历史余额隔离、补货或退款差异约束、实际付款上限、幂等、凭证唯一、项目现金串行、现金不足零写、收货根/修订、最终收货提交、复核/撤销单胜、PDF 唯一当前指针、收货文件跨列竞争、票据覆盖账本与 P2034"
   );
 }
 
@@ -3925,7 +6753,8 @@ if (require.main === module) {
     .finally(async () => {
       await Promise.allSettled([
         clientA.$disconnect(),
-        clientB.$disconnect()
+        clientB.$disconnect(),
+        observerClient.$disconnect()
       ]);
     });
 }

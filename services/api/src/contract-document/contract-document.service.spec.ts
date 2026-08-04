@@ -49,7 +49,31 @@ describe("ContractDocumentService", () => {
 
   function makeTx(overrides: Record<string, unknown> = {}) {
     return {
-      $queryRaw: jest.fn().mockResolvedValue([{ id: "version-1" }]),
+      $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1"
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", contractId: "contract-1" }];
+        }
+        if (sql.includes('AS "hasSignedFormalFile"')) {
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
+        }
+        if (sql.includes('FROM "CompanyEntity"')) {
+          return [{ id: "entity-1" }];
+        }
+        return [];
+      }),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
           id: "version-1",
@@ -242,6 +266,39 @@ describe("ContractDocumentService", () => {
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
+  it("keeps historical takeover document listing read-only when company facts drift", async () => {
+    const tx = makeTx({
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 4
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "historical_takeover",
+          draftRevision: 7,
+          draftData: {
+            companyEntitySelection: { id: "entity-1", versionNo: 3 }
+          }
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service } = makeService(tx);
+
+    await expect(service.list("version-1", "owner-1")).resolves.toEqual([]);
+
+    expect(tx.companyEntity.findUnique).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("queues the saved current revision as an idempotent draft preview command", async () => {
     const tx = makeTx();
     const { service } = makeService(tx);
@@ -271,6 +328,108 @@ describe("ContractDocumentService", () => {
       orderBy: [{ slotKey: "asc" }, { displayOrder: "asc" }],
       select: { fileId: true }
     });
+  });
+
+  it("rejects generic preview generation for a historical takeover version", async () => {
+    const tx = makeTx();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      changeType: "historical_takeover",
+      draftRevision: 7
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 7
+      })
+    ).rejects.toThrow("历史接管工作台");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks relation-only takeover before queueing a generic preview", async () => {
+    const tx = makeTx();
+    tx.$queryRaw.mockImplementation(
+      async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            changeType: "original",
+            hasHistoricalTakeoverRelation: true
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1" }];
+        }
+        if (sql.includes('AS "hasSignedFormalFile"')) {
+          return [{
+            hasSignedFormalFile: false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
+        }
+        return [];
+      }
+    );
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 7
+      })
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects draft preview generation after downstream business makes the draft formal", async () => {
+    const tx = makeTx();
+    tx.$queryRaw.mockImplementation(async (query: { strings?: readonly string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes("FOR UPDATE OF cv")) {
+        return [{
+          id: "version-1",
+          contractId: "contract-1"
+        }];
+      }
+      if (sql.includes("FOR UPDATE OF c")) {
+        return [{ id: "contract-1", contractId: "contract-1" }];
+      }
+      if (sql.includes('AS "hasSignedFormalFile"')) {
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: true,
+          hasPaymentRequest: true
+        }];
+      }
+      if (sql.includes('FROM "CompanyEntity"')) {
+        return [{ id: "entity-1" }];
+      }
+      return [];
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.queueDraftPreview("version-1", "owner-1", {
+        sourceRevision: 7
+      })
+    ).rejects.toThrow("正式业务事实");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
 
   it("rejects preview generation for a revision that is not the current saved draft", async () => {
@@ -633,7 +792,13 @@ describe("ContractDocumentService", () => {
     })).rejects.toThrow("所选我方公司主体资料已更新或不再可用");
 
     expect(committed).toBe(true);
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
+    expect(
+      tx.$queryRaw.mock.calls.some(
+        ([query]: [{ strings?: readonly string[] }]) =>
+          (query.strings?.join(" ") ?? "").includes('FROM "CompanyEntity"')
+      )
+    ).toBe(true);
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
         contractVersionId: "version-1",
@@ -844,6 +1009,41 @@ describe("ContractDocumentService", () => {
       tx,
       expect.objectContaining({ action: "contract.document.retry" })
     );
+  });
+
+  it("rejects retry for a historical takeover without writes or audit", async () => {
+    const tx = makeTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "historical_takeover",
+          draftRevision: 7,
+          draftData: {}
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: { attachmentFiles: [] }
+    });
+    const { service } = makeService(tx);
+
+    await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
+      "历史接管工作台"
+    );
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("commits stale documents and denies retry when the selected company version drifts", async () => {
@@ -1083,6 +1283,37 @@ describe("ContractDocumentService", () => {
       fileId: "revision-file-1",
       label: "线下磋商稿"
     });
+  });
+
+  it("rejects offline revision upload for a historical takeover without writes or audit", async () => {
+    const tx = makeTx({
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-1",
+          contractId: "contract-1",
+          status: "draft",
+          changeType: "historical_takeover",
+          draftRevision: 7,
+          draftData: {}
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service } = makeService(tx);
+
+    await expect(
+      service.uploadOfflineRevision("version-1", "owner-1", {
+        fileId: "revision-file-1",
+        confirmationStatementAccepted: true
+      })
+    ).rejects.toThrow("历史接管工作台");
+
+    expect(files.assertCanDownloadFile).not.toHaveBeenCalled();
+    expect(files.linkFileReplacement).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractOfflineRevision.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("rejects offline revision upload from a non-owner through the owned version gate", async () => {

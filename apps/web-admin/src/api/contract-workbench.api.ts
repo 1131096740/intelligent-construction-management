@@ -8,6 +8,7 @@ import type {
   ContractWorkbenchReadModel as SharedContractWorkbenchReadModel,
   DetailActionReadModel
 } from "@jiangkong/shared-domain";
+import type { PrivateFileReadModel } from "./core-flow-read.api";
 
 // ---------------------------------------------------------------------------
 // Local HTTP helpers (built on apiFetch; keep isolated from core-flow client)
@@ -25,15 +26,25 @@ async function ensureOk(
   let message = `${fallback}：${response.status}`;
   let code: string | undefined;
   let conflictReason: string | undefined;
+  let projectId: string | undefined;
+  let takeoverId: string | undefined;
   try {
     const data = (await response.clone().json()) as {
       message?: unknown;
       code?: unknown;
       conflictReason?: unknown;
+      projectId?: unknown;
+      takeoverId?: unknown;
     };
     if (preserveConflictDetails && typeof data.code === "string") code = data.code;
     if (preserveConflictDetails && typeof data.conflictReason === "string") {
       conflictReason = data.conflictReason;
+    }
+    if (preserveConflictDetails && typeof data.projectId === "string") {
+      projectId = data.projectId;
+    }
+    if (preserveConflictDetails && typeof data.takeoverId === "string") {
+      takeoverId = data.takeoverId;
     }
     if (typeof data.message === "string") {
       message = formatApiErrorMessage(data.message, response.status, fallback);
@@ -48,15 +59,19 @@ async function ensureOk(
   const error = new Error(message) as Error & {
     code?: string;
     conflictReason?: string;
+    projectId?: string;
+    takeoverId?: string;
   };
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
+  if (projectId) error.projectId = projectId;
+  if (takeoverId) error.takeoverId = takeoverId;
   throw error;
 }
 
-async function readJson<T>(path: string): Promise<T> {
+async function readJson<T>(path: string, preserveErrorCode = false): Promise<T> {
   const response = await apiFetch(path);
-  await ensureOk(response, "读取失败");
+  await ensureOk(response, "读取失败", preserveErrorCode);
   return response.json() as Promise<T>;
 }
 
@@ -67,6 +82,15 @@ async function postJson<TResponse>(path: string, body?: unknown): Promise<TRespo
     body: JSON.stringify(body ?? {})
   });
   await ensureOk(response, "提交失败");
+  return response.json() as Promise<TResponse>;
+}
+
+async function postForm<TResponse>(path: string, body: FormData): Promise<TResponse> {
+  const response = await apiFetch(path, {
+    method: "POST",
+    body
+  });
+  await ensureOk(response, "上传失败");
   return response.json() as Promise<TResponse>;
 }
 
@@ -94,21 +118,13 @@ async function patchJson<TResponse>(path: string, body?: unknown): Promise<TResp
   return response.json() as Promise<TResponse>;
 }
 
-async function putJson<TResponse>(
-  path: string,
-  body?: unknown,
-  parseError?: (response: Response) => Promise<Error | null>
-): Promise<TResponse> {
+async function putJson<TResponse>(path: string, body?: unknown): Promise<TResponse> {
   const response = await apiFetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {})
   });
-  if (!response.ok) {
-    const parsedError = parseError ? await parseError(response) : null;
-    if (parsedError) throw parsedError;
-    await ensureOk(response, "保存失败");
-  }
+  await ensureOk(response, "保存失败");
   return response.json() as Promise<TResponse>;
 }
 
@@ -184,6 +200,17 @@ export interface CreateWorkbenchDraftReadModel {
   [key: string]: unknown;
 }
 
+export interface ContractCreateCapabilityReadModel {
+  projectId: string;
+  availableActions: string[];
+}
+
+export function fetchContractCreateCapabilities(projectId: string) {
+  return readJson<ContractCreateCapabilityReadModel>(
+    `/contracts/create-capability?projectId=${encodeURIComponent(projectId)}`
+  );
+}
+
 export function createWorkbenchDraft(body: CreateWorkbenchDraftPayload) {
   return postJson<CreateWorkbenchDraftReadModel>("/contracts", body);
 }
@@ -196,6 +223,7 @@ export type ContractDraftWorkbenchReadModel =
   Omit<ContractWorkbenchReadModel, "checkpoints"> & {
     draft: Record<string, unknown>;
     attachments: ContractDraftAttachmentModel[];
+    draftOperationAvailableActions: string[];
     lease: ContractDraftLeaseState;
     version: ContractWorkbenchReadModel["version"] & {
       draftLifecycleKind?: "pristine_draft" | "approval_draft";
@@ -327,7 +355,17 @@ export function fetchContractWorkbench(contractId: string) {
 
 export function fetchContractDraftWorkbench(contractVersionId: string) {
   return readJson<ContractDraftWorkbenchReadModel>(
-    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
+    true
+  );
+}
+
+export function fetchContractDraftOperationCapabilities(
+  contractVersionId: string
+) {
+  return readJson<ContractDraftWorkbenchReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/workbench`,
+    true
   );
 }
 
@@ -427,6 +465,7 @@ export interface AbandonContractDraftPayload {
   expectedRevision: number;
   action: "delete_pristine_draft" | "abandon_application";
   reason?: string;
+  currentPassword?: string;
 }
 
 export interface AbandonContractDraftReadModel {
@@ -448,6 +487,271 @@ export function abandonContractDraft(
     `/contracts/${encodeURIComponent(contractVersionId)}/abandonment`,
     body
   );
+}
+
+export type ContractDraftLifecycleAction =
+  | "delete_pristine_draft"
+  | "abandon_application";
+
+export interface ContractDraftLifecycleOperationContext {
+  generation: number;
+  contractId: string;
+  versionId: string;
+  expectedRevision: number;
+  action: ContractDraftLifecycleAction;
+  reason: string;
+  expectedRequiresComment: boolean;
+  expectedRequiresPassword: boolean;
+}
+
+export interface ExecuteContractDraftLifecycleActionInput {
+  generation: number;
+  contractId: string;
+  versionId: string;
+  expectedRevision: number;
+  action: string;
+  reason: string;
+  currentPassword: string;
+  expectedRequiresComment: boolean;
+  expectedRequiresPassword: boolean;
+  isCurrent: (context: ContractDraftLifecycleOperationContext) => boolean;
+  beforeWrite: () => boolean;
+  onWriteFailure: () => void;
+  onResult: (
+    result: ExecuteContractDraftLifecycleActionResult
+  ) => void | Promise<void>;
+  onCapabilityFailure: (error: unknown) => void;
+  onOperationFailure?: (error: unknown) => void;
+  onOperationSettled?: () => void;
+  swallowOperationFailure?: boolean;
+}
+
+export type ExecuteContractDraftLifecycleActionResult =
+  | {
+      status: "completed";
+      context: ContractDraftLifecycleOperationContext;
+      preflight: ContractDraftWorkbenchReadModel;
+      response: AbandonContractDraftReadModel;
+    }
+  | {
+      status: "stale";
+      context: ContractDraftLifecycleOperationContext;
+    };
+
+type ContractDraftLifecycleOperationErrorCode =
+  | "CONTRACT_DRAFT_LIFECYCLE_BUSY"
+  | "CONTRACT_DRAFT_LIFECYCLE_INVALID_CONTEXT"
+  | "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+  | "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH";
+
+function contractDraftLifecycleOperationError(
+  code: ContractDraftLifecycleOperationErrorCode,
+  message: string
+) {
+  return Object.assign(new Error(message), { code });
+}
+
+function normalizeContractDraftLifecycleOperation(
+  input: ExecuteContractDraftLifecycleActionInput
+): ContractDraftLifecycleOperationContext {
+  const contractId = input.contractId.trim();
+  const versionId = input.versionId.trim();
+  const reason = input.reason.trim();
+  if (
+    !Number.isInteger(input.generation) ||
+    input.generation < 0 ||
+    !contractId ||
+    !versionId ||
+    !Number.isInteger(input.expectedRevision) ||
+    input.expectedRevision < 1 ||
+    (
+      input.action !== "delete_pristine_draft" &&
+      input.action !== "abandon_application"
+    )
+  ) {
+    throw contractDraftLifecycleOperationError(
+      "CONTRACT_DRAFT_LIFECYCLE_INVALID_CONTEXT",
+      "合同草稿结束操作上下文已失效，请重新读取当前工作台"
+    );
+  }
+  return {
+    generation: input.generation,
+    contractId,
+    versionId,
+    expectedRevision: input.expectedRevision,
+    action: input.action,
+    reason,
+    expectedRequiresComment: input.expectedRequiresComment,
+    expectedRequiresPassword: input.expectedRequiresPassword
+  };
+}
+
+function assertContractDraftLifecyclePreflight(
+  context: ContractDraftLifecycleOperationContext,
+  preflight: ContractDraftWorkbenchReadModel
+) {
+  const enabledLifecycleActions = (preflight.availableActions ?? []).filter(
+    (
+      action
+    ): action is DetailActionReadModel & { key: ContractDraftLifecycleAction } =>
+      action.enabled &&
+      (
+        action.key === "delete_pristine_draft" ||
+        action.key === "abandon_application"
+      )
+  );
+  if (
+    preflight.contract.id !== context.contractId ||
+    preflight.version.id !== context.versionId ||
+    preflight.version.draftRevision !== context.expectedRevision
+  ) {
+    throw contractDraftLifecycleOperationError(
+      "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH",
+      "合同草稿结束操作的读取坐标已变化，请刷新后重试"
+    );
+  }
+  if (
+    enabledLifecycleActions.length !== 1 ||
+    enabledLifecycleActions[0]?.key !== context.action ||
+    Boolean(enabledLifecycleActions[0]?.requiresComment) !==
+      context.expectedRequiresComment ||
+    Boolean(enabledLifecycleActions[0]?.requiresPassword) !==
+      context.expectedRequiresPassword
+  ) {
+    throw contractDraftLifecycleOperationError(
+      "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH",
+      "当前结束操作已变化，请按最新合同工作台动作重新确认"
+    );
+  }
+}
+
+function assertContractDraftLifecycleResponse(
+  context: ContractDraftLifecycleOperationContext,
+  response: AbandonContractDraftReadModel
+) {
+  const expectedLifecycleKind = context.action === "delete_pristine_draft"
+    ? "pristine_draft"
+    : "approval_draft";
+  if (
+    response.contractVersionId !== context.versionId ||
+    response.status !== "abandoned" ||
+    response.action !== context.action ||
+    response.lifecycleKind !== expectedLifecycleKind
+  ) {
+    throw contractDraftLifecycleOperationError(
+      "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH",
+      "合同草稿结束操作响应与请求坐标不一致，已暂停编辑，请刷新页面核对"
+    );
+  }
+}
+
+let activeContractDraftLifecycleOperation: {
+  fingerprint: string;
+  promise: Promise<void>;
+} | null = null;
+
+async function runContractDraftLifecycleOperation(
+  context: ContractDraftLifecycleOperationContext,
+  input: ExecuteContractDraftLifecycleActionInput
+): Promise<ExecuteContractDraftLifecycleActionResult> {
+  let preflight: ContractDraftWorkbenchReadModel;
+  try {
+    preflight = await fetchContractDraftWorkbench(context.versionId);
+  } catch (error) {
+    if (!input.isCurrent(context)) return { status: "stale", context };
+    throw error;
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+  assertContractDraftLifecyclePreflight(context, preflight);
+  if (!input.beforeWrite()) {
+    throw new Error("合同草稿正在保存，请等待保存完成后再结束草稿");
+  }
+
+  let response: AbandonContractDraftReadModel;
+  try {
+    response = await abandonContractDraft(context.versionId, {
+      expectedRevision: context.expectedRevision,
+      action: context.action,
+      ...(context.reason ? { reason: context.reason } : {}),
+      ...(input.currentPassword ? { currentPassword: input.currentPassword } : {})
+    });
+  } catch (error) {
+    if (!input.isCurrent(context)) return { status: "stale", context };
+    input.onWriteFailure();
+    throw error;
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+  assertContractDraftLifecycleResponse(context, response);
+  return { status: "completed", context, preflight, response };
+}
+
+export function executeContractDraftLifecycleAction(
+  input: ExecuteContractDraftLifecycleActionInput
+) {
+  let context: ContractDraftLifecycleOperationContext;
+  try {
+    context = normalizeContractDraftLifecycleOperation(input);
+  } catch (error) {
+    input.onCapabilityFailure(error);
+    input.onOperationFailure?.(error);
+    input.onOperationSettled?.();
+    return input.swallowOperationFailure
+      ? Promise.resolve()
+      : Promise.reject(error);
+  }
+  const fingerprint = [
+    context.generation,
+    context.contractId,
+    context.versionId,
+    context.expectedRevision,
+    context.action,
+    context.reason,
+    Number(context.expectedRequiresComment),
+    Number(context.expectedRequiresPassword)
+  ].join("\u0000");
+  if (activeContractDraftLifecycleOperation) {
+    if (activeContractDraftLifecycleOperation.fingerprint === fingerprint) {
+      return activeContractDraftLifecycleOperation.promise;
+    }
+    const error = contractDraftLifecycleOperationError(
+      "CONTRACT_DRAFT_LIFECYCLE_BUSY",
+      "另一项合同草稿结束操作正在确认，请等待完成后重试"
+    );
+    input.onOperationFailure?.(error);
+    return input.swallowOperationFailure
+      ? Promise.resolve()
+      : Promise.reject(error);
+  }
+  const resultPromise = runContractDraftLifecycleOperation(context, input);
+  const operation = resultPromise
+    .then(input.onResult)
+    .catch((error: unknown) => {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "";
+      if (
+        code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
+        code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+      ) {
+        input.onCapabilityFailure(error);
+      }
+      input.onOperationFailure?.(error);
+      if (!input.swallowOperationFailure) throw error;
+    })
+    .finally(() => {
+      input.onOperationSettled?.();
+    });
+  const ownedPromise = operation.finally(() => {
+    if (activeContractDraftLifecycleOperation?.promise === ownedPromise) {
+      activeContractDraftLifecycleOperation = null;
+    }
+  });
+  activeContractDraftLifecycleOperation = {
+    fingerprint,
+    promise: ownedPromise
+  };
+  return ownedPromise;
 }
 
 export type ContractAuthorizationSide = "first_party" | "counterparty";
@@ -493,15 +797,25 @@ export function uploadContractFormalApprovalFile(
   return postJson<unknown>(`/contracts/${contractVersionId}/formal-files/approval`, body);
 }
 
-export function checkContractSubmissionReadiness(contractVersionId: string) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/readiness`);
+export function uploadContractWorkbenchPrivateFile(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  return postForm<PrivateFileReadModel>(
+    `/contract-drafts/${encodeURIComponent(contractVersionId)}/files`,
+    form
+  );
 }
 
-export function submitContractFromWorkbench(
-  contractVersionId: string,
-  body: Record<string, unknown> = {}
-) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/approval-submission`, body);
+export function checkContractSubmissionReadiness(contractVersionId: string) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/readiness`);
 }
 
 export function listContractDrafts(scope: "my" | "voided") {
@@ -649,6 +963,19 @@ export function applyContractTypeChange(
 
 export interface TransferContractDraftPayload {
   toUserId: string;
+  expectedContractVersionId?: string;
+}
+
+export interface ContractDraftTransferCapabilityReadModel {
+  contractId: string;
+  contractVersionId: string | null;
+  availableActions: string[];
+}
+
+export function fetchContractDraftTransferCapabilities(contractId: string) {
+  return readJson<ContractDraftTransferCapabilityReadModel>(
+    `/contract-workbench/${encodeURIComponent(contractId)}/transfer-capability`
+  );
 }
 
 export function transferContractDraft(contractId: string, body: TransferContractDraftPayload) {
@@ -668,7 +995,7 @@ export function restoreContractDraft(contractId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Business parties (GET/POST /business-parties, POST /contract-workbench/:versionId/parties)
+// Business parties (GET/POST /business-parties)
 // ---------------------------------------------------------------------------
 
 export function listBusinessParties(query?: string) {
@@ -693,16 +1020,6 @@ export function getBusinessParty(partyId: string) {
 
 export function createBusinessPartyVersion(partyId: string, body: CreateBusinessPartyPayload) {
   return postJson<unknown>(`/business-parties/${partyId}/versions`, body);
-}
-
-export interface AddContractPartyPayload {
-  roleKey: string;
-  businessPartyVersionId?: string;
-  snapshot?: Record<string, unknown>;
-}
-
-export function addContractParty(contractVersionId: string, body: AddContractPartyPayload) {
-  return postJson<unknown>(`/contract-workbench/${contractVersionId}/parties`, body);
 }
 
 // ---------------------------------------------------------------------------
@@ -1138,6 +1455,337 @@ export function deleteBillRow(
   return deleteJson<unknown>(`/contract-bills/${billId}/rows/${rowKey}`, body);
 }
 
+export interface CancelContractBillRemainderPayload {
+  expectedBillRevision: number;
+  expectedDraftRevision: number;
+  expectedOccupancyToken: string;
+  reason: string;
+}
+
+async function cancelContractBillRemainder(
+  billId: string,
+  rowKey: string,
+  leaseToken: string,
+  body: CancelContractBillRemainderPayload
+) {
+  let response: Response;
+  try {
+    response = await apiFetch(
+      `/contract-bills/${encodeURIComponent(billId)}/rows/${encodeURIComponent(rowKey)}/remainder-cancellation`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": leaseToken
+        },
+        body: JSON.stringify(body)
+      }
+    );
+  } catch (error) {
+    throw contractBillRemainderResultUnknownError(error);
+  }
+  try {
+    await ensureOk(response, "取消未实施余量失败", true);
+  } catch (error) {
+    if (response.status === 408 || response.status >= 500) {
+      throw contractBillRemainderResultUnknownError(error);
+    }
+    throw error;
+  }
+  try {
+    return await response.json() as unknown;
+  } catch (error) {
+    throw contractBillRemainderResultUnknownError(error);
+  }
+}
+
+export interface ContractBillRemainderCancellationOperationContext {
+  ownerScope: string;
+  routeGeneration: number;
+  operationId: number;
+  contractId: string;
+  versionId: string;
+  billId: string;
+  billKey: string;
+  rowKey: string;
+  leaseToken: string;
+  reason: string;
+}
+
+export interface ContractBillRemainderCancellationFlushResult {
+  saved: boolean;
+  expectedDraftRevision?: number;
+  error?: string;
+}
+
+export interface ExecuteContractBillRemainderCancellationInput {
+  capture: () => ContractBillRemainderCancellationOperationContext | null;
+  flush: (
+    context: ContractBillRemainderCancellationOperationContext
+  ) => Promise<ContractBillRemainderCancellationFlushResult>;
+  isCurrent: (
+    context: ContractBillRemainderCancellationOperationContext
+  ) => boolean;
+}
+
+interface PreparedContractBillRemainderCancellation {
+  expectedBillRevision: number;
+  expectedDraftRevision: number;
+  expectedOccupancyToken: string;
+  historicalQuantity: string;
+  historicalAmountCents: string;
+}
+
+export type ExecuteContractBillRemainderCancellationResult =
+  | { status: "not_started" }
+  | {
+      status: "save_failed";
+      context: ContractBillRemainderCancellationOperationContext;
+      error: Error;
+    }
+  | {
+      status: "stale";
+      context: ContractBillRemainderCancellationOperationContext;
+    }
+  | {
+      status: "failed";
+      context: ContractBillRemainderCancellationOperationContext;
+      error: unknown;
+      resultUnknown: boolean;
+    }
+  | {
+      status: "completed";
+      context: ContractBillRemainderCancellationOperationContext;
+      prepared: PreparedContractBillRemainderCancellation;
+      preflight: ContractDraftWorkbenchReadModel;
+      response: unknown;
+    };
+
+export async function executeContractBillRemainderCancellation(
+  input: ExecuteContractBillRemainderCancellationInput
+): Promise<ExecuteContractBillRemainderCancellationResult> {
+  const captured = input.capture();
+  if (!captured) return { status: "not_started" };
+
+  let context: ContractBillRemainderCancellationOperationContext;
+  try {
+    context = normalizeContractBillRemainderCancellationContext(captured);
+  } catch (error) {
+    return { status: "failed", context: captured, error, resultUnknown: false };
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+
+  let flush: ContractBillRemainderCancellationFlushResult;
+  try {
+    flush = await input.flush(context);
+  } catch (error) {
+    return {
+      status: "save_failed",
+      context,
+      error: error instanceof Error ? error : new Error("合同草稿未保存成功")
+    };
+  }
+  if (!flush.saved) {
+    return {
+      status: "save_failed",
+      context,
+      error: new Error(flush.error?.trim() || "合同草稿未保存成功，本次取消未执行")
+    };
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+  if (
+    !Number.isInteger(flush.expectedDraftRevision) ||
+    Number(flush.expectedDraftRevision) < 1
+  ) {
+    return {
+      status: "failed",
+      context,
+      error: contractBillRemainderOperationError(
+        "CONTRACT_BILL_REMAINDER_INVALID_CONTEXT",
+        "合同草稿保存修订无效，本次取消未执行"
+      ),
+      resultUnknown: false
+    };
+  }
+
+  let preflight: ContractDraftWorkbenchReadModel;
+  let prepared: PreparedContractBillRemainderCancellation;
+  try {
+    preflight = await fetchContractDraftWorkbench(context.versionId);
+    if (!input.isCurrent(context)) return { status: "stale", context };
+    prepared = prepareContractBillRemainderCancellation(
+      context,
+      Number(flush.expectedDraftRevision),
+      preflight
+    );
+  } catch (error) {
+    return { status: "failed", context, error, resultUnknown: false };
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+
+  let response: unknown;
+  try {
+    response = await cancelContractBillRemainder(
+      context.billId,
+      context.rowKey,
+      context.leaseToken,
+      {
+        expectedBillRevision: prepared.expectedBillRevision,
+        expectedDraftRevision: prepared.expectedDraftRevision,
+        expectedOccupancyToken: prepared.expectedOccupancyToken,
+        reason: context.reason
+      }
+    );
+  } catch (error) {
+    return {
+      status: "failed",
+      context,
+      error,
+      resultUnknown: contractBillRemainderErrorCode(error) ===
+        "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN"
+    };
+  }
+  return { status: "completed", context, prepared, preflight, response };
+}
+
+function normalizeContractBillRemainderCancellationContext(
+  context: ContractBillRemainderCancellationOperationContext
+): ContractBillRemainderCancellationOperationContext {
+  const normalized = {
+    ...context,
+    ownerScope: context.ownerScope.trim(),
+    contractId: context.contractId.trim(),
+    versionId: context.versionId.trim(),
+    billId: context.billId.trim(),
+    billKey: context.billKey.trim(),
+    rowKey: context.rowKey.trim(),
+    leaseToken: context.leaseToken.trim(),
+    reason: context.reason.trim()
+  };
+  if (
+    !normalized.ownerScope ||
+    !normalized.contractId ||
+    !normalized.versionId ||
+    !normalized.billId ||
+    !normalized.billKey ||
+    !normalized.rowKey ||
+    !normalized.leaseToken ||
+    !normalized.reason ||
+    normalized.reason.length > 500 ||
+    !Number.isInteger(normalized.routeGeneration) ||
+    normalized.routeGeneration < 0 ||
+    !Number.isInteger(normalized.operationId) ||
+    normalized.operationId < 1
+  ) {
+    throw contractBillRemainderOperationError(
+      "CONTRACT_BILL_REMAINDER_INVALID_CONTEXT",
+      "取消未实施余量的页面上下文已失效，请重新读取当前清单"
+    );
+  }
+  return normalized;
+}
+
+function prepareContractBillRemainderCancellation(
+  context: ContractBillRemainderCancellationOperationContext,
+  expectedDraftRevision: number,
+  preflight: ContractDraftWorkbenchReadModel
+): PreparedContractBillRemainderCancellation {
+  const matchingBills = preflight.bills.filter((candidate) => {
+    const value = contractBillRemainderObject(candidate);
+    return value["id"] === context.billId && value["billKey"] === context.billKey;
+  });
+  const bill = matchingBills[0];
+  const billValue = contractBillRemainderObject(bill);
+  const rows = Array.isArray(billValue["rows"])
+    ? billValue["rows"] as unknown[]
+    : [];
+  const matchingRows = rows.filter(
+    (candidate) => contractBillRemainderObject(candidate)["rowKey"] === context.rowKey
+  );
+  const rowValue = contractBillRemainderObject(matchingRows[0]);
+  const actions = Array.isArray(rowValue["availableActions"])
+    ? rowValue["availableActions"] as unknown[]
+    : [];
+  const matchingActions = actions
+    .map(contractBillRemainderObject)
+    .filter((action) => action["key"] === "contract-bill.remainder-cancellation");
+  const action = matchingActions[0] ?? {};
+  const facts = contractBillRemainderObject(rowValue["remainderCancellation"]);
+  const expectedBillRevision = Number(facts["expectedBillRevision"]);
+  const factDraftRevision = Number(facts["expectedDraftRevision"]);
+  const billRevision = Number(billValue["revision"]);
+  const expectedOccupancyToken =
+    typeof facts["expectedOccupancyToken"] === "string"
+      ? facts["expectedOccupancyToken"].trim()
+      : "";
+  const historicalQuantity =
+    typeof facts["historicalQuantity"] === "string"
+      ? facts["historicalQuantity"].trim()
+      : "";
+  const historicalAmountCents =
+    typeof facts["historicalAmountCents"] === "string"
+      ? facts["historicalAmountCents"].trim()
+      : "";
+  if (
+    preflight.contract.id !== context.contractId ||
+    preflight.contract.ownerUserId !== context.ownerScope ||
+    preflight.version.id !== context.versionId ||
+    preflight.version.draftRevision !== expectedDraftRevision ||
+    matchingBills.length !== 1 ||
+    matchingRows.length !== 1 ||
+    matchingActions.length !== 1 ||
+    action["enabled"] !== true ||
+    action["kind"] !== "danger" ||
+    action["requiresComment"] !== true ||
+    action["requiresPassword"] !== false ||
+    !Number.isInteger(billRevision) ||
+    !Number.isInteger(expectedBillRevision) ||
+    expectedBillRevision !== billRevision ||
+    !Number.isInteger(factDraftRevision) ||
+    factDraftRevision !== expectedDraftRevision ||
+    !expectedOccupancyToken ||
+    !historicalQuantity ||
+    !/^\d+$/u.test(historicalAmountCents)
+  ) {
+    throw contractBillRemainderOperationError(
+      "CONTRACT_BILL_REMAINDER_PREFLIGHT_MISMATCH",
+      "当前清单余量取消条件已变化，本次未写入，请按最新工作台重新确认"
+    );
+  }
+  return {
+    expectedBillRevision,
+    expectedDraftRevision,
+    expectedOccupancyToken,
+    historicalQuantity,
+    historicalAmountCents
+  };
+}
+
+function contractBillRemainderObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function contractBillRemainderOperationError(code: string, message: string) {
+  return Object.assign(new Error(message), { code });
+}
+
+function contractBillRemainderResultUnknownError(cause: unknown) {
+  return Object.assign(
+    new Error(
+      "取消未实施余量的提交结果未知，已禁止自动重试；请重新读取工作台后核对"
+    ),
+    { code: "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN", cause }
+  );
+}
+
+function contractBillRemainderErrorCode(error: unknown): string {
+  return error && typeof error === "object" && "code" in error
+    ? String(error.code)
+    : "";
+}
+
 export interface ReorderBillRowsPayload {
   expectedBillRevision: number;
   rowKeys: string[];
@@ -1155,11 +1803,6 @@ export interface ContractBillRowValidationError {
   field: ContractBillRowValidationField;
   message: string;
 }
-
-export type ContractBillValidationError = Error & {
-  code: "CONTRACT_BILL_VALIDATION_FAILED";
-  rowErrors: ContractBillRowValidationError[];
-};
 
 export interface ContractBillCandidateRowInput {
   clientRowKey: string;
@@ -1236,73 +1879,8 @@ export interface ReplaceContractBillRowsReadModel {
   rows: ContractBillBatchSaveRowReadModel[];
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-export function parseContractBillValidationError(
-  data: unknown
-): ContractBillValidationError | null {
-  if (
-    !isPlainRecord(data) ||
-    data.code !== "CONTRACT_BILL_VALIDATION_FAILED" ||
-    !isNonEmptyString(data.message) ||
-    !Array.isArray(data.rowErrors)
-  ) {
-    return null;
-  }
-
-  const rowErrors: ContractBillRowValidationError[] = [];
-  for (const rowError of data.rowErrors) {
-    if (
-      !isPlainRecord(rowError) ||
-      !isNonEmptyString(rowError.clientRowKey) ||
-      !isNonEmptyString(rowError.field) ||
-      !isNonEmptyString(rowError.message)
-    ) {
-      return null;
-    }
-    rowErrors.push({
-      clientRowKey: rowError.clientRowKey,
-      field: rowError.field,
-      message: rowError.message
-    });
-  }
-
-  const error = new Error(data.message) as ContractBillValidationError;
-  error.code = "CONTRACT_BILL_VALIDATION_FAILED";
-  error.rowErrors = rowErrors;
-  return error;
-}
-
-async function parseContractBillValidationResponse(response: Response): Promise<Error | null> {
-  if (response.status !== 400) return null;
-  try {
-    return parseContractBillValidationError(await response.clone().json());
-  } catch {
-    return null;
-  }
-}
-
-export function replaceContractBillRows(
-  billId: string,
-  input: ReplaceContractBillRowsInput
-) {
-  return putJson<ReplaceContractBillRowsReadModel>(
-    `/contract-bills/${encodeURIComponent(billId)}/rows`,
-    input,
-    parseContractBillValidationResponse
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Contract bill Excel (GET blob, POST JSON preview, POST apply)
+// Contract bill Excel templates and draft import preview
 // ---------------------------------------------------------------------------
 
 // Excel template download: backend responds with a streaming .xlsx file.
@@ -1338,57 +1916,6 @@ async function downloadBillExcelTemplateFromPath(
   saveBlob(blob, fileName);
 }
 
-export interface PreviewBillExcelImportPayload {
-  /** Already-uploaded private file id — send as JSON, NOT FormData. */
-  fileId: string;
-  mode?: "replace" | "update" | "append" | "version_replace";
-}
-
-export type ContractBillImportDiffKind =
-  | "unchanged"
-  | "added"
-  | "removed"
-  | "one_to_one"
-  | "manual_review";
-
-export interface ContractBillImportDiffRow {
-  rowKey: string;
-  itemCode: string | null;
-  itemName: string;
-  specification: string | null;
-  unit: string;
-}
-
-export interface ContractBillImportDiff {
-  kind: ContractBillImportDiffKind;
-  rowKey: string;
-  source?: ContractBillImportDiffRow;
-  incoming?: ContractBillImportDiffRow;
-}
-
-export interface VersionBillExcelImportPreview {
-  importId: string;
-  added: number;
-  updated: number;
-  removed: number;
-  skipped: number;
-  beforeAmountCents: string;
-  afterAmountCents: string;
-  errors: Array<{ message: string }>;
-  diffs: ContractBillImportDiff[];
-}
-
-// Preview: file is already uploaded via /files; we only pass its id as JSON.
-export function previewBillExcelImport(
-  billId: string,
-  body: PreviewBillExcelImportPayload
-) {
-  return postJson<VersionBillExcelImportPreview>(
-    `/contract-bills/${billId}/excel-imports`,
-    body
-  );
-}
-
 export interface ContractDraftBillExcelImportPreview {
   billKey: string;
   targetBillRevision: number;
@@ -1414,10 +1941,6 @@ export function previewContractDraftBillExcelImport(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}/bills/${encodeURIComponent(billKey)}/import-preview`,
     body
   );
-}
-
-export function applyBillExcelImport(importId: string): Promise<unknown> {
-  return postJson<unknown>(`/contract-bill-imports/${importId}/apply`);
 }
 
 // ---------------------------------------------------------------------------

@@ -102,6 +102,7 @@ export interface ApplyContractTypeChangeDto extends PreviewContractTypeChangeDto
 
 export interface TransferContractDraftDto {
   toUserId: string;
+  expectedContractVersionId?: string;
 }
 
 export interface ContractDraftLeaseReadModel {

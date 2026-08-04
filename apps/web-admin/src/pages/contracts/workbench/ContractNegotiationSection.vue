@@ -156,6 +156,49 @@
       </t-timeline-item>
     </t-timeline>
 
+    <div
+      v-if="!loading"
+      class="legacy-revision-history"
+    >
+      <div class="legacy-revision-head">
+        <strong>旧流程修订记录</strong>
+        <span>仅供查阅，不进入当前磋商差异处置。</span>
+      </div>
+      <t-empty
+        v-if="legacyRevisionHistory.length === 0"
+        description="暂无旧流程修订记录"
+      />
+      <div
+        v-else
+        class="legacy-revision-list"
+      >
+        <article
+          v-for="revision in legacyRevisionHistory"
+          :key="revision.id"
+          class="legacy-revision-card"
+        >
+          <div class="legacy-revision-copy">
+            <strong>{{ revision.label }}</strong>
+            <span>{{ timeText(revision.createdAt) }}</span>
+          </div>
+          <t-tag
+            size="small"
+            variant="light"
+          >
+            {{ contractNegotiationProcessStatusLabel(revision.status) }}
+          </t-tag>
+          <span
+            v-if="revision.note"
+            class="muted legacy-revision-note"
+          >{{ revision.note }}</span>
+          <span
+            v-if="revision.errorMessage"
+            class="legacy-revision-error"
+          >{{ revision.errorMessage }}</span>
+        </article>
+      </div>
+    </div>
+
     <t-dialog
       v-model:visible="openRoundDialogVisible"
       header="开启合同磋商轮次"
@@ -175,15 +218,20 @@
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
+  fetchContractDraftOperationCapabilities,
+  uploadContractWorkbenchPrivateFile
+} from "../../../api/contract-workbench.api";
+import {
   closeContractNegotiationRound,
+  listContractOfflineRevisionHistory,
   listContractNegotiationRounds,
   openContractNegotiationRound,
   retryContractOfflineRevision,
   uploadContractNegotiationRevision,
   type ContractNegotiationRoundReadModel,
+  type ContractOfflineRevisionHistoryReadModel,
   type ContractOfflineRevisionReadModel
 } from "../../../api/contract-negotiation.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   canApplyContractNegotiationResponse,
   canCloseContractNegotiationRound,
@@ -196,6 +244,97 @@ import {
   type ContractNegotiationSelection
 } from "./contract-negotiation.state";
 
+async function openContractNegotiationRoundWithCapability(
+  versionId: string,
+  note?: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "open_contract_negotiation_round"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能开启合同磋商轮次");
+  }
+  return openContractNegotiationRound(versionId, note);
+}
+
+async function uploadNegotiationFileWithCapability(
+  versionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同工作台文件");
+  }
+  return uploadContractWorkbenchPrivateFile(versionId, file, fileName);
+}
+
+async function uploadContractNegotiationRevisionWithCapability(
+  versionId: string,
+  body: Parameters<typeof uploadContractNegotiationRevision>[1]
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_negotiation_revision"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能提交合同线下修订稿");
+  }
+  return uploadContractNegotiationRevision(versionId, body);
+}
+
+async function closeContractNegotiationRoundWithCapability(
+  versionId: string,
+  roundId: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "close_contract_negotiation_round"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能关闭合同磋商轮次");
+  }
+  return closeContractNegotiationRound(roundId);
+}
+
+async function retryContractOfflineRevisionWithCapability(
+  versionId: string,
+  revisionId: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同磋商能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "retry_contract_offline_revision"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能重试合同修订稿");
+  }
+  return retryContractOfflineRevision(revisionId);
+}
+
 const props = defineProps<{ versionId: string; disabled: boolean; refreshToken: number }>();
 const emit = defineEmits<{
   selection: [value: { round: ContractNegotiationRoundReadModel; revision: ContractOfflineRevisionReadModel } | null];
@@ -203,6 +342,7 @@ const emit = defineEmits<{
 }>();
 
 const rounds = ref<ContractNegotiationRoundReadModel[]>([]);
+const offlineRevisionHistory = ref<ContractOfflineRevisionHistoryReadModel[]>([]);
 const selection = ref<ContractNegotiationSelection | null>(null);
 const loading = ref(false);
 const busyAction = ref("");
@@ -219,6 +359,9 @@ let actionRequestId = 0;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
 const busy = computed(() => Boolean(busyAction.value));
+const legacyRevisionHistory = computed(() =>
+  offlineRevisionHistory.value.filter((revision) => revision.negotiationRound === null)
+);
 const openRound = computed(() => latestOpenContractNegotiationRound(rounds.value));
 const canCloseOpenRound = computed(() =>
   openRound.value ? canCloseContractNegotiationRound(openRound.value) : false
@@ -246,6 +389,7 @@ onBeforeUnmount(() => {
   requestId += 1;
   actionRequestId += 1;
   if (pollTimer) clearTimeout(pollTimer);
+  offlineRevisionHistory.value = [];
   clearUploadState();
   roundNote.value = "";
   message.value = "";
@@ -259,17 +403,21 @@ async function loadRounds() {
   const currentRequest = ++requestId;
   if (!versionId) {
     rounds.value = [];
+    offlineRevisionHistory.value = [];
     selection.value = null;
     emit("selection", null);
     return;
   }
   loading.value = true;
   try {
-    const result = normalizeContractNegotiationRounds(
-      await listContractNegotiationRounds(versionId)
-    );
+    const [roundPayload, historyResult] = await Promise.all([
+      listContractNegotiationRounds(versionId),
+      listContractOfflineRevisionHistory(versionId)
+    ]);
+    const result = normalizeContractNegotiationRounds(roundPayload);
     if (!canApplyContractNegotiationResponse(currentRequest, requestId, versionId, props.versionId)) return;
     rounds.value = result;
+    offlineRevisionHistory.value = historyResult;
     selection.value = reconcileContractNegotiationSelection(result, selection.value);
     emit("selection", selectedContractNegotiationRevision(result, selection.value));
     if (hasActiveContractNegotiationProcessing(result)) {
@@ -314,7 +462,7 @@ async function openNegotiationRound() {
   if (
     await run(
       "open",
-      () => openContractNegotiationRound(versionId, roundNote.value),
+      () => openContractNegotiationRoundWithCapability(versionId, roundNote.value),
       "新磋商轮次已开启。"
     )
   ) {
@@ -334,12 +482,12 @@ async function uploadRevision() {
   busyAction.value = "upload";
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadNegotiationFileWithCapability(versionId, file, file.name);
     if (!isActionCurrent(actionRequest, versionId)) {
       showUploadReselectMessage(versionId);
       return;
     }
-    await uploadContractNegotiationRevision(versionId, {
+    await uploadContractNegotiationRevisionWithCapability(versionId, {
       fileId: uploaded.id,
       label,
       note,
@@ -361,11 +509,19 @@ async function uploadRevision() {
 async function closeOpenRound() {
   if (!openRound.value || !canCloseOpenRound.value) return;
   const roundId = openRound.value.id;
-  await run("close", () => closeContractNegotiationRound(roundId), "本轮磋商已关闭。");
+  await run(
+    "close",
+    () => closeContractNegotiationRoundWithCapability(props.versionId, roundId),
+    "本轮磋商已关闭。"
+  );
 }
 
 async function retryRevision(revisionId: string) {
-  await run(`retry-${revisionId}`, () => retryContractOfflineRevision(revisionId), "修订稿已重新进入比较队列。");
+  await run(
+    `retry-${revisionId}`,
+    () => retryContractOfflineRevisionWithCapability(props.versionId, revisionId),
+    "修订稿已重新进入比较队列。"
+  );
 }
 
 function showError(value: string) {
@@ -379,6 +535,7 @@ function resetVersionState() {
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = undefined;
   rounds.value = [];
+  offlineRevisionHistory.value = [];
   selection.value = null;
   loading.value = false;
   busyAction.value = "";
@@ -423,7 +580,11 @@ function timeText(value: string) {
 .section-head > div,
 .upload-panel,
 .round-card,
-.revision-list {
+.revision-list,
+.legacy-revision-history,
+.legacy-revision-list,
+.legacy-revision-card,
+.legacy-revision-copy {
   display: grid;
   gap: var(--jg-space-sm);
 }
@@ -431,7 +592,8 @@ function timeText(value: string) {
 .section-head,
 .round-head,
 .upload-actions,
-.revision-choice {
+.revision-choice,
+.legacy-revision-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -440,16 +602,37 @@ function timeText(value: string) {
 
 .section-head span,
 .muted,
-.revision-choice small {
+.revision-choice small,
+.legacy-revision-head span,
+.legacy-revision-copy span {
   color: var(--jg-text-muted);
   font-size: var(--jg-font-meta);
 }
 
 .upload-panel,
-.round-card {
+.round-card,
+.legacy-revision-history {
   padding: var(--jg-space-md);
   background: var(--jg-bg-muted);
   border: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.legacy-revision-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  padding: var(--jg-space-sm);
+  background: var(--jg-bg-panel);
+  border: var(--jg-border-width-base) solid var(--jg-border);
+}
+
+.legacy-revision-note,
+.legacy-revision-error {
+  grid-column: 1 / -1;
+}
+
+.legacy-revision-error {
+  color: var(--jg-danger);
+  font-size: var(--jg-font-meta);
 }
 
 .upload-actions {

@@ -158,4 +158,40 @@ describe("ProjectVisibilityService", () => {
     ]);
     expect((prisma as Record<string, unknown>)["projectRosterMember"]).toBeUndefined();
   });
+
+  it("batch-resolves effective roles without one role query per project", async () => {
+    const prisma = {
+      userPosition: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ projectId: null, positionId: "pos-employee" }])
+          .mockResolvedValueOnce([
+            { projectId: "project-1", positionId: "pos-contract" },
+            { projectId: "project-2", positionId: "pos-budget" }
+          ])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { projectId: "project-2", positionKey: "finance_staff" }
+        ])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "pos-employee", key: "employee" },
+          { id: "pos-contract", key: "contract_staff" },
+          { id: "pos-budget", key: "budget_staff" }
+        ])
+      }
+    };
+    const service = new ProjectVisibilityService(prisma as never);
+
+    await expect(
+      service.effectiveRoleKeysByProject("user-1", ["project-1", "project-2"])
+    ).resolves.toEqual(new Map([
+      ["project-1", ["contract_staff"]],
+      ["project-2", ["budget_staff", "finance_staff"]]
+    ]));
+    expect(prisma.userPosition.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.projectMember.findMany).toHaveBeenCalledTimes(1);
+  });
 });

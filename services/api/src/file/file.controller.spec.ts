@@ -1,8 +1,11 @@
 import "reflect-metadata";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
+import { PermissionGuard } from "../auth/guards/permission.guard";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { CreateDownloadTicketDto } from "./dto/create-download-ticket.dto";
+import { UploadPrivateFileDto } from "./dto/upload-private-file.dto";
 import { FileController } from "./file.controller";
 
 const downloadTicketBodyMetadata = {
@@ -33,6 +36,53 @@ async function expectControllerBadRequest(action: Promise<unknown>, message: str
     return;
   }
   throw new Error("Expected controller validation to reject the request");
+}
+
+function contextWithUploadRequest(userId: string) {
+  return {
+    getHandler: () => FileController.prototype.upload,
+    getClass: () => FileController,
+    switchToHttp: () => ({
+      getRequest: () => ({ user: { id: userId } })
+    })
+  } as never;
+}
+
+function uploadReflector() {
+  return {
+    getAllAndOverride: jest.fn((key: string, targets: object[]) =>
+      Reflect.getMetadata(key, targets[0]) ?? Reflect.getMetadata(key, targets[1])
+    )
+  };
+}
+
+function uploadRolePrisma(roleKey: string, events: string[] = []) {
+  return {
+    userPosition: {
+      findMany: jest
+        .fn()
+        .mockImplementationOnce(async () => {
+          events.push("guard");
+          return [{ positionId: "position-1" }];
+        })
+        .mockImplementationOnce(async () => {
+          events.push("guard");
+          return [];
+        })
+    },
+    projectMember: {
+      findMany: jest.fn().mockImplementation(async () => {
+        events.push("guard");
+        return [];
+      })
+    },
+    position: {
+      findMany: jest.fn().mockImplementation(async () => {
+        events.push("guard");
+        return [{ id: "position-1", key: roleKey }];
+      })
+    }
+  };
 }
 
 describe("FileController authorization wiring", () => {
@@ -185,6 +235,93 @@ describe("FileController authorization wiring", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController.prototype.upload)).toBeFalsy();
   });
 
+  it("requires an approved business position to use the generic private upload route", () => {
+    expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, FileController.prototype.upload)).toEqual([
+      "contract_staff",
+      "contract_director",
+      "finance_staff",
+      "finance_director"
+    ]);
+  });
+
+  it("runs the real route permission guard before validation and service upload", async () => {
+    const events: string[] = [];
+    const prisma = uploadRolePrisma("finance_staff", events);
+    const guard = new PermissionGuard(uploadReflector() as never, prisma as never);
+    const files = {
+      uploadPrivateFile: jest.fn().mockImplementation(async () => {
+        events.push("service");
+        return { id: "file-1" };
+      })
+    };
+    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+    await expect(guard.canActivate(contextWithUploadRequest("finance-1"))).resolves.toBe(true);
+    const body = await createApiValidationPipe().transform(
+      { idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4" },
+      {
+        type: "body",
+        metatype: UploadPrivateFileDto,
+        data: undefined
+      }
+    );
+    events.push("validation");
+
+    await controller.upload(
+      {
+        originalname: "付款凭证.pdf",
+        mimetype: "application/pdf",
+        size: 12,
+        buffer: Buffer.from("private-file")
+      },
+      { id: "finance-1", name: "财务经办", phone: "13800000000" },
+      body
+    );
+
+    expect(events.indexOf("guard")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("validation")).toBeGreaterThan(events.lastIndexOf("guard"));
+    expect(events.indexOf("service")).toBeGreaterThan(events.indexOf("validation"));
+  });
+
+  it("stops an unapproved role at the route guard before the upload service", async () => {
+    const files = { uploadPrivateFile: jest.fn() };
+    const controller = new FileController(files as never, { confirmPassword: jest.fn() } as never);
+    const guard = new PermissionGuard(
+      uploadReflector() as never,
+      uploadRolePrisma("employee") as never
+    );
+
+    await expect(
+      (async () => {
+        if (await guard.canActivate(contextWithUploadRequest("employee-1"))) {
+          return controller.upload(
+            {
+              originalname: "越权资料.pdf",
+              mimetype: "application/pdf",
+              size: 12,
+              buffer: Buffer.from("private-file")
+            },
+            { id: "employee-1", name: "员工", phone: "13800000000" }
+          );
+        }
+        return undefined;
+      })()
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed upload idempotency key through the API pipe", async () => {
+    await expect(
+      createApiValidationPipe().transform(
+        { idempotencyKey: "not-a-uuid" },
+        { type: "body", metatype: UploadPrivateFileDto, data: undefined }
+      )
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        errors: ["文件上传幂等键必须是 UUID"]
+      })
+    });
+  });
+
   it("requires authentication to create a private file download ticket", () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, FileController.prototype.createDownloadTicket)).toBeFalsy();
   });
@@ -274,6 +411,36 @@ describe("FileController authorization wiring", () => {
     });
   });
 
+  it("forwards an optional multipart upload idempotency key", async () => {
+    const files = {
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
+    };
+    const controller = new FileController(
+      files as never,
+      { confirmPassword: jest.fn() } as never
+    );
+
+    await controller.upload(
+      {
+        originalname: "合同附件.pdf",
+        mimetype: "application/pdf",
+        size: 12,
+        buffer: Buffer.from("private-file")
+      },
+      { id: "user-1", name: "张三", phone: "13800000000" },
+      { idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4" }
+    );
+
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith({
+      originalName: "合同附件.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 12,
+      uploadedByUserId: "user-1",
+      buffer: Buffer.from("private-file"),
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4"
+    });
+  });
+
   it("confirms password before issuing a private file download ticket", async () => {
     const files = {
       createDownloadTicket: jest.fn().mockResolvedValue({ downloadUrl: "/files/file-1/download" })
@@ -294,6 +461,29 @@ describe("FileController authorization wiring", () => {
       actorUserId: "user-1",
       downloadReason: "合同归档复核"
     });
+  });
+
+  it("derives private file download capability from the authenticated account", async () => {
+    const files = {
+      getDownloadTicketCapability: jest.fn().mockResolvedValue({
+        availableActions: ["create_private_file_download_ticket"],
+        action: {
+          key: "create_private_file_download_ticket",
+          enabled: true
+        }
+      })
+    };
+    const controller = new FileController(files as never, {} as never);
+
+    await controller.downloadTicketCapability(
+      "file-1",
+      { id: "user-1" } as never
+    );
+
+    expect(files.getDownloadTicketCapability).toHaveBeenCalledWith(
+      "file-1",
+      "user-1"
+    );
   });
 
   it("forwards the explicit preview mode only after password confirmation", async () => {

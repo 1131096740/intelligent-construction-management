@@ -1,10 +1,16 @@
-import { IsIn, IsString, ValidateIf } from "class-validator";
+import { IsIn, IsString, IsUUID, Matches, ValidateIf } from "class-validator";
 import {
   IsMaxUnicodeTextLength,
   IsRequiredText
 } from "../../validation/static-field-validation";
 
 export class ReviewProjectFinancingQuotaDto {
+  @IsUUID("4", { message: "审批 actionId 必须是 UUIDv4" })
+  actionId!: string;
+
+  @Matches(/^[a-f0-9]{64}$/u, { message: "审批生命周期令牌无效" })
+  expectedLifecycleToken!: string;
+
   @IsIn(["approve", "reject"], { message: "审批决定不正确" })
   decision!: "approve" | "reject";
 
@@ -17,6 +23,7 @@ export class ReviewProjectFinancingQuotaDto {
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "审批意见必须是文字" })
+  @IsMaxUnicodeTextLength({ max: 500, message: "审批意见不能超过 500 个字符" })
   comment?: string;
 
   @ValidateIf((_object, value) => value !== undefined)

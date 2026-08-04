@@ -11,6 +11,7 @@ const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf"
 export type ApprovalSignature = {
   name: string | null;
   signedAt: Date | null;
+  signature: Buffer | null;
 };
 
 export type SpotProcurementApplicationFormInput = {
@@ -155,23 +156,23 @@ async function renderApplicationForm(
 
   y += 8;
   y = drawLabeledBox(doc, margin, y, contentWidth, 62, "物资用途及采购原因", input.reason);
-  y = drawLabeledBox(
+  y = drawSignatureBox(
     doc,
     margin,
     y,
     contentWidth,
     74,
     "物资部部长意见",
-    signatureText(input.signatures.materialDirector)
+    input.signatures.materialDirector
   );
-  y = drawLabeledBox(
+  y = drawSignatureBox(
     doc,
     margin,
     y,
     contentWidth,
     74,
     "项目经理意见",
-    signatureText(input.signatures.projectManager)
+    input.signatures.projectManager
   );
   doc.fontSize(8).text(
     "注：物资部门必须填写《零星/小额材料采购申请表》得到审批后方可购买所需材料。",
@@ -233,17 +234,22 @@ async function renderPaymentForm(
     input.handlerName,
     "部门经理",
     signatureText(input.signatures.projectManager)
-  ]);
+  ], false, [null, null, null, input.signatures.projectManager]);
   y = drawGridRow(doc, margin, y, signatureWidths, 32, [
     "综合部",
     signatureText(input.signatures.comprehensiveDirector),
     "财务部",
     signatureText(input.signatures.financeDirector)
+  ], false, [
+    null,
+    input.signatures.comprehensiveDirector,
+    null,
+    input.signatures.financeDirector
   ]);
   drawGridRow(doc, margin, y, [132, contentWidth - 132], 44, [
     "董事长/总经理",
     signatureText(input.signatures.finalApprover)
-  ]);
+  ], false, [null, input.signatures.finalApprover]);
 
   stampWatermark(doc, input.watermark);
   doc.end();
@@ -283,23 +289,84 @@ function drawGridRow(
   widths: number[],
   height: number,
   cells: string[],
-  header = false
+  header = false,
+  signatures: Array<ApprovalSignature | null> = []
 ) {
   let x = startX;
   doc.lineWidth(0.7).strokeColor("#111111");
   widths.forEach((width, index) => {
     doc.rect(x, startY, width, height).stroke();
+    const signature = signatures[index] ?? null;
+    drawSignatureImage(
+      doc,
+      signature,
+      x + 4,
+      startY + 2,
+      Math.max(width - 8, 1),
+      Math.max(height - 15, 1)
+    );
     doc
-      .fontSize(header ? 8.5 : 9)
+      .fontSize(signature?.signature ? 7.5 : (header ? 8.5 : 9))
       .fillColor("#111111")
-      .text(cells[index] ?? "", x + 4, startY + 5, {
-        width: Math.max(width - 8, 1),
-        height: Math.max(height - 8, 1),
-        align: header ? "center" : "left"
-      });
+      .text(
+        cells[index] ?? "",
+        x + 4,
+        signature?.signature ? startY + height - 11 : startY + 5,
+        {
+          width: Math.max(width - 8, 1),
+          height: signature?.signature ? 9 : Math.max(height - 8, 1),
+          align: header ? "center" : "left",
+          lineBreak: !signature?.signature
+        }
+      );
     x += width;
   });
   return startY + height;
+}
+
+function drawSignatureBox(
+  doc: PDFKit.PDFDocument,
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+  label: string,
+  signature: ApprovalSignature
+) {
+  doc.lineWidth(0.7).strokeColor("#111111").rect(startX, startY, width, height).stroke();
+  doc.fontSize(8.5).text(`${label}：`, startX + 4, startY + 5, {
+    width: width - 8
+  });
+  drawSignatureImage(
+    doc,
+    signature,
+    startX + width - 170,
+    startY + 8,
+    162,
+    height - 29
+  );
+  doc.fontSize(9).text(signatureText(signature), startX + 6, startY + height - 17, {
+    width: width - 12,
+    height: 12,
+    lineBreak: false
+  });
+  return startY + height;
+}
+
+function drawSignatureImage(
+  doc: PDFKit.PDFDocument,
+  signature: ApprovalSignature | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  if (!signature?.signature) return;
+  doc.image(signature.signature, x, y, {
+    fit: [width, height],
+    align: "center",
+    valign: "center"
+  });
 }
 
 function drawLabeledBox(

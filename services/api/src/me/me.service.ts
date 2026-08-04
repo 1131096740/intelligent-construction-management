@@ -13,6 +13,7 @@ import {
   type FrozenApprovalNode
 } from "../approval/approval-review-identity";
 import { requiresApprovalSelfReviewConfirmation } from "../approval/approval-self-review";
+import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt, formatMoneyCentsAsYuan } from "../money/decimal-money";
@@ -181,8 +182,19 @@ function supportsSpotPaymentExecutionAggregation(prisma: PrismaService) {
 export class MeService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly files: FileService
+    private readonly files: FileService,
+    private readonly audit: AuditService = new AuditService()
   ) {}
+
+  getCanvasSignatureCapabilities(userId: string) {
+    void userId;
+    return {
+      availableActions: [
+        "upload_canvas_signature",
+        "create_canvas_signature_handoff"
+      ] as const
+    };
+  }
 
   // 历史上传图入口：仅保留给已存在的签名资料预览，不会创建未来审批可用的手写签名版本。
   async setSignature(userId: string, input: UploadSignatureInput) {
@@ -259,6 +271,15 @@ export class MeService {
           data: { completedAt: new Date(), signatureVersionId: version.id }
         });
       }
+      await this.audit.record(tx, {
+        actorUserId: userId,
+        action: "me.signature.canvas.update",
+        businessType: "handwritten_signature_version",
+        businessId: version.id,
+        metadata: handoff
+          ? { fileId: file.id, source: "handoff", handoffId: handoff.id }
+          : { fileId: file.id, source: "direct" }
+      });
       return version;
     });
     return { signatureFileId: file.id, signatureVersionId: signatureVersion.id };
@@ -289,7 +310,8 @@ export class MeService {
     return {
       expiresAt: handoff!.expiresAt.toISOString(),
       completedAt: handoff!.completedAt?.toISOString() ?? null,
-      signatureVersionId: handoff!.signatureVersionId
+      signatureVersionId: handoff!.signatureVersionId,
+      availableActions: handoff!.completedAt ? [] : ["complete_canvas_signature_handoff"]
     };
   }
 

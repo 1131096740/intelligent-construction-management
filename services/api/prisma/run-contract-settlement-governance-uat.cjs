@@ -129,10 +129,40 @@ async function uploadPdf(token, name, pageCount = 1) {
   return uploadBuffer(token, name, buffer, "application/pdf");
 }
 
+async function uploadContractDraftPdf(token, contractVersionId, name, pageCount = 1) {
+  const document = await PDFDocument.create();
+  for (let index = 0; index < pageCount; index += 1) document.addPage([841.89, 595.28]);
+  const buffer = Buffer.from(await document.save({ useObjectStreams: false }));
+  return uploadMultipart(
+    token,
+    `/contract-drafts/${contractVersionId}/files`,
+    name,
+    buffer,
+    "application/pdf"
+  );
+}
+
 async function uploadBuffer(token, name, buffer, mimeType) {
+  return uploadMultipart(token, "/files", name, buffer, mimeType);
+}
+
+async function uploadMultipart(token, urlPath, name, buffer, mimeType) {
   const form = new FormData();
   form.append("file", new Blob([buffer], { type: mimeType }), name);
-  const response = await fetch(`${baseUrl}/files`, {
+  const response = await fetch(`${baseUrl}${urlPath}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form
+  });
+  const text = await response.text();
+  assert(response.ok, `上传 ${name} 失败 HTTP ${response.status}: ${text}`);
+  return JSON.parse(text);
+}
+
+async function uploadCanvasSignature(token, name, buffer) {
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: "image/png" }), name);
+  const response = await fetch(`${baseUrl}/me/signature/canvas`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form
@@ -161,13 +191,12 @@ async function prepareSignatures(tokens) {
     "materialDirector", "materialStaff", "engineeringDirector", "engineeringForeman",
     "engineeringTech", "comprehensiveDirector"
   ]) {
-    const signature = await uploadBuffer(
+    const signature = await uploadCanvasSignature(
       tokens[role],
       `UAT-${runId}-${role}-signature.png`,
-      signaturePng,
-      "image/png"
+      signaturePng
     );
-    await prisma.user.update({ where: { id: users[role].id }, data: { signatureFileId: signature.id } });
+    assert(signature.signatureFileId, `用户 ${role} 手写签名上传未返回文件 ID`);
   }
 }
 
@@ -177,7 +206,10 @@ async function prepareSharedFixtures(tokens) {
   const entity = await prisma.companyEntity.create({
     data: {
       name: `UAT建设主体-${runId}`,
-      unifiedSocialCreditCode: "91350211M000100Y46",
+      unifiedSocialCreditCode: `91350211${String(runId)
+        .replace(/\D/gu, "")
+        .slice(-10)
+        .padStart(10, "0")}`,
       registeredAddress: "UAT脱敏地址",
       dataStatus: "complete",
       currentVersionNo: 1,
@@ -211,6 +243,7 @@ async function prepareSharedFixtures(tokens) {
       paymentTermsSummary: "UAT脱敏付款条款",
       retentionSummary: "UAT脱敏质保条款",
       fileId: quotaFile.id,
+      fileContentSha256Snapshot: quotaFile.contentSha256,
       recordedByUserId: users.contractStaff.id,
       confirmedByUserId: users.contractDirector.id,
       confirmedAt: new Date(),
@@ -222,7 +255,7 @@ async function prepareSharedFixtures(tokens) {
 
 async function createContractFixture(config, shared, tokens, applicantRole = "contractStaff") {
   const applicant = users[applicantRole];
-  const layoutFile = await uploadPdf(tokens[applicantRole], `UAT-${runId}-${config.type}-layout.pdf`);
+  const layoutFile = await uploadPdf(tokens.contractStaff, `UAT-${runId}-${config.type}-layout.pdf`);
   const layout = await prisma.contractLayoutTemplate.create({
     data: { name: `UAT版式-${config.type}-${runId}`, contractTypeKey: config.type, createdByUserId: applicant.id }
   });
@@ -338,7 +371,11 @@ async function setAuthorization(fixture, side, required, tokens) {
   const current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   const body = { side, expectedRevision: current.draftRevision, required };
   if (required) {
-    const file = await uploadPdf(tokens[fixture.applicantRole], `UAT-${runId}-${fixture.config.type}-${side}-authorization.pdf`);
+    const file = await uploadContractDraftPdf(
+      tokens[fixture.applicantRole],
+      fixture.version.id,
+      `UAT-${runId}-${fixture.config.type}-${side}-authorization.pdf`
+    );
     body.upload = {
       fileId: file.id,
       grantorName: side === "first_party" ? "UAT我方" : "UAT乙方",
@@ -353,7 +390,24 @@ async function prepareAndSubmitContract(fixture, tokens) {
   const [firstRequired, counterpartyRequired] = fixture.config.auth;
   await setAuthorization(fixture, "first_party", firstRequired, tokens);
   await setAuthorization(fixture, "counterparty", counterpartyRequired, tokens);
-  const current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  let current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  await request(
+    "POST",
+    `/contract-workbench/${fixture.version.id}/settlement-mode/confirm`,
+    tokens.contractDirector,
+    {
+      expectedRevision: current.draftRevision,
+      settlementMode: fixture.config.type === "generic_contract"
+        ? "direct_payment"
+        : "settlement_required"
+    }
+  );
+  current = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  assert(
+    current?.settlementMode === (fixture.config.type === "generic_contract" ? "direct_payment" : "settlement_required") &&
+      current.settlementModeConfirmedAt,
+    `${fixture.config.type} 结算方式确认未持久化`
+  );
   await prisma.contractGeneratedDocument.create({
     data: {
       contractVersionId: fixture.version.id,
@@ -368,7 +422,11 @@ async function prepareAndSubmitContract(fixture, tokens) {
       completedAt: new Date()
     }
   });
-  const approvalPdf = await uploadPdf(tokens[fixture.applicantRole], `UAT-${runId}-${fixture.config.type}-approval.pdf`);
+  const approvalPdf = await uploadContractDraftPdf(
+    tokens[fixture.applicantRole],
+    fixture.version.id,
+    `UAT-${runId}-${fixture.config.type}-approval.pdf`
+  );
   await request("POST", `/contracts/${fixture.version.id}/formal-files/approval`, tokens[fixture.applicantRole], {
     fileId: approvalPdf.id,
     sourceRevision: current.draftRevision,
@@ -412,9 +470,26 @@ function roleSequenceForType(type) {
 
 async function approveContract(fixture, tokens) {
   for (const role of roleSequenceForType(fixture.config.type)) {
+    const [version, instance] = await Promise.all([
+      prisma.contractVersion.findUnique({ where: { id: fixture.version.id } }),
+      prisma.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: fixture.version.id,
+          flowType: "contract.approve",
+          status: "in_progress"
+        },
+        orderBy: { createdAt: "desc" }
+      })
+    ]);
+    assert(version && instance, `${fixture.config.type} 审批坐标缺失`);
     await request("POST", `/contracts/${fixture.version.id}/approval`, tokens[role], {
       decision: "approve",
-      comment: `UAT ${role} 通过`
+      comment: `UAT ${role} 通过`,
+      expectedContractUpdatedAt: version.updatedAt.toISOString(),
+      expectedApprovalInstanceId: instance.id,
+      expectedNodeIndex: instance.currentNodeIndex,
+      expectedApprovalUpdatedAt: instance.updatedAt.toISOString()
     });
   }
   const approved = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
@@ -454,6 +529,11 @@ async function sealAndArchive(fixture, tokens) {
   });
   const effective = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   assert(effective.status === "effective" && effective.effectiveAt, "合同双方最终版归档后未生效");
+  assert(
+    effective.settlementMode === (fixture.config.type === "generic_contract" ? "direct_payment" : "settlement_required") &&
+      effective.settlementModeConfirmedAt,
+    `${fixture.config.type} 生效归档后结算方式确认状态丢失`
+  );
   evidence.set(fixture.config.id, [fixture.contract.id, fixture.version.id, final.id]);
 }
 
@@ -499,7 +579,11 @@ async function createEffectiveBoundaryBase(type, suffix, shared, tokens) {
       companyEntityCreditCodeSnapshot: shared.entity.unifiedSocialCreditCode,
       companyEntityRegisteredAddressSnapshot: shared.entity.registeredAddress,
       taxFactStatus: "frozen",
-      taxFactsFrozenAt: new Date()
+      taxFactsFrozenAt: new Date(),
+      settlementMode: type === "generic_contract" ? "direct_payment" : "settlement_required",
+      settlementModeSource: "contract_director",
+      settlementModeConfirmedByUserId: users.contractDirector.id,
+      settlementModeConfirmedAt: new Date()
     }
   });
   await prisma.paymentTermsVersion.update({ where: { id: fixture.terms.id }, data: { status: "effective" } });
@@ -523,7 +607,14 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
   };
   await setAuthorization(changeFixture, "first_party", false, tokens);
   await setAuthorization(changeFixture, "counterparty", false, tokens);
-  const current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
+  let current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
+  await request(
+    "POST",
+    `/contract-workbench/${draft.id}/settlement-mode/confirm`,
+    tokens.contractDirector,
+    { expectedRevision: current.draftRevision, settlementMode: "settlement_required" }
+  );
+  current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
   await prisma.contractGeneratedDocument.create({
     data: {
       contractVersionId: draft.id,
@@ -606,6 +697,13 @@ function settlementLines(count) {
 }
 
 async function runSettlementScenario(caseId, contractFixture, reviewerRole, reviewerKey, lineCount, template, tokens) {
+  const effectiveContract = await prisma.contractVersion.findUnique({ where: { id: contractFixture.version.id } });
+  assert(
+    effectiveContract?.status === "effective" &&
+      effectiveContract.settlementMode === "settlement_required" &&
+      effectiveContract.settlementModeConfirmedAt,
+    `${caseId} 创建前合同结算方式状态异常：status=${effectiveContract?.status ?? "missing"}, mode=${effectiveContract?.settlementMode ?? "null"}, confirmedAt=${effectiveContract?.settlementModeConfirmedAt?.toISOString?.() ?? "null"}`
+  );
   const draft = await request("POST", `/projects/${projectId}/settlement-drafts`, tokens.contractStaff, {
     contractVersionId: contractFixture.version.id,
     settlementTemplateVersionId: template.id,

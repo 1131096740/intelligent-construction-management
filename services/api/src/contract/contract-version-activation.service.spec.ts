@@ -42,7 +42,56 @@ function tx(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function effectiveSettlementFindMany(ids = ["settlement-1"]) {
+  return jest.fn().mockImplementation(({ where }: {
+    where: { status: { in: readonly string[] } };
+  }) => Promise.resolve(
+    where.status.in.includes("in_approval")
+      ? []
+      : ids.map((id) => ({ id }))
+  ));
+}
+
 describe("ContractVersionActivationService", () => {
+  it("writes an exact zero carry quantity for a new row with no historical allocation", async () => {
+    const originalTarget = {
+      ...target,
+      changeType: "original",
+      baseVersionId: null
+    };
+    const carryForwardCreate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn().mockResolvedValue([{ id: "target-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "target-row",
+          lineageId: "lineage-new",
+          unit: "m",
+          quantity: new Prisma.Decimal("100"),
+          remainderDisposition: null
+        }])
+      },
+      contractBillRowCarryForward: { create: carryForwardCreate }
+    });
+    transaction.contractVersion.findUnique.mockReset()
+      .mockResolvedValueOnce(originalTarget);
+
+    await new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    });
+
+    expect(carryForwardCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractBillRowId: "target-row",
+        priorSettledQuantity: new Prisma.Decimal(0),
+        priorSettledAmountCents: 0n
+      })
+    });
+  });
+
   it("does not run a second activation after another confirmation has made the version effective", async () => {
     const transaction = tx();
     transaction.contractVersion.findUnique.mockReset().mockResolvedValue({ ...target, status: "effective" });
@@ -153,7 +202,7 @@ describe("ContractVersionActivationService", () => {
           .mockResolvedValueOnce([{ id: "target-row", lineageId: "lineage-1", unit: "m" }])
           .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-1", unit: "m" }])
       },
-      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlement: { findMany: effectiveSettlementFindMany() },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([{
           settlementId: "settlement-1",
@@ -203,6 +252,180 @@ describe("ContractVersionActivationService", () => {
     });
   });
 
+  it.each([
+    {
+      name: "carry only",
+      settlementIds: [] as string[],
+      lines: [] as Array<Record<string, unknown>>,
+      expectedQuantity: "30",
+      expectedAmountCents: 3000n
+    },
+    {
+      name: "carry plus effective settlement",
+      settlementIds: ["settlement-current"],
+      lines: [{
+        id: "line-current",
+        settlementId: "settlement-current",
+        contractBillRowId: "source-row",
+        quantity: new Prisma.Decimal("10"),
+        amountCents: 1000n
+      }],
+      expectedQuantity: "40",
+      expectedAmountCents: 4000n
+    }
+  ])("preserves cumulative predecessor history across activation: $name", async ({
+    settlementIds,
+    lines,
+    expectedQuantity,
+    expectedAmountCents
+  }) => {
+    const carryForwardCreate = jest.fn();
+    const transitionUpdate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill" }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{
+            id: "target-row",
+            lineageId: "lineage-1",
+            unit: "m"
+          }])
+          .mockResolvedValueOnce([{
+            id: "source-row",
+            lineageId: "lineage-1",
+            unit: "m"
+          }])
+      },
+      settlement: { findMany: effectiveSettlementFindMany(settlementIds) },
+      settlementLine: { findMany: jest.fn().mockResolvedValue(lines) },
+      contractBillRowTransition: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "transition-cumulative",
+          sourceContractBillRowId: "source-row",
+          targetContractBillRowId: "target-row",
+          relationType: "one_to_one",
+          status: "confirmed",
+          sourceSettledQuantityAllocated: null,
+          targetOpeningQuantity: null,
+          settledAmountAllocatedCents: null
+        }]),
+        update: transitionUpdate
+      },
+      contractBillRowCarryForward: {
+        findMany: jest.fn().mockResolvedValue([{
+          contractBillRowId: "source-row",
+          lineageId: "lineage-1",
+          priorSettledQuantity: new Prisma.Decimal("30"),
+          priorSettledAmountCents: 3000n,
+          sourceSnapshotHash: "a".repeat(64),
+          updatedAt: new Date("2026-07-30T00:00:00.000Z")
+        }]),
+        create: carryForwardCreate
+      }
+    });
+
+    await new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    });
+
+    const expected = new Prisma.Decimal(expectedQuantity);
+    expect(transitionUpdate).toHaveBeenCalledWith({
+      where: { id: "transition-cumulative" },
+      data: {
+        sourceSettledQuantityAllocated: expected,
+        targetOpeningQuantity: expected,
+        settledAmountAllocatedCents: expectedAmountCents
+      }
+    });
+    expect(carryForwardCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        contractBillRowId: "target-row",
+        priorSettledQuantity: expected,
+        priorSettledAmountCents: expectedAmountCents,
+        sourceSnapshotHash: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      })
+    });
+  });
+
+  it("blocks activation before carry writes when a cancelled target remainder is stale", async () => {
+    const carryForwardCreate = jest.fn();
+    const transitionUpdate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill" }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{
+            id: "target-row",
+            lineageId: "lineage-1",
+            unit: "m",
+            quantity: new Prisma.Decimal("30"),
+            remainderDisposition: "cancelled"
+          }])
+          .mockResolvedValueOnce([{
+            id: "source-row",
+            lineageId: "lineage-1",
+            unit: "m",
+            quantity: new Prisma.Decimal("100"),
+            remainderDisposition: null
+          }])
+      },
+      settlement: { findMany: effectiveSettlementFindMany(["settlement-current"]) },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "line-current",
+          settlementId: "settlement-current",
+          contractBillRowId: "source-row",
+          quantity: new Prisma.Decimal("10"),
+          amountCents: 1000n
+        }])
+      },
+      contractBillRowTransition: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "transition-stale-remainder",
+          sourceContractBillRowId: "source-row",
+          targetContractBillRowId: "target-row",
+          relationType: "one_to_one",
+          status: "confirmed",
+          sourceSettledQuantityAllocated: null,
+          targetOpeningQuantity: null,
+          settledAmountAllocatedCents: null
+        }]),
+        update: transitionUpdate
+      },
+      contractBillRowCarryForward: {
+        findMany: jest.fn().mockResolvedValue([{
+          contractBillRowId: "source-row",
+          lineageId: "lineage-1",
+          priorSettledQuantity: new Prisma.Decimal("30"),
+          priorSettledAmountCents: 3000n,
+          sourceSnapshotHash: "a".repeat(64),
+          updatedAt: new Date("2026-07-30T00:00:00.000Z")
+        }]),
+        create: carryForwardCreate
+      }
+    });
+
+    await expect(new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "SETTLEMENT_SOURCE_OCCUPANCY_CHANGED" })
+    });
+    expect(transitionUpdate).not.toHaveBeenCalled();
+    expect(carryForwardCreate).not.toHaveBeenCalled();
+    expect(transaction.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(transaction.contractVersion.update).not.toHaveBeenCalled();
+  });
+
   it("blocks activation when an occupied source row has no confirmed cross-version mapping", async () => {
     const carryForwardCreate = jest.fn();
     const transaction = tx({
@@ -216,7 +439,7 @@ describe("ContractVersionActivationService", () => {
           .mockResolvedValueOnce([{ id: "target-row", lineageId: "lineage-1", unit: "m" }])
           .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-1", unit: "m" }])
       },
-      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlement: { findMany: effectiveSettlementFindMany() },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([{
           settlementId: "settlement-1",
@@ -239,6 +462,71 @@ describe("ContractVersionActivationService", () => {
     expect(transaction.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
+  it("blocks automatic carry when the cloned target unit drifted after mapping", async () => {
+    const carryForwardCreate = jest.fn();
+    const transitionUpdate = jest.fn();
+    const transaction = tx({
+      contractBill: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: "target-bill" }])
+          .mockResolvedValueOnce([{ id: "source-bill" }])
+      },
+      contractBillRow: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{
+            id: "target-row",
+            lineageId: "lineage-1",
+            unit: "组",
+            quantity: new Prisma.Decimal("100"),
+            remainderDisposition: null
+          }])
+          .mockResolvedValueOnce([{
+            id: "source-row",
+            lineageId: "lineage-1",
+            unit: "m",
+            quantity: new Prisma.Decimal("100"),
+            remainderDisposition: null
+          }])
+      },
+      settlement: { findMany: effectiveSettlementFindMany() },
+      settlementLine: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "line-1",
+          settlementId: "settlement-1",
+          contractBillRowId: "source-row",
+          quantity: new Prisma.Decimal("30"),
+          amountCents: 3000n
+        }])
+      },
+      contractBillRowTransition: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "transition-unit-drift",
+          sourceContractBillRowId: "source-row",
+          targetContractBillRowId: "target-row",
+          relationType: "one_to_one",
+          status: "confirmed",
+          sourceSettledQuantityAllocated: null,
+          targetOpeningQuantity: null,
+          settledAmountAllocatedCents: null,
+          quantityConversionBasis: null
+        }]),
+        update: transitionUpdate
+      },
+      contractBillRowCarryForward: { create: carryForwardCreate }
+    });
+
+    await expect(new ContractVersionActivationService().activate(transaction as never, {
+      contractVersionId: "version-2",
+      actorUserId: "director-1"
+    })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "SETTLEMENT_SOURCE_LINEAGE_UNRESOLVED" })
+    });
+    expect(transitionUpdate).not.toHaveBeenCalled();
+    expect(carryForwardCreate).not.toHaveBeenCalled();
+    expect(transaction.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(transaction.contractVersion.update).not.toHaveBeenCalled();
+  });
+
   it("blocks activation when a confirmed mapping no longer conserves historical occupancy", async () => {
     const carryForwardCreate = jest.fn();
     const transaction = tx({
@@ -252,7 +540,7 @@ describe("ContractVersionActivationService", () => {
           .mockResolvedValueOnce([{ id: "target-row", lineageId: "lineage-1", unit: "m" }])
           .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-1", unit: "m" }])
       },
-      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlement: { findMany: effectiveSettlementFindMany() },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([{
           settlementId: "settlement-1",
@@ -305,7 +593,7 @@ describe("ContractVersionActivationService", () => {
           ])
           .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-source", unit: "m" }])
       },
-      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlement: { findMany: effectiveSettlementFindMany() },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([{
           settlementId: "settlement-1",
@@ -382,7 +670,7 @@ describe("ContractVersionActivationService", () => {
           ])
           .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-source", unit: "m" }])
       },
-      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlement: { findMany: effectiveSettlementFindMany() },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([{
           settlementId: "settlement-1",
@@ -443,7 +731,7 @@ describe("ContractVersionActivationService", () => {
           .mockResolvedValueOnce([{ id: "target-row", lineageId: "lineage-target", unit: "㎡" }])
           .mockResolvedValueOnce([{ id: "source-row", lineageId: "lineage-source", unit: "m" }])
       },
-      settlement: { findMany: jest.fn().mockResolvedValue([{ id: "settlement-1" }]) },
+      settlement: { findMany: effectiveSettlementFindMany() },
       settlementLine: {
         findMany: jest.fn().mockResolvedValue([{
           settlementId: "settlement-1",

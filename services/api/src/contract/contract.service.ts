@@ -47,7 +47,11 @@ import {
   CreateContractDraftDto,
   type CreatePaymentTermsStageDto
 } from "./dto/create-contract.dto";
-import { ReviewContractApprovalDto } from "./dto/review-contract-approval.dto";
+import {
+  ReviewContractApprovalDto,
+  type ExpectedContractOwnerRiskDto
+} from "./dto/review-contract-approval.dto";
+import { WithdrawContractApprovalDto } from "./dto/withdraw-contract-approval.dto";
 import { GenerateContractPdfArchiveDto } from "./dto/generate-contract-pdf-archive.dto";
 import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file.dto";
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
@@ -76,6 +80,11 @@ import {
   loadContractOwnerRisk,
   type ContractOwnerRisk
 } from "./contract-owner-risk";
+import {
+  assertGenericContractDraftVersion,
+  loadContractDraftLifecycle,
+  lockContractDraftMutationBoundary
+} from "./contract-draft-lifecycle";
 
 interface ContractApprovalAssignment {
   kind: "transfer" | "delegate";
@@ -118,6 +127,25 @@ const PAYMENT_STAGE_BASES = new Set([
   "fixed_amount",
   "manual_amount"
 ]);
+
+function isContractDraftSerializationConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  if (code === "P2034" || code === "40001" || code === "40P01") {
+    return true;
+  }
+  if (code !== "P2010" || !("meta" in error)) {
+    return false;
+  }
+  const meta = (error as { meta?: unknown }).meta;
+  if (!meta || typeof meta !== "object" || !("code" in meta)) {
+    return false;
+  }
+  const databaseCode = (meta as { code?: unknown }).code;
+  return databaseCode === "40001" || databaseCode === "40P01";
+}
 const PAYMENT_STAGE_TRIGGER_ANCHORS = new Set([
   "contract_effective",
   "settlement_effective",
@@ -414,17 +442,29 @@ export class ContractService {
         changeType: string;
         versionNo: number;
         updatedAt: Date;
+        hasHistoricalTakeoverRelation: boolean;
       }>>(Prisma.sql`
-        SELECT "id", "contractId", "status", "changeType", "versionNo", "updatedAt"
-        FROM "ContractVersion"
-        WHERE "id" = ${sourceVersionId}
-        FOR UPDATE
+        SELECT
+          cv."id", cv."contractId", cv."status", cv."changeType",
+          cv."versionNo", cv."updatedAt",
+          EXISTS (
+            SELECT 1
+            FROM "ContractTakeover" takeover
+            WHERE takeover."contractVersionId" = cv."id"
+          ) AS "hasHistoricalTakeoverRelation"
+        FROM "ContractVersion" cv
+        WHERE cv."id" = ${sourceVersionId}
+        FOR UPDATE OF cv
       `);
       if (!locked) throw new NotFoundException("未找到来源合同草稿");
       const sourceContract = await tx.contract.findUnique({ where: { id: locked.contractId } });
       if (!sourceContract || sourceContract.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只能复制本人已放弃的合同草稿");
       }
+      assertGenericContractDraftVersion({
+        changeType: locked.changeType,
+        hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
+      });
       if (locked.status !== "abandoned") {
         throw new ConflictException("只有已放弃的合同草稿可以复制为新草稿");
       }
@@ -956,15 +996,23 @@ export class ContractService {
           changeType: string;
           status: string;
           draftRevision: number;
+          firstSubmittedAt: Date | null;
           abandonedAt: Date | null;
           abandonedByUserId: string | null;
           abandonReason: string | null;
           ownerUserId: string | null;
+          hasHistoricalTakeoverRelation: boolean;
         }>>(Prisma.sql`
           SELECT
             v."id", v."contractId", v."versionNo", v."changeType", v."status",
-            v."draftRevision", v."abandonedAt", v."abandonedByUserId", v."abandonReason",
-            c."ownerUserId"
+            v."draftRevision", v."firstSubmittedAt", v."abandonedAt",
+            v."abandonedByUserId", v."abandonReason",
+            c."ownerUserId",
+            EXISTS (
+              SELECT 1
+              FROM "ContractTakeover" takeover
+              WHERE takeover."contractVersionId" = v."id"
+            ) AS "hasHistoricalTakeoverRelation"
           FROM "Contract" c
           JOIN "ContractVersion" v ON v."contractId" = c."id"
           WHERE v."id" = ${contractVersionId}
@@ -1006,10 +1054,19 @@ export class ContractService {
           await this.auth.confirmPassword(actorUserId, currentPassword);
           proxyCleanup = true;
         }
+        assertGenericContractDraftVersion({
+          changeType: locked.changeType,
+          hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
+        });
         if (locked.abandonedAt || locked.status === "abandoned") {
           const terminalAction = locked.abandonReason
             ? "abandon_application"
             : "delete_pristine_draft";
+          if (input.action !== terminalAction) {
+            throw new ConflictException(
+              "合同草稿已按另一种方式结束，请刷新后核对"
+            );
+          }
           return {
             contractVersionId: locked.id,
             status: "abandoned",
@@ -1019,7 +1076,7 @@ export class ContractService {
             action: terminalAction,
             abandonedAt: locked.abandonedAt,
             abandonedByUserId: locked.abandonedByUserId,
-            reason: locked.abandonReason ?? (proxyCleanup ? reason : null),
+            reason: locked.abandonReason,
             idempotent: true
           };
         }
@@ -1031,52 +1088,25 @@ export class ContractService {
         }
 
         // 固定读取顺序：审批 -> 正式文件 -> 授权 -> 用章/归档 -> 下游业务。
-        const approvalInstances = await tx.approvalInstance.findMany({
-          where: { businessType: "contract_version", businessId: locked.id },
-          orderBy: { createdAt: "asc" },
-          select: { id: true }
+        const lifecycle = await loadContractDraftLifecycle(tx, {
+          id: locked.id,
+          changeType: locked.changeType,
+          versionNo: locked.versionNo,
+          status: locked.status,
+          firstSubmittedAt: locked.firstSubmittedAt
         });
-        const approvalActionCount = approvalInstances.length
-          ? await tx.approvalActionLog.count({
-              where: { approvalInstanceId: { in: approvalInstances.map((item) => item.id) } }
-            })
-          : 0;
-        const formalFileCount = await tx.contractFormalFile.count({
-          where: { contractVersionId: locked.id }
-        });
-        const authorizationCount = await tx.contractAuthorization.count({
-          where: { originContractVersionId: locked.id }
-        });
-        const authorizationLinkCount = await tx.contractVersionAuthorizationLink.count({
-          where: { contractVersionId: locked.id, authorizationId: { not: null } }
-        });
-        const sealTaskCount = await tx.contractSealTask.count({
-          where: { contractVersionId: locked.id }
-        });
-        const archiveFileCount = await tx.contractArchiveFile.count({
-          where: { contractVersionId: locked.id }
-        });
-        const settlementCount = await tx.settlement.count({
-          where: { contractVersionId: locked.id }
-        });
-        const paymentRequestCount = await tx.paymentRequest.count({
-          where: { contractVersionId: locked.id }
-        });
-
-        const blockers = [
-          ...(locked.changeType !== "original" || locked.versionNo !== 1 ? ["合同变更或派生版本"] : []),
-          ...(locked.status !== "draft" ? ["合同曾进入审批"] : []),
-          ...(approvalInstances.length || approvalActionCount ? ["存在审批记录"] : []),
-          ...(formalFileCount ? ["存在正式合同文件"] : []),
-          ...(authorizationCount || authorizationLinkCount ? ["存在授权委托书"] : []),
-          ...(sealTaskCount ? ["存在用印记录"] : []),
-          ...(archiveFileCount ? ["存在归档记录"] : []),
-          ...(settlementCount ? ["存在关联结算"] : []),
-          ...(paymentRequestCount ? ["存在关联付款"] : [])
-        ];
-        const expectedAction = blockers.length === 0
-          ? "delete_pristine_draft"
-          : "abandon_application";
+        const blockers = lifecycle.blockers;
+        const expectedAction = lifecycle.expectedAction;
+        if (!expectedAction) {
+          if (locked.changeType === "historical_takeover") {
+            throw new ConflictException(
+              "历史接管草稿必须在历史接管工作台使用专用关闭入口"
+            );
+          }
+          throw new ConflictException(
+            `合同已存在正式业务事实，不能通过草稿入口结束：${blockers.join("、")}`
+          );
+        }
         if (input.action !== expectedAction) {
           throw new ConflictException(
             expectedAction === "delete_pristine_draft"
@@ -1105,10 +1135,112 @@ export class ContractService {
           throw new ConflictException("合同草稿已被其他操作更新，请刷新后重试");
         }
 
+        if (
+          expectedAction === "abandon_application" &&
+          lifecycle.approvalInstanceIds.length > 0
+        ) {
+          await tx.approvalInstance.updateMany({
+            where: {
+              id: { in: lifecycle.approvalInstanceIds },
+              status: {
+                in: [
+                  "approval_pending",
+                  "in_progress",
+                  "returned_to_applicant"
+                ]
+              }
+            },
+            data: { status: "cancelled" }
+          });
+        }
+
+        const releasedLease = await tx.contractDraftEditLease.deleteMany({
+          where: { contractVersionId: locked.id }
+        });
         await tx.contractGeneratedDocument.updateMany({
           where: { contractVersionId: locked.id, status: { in: ["queued", "processing"] } },
           data: { status: "stale", completedAt: now, errorMessage: null }
         });
+        const openNegotiationRounds = await tx.contractNegotiationRound.findMany({
+          where: {
+            contractVersionId: locked.id,
+            status: "open"
+          },
+          orderBy: { id: "asc" },
+          select: { id: true }
+        });
+        const negotiationRoundIds = openNegotiationRounds.map((round) => round.id);
+        const negotiationRoundsClosed = negotiationRoundIds.length
+          ? await tx.contractNegotiationRound.updateMany({
+              where: {
+                id: { in: negotiationRoundIds },
+                status: "open"
+              },
+              data: {
+                status: "closed",
+                closedByUserId: actorUserId,
+                closedAt: now
+              }
+            })
+          : { count: 0 };
+        const activeOfflineRevisions = await tx.contractOfflineRevision.findMany({
+          where: {
+            contractVersionId: locked.id,
+            status: { in: ["queued", "processing"] }
+          },
+          orderBy: { id: "asc" },
+          select: { id: true }
+        });
+        const activeOfflineRevisionIds = activeOfflineRevisions.map(
+          (revision) => revision.id
+        );
+        const offlineRevisionsStaled = activeOfflineRevisionIds.length
+          ? await tx.contractOfflineRevision.updateMany({
+              where: {
+                id: { in: activeOfflineRevisionIds },
+                status: { in: ["queued", "processing"] }
+              },
+              data: {
+                status: "stale",
+                completedAt: now,
+                errorMessage: null
+              }
+            })
+          : { count: 0 };
+        const comparisonScopes = [
+          ...(negotiationRoundIds.length
+            ? [{ negotiationRoundId: { in: negotiationRoundIds } }]
+            : []),
+          ...(activeOfflineRevisionIds.length
+            ? [{ offlineRevisionId: { in: activeOfflineRevisionIds } }]
+            : [])
+        ];
+        const activeComparisons = comparisonScopes.length
+          ? await tx.contractDocumentComparison.findMany({
+              where: {
+                status: { in: ["queued", "processing"] },
+                OR: comparisonScopes
+              },
+              orderBy: { id: "asc" },
+              select: { id: true }
+            })
+          : [];
+        const activeComparisonIds = activeComparisons.map(
+          (comparison) => comparison.id
+        );
+        const documentComparisonsStaled = activeComparisonIds.length
+          ? await tx.contractDocumentComparison.updateMany({
+              where: {
+                id: { in: activeComparisonIds },
+                status: { in: ["queued", "processing"] }
+              },
+              data: {
+                status: "stale",
+                completedAt: now,
+                errorMessage: null
+              }
+            })
+          : { count: 0 };
         await tx.contractFormalFile.updateMany({
           where: { contractVersionId: locked.id, status: "active" },
           data: {
@@ -1143,6 +1275,10 @@ export class ContractService {
               ? reason
               : null,
             proxyCleanup,
+            editLeaseClosedCount: releasedLease.count,
+            negotiationRoundsClosedCount: negotiationRoundsClosed.count,
+            offlineRevisionsStaledCount: offlineRevisionsStaled.count,
+            documentComparisonsStaledCount: documentComparisonsStaled.count,
             ...(proxyCleanup ? { ownerUserId: locked.ownerUserId } : {})
           }
         });
@@ -1168,7 +1304,7 @@ export class ContractService {
           error instanceof ForbiddenException || error instanceof NotFoundException) {
         throw error;
       }
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      if (isContractDraftSerializationConflict(error)) {
         throw new ConflictException("合同草稿正在被其他操作处理，请刷新后重试");
       }
       throw error;
@@ -1496,6 +1632,7 @@ export class ContractService {
       currentEffective?.id === effectiveVersionId && !activeChange && !sourceBlocker;
     return {
       eligible,
+      availableActions: eligible ? ["create_contract_change_draft"] : [],
       reason: eligible
         ? null
         : activeChange
@@ -1634,25 +1771,16 @@ export class ContractService {
       : null;
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-          SELECT c."id"
-          FROM "Contract" c
-          INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id"
-          WHERE cv."id" = ${contractVersionId}
-          FOR UPDATE OF c
-        `);
-        if (contractLocks.length !== 1) {
+        const mutationBoundary =
+          await lockContractDraftMutationBoundary<
+            NonNullable<
+              Awaited<ReturnType<typeof tx.contractVersion.findUnique>>
+            >
+          >(tx, contractVersionId);
+        if (!mutationBoundary) {
           throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
         }
-        const [version] = await tx.$queryRaw<
-          Array<NonNullable<Awaited<ReturnType<typeof tx.contractVersion.findUnique>>>>
-        >(Prisma.sql`
-          SELECT *
-          FROM "ContractVersion"
-          WHERE "id" = ${contractVersionId}
-          FOR UPDATE
-        `);
-        if (!version) throw new Error("未找到要提交审批的合同版本，请刷新合同后重试");
+        const version = mutationBoundary.version;
         if (submissionRequest) {
           const receipt = await tx.contractDraftSubmissionRequest.findUnique({
             where: { idempotencyKey: submissionRequest.idempotencyKey }
@@ -1673,6 +1801,13 @@ export class ContractService {
             return receipt.responseSnapshot;
           }
         }
+        if (mutationBoundary.formalBlockers.length > 0) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: "DRAFT_NOT_EDITABLE",
+            message: "合同已存在正式业务事实，不能通过草稿入口提交审批"
+          });
+        }
         if (version.status !== "draft") {
           if (submissionRequest) {
             throw new ConflictException({
@@ -1689,8 +1824,15 @@ export class ContractService {
         });
         if (!contract) throw new Error("未找到合同主信息，请刷新合同后重试");
         if (contract.voidedAt) throw new Error("作废合同不能提交审批，请重新选择有效合同");
-        if (contract.ownerUserId && contract.ownerUserId !== actorUserId) {
-          throw new Error("只有合同经办人可以提交该合同审批");
+        if (
+          submissionRequest
+            ? contract.ownerUserId !== actorUserId
+            : Boolean(
+                contract.ownerUserId &&
+                contract.ownerUserId !== actorUserId
+              )
+        ) {
+          throw new ForbiddenException("只有合同经办人可以提交该合同审批");
         }
         if (submissionRequest) {
           await tx.$queryRaw(Prisma.sql`
@@ -2014,18 +2156,7 @@ export class ContractService {
         }
         throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
       }
-      const serializationFailure =
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error.code === "P2034" ||
-          (error.code === "P2010" &&
-            "meta" in error &&
-            error.meta !== null &&
-            typeof error.meta === "object" &&
-            "code" in error.meta &&
-            error.meta.code === "40001"));
-      if (serializationFailure) {
+      if (isContractDraftSerializationConflict(error)) {
         if (submissionRequest) {
           const conflict = await this.contractSubmissionConflictSnapshot(
             contractVersionId,
@@ -2361,6 +2492,21 @@ export class ContractService {
       throw new Error("不支持的合同审批处理方式，请刷新页面后重试");
     }
     requireApprovalCommentForReturn(input.decision, input.comment);
+    const expectedContractUpdatedAt = new Date(input.expectedContractUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    const expectedApprovalInstanceId = input.expectedApprovalInstanceId?.trim();
+    if (Number.isNaN(expectedContractUpdatedAt.getTime())) {
+      throw new BadRequestException("预期合同版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
+    if (!expectedApprovalInstanceId) {
+      throw new BadRequestException("预期审批实例不能空白");
+    }
+    if (!Number.isInteger(input.expectedNodeIndex) || input.expectedNodeIndex < 0) {
+      throw new BadRequestException("预期审批节点格式不正确");
+    }
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -2375,37 +2521,54 @@ export class ContractService {
         throw new Error("未找到合同版本，请刷新合同台账后重试");
       }
 
-      if (version.status !== "in_approval") {
-        throw new Error("当前合同已离开审批中，不能继续处理审批");
-      }
-
       await lockApprovalReviewRow(tx, Prisma.sql`
         SELECT "id" FROM "ApprovalInstance"
         WHERE "businessType" = 'contract_version'
           AND "businessId" = ${version.id}
           AND "flowType" = 'contract.approve'
-          AND "status" = 'in_progress'
+          AND (
+            "id" = ${expectedApprovalInstanceId}
+            OR "status" = 'in_progress'
+          )
+        ORDER BY "id"
         FOR UPDATE
       `);
 
-      const instance = await tx.approvalInstance.findFirst({
-        where: {
-          businessType: "contract_version",
-          businessId: version.id,
-          flowType: "contract.approve",
-          status: "in_progress"
-        }
+      const expectedApprovalWhere = {
+        id: expectedApprovalInstanceId,
+        businessType: "contract_version",
+        businessId: version.id,
+        flowType: "contract.approve"
+      } as const;
+      const activeApprovalWhere = {
+        businessType: "contract_version",
+        businessId: version.id,
+        flowType: "contract.approve",
+        status: "in_progress"
+      } as const;
+      const expectedInstance = await tx.approvalInstance.findFirst({
+        where: expectedApprovalWhere
       });
+      const approvalClient = tx.approvalInstance as typeof tx.approvalInstance & {
+        findMany?: typeof tx.approvalInstance.findMany;
+      };
+      const activeInstances = approvalClient.findMany
+        ? await approvalClient.findMany({
+            where: activeApprovalWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 2
+          })
+        : [await tx.approvalInstance.findFirst({ where: activeApprovalWhere })].filter(
+            (item): item is NonNullable<typeof item> => item !== null
+          );
 
-      if (!instance) {
-        throw new Error("未找到进行中的合同审批流程，请刷新后重试");
-      }
+      const nodes = Array.isArray(expectedInstance?.frozenNodes)
+        ? expectedInstance.frozenNodes as unknown as ContractApprovalNode[]
+        : [];
+      const currentNode = nodes[input.expectedNodeIndex];
 
-      const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
-      const currentNode = nodes[instance.currentNodeIndex];
-
-      if (!currentNode) {
-        throw new Error("当前合同审批节点异常，请刷新后重试");
+      if (!expectedInstance || !currentNode) {
+        throw new ForbiddenException("当前账号无权处理该合同审批节点");
       }
 
       const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
@@ -2428,15 +2591,12 @@ export class ContractService {
         identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
       }
       if (!identity) {
-        throw new Error("当前账号无权处理该合同审批节点");
+        throw new ForbiddenException("当前账号无权处理该合同审批节点");
       }
       const approvedRoleKey = identity.approvedRoleKey;
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
-      });
 
       const selfReview = await confirmApprovalSelfReview({
-        applicantUserId: instance.applicantUserId,
+        applicantUserId: expectedInstance.applicantUserId,
         actorUserId,
         actorRoleKeys: identity.representedUserId === actorUserId &&
           !identity.viaAssignment
@@ -2450,6 +2610,34 @@ export class ContractService {
         confirmPassword: this.auth
           ? (password) => this.auth!.confirmPassword(actorUserId, password)
           : undefined
+      });
+
+      const activeInstance = activeInstances.length === 1
+        ? activeInstances[0]
+        : null;
+      if (
+        !(version.updatedAt instanceof Date) ||
+        version.updatedAt.getTime() !== expectedContractUpdatedAt.getTime() ||
+        version.status !== "in_approval" ||
+        !activeInstance ||
+        activeInstance.id !== expectedInstance.id ||
+        activeInstance.id !== expectedApprovalInstanceId ||
+        activeInstance.currentNodeIndex !== input.expectedNodeIndex ||
+        !(activeInstance.updatedAt instanceof Date) ||
+        activeInstance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw contractApprovalReviewConflict();
+      }
+      const instance = expectedInstance;
+
+      const auditCoordinates = {
+        expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),
+        expectedApprovalInstanceId,
+        expectedNodeIndex: input.expectedNodeIndex,
+        expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
+      };
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
       });
 
       if (input.decision === "reject_previous") {
@@ -2500,6 +2688,7 @@ export class ContractService {
             fromNodeName: currentNode.name,
             toNodeName: nextNodes[previousNodeIndex].name,
             approvedRoleKey,
+            ...auditCoordinates,
             ...selfReview.metadata
           }
         });
@@ -2544,6 +2733,7 @@ export class ContractService {
             toStatus: "draft",
             nodeName: currentNode.name,
             approvedRoleKey,
+            ...auditCoordinates,
             ...selfReview.metadata
           }
         });
@@ -2555,6 +2745,9 @@ export class ContractService {
         input.decision === "approve" && instance.currentNodeIndex === nodes.length - 1;
       const ownerContractRisk = isFinalApproval
         ? await this.finalOwnerContractRisk(tx, version.contractId)
+        : null;
+      const ownerContractRiskSnapshot = ownerContractRisk
+        ? contractOwnerRiskReviewSnapshot(ownerContractRisk)
         : null;
       if (
         ownerContractRisk &&
@@ -2570,6 +2763,19 @@ export class ContractService {
           message,
           ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk)
         });
+      }
+      if (
+        isFinalApproval &&
+        input.ownerContractRiskConfirmed === true &&
+        (
+          !input.expectedOwnerContractRisk ||
+          !contractOwnerRiskSnapshotMatches(
+            input.expectedOwnerContractRisk,
+            ownerContractRiskSnapshot!
+          )
+        )
+      ) {
+        throw contractOwnerRiskSnapshotConflict();
       }
       const ownerContractRiskMetadata = ownerContractRisk
         ? { ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk) }
@@ -2654,6 +2860,7 @@ export class ContractService {
           toStatus: nextStatus,
           nodeName: currentNode.name,
           approvedRoleKey,
+          ...auditCoordinates,
           ...selfReview.metadata,
           ...ownerContractRiskMetadata
         }
@@ -2740,36 +2947,116 @@ export class ContractService {
   }
 
   // 申请人撤回进行中的合同审批：版本退回 draft 以便修改后重新提交（同一版本，不新建版本）。
-  async withdrawApproval(contractVersionId: string, actorUserId: string) {
+  async withdrawApproval(
+    contractVersionId: string,
+    actorUserId: string,
+    input: WithdrawContractApprovalDto
+  ) {
+    const expectedContractUpdatedAt = new Date(input.expectedContractUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    const expectedApprovalInstanceId = input.expectedApprovalInstanceId?.trim();
+    if (Number.isNaN(expectedContractUpdatedAt.getTime())) {
+      throw new BadRequestException("预期合同版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
+    if (!expectedApprovalInstanceId) {
+      throw new BadRequestException("预期审批实例不能空白");
+    }
+    if (!Number.isInteger(input.expectedNodeIndex) || input.expectedNodeIndex < 0) {
+      throw new BadRequestException("预期审批节点格式不正确");
+    }
+
+    // 先用客户端冻结的审批实例核实申请人与目标绑定，避免非申请人探测合同版本是否存在。
+    // 该查询不加锁；通过后事务内仍按 ContractVersion -> ApprovalInstance 的固定顺序加锁并复核。
+    const withdrawalIdentity = await this.prisma.approvalInstance.findFirst({
+      where: {
+        id: expectedApprovalInstanceId,
+        applicantUserId: actorUserId,
+        businessType: "contract_version",
+        businessId: contractVersionId,
+        flowType: "contract.approve"
+      },
+      select: { id: true }
+    });
+    if (!withdrawalIdentity) {
+      throw new ForbiddenException("只有合同审批申请人可以撤回审批");
+    }
+
     return this.prisma.$transaction(async (tx) => {
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ContractVersion"
+        WHERE "id" = ${contractVersionId}
+        FOR UPDATE
+      `);
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
 
       if (!version) {
-        throw new Error("未找到要撤回的合同审批任务，请刷新审批中心后重试");
+        throw new NotFoundException("未找到要撤回的合同审批任务，请刷新审批中心后重试");
       }
 
-      if (version.status !== "in_approval") {
-        throw new Error("当前合同已离开审批中，不能撤回审批");
+      await lockApprovalReviewRow(tx, Prisma.sql`
+        SELECT "id" FROM "ApprovalInstance"
+        WHERE "businessType" = 'contract_version'
+          AND "businessId" = ${version.id}
+          AND "flowType" = 'contract.approve'
+          AND (
+            "id" = ${expectedApprovalInstanceId}
+            OR "status" = 'in_progress'
+          )
+        ORDER BY "id"
+        FOR UPDATE
+      `);
+
+      const expectedInstance = await tx.approvalInstance.findFirst({
+        where: {
+          id: expectedApprovalInstanceId,
+          applicantUserId: actorUserId,
+          businessType: "contract_version",
+          businessId: version.id,
+          flowType: "contract.approve"
+        }
+      });
+
+      if (!expectedInstance || expectedInstance.applicantUserId !== actorUserId) {
+        throw new ForbiddenException("只有合同审批申请人可以撤回审批");
       }
 
-      const instance = await tx.approvalInstance.findFirst({
+      const activeInstances = await tx.approvalInstance.findMany({
         where: {
           businessType: "contract_version",
           businessId: version.id,
           flowType: "contract.approve",
           status: "in_progress"
-        }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 2
       });
-
-      if (!instance) {
-        throw new Error("未找到进行中的合同审批流程，请刷新审批中心后重试");
+      const instance = activeInstances.length === 1 ? activeInstances[0] : null;
+      if (
+        !(version.updatedAt instanceof Date) ||
+        version.updatedAt.getTime() !== expectedContractUpdatedAt.getTime() ||
+        version.status !== "in_approval" ||
+        !instance ||
+        instance.id !== expectedInstance.id ||
+        instance.id !== expectedApprovalInstanceId ||
+        instance.applicantUserId !== actorUserId ||
+        instance.currentNodeIndex !== input.expectedNodeIndex ||
+        !(instance.updatedAt instanceof Date) ||
+        instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw contractApprovalWithdrawalConflict();
       }
 
-      if (instance.applicantUserId !== actorUserId) {
-        throw new Error("只有合同审批申请人可以撤回审批");
-      }
+      const auditCoordinates = {
+        expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),
+        expectedApprovalInstanceId,
+        expectedNodeIndex: input.expectedNodeIndex,
+        expectedApprovalUpdatedAt: expectedApprovalUpdatedAt.toISOString()
+      };
 
       const updated = await tx.contractVersion.update({
         where: { id: version.id },
@@ -2801,7 +3088,8 @@ export class ContractService {
         metadata: {
           fromStatus: version.status,
           toStatus: "draft",
-          applicantUserId: instance.applicantUserId
+          applicantUserId: instance.applicantUserId,
+          ...auditCoordinates
         }
       });
 
@@ -3500,8 +3788,59 @@ export class ContractService {
 
 function requireApprovalCommentForReturn(decision: ReviewContractApprovalDto["decision"], comment?: string) {
   if (decision !== "approve" && !comment?.trim()) {
-    throw new Error("请填写审批意见，说明驳回或退回原因");
+    throw new BadRequestException("请填写审批意见，说明驳回或退回原因");
   }
+}
+
+function contractApprovalReviewConflict() {
+  return new ConflictException({
+    code: "CONTRACT_APPROVAL_REVIEW_CONFLICT",
+    message: "合同审批状态或坐标已变化，请刷新页面后重试"
+  });
+}
+
+function contractApprovalWithdrawalConflict() {
+  return new ConflictException({
+    code: "CONTRACT_APPROVAL_WITHDRAWAL_CONFLICT",
+    message: "合同审批状态或撤回坐标已变化，请刷新页面后重试"
+  });
+}
+
+function contractOwnerRiskSnapshotConflict() {
+  return new ConflictException({
+    code: "CONTRACT_OWNER_RISK_SNAPSHOT_CONFLICT",
+    message: "业主主合同风险快照已变化，请刷新合同详情后重新确认"
+  });
+}
+
+function contractOwnerRiskReviewSnapshot(
+  risk: ContractOwnerRisk
+): ExpectedContractOwnerRiskDto {
+  return {
+    ...contractOwnerRiskToApi(risk),
+    message: risk.status === "clear"
+      ? "我方对下合同累计金额未超过业主主合同有效金额。"
+      : risk.status === "missing_owner_contract"
+        ? "项目尚未登记生效业主主合同，本次合同终审必须显式确认风险。"
+        : `我方对下合同累计金额已超过业主主合同有效金额 ${formatMoneyCentsAsYuan(
+            risk.excessAmountCents
+          )} 元，本次合同终审必须显式确认风险。`,
+    requiresExplicitConfirmation: risk.status !== "clear"
+  };
+}
+
+function contractOwnerRiskSnapshotMatches(
+  expected: ExpectedContractOwnerRiskDto,
+  current: ExpectedContractOwnerRiskDto
+) {
+  return (
+    expected.status === current.status &&
+    expected.ownerContractAmountCents === current.ownerContractAmountCents &&
+    expected.downstreamContractAmountCents === current.downstreamContractAmountCents &&
+    expected.excessAmountCents === current.excessAmountCents &&
+    expected.message === current.message &&
+    expected.requiresExplicitConfirmation === current.requiresExplicitConfirmation
+  );
 }
 
 function contractOwnerRiskToApi(risk: ContractOwnerRisk) {

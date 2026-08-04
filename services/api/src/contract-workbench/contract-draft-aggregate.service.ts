@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { BusinessPartyService } from "../business-party/business-party.service";
 import { ContractBillService } from "../contract-bill/contract-bill.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ContractWorkbenchService } from "./contract-workbench.service";
@@ -19,6 +20,14 @@ import type {
 } from "./dto/contract-workbench.dto";
 
 const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft", "approval_rejected"]);
+
+interface ContractDraftPrivateFileUploadInput {
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  buffer: Buffer;
+  idempotencyKey?: string;
+}
 
 @Injectable()
 export class ContractDraftAggregateService {
@@ -38,10 +47,6 @@ export class ContractDraftAggregateService {
     if (!version) {
       throw new NotFoundException("未找到合同草稿版本，请刷新合同工作台后重试");
     }
-    if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)) {
-      throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
-    }
-
     const legacyReadModel = await this.workbench.getDraftFromExactVersion(
       version,
       actorUserId
@@ -73,6 +78,50 @@ export class ContractDraftAggregateService {
     const canTakeOver = leaseState === "held_by_other"
       ? await this.isContractDirector(actorUserId)
       : false;
+    const isOwner = legacyReadModel.contract.ownerUserId === actorUserId;
+    const isDirector = canTakeOver || await this.isContractDirector(actorUserId);
+    const isOriginalDraft = version.changeType !== "change" &&
+      version.changeType !== "supplement";
+    const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
+    const draftOperationAvailableActions = [
+      ...(isOwner && isEditableDraft ? [
+        "acquire_contract_draft_edit_lease",
+        ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
+        "check_contract_submission_readiness",
+        "close_contract_negotiation_round",
+        "dispose_contract_document_difference",
+        "heartbeat_contract_draft_edit_lease",
+        "open_contract_negotiation_round",
+        "open_contract_revision_preview",
+        "preview_contract_draft_bill_excel_import",
+        ...(isOriginalDraft ? ["preview_contract_type_change"] : []),
+        "queue_contract_document",
+        "queue_contract_draft_preview",
+        "release_contract_draft_edit_lease",
+        "retry_contract_document",
+        "retry_contract_offline_revision",
+        ...(version.baseVersionId ? [
+          "discard_contract_bill_transitions",
+          "save_contract_bill_transitions"
+        ] : []),
+        "save_contract_draft",
+        ...(version.contractGovernanceVersion === 1 ? [
+          "set_contract_authorization"
+        ] : []),
+        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
+        ...(version.contractGovernanceVersion === 1 ? [
+          "upload_contract_formal_approval_file"
+        ] : []),
+        "upload_contract_negotiation_revision",
+        "upload_contract_workbench_private_file"
+      ] : []),
+      ...(isDirector ? [
+        ...(version.baseVersionId ? ["confirm_contract_bill_transitions"] : []),
+        "confirm_contract_settlement_mode",
+        "transfer_contract_draft"
+      ] : []),
+      ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
+    ];
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {
@@ -83,6 +132,7 @@ export class ContractDraftAggregateService {
       },
       draft: version.draftData,
       attachments,
+      draftOperationAvailableActions,
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,
@@ -90,6 +140,48 @@ export class ContractDraftAggregateService {
         canTakeOver
       }
     };
+  }
+
+  async uploadPrivateFile(
+    contractVersionId: string,
+    actorUserId: string,
+    input: ContractDraftPrivateFileUploadInput
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const mutationBoundary = await lockContractDraftMutationBoundary(
+        tx,
+        contractVersionId
+      );
+      if (!mutationBoundary) {
+        throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+      }
+      const [contract, version] = await Promise.all([
+        tx.contract.findUnique({ where: { id: mutationBoundary.contractId } }),
+        tx.contractVersion.findUnique({ where: { id: contractVersionId } })
+      ]);
+      if (!contract || !version) {
+        throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+      }
+      if (contract.ownerUserId !== actorUserId) {
+        throw new ForbiddenException("只有当前合同经办人可以上传合同草稿文件");
+      }
+      if (
+        mutationBoundary.formalBlockers.length > 0 ||
+        contract.voidedAt ||
+        !EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)
+      ) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: "DRAFT_NOT_EDITABLE",
+          message: "合同草稿当前不可编辑，请刷新后重试"
+        });
+      }
+    });
+
+    return this.files.uploadPrivateFile({
+      ...input,
+      uploadedByUserId: actorUserId
+    });
   }
 
   private async isContractDirector(actorUserId: string) {
@@ -114,41 +206,23 @@ export class ContractDraftAggregateService {
     const requestSha256 = this.sha256(this.stableJson(input));
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const versionIdentity = await tx.contractVersion.findUnique({
-          where: { id: contractVersionId },
-          select: { id: true, contractId: true }
-        });
-        if (!versionIdentity) {
+        const mutationBoundary = await lockContractDraftMutationBoundary(
+          tx,
+          contractVersionId
+        );
+        if (!mutationBoundary) {
           throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
         }
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "id" FROM "Contract"
-          WHERE "id" = ${versionIdentity.contractId}
-          FOR UPDATE
-        `);
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "id" FROM "ContractVersion"
-          WHERE "id" = ${contractVersionId}
-          FOR UPDATE
-        `);
-        await tx.$queryRaw(Prisma.sql`
-          SELECT "contractVersionId" FROM "ContractDraftEditLease"
-          WHERE "contractVersionId" = ${contractVersionId}
-          FOR UPDATE
-        `);
-        const [contract, version, receipt, lease] = await Promise.all([
-          tx.contract.findUnique({ where: { id: versionIdentity.contractId } }),
-          tx.contractVersion.findUnique({ where: { id: contractVersionId } }),
-          tx.contractDraftSaveRequest.findUnique({
-            where: { idempotencyKey: input.idempotencyKey }
-          }),
-          tx.contractDraftEditLease.findUnique({
-            where: { contractVersionId }
-          })
+        const [contract, version] = await Promise.all([
+          tx.contract.findUnique({ where: { id: mutationBoundary.contractId } }),
+          tx.contractVersion.findUnique({ where: { id: contractVersionId } })
         ]);
         if (!contract || !version) {
           throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
         }
+        const receipt = await tx.contractDraftSaveRequest.findUnique({
+          where: { idempotencyKey: input.idempotencyKey }
+        });
         if (receipt) {
           if (
             receipt.contractVersionId !== contractVersionId ||
@@ -163,6 +237,21 @@ export class ContractDraftAggregateService {
           }
           return receipt.responseSnapshot;
         }
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "contractVersionId" FROM "ContractDraftEditLease"
+          WHERE "contractVersionId" = ${contractVersionId}
+          FOR UPDATE
+        `);
+        if (mutationBoundary.formalBlockers.length > 0) {
+          throw new ConflictException({
+            statusCode: 409,
+            code: "DRAFT_NOT_EDITABLE",
+            message: "合同已存在正式业务事实，不能继续编辑草稿"
+          });
+        }
+        const lease = await tx.contractDraftEditLease.findUnique({
+          where: { contractVersionId }
+        });
         if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status) || contract.voidedAt) {
           throw new ConflictException({
             statusCode: 409,
@@ -483,7 +572,10 @@ export class ContractDraftAggregateService {
           typeof response === "object" &&
           response !== null &&
           "code" in response &&
-          response.code === "DRAFT_VALIDATION_FAILED"
+          (
+            response.code === "DRAFT_VALIDATION_FAILED" ||
+            response.code === "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED"
+          )
         ) {
           throw error;
         }

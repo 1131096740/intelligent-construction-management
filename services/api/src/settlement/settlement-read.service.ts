@@ -40,6 +40,7 @@ import {
   moneyCentsToApi,
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
+import { loadSettlementDraftLifecycles } from "./settlement-draft-lifecycle";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
@@ -600,32 +601,26 @@ export class SettlementReadService {
       ...drafts.map((item) => item.contractId)
     ])];
     const termsIds = [...new Set(settlements.map((item) => item.paymentTermsVersionId))];
-    const [contracts, terms, projects, draftDocuments] = await Promise.all([
+    const [contracts, terms, projects, draftLifecycles] = await Promise.all([
       contractIds.length ? this.prisma.contract.findMany({ where: { id: { in: contractIds } } }) : [],
       termsIds.length ? this.prisma.paymentTermsVersion.findMany({ where: { id: { in: termsIds } } }) : [],
       visibleProjectIds.length ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } }) : [],
-      drafts.length ? this.prisma.settlementSignedDocument.findMany({
-        where: {
-          settlementDraftId: { in: drafts.map((draft) => draft.id) },
-          purpose: { in: ["frozen_counterparty_copy", "counterparty_signed_original"] }
-        },
-        select: { settlementDraftId: true, purpose: true, status: true }
-      }) : []
+      loadSettlementDraftLifecycles(this.prisma, drafts)
     ]);
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const termsById = new Map(terms.map((term) => [term.id, term]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
-    const historicalEvidenceDraftIds = new Set(draftDocuments.flatMap((item) =>
-      item.settlementDraftId ? [item.settlementDraftId] : []
-    ));
-    const activeEvidenceDraftIds = new Set(draftDocuments.flatMap((item) =>
-      item.status === "active" && item.settlementDraftId ? [item.settlementDraftId] : []
-    ));
     const formal = settlements.filter((item) => !["approval_rejected", "withdrawn", "voided"].includes(item.status));
     const returned = settlements.filter((item) => item.status === "approval_rejected" && item.preparedByUserId === actorUserId);
     const endedFormal = settlements.filter((item) => ["withdrawn", "voided"].includes(item.status));
-    const activeDrafts = drafts.filter((item) => item.status === "draft");
-    const endedDrafts = drafts.filter((item) => item.status === "abandoned");
+    const activeDrafts = drafts.filter((item) =>
+      item.status === "draft" &&
+      draftLifecycles.get(item.id)?.lifecycleKind !== "formal_record"
+    );
+    const endedDrafts = drafts.filter((item) =>
+      item.status === "abandoned" &&
+      draftLifecycles.get(item.id)?.lifecycleKind !== "formal_record"
+    );
     const selectedFormal = view === "formal_ledger" ? formal
       : view === "returned_for_revision" ? returned
         : view === "ended" ? endedFormal
@@ -660,11 +655,8 @@ export class SettlementReadService {
       returnReason: draft.abandonReason ?? "-",
       nextAction: draft.status === "abandoned" ? "查看历史" : "继续填写",
       updatedAt: this.date(draft.updatedAt),
-      lifecycleKind: (
-        draft.status === "abandoned"
-          ? historicalEvidenceDraftIds.has(draft.id)
-          : activeEvidenceDraftIds.has(draft.id)
-      ) ? "approval_draft" : "pristine_draft",
+      lifecycleKind:
+        draftLifecycles.get(draft.id)?.lifecycleKind ?? "pristine_draft",
       revision: draft.revision,
       lifecycleUpdatedAt: draft.updatedAt.toISOString(),
       abandonedAt: draft.abandonedAt?.toISOString() ?? null,
@@ -717,9 +709,10 @@ export class SettlementReadService {
       ...drafts.map((item) => item.contractId)
     ])];
     const termsIds = [...new Set(settlements.map((item) => item.paymentTermsVersionId))];
-    const [contracts, terms] = await Promise.all([
+    const [contracts, terms, draftLifecycles] = await Promise.all([
       contractIds.length ? this.prisma.contract.findMany({ where: { id: { in: contractIds } } }) : [],
-      termsIds.length ? this.prisma.paymentTermsVersion.findMany({ where: { id: { in: termsIds } } }) : []
+      termsIds.length ? this.prisma.paymentTermsVersion.findMany({ where: { id: { in: termsIds } } }) : [],
+      loadSettlementDraftLifecycles(this.prisma, drafts)
     ]);
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
     const termsById = new Map(terms.map((term) => [term.id, term]));
@@ -732,7 +725,10 @@ export class SettlementReadService {
     const selectedSettlements = settlements.filter((settlement) =>
       this.matchesWorkbenchView(view, settlement, actorUserId, pendingSettlementIds)
     );
-    const selectedDrafts = drafts.filter((draft) =>
+    const visibleDrafts = drafts.filter((draft) =>
+      draftLifecycles.get(draft.id)?.lifecycleKind !== "formal_record"
+    );
+    const selectedDrafts = visibleDrafts.filter((draft) =>
       (view === "my_drafts" && draft.status === "draft") || view === "all"
     );
     const formalRows = selectedSettlements.map((settlement) => this.settlementLedgerRow(
@@ -766,7 +762,8 @@ export class SettlementReadService {
       returnReason: draft.abandonReason ?? "-",
       nextAction: draft.status === "abandoned" ? "查看历史" : "继续填写",
       updatedAt: this.date(draft.updatedAt),
-      lifecycleKind: "pristine_draft",
+      lifecycleKind:
+        draftLifecycles.get(draft.id)?.lifecycleKind ?? "pristine_draft",
       revision: draft.revision,
       lifecycleUpdatedAt: draft.updatedAt.toISOString(),
       abandonedAt: draft.abandonedAt?.toISOString() ?? null,
@@ -780,7 +777,7 @@ export class SettlementReadService {
     const count = (targetView: SettlementWorkbenchView) =>
       settlements.filter((settlement) =>
         this.matchesWorkbenchView(targetView, settlement, actorUserId, pendingSettlementIds)
-      ).length + drafts.filter((draft) =>
+      ).length + visibleDrafts.filter((draft) =>
         (targetView === "my_drafts" && draft.status === "draft") || targetView === "all"
       ).length;
     return {
@@ -933,13 +930,31 @@ export class SettlementReadService {
       roleKeys,
       actorUserId
     );
+    const currentApprovalWithdrawal = await this.currentApprovalWithdrawal(
+      "settlement",
+      settlement.id,
+      actorUserId
+    );
+    const withdrawApprovalContext =
+      settlement.status === "approval_pending" &&
+      settlement.updatedAt instanceof Date &&
+      currentApprovalWithdrawal?.updatedAt instanceof Date
+        ? {
+            expectedSettlementUpdatedAt: settlement.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalWithdrawal.id,
+            expectedNodeIndex: currentApprovalWithdrawal.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              currentApprovalWithdrawal.updatedAt.toISOString()
+          }
+        : null;
     const availableActions = this.settlementActions(
       settlement.status,
       roleKeys,
       approvalReviewAccess,
       archiveFiles,
       settlement.governanceVersion,
-      generationFailed
+      generationFailed,
+      withdrawApprovalContext
     );
     const taxFactSummary = await this.taxFactSummary(
       settlement,
@@ -1006,6 +1021,11 @@ export class SettlementReadService {
       archiveFiles,
       approvalTimeline,
       availableActions,
+      availableActionKeys: availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key),
+      withdrawApprovalContext,
+      lifecycleUpdatedAt: settlement.updatedAt.toISOString(),
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
       chainLinks: [
@@ -1115,6 +1135,9 @@ export class SettlementReadService {
       archiveFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      availableActionKeys: [],
+      withdrawApprovalContext: null,
+      lifecycleUpdatedAt: new Date(0).toISOString(),
       primaryAction: null,
       disabledReasons: [],
       chainLinks: [
@@ -1414,13 +1437,76 @@ export class SettlementReadService {
     return identities;
   }
 
+  private async currentApprovalWithdrawal(
+    businessType: string,
+    businessId: string,
+    actorUserId?: string
+  ): Promise<{
+    id: string;
+    applicantUserId: string;
+    currentNodeIndex: number;
+    updatedAt: Date;
+  } | null> {
+    if (!actorUserId) return null;
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "settlement.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          applicantUserId: string;
+          currentNodeIndex: number;
+          updatedAt: Date;
+        }>>;
+      };
+    }).approvalInstance;
+    if (!approvalClient?.findMany) return null;
+
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "settlement.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
+    });
+    if (instances.length !== 1 || instances[0]?.applicantUserId !== actorUserId) {
+      return null;
+    }
+
+    return instances[0];
+  }
+
   private settlementActions(
     status: string,
     roleKeys: RoleKey[],
     approvalReviewAccess: ApprovalReviewAccess,
     archiveFiles: SettlementDetailReadModel["archiveFiles"],
     governanceVersion?: number | null,
-    generationFailed = false
+    generationFailed = false,
+    withdrawApprovalContext?: SettlementDetailReadModel["withdrawApprovalContext"]
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -1430,14 +1516,16 @@ export class SettlementReadService {
         roleKeys,
         enabled: true
       }),
-      detailAction({
-        key: "withdraw_approval",
-        label: "撤回审批",
-        kind: "normal",
-        roleKeys,
-        requiredAction: "settlement.create",
-        enabled: status === "approval_pending"
-      }),
+      ...(withdrawApprovalContext
+        ? [detailAction({
+            key: "withdraw_approval",
+            label: "撤回审批",
+            kind: "normal",
+            roleKeys,
+            skipRoleCheck: true,
+            enabled: true
+          })]
+        : []),
       detailAction({
         key: "remind_approval",
         label: "催办审批",
@@ -1475,7 +1563,27 @@ export class SettlementReadService {
               requiredAction: "settlement.archive.upload",
               enabled: Boolean(status)
             })
-          ])
+          ]),
+      ...(roleKeys.includes("finance_staff")
+        ? [
+            detailAction({
+              key: "record_recovery",
+              label: "登记结算退款或抵扣",
+              kind: "normal",
+              roleKeys,
+              skipRoleCheck: true,
+              enabled: status === "effective"
+            }),
+            detailAction({
+              key: "reverse_recovery",
+              label: "反向更正结算回收登记",
+              kind: "normal",
+              roleKeys,
+              skipRoleCheck: true,
+              enabled: status === "effective"
+            })
+          ]
+        : [])
     ];
 
     if (status === "approval_pending") {

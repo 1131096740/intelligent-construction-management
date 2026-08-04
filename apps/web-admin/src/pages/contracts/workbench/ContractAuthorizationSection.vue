@@ -161,14 +161,52 @@ import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
 import type { RequestMethodResponse, UploadFile } from "tdesign-vue-next";
 import { reactive, ref, watch } from "vue";
 import {
+  fetchContractDraftOperationCapabilities,
   setContractAuthorization,
+  uploadContractWorkbenchPrivateFile,
   type ContractAuthorizationSide
 } from "../../../api/contract-workbench.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
 import {
   associateStagedAuthorization,
   type StagedAuthorizationAssociation
 } from "./contract-authorization-staging";
+
+async function uploadContractAuthorizationFileWithCapability(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同授权能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同授权文件");
+  }
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+}
+
+async function setContractAuthorizationWithCapability(
+  contractVersionId: string,
+  body: Parameters<typeof setContractAuthorization>[1]
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同授权能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "set_contract_authorization"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能修改合同授权事实");
+  }
+  return setContractAuthorization(contractVersionId, body);
+}
 
 type SideForm = {
   choice: "" | "required" | "not_required";
@@ -305,7 +343,7 @@ async function onChoiceChange(side: ContractAuthorizationSide, value: unknown) {
     const current = await props.prepareMutation();
     if (!current) throw new Error("草稿保存失败，已保留当前内容，请重试。");
     prepared = true;
-    await setContractAuthorization(current.version.id, {
+    await setContractAuthorizationWithCapability(current.version.id, {
       side,
       expectedRevision: current.version.draftRevision,
       required: false
@@ -340,7 +378,7 @@ async function reuseAuthorization(side: ContractAuthorizationSide) {
       item.side === side && item.authorizationId === forms[side].reuseAuthorizationId
     );
     if (!candidate) throw new Error("所选历史授权已不可用，请重新选择或上传新文件。");
-    await setContractAuthorization(current.version.id, {
+    await setContractAuthorizationWithCapability(current.version.id, {
       side,
       expectedRevision: current.version.draftRevision,
       required: true,
@@ -375,7 +413,11 @@ async function uploadAuthorization(
     const current = await props.prepareMutation();
     if (!current) throw new Error("草稿保存失败，已保留当前内容。");
     prepared = true;
-    const uploaded = await uploadPrivateFile(upload.raw, upload.name || upload.raw.name);
+    const uploaded = await uploadContractAuthorizationFileWithCapability(
+      current.version.id,
+      upload.raw,
+      upload.name || upload.raw.name
+    );
     staged[side] = {
       fileId: uploaded.id,
       fileName: upload.name || upload.raw.name,
@@ -431,7 +473,12 @@ function associate(
   current: ContractWorkbenchReadModel,
   upload: StagedAuthorizationAssociation
 ) {
-  return associateStagedAuthorization(side, current, upload, setContractAuthorization);
+  return associateStagedAuthorization(
+    side,
+    current,
+    upload,
+    setContractAuthorizationWithCapability
+  );
 }
 
 async function finishMutation(reload: boolean) {

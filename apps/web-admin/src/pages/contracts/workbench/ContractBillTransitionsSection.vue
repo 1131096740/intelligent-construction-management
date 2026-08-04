@@ -61,7 +61,7 @@
           <t-button
             variant="text"
             theme="danger"
-            :disabled="disabled || busy"
+            :disabled="!canSave || busy"
             @click="rows.splice(index, 1)"
           >
             删除
@@ -70,7 +70,7 @@
         <div class="actions">
           <t-button
             variant="outline"
-            :disabled="disabled || busy"
+            :disabled="!canSave || busy"
             @click="addRow"
           >
             新增映射
@@ -78,7 +78,7 @@
           <t-button
             theme="primary"
             :loading="busy === 'save'"
-            :disabled="disabled || !rows.length"
+            :disabled="!canSave || !rows.length"
             @click="save"
           >
             保存映射
@@ -88,13 +88,13 @@
             theme="warning"
             variant="outline"
             :loading="busy === 'discard'"
-            :disabled="disabled"
+            :disabled="!canDiscard"
             @click="discard"
           >
             撤销未确认映射
           </t-button>
           <t-button
-            v-if="options.canConfirm && hasDraft"
+            v-if="options.canConfirm && hasDraft && canConfirm"
             theme="success"
             :loading="busy === 'confirm'"
             @click="confirm"
@@ -110,9 +110,82 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { centsTextToYuanText } from "../../../lib/money";
-import { confirmContractBillTransitions, discardContractBillTransitions, fetchContractBillTransitionOptions, fetchContractBillTransitions, saveContractBillTransitions, type ContractBillTransitionOptions } from "../../../api/contract-workbench.api";
+import {
+  confirmContractBillTransitions,
+  discardContractBillTransitions,
+  fetchContractBillTransitionOptions,
+  fetchContractBillTransitions,
+  fetchContractDraftOperationCapabilities,
+  saveContractBillTransitions,
+  type ContractBillTransitionMappingPayload,
+  type ContractBillTransitionOptions
+} from "../../../api/contract-workbench.api";
 
-const props = defineProps<{ contractVersionId: string; revision: number; disabled: boolean }>();
+async function saveContractBillTransitionsWithCapability(
+  versionId: string,
+  body: {
+    fromContractVersionId: string;
+    expectedTargetVersionRevision: number;
+    mappings: ContractBillTransitionMappingPayload[];
+  }
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单承接能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "save_contract_bill_transitions"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能保存跨版本清单映射");
+  }
+  return saveContractBillTransitions(versionId, body);
+}
+
+async function discardContractBillTransitionsWithCapability(
+  versionId: string,
+  body: { fromContractVersionId: string; expectedTargetVersionRevision: number }
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单承接能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "discard_contract_bill_transitions"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能撤销跨版本清单映射");
+  }
+  return discardContractBillTransitions(versionId, body);
+}
+
+async function confirmContractBillTransitionsWithCapability(
+  versionId: string,
+  body: { expectedTargetVersionRevision: number }
+) {
+  const capability = await fetchContractDraftOperationCapabilities(versionId);
+  const matchesRequestedVersion = capability.version.id === versionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("清单承接能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "confirm_contract_bill_transitions"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能确认跨版本清单映射");
+  }
+  return confirmContractBillTransitions(versionId, body);
+}
+
+const props = defineProps<{
+  contractVersionId: string;
+  revision: number;
+  canSave: boolean;
+  canDiscard: boolean;
+  canConfirm: boolean;
+}>();
 const emit = defineEmits<{ changed: [] }>();
 type Row = { key: string; sourceId: string; targetId: string; sourceQuantity: string; targetQuantity: string; amountCents: string; basis: string };
 const options = ref<ContractBillTransitionOptions | null>(null);
@@ -122,9 +195,9 @@ const targetOptions = computed(() => (options.value?.targets ?? []).map(row => (
 function addRow() { rows.value.push({ key: crypto.randomUUID(), sourceId: "", targetId: "", sourceQuantity: "", targetQuantity: "", amountCents: "", basis: "" }); }
 function syncSource(row: Row) { const source = options.value?.sources.find(item => item.id === row.sourceId); if (!source) return; row.sourceQuantity = source.historicalQuantity ?? ""; row.targetQuantity = source.historicalQuantity ?? ""; row.amountCents = source.historicalAmountCents; }
 async function load() { loading.value = true; error.value = ""; try { const [nextOptions, mappings] = await Promise.all([fetchContractBillTransitionOptions(props.contractVersionId), fetchContractBillTransitions(props.contractVersionId)]); options.value = nextOptions; hasDraft.value = mappings.some(item => item.status === "draft" && item.matchBasis === "manual"); rows.value = mappings.filter(item => item.status !== "invalidated" && item.matchBasis === "manual").map(item => ({ key: String(item.id), sourceId: String(item.sourceContractBillRowId), targetId: String(item.targetContractBillRowId), sourceQuantity: String(item.sourceSettledQuantityAllocated ?? ""), targetQuantity: String(item.targetOpeningQuantity ?? ""), amountCents: String(item.settledAmountAllocatedCents ?? ""), basis: String(item.quantityConversionBasis ?? "") })); if (!rows.value.length && nextOptions.sources.length) addRow(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "读取跨版本映射失败"; } finally { loading.value = false; } }
-async function save() { if (!options.value) return; busy.value = "save"; error.value = ""; try { await saveContractBillTransitions(props.contractVersionId, { fromContractVersionId: options.value.fromContractVersionId!, expectedTargetVersionRevision: props.revision, mappings: rows.value.map(row => ({ sourceContractBillRowId: row.sourceId, targetContractBillRowId: row.targetId, sourceSettledQuantityAllocated: row.sourceQuantity, targetOpeningQuantity: row.targetQuantity, settledAmountAllocatedCents: row.amountCents, ...(row.basis.trim() ? { quantityConversionBasis: row.basis.trim() } : {}) })) }); emit("changed"); await load(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "保存跨版本映射失败"; } finally { busy.value = ""; } }
-async function discard() { if (!options.value) return; busy.value = "discard"; try { await discardContractBillTransitions(props.contractVersionId, { fromContractVersionId: options.value.fromContractVersionId!, expectedTargetVersionRevision: props.revision }); emit("changed"); await load(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "撤销失败"; } finally { busy.value = ""; } }
-async function confirm() { busy.value = "confirm"; try { await confirmContractBillTransitions(props.contractVersionId, { expectedTargetVersionRevision: props.revision }); emit("changed"); await load(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "确认失败"; } finally { busy.value = ""; } }
+async function save() { if (!options.value || !props.canSave) return; busy.value = "save"; error.value = ""; try { await saveContractBillTransitionsWithCapability(props.contractVersionId, { fromContractVersionId: options.value.fromContractVersionId!, expectedTargetVersionRevision: props.revision, mappings: rows.value.map(row => ({ sourceContractBillRowId: row.sourceId, targetContractBillRowId: row.targetId, sourceSettledQuantityAllocated: row.sourceQuantity, targetOpeningQuantity: row.targetQuantity, settledAmountAllocatedCents: row.amountCents, ...(row.basis.trim() ? { quantityConversionBasis: row.basis.trim() } : {}) })) }); emit("changed"); await load(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "保存跨版本映射失败"; } finally { busy.value = ""; } }
+async function discard() { if (!options.value || !props.canDiscard) return; busy.value = "discard"; try { await discardContractBillTransitionsWithCapability(props.contractVersionId, { fromContractVersionId: options.value.fromContractVersionId!, expectedTargetVersionRevision: props.revision }); emit("changed"); await load(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "撤销失败"; } finally { busy.value = ""; } }
+async function confirm() { if (!props.canConfirm) return; busy.value = "confirm"; try { await confirmContractBillTransitionsWithCapability(props.contractVersionId, { expectedTargetVersionRevision: props.revision }); emit("changed"); await load(); } catch (cause) { error.value = cause instanceof Error ? cause.message : "确认失败"; } finally { busy.value = ""; } }
 onMounted(load); watch(() => props.contractVersionId, load);
 </script>
 

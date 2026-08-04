@@ -113,4 +113,24 @@ describe("payment workbench structure", () => {
     expect(detail).toContain("paymentId !== routePaymentId()");
     expect(detail).toContain("void reloadPaymentDetail()");
   });
+
+  it("records an actual payment only through the shared raw server-capability composite", () => {
+    expect(detail).toContain("paymentApprovalCapability");
+    expect(detail).toContain("executionContext");
+    expect(detail).toContain(
+      '@confirm="confirmPaymentExecution"'
+    );
+    expect(detail).toContain(
+      "recordPaymentExecutionWithUpload"
+    );
+    expect(detail).toContain(
+      "createPaymentExecutionRecordAttemptState"
+    );
+    expect(detail).not.toContain(
+      'case "execution":'
+    );
+    expect(detail).not.toContain(
+      "recordPaymentExecution(currentPaymentId()"
+    );
+  });
 });

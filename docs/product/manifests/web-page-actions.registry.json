@@ -1,0 +1,4140 @@
+{
+  "schemaVersion": 1,
+  "actions": [
+    {
+      "id": "archive.create-private-file-download-ticket",
+      "usage": "page_action",
+      "routePaths": [
+        "/资料库"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDownload"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "archiveDownloadAction",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createPrivateFileDownloadTicket"
+        }
+      ]
+    },
+    {
+      "id": "signature.upload-canvas",
+      "usage": "page_action",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settings/SettingsPage.vue",
+      "trigger": {
+        "element": "jg-signature-panel",
+        "event": "save",
+        "handler": "submitCanvasSignature"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "signatureAvailableActions",
+        "key": "upload_canvas_signature"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadCanvasSignature"
+        }
+      ]
+    },
+    {
+      "id": "signature.create-canvas-handoff",
+      "usage": "page_action",
+      "routePaths": [
+        "/系统配置"
+      ],
+      "sourceFile": "apps/web-admin/src/components/JgSignatureHandoff.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createAuthorizedCanvasSignatureHandoff"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "signatureAvailableActions",
+        "key": "create_canvas_signature_handoff"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createCanvasSignatureHandoff"
+        }
+      ]
+    },
+    {
+      "id": "signature.complete-canvas-handoff",
+      "usage": "page_action",
+      "routePaths": [
+        "/手写签名"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue",
+      "trigger": {
+        "element": "jg-signature-panel",
+        "event": "save",
+        "handler": "complete"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "handoffAvailableActions",
+        "key": "complete_canvas_signature_handoff"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "completeCanvasSignatureHandoff"
+        }
+      ]
+    },
+    {
+      "id": "affiliate-company-contract.record",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitRecord"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "affiliateCompanyContractRootActions",
+        "key": "record_affiliate_company_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordProjectAffiliateCompanyContractWithUpload"
+        }
+      ]
+    },
+    {
+      "id": "affiliate-company-contract.confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateCompanyContractPanel.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "submitConfirm"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "selectedAffiliateCompanyContractActions",
+        "key": "confirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmProjectAffiliateCompanyContract"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.abandon-application",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAbandonApplication"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractDraftAvailableActions",
+        "key": "abandon_application"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "executeContractDraftLifecycleAction",
+          "variant": "abandon_application"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.delete-pristine",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmDeletePristineDraft"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractDraftAvailableActions",
+        "key": "delete_pristine_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "executeContractDraftLifecycleAction",
+          "variant": "delete_pristine_draft"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.aggregate-autosave",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "autoSaveContractDraftAggregateWithCapability"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "save_contract_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "saveContractDraftAggregate"
+        }
+      ]
+    },
+    {
+      "id": "contract-bill.remainder-cancellation",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "contract-bill-focus-editor",
+        "event": "action-handler",
+        "handler": "executeFocusedBillRemainderCancellation"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "contractDraftAvailableActions",
+        "key": "contract-bill.remainder-cancellation"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "executeContractBillRemainderCancellation"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.create",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createWorkbenchDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_contract_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "createWorkbenchDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.lease-acquire",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "acquireContractDraftEditLeaseWithCapability"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "acquire_contract_draft_edit_lease"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "acquireContractDraftEditLease"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.lease-heartbeat",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "heartbeatContractDraftEditLeaseWithCapability"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "heartbeat_contract_draft_edit_lease"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "heartbeatContractDraftEditLease"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.lease-release",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "releaseContractDraftEditLeaseWithCapability"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "release_contract_draft_edit_lease"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "releaseContractDraftEditLease"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.manual-save",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "manualSaveContractDraftAggregateWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "save_contract_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "saveContractDraftAggregate"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.preview-queue",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "queueContractDraftPreviewWithCapability"
+      },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "queue_contract_draft_preview"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "queueContractDraftPreview"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.lease-takeover",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "takeOverContractDraftEditLeaseWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "take_over_contract_draft_edit_lease"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "takeOverContractDraftEditLease"
+        }
+      ]
+    },
+    {
+      "id": "contract-draft.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferContractDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "transfer_contract_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "transferContractDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.apply-type-change",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTypeChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "apply_contract_type_change"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "applyContractTypeChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.check-submission-readiness",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "checkContractSubmissionReadinessWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "check_contract_submission_readiness"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "checkContractSubmissionReadiness"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.confirm-settlement-mode",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractSettlementModeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "confirm_contract_settlement_mode"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "confirmContractSettlementMode"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.preview-type-change",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTypeChangeWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "preview_contract_type_change"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "previewContractTypeChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-negotiation.open-round",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "openContractNegotiationRoundWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "open_contract_negotiation_round" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "openContractNegotiationRound" }]
+    },
+    {
+      "id": "contract-negotiation.upload-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadNegotiationFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract-negotiation.upload-revision",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractNegotiationRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_negotiation_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "uploadContractNegotiationRevision" }]
+    },
+    {
+      "id": "contract-negotiation.close-round",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "closeContractNegotiationRoundWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "close_contract_negotiation_round" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "closeContractNegotiationRound" }]
+    },
+    {
+      "id": "contract-negotiation.retry-revision",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "retryContractOfflineRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "retry_contract_offline_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "retryContractOfflineRevision" }]
+    },
+    {
+      "id": "contract-negotiation.dispose-difference",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "disposeContractDocumentDifferenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "dispose_contract_document_difference" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "disposeContractDocumentDifference" }]
+    },
+    {
+      "id": "contract-negotiation.open-revision-preview",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "openContractRevisionPreviewWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "open_contract_revision_preview" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "openContractRevisionPreview" }]
+    },
+    {
+      "id": "contract-bill-transition.save",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "saveContractBillTransitionsWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "save_contract_bill_transitions" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "saveContractBillTransitions" }]
+    },
+    {
+      "id": "contract-bill-transition.discard",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "discardContractBillTransitionsWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "discard_contract_bill_transitions" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "discardContractBillTransitions" }]
+    },
+    {
+      "id": "contract-bill-transition.confirm",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractBillTransitionsWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "confirm_contract_bill_transitions" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "confirmContractBillTransitions" }]
+    },
+    {
+      "id": "contract-bill-import.upload-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractBillImportFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract-bill-import.preview",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "previewContractDraftBillExcelImportWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "preview_contract_draft_bill_excel_import" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "previewContractDraftBillExcelImport" }]
+    },
+    {
+      "id": "contract-document.queue",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "queueContractDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "queue_contract_document" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "queueContractDocument" }]
+    },
+    {
+      "id": "contract-document.upload-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractDocumentFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract-document.retry",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "retryContractDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "retry_contract_document" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "retryContractDocument" }]
+    },
+    {
+      "id": "contract-document.download-ticket",
+      "usage": "page_action",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
+      "trigger": { "element": "t-dialog", "event": "confirm", "handler": "confirmContractDocumentDownload" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "contractDocumentDownloadAction", "key": "create_private_file_download_ticket" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }]
+    },
+    {
+      "id": "contract-authorization.upload-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractAuthorizationFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract-authorization.set",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "setContractAuthorizationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "set_contract_authorization" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "setContractAuthorization" }]
+    },
+    {
+      "id": "contract-formal-document.upload-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractFormalFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract-formal-document.associate-approval",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractFormalApprovalFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_formal_approval_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractFormalApprovalFile" }]
+    },
+    {
+      "id": "contract-party.upload-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractPartyFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract.signing-material-change",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmSigningMaterialChange"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
+        "key": "report_signing_material_change"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeContractSigningMaterialChange"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractReviewApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeContractApprovalReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractReviewReject"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeContractApprovalReviewAction",
+          "variant": "reject"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmContractWithdrawal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "contractLifecycleAvailableActionKeys",
+        "key": "withdraw_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeContractApprovalWithdrawalAction"
+        }
+      ]
+    },
+    {
+      "id": "contract-change.create-draft",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractChangeDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_contract_change_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createContractChangeDraft"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.download-form",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadContractApprovalFormWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "download_approval_form"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadApprovalForm"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.remind",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "remindContractApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "remind_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "remindContractApproval"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferContractApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "transfer_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "transferContractApproval"
+        }
+      ]
+    },
+    {
+      "id": "contract-approval.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "delegateContractApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "delegate_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "delegateContractApproval"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.approve-legacy",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveLegacyContractSealWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "approve_seal"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "approveContractSeal"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.approve-governed",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "approveGovernedContractSealWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "approve_seal"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "approveGovernedContractSeal"
+        }
+      ]
+    },
+    {
+      "id": "contract-seal.complete",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "completeContractSealWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "complete_seal"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "completeContractSeal"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractFinalPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.associate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "associateContractFinalFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadMutuallySignedContract"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.return",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnContractFinalFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "return_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "returnMutuallySignedContractForCorrection"
+        }
+      ]
+    },
+    {
+      "id": "contract-final.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractFinalFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "confirm_final_contract"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmMutuallySignedContract"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractArchivePrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.associate",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "associateContractArchiveFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "upload_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadContractArchiveFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmContractArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "confirm_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmContractArchive"
+        }
+      ]
+    },
+    {
+      "id": "contract-archive.generate-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generateContractPdfArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActionKeys",
+        "key": "generate_pdf_archive"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "generateContractPdfArchive"
+        }
+      ]
+    },
+    {
+      "id": "contract-file.download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractFileDownloadTicketWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createPrivateFileDownloadTicket"
+        }
+      ]
+    },
+    {
+      "id": "settlement-approval.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算管理/:settlementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmSettlementWithdrawal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "settlementApprovalCapability.availableActions",
+        "key": "withdraw_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeSettlementApprovalWithdrawalAction"
+        }
+      ]
+    },
+    {
+      "id": "contract-workbench.submit",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/新建",
+        "/合同工作台/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractDraftWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "operationCapabilities.draftOperationAvailableActions",
+        "key": "submit_contract_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "name": "submitContractDraft"
+        }
+      ]
+    },
+    {
+      "id": "expense-claim.create",
+      "usage": "background",
+      "routePaths": ["/费用与报销工作台"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createExpenseClaimWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_expense_claim" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "createExpenseClaim" }
+      ]
+    },
+    {
+      "id": "expense-claim.submit",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitExpenseClaimWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_expense_claim" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "submitExpenseClaim" }
+      ]
+    },
+    {
+      "id": "expense-claim.review",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewExpenseClaimWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_expense_claim" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "reviewExpenseClaim" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.attach",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachExpenseClaimAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "attachExpenseClaimAttachment" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.append",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "appendExpenseClaimAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "append_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "appendExpenseClaimAttachment" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.remove",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "removeExpenseClaimAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "remove_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "removeExpenseClaimAttachment" }
+      ]
+    },
+    {
+      "id": "expense-claim.payment-subject.adjust",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "adjustExpenseClaimPaymentSubjectWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "adjust_expense_claim_payment_subject" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "adjustExpenseClaimPaymentSubject" }
+      ]
+    },
+    {
+      "id": "expense-claim.payment.record",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordExpenseClaimPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_payment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "recordExpenseClaimPayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.final-payment-pdf.generate",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateExpenseClaimFinalPaymentPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_expense_claim_final_payment_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "generateExpenseClaimFinalPaymentPdf" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.disbursement.record",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordExpenseClaimLoanDisbursementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_disbursement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "recordExpenseClaimLoanDisbursement" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.final-disbursement-pdf.generate",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_expense_claim_final_disbursement_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "generateExpenseClaimFinalDisbursementPdf" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment.record",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordExpenseClaimLoanRepaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "recordExpenseClaimLoanRepayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment.confirm",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmExpenseClaimLoanRepaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "confirmExpenseClaimLoanRepayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment.reverse",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reverseExpenseClaimLoanRepaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "reverse_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "reverseExpenseClaimLoanRepayment" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.draft-upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimDraftAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimDraftAttachmentFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.attachment.append-upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimAppendAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "append_expense_claim_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimAppendAttachmentFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.payment-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimPaymentVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_payment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimPaymentVoucherFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.disbursement-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_disbursement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimLoanDisbursementVoucherFile" }
+      ]
+    },
+    {
+      "id": "expense-claim.loan.repayment-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/费用与报销/:claimId"],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_expense_claim_loan_repayment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/expense-claim.api.ts", "name": "uploadExpenseClaimLoanRepaymentVoucherFile" }
+      ]
+    },
+    {
+      "id": "payment-approval.approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "paymentApprovalCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executePaymentApprovalReviewAction"
+        }
+      ]
+    },
+    {
+      "id": "payment-approval.reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentApprovalReject"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "paymentApprovalCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executePaymentApprovalReviewAction"
+        }
+      ]
+    },
+    {
+      "id": "payment-execution.record",
+      "usage": "page_action",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmPaymentExecution"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "paymentApprovalCapability.availableActions",
+        "key": "record_execution"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordPaymentExecutionWithUpload"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.abandon",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "abandonPaymentRequestWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "abandon_application"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "abandonPaymentRequest"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.delegate",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "delegatePaymentApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "delegate_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "delegatePaymentApproval"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.approval-pdf",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPaymentApprovalFormWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "download_approval_form"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadApprovalForm"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.pdf-generation",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "generatePaymentPdfArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "archive_pdf"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "generatePaymentPdfArchive"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.finance-record",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordPaymentFinanceWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_finance"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordPaymentFinance"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.pdf-archive",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordPaymentPdfArchiveWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "archive_pdf"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadPaymentPdfArchivePrivateFile"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordPaymentPdfArchive"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.remind",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "remindPaymentApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "remind_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "remindPaymentApproval"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.transfer",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "transferPaymentApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "transfer_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "transferPaymentApproval"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.withdraw",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawPaymentApprovalWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "withdrawPaymentApproval"
+        }
+      ]
+    },
+    {
+      "id": "payment-detail.file-download-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadPaymentPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createPrivateFileDownloadTicket"
+        }
+      ]
+    },
+    {
+      "id": "payment-request.create-local-form",
+      "usage": "background",
+      "routePaths": [
+        "/付款工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createPaymentRequestWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_payment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createPaymentRequest"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.create-local-role",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createProjectExpenseRequestWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_project_expense_request"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createProjectExpenseRequest"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.execution-local-status",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseExecution"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "record_execution"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordProjectExpenseExecutionWithUpload"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.finance-local-status",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseFinance"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "record_finance"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordProjectExpenseFinanceWithPreflight"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.receipt-confirm-local-status",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReceipt"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "confirm_receipt"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmProjectExpenseReceiptWithPreflight"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReviewApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeProjectExpenseApprovalReviewAction"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseReviewReject"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeProjectExpenseApprovalReviewAction"
+        }
+      ]
+    },
+    {
+      "id": "project-expense.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目支出/:projectId/:expenseRequestId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmProjectExpenseWithdrawal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "projectExpenseWithdrawalCapability.availableActions",
+        "key": "withdraw"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "executeProjectExpenseWithdrawalAction"
+        }
+      ]
+    },
+    {
+      "id": "project-financing-quota.request",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitRequest"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaRequestAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "requestProjectFinancingQuotaWithUpload"
+        }
+      ]
+    },
+    {
+      "id": "project-financing-quota.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitApproveReview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaReviewAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "executeProjectFinancingQuotaReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "project-financing-quota.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitRejectReview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaReviewAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "executeProjectFinancingQuotaReviewAction",
+          "variant": "reject"
+        }
+      ]
+    },
+    {
+      "id": "project-financing-quota.terminate",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitTermination"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "selectedFinancingQuotaTerminationAction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
+          "name": "executeProjectFinancingQuotaTerminationAction"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.create",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_takeover"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createContractTakeover"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.precheck-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "precheckContractTakeoverImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "precheck_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "precheckContractTakeoverImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.create-import-drafts",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "createContractTakeoverDraftsFromImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_import_drafts"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "createContractTakeoverDraftsFromImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.preview-excel-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTakeoverExcelImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_excel_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "previewContractTakeoverExcelImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.apply-excel-import",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTakeoverExcelImportWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_excel_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "applyContractTakeoverExcelImport"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.review-import-batch",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "reviewContractTakeoverImportBatchWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "review_import_batch"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "reviewContractTakeoverImportBatch"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.preview-batch-abandonment",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "previewContractTakeoverBatchAbandonmentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_batch_abandonment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "previewContractTakeoverBatchAbandonment"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.apply-batch-abandonment",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "applyContractTakeoverBatchAbandonmentWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "apply_batch_abandonment"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "applyContractTakeoverBatchAbandonment"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.upload-file",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadContractTakeoverPrivateFileWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "upload_takeover_file"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "uploadContractTakeoverPrivateFile"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.update",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateContractTakeoverWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "update_takeover"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "updateContractTakeover"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.submit-review",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitContractTakeoverReviewWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "submit_review"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "submitContractTakeoverReview"
+        }
+      ]
+    },
+    {
+      "id": "contract-takeover.abandon",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonContractTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "abandon_takeover" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "abandonContractTakeover" }]
+    },
+    {
+      "id": "contract-takeover.confirm",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_takeover" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeover" }]
+    },
+    {
+      "id": "contract-takeover.return-for-supplement",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "returnContractTakeoverForSupplementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "return_for_supplement" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "returnContractTakeoverForSupplement" }]
+    },
+    {
+      "id": "contract-takeover.confirm-change-baseline",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverChangeBaselineWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_change_baseline" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeoverChangeBaseline" }]
+    },
+    {
+      "id": "contract-takeover.attach-contract-evidence",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachContractTakeoverEvidenceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_contract_evidence" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "attachContractTakeoverEvidenceFile" }]
+    },
+    {
+      "id": "contract-takeover.attach-payment-voucher",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachHistoricalPaymentVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_payment_voucher" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "attachHistoricalPaymentVoucher" }]
+    },
+    {
+      "id": "contract-takeover.save-contract-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "saveContractTakeoverContractSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "save_contract_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "saveContractTakeoverContractSide" }]
+    },
+    {
+      "id": "contract-takeover.save-finance-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "saveContractTakeoverFinanceSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "save_finance_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "saveContractTakeoverFinanceSide" }]
+    },
+    {
+      "id": "contract-takeover.confirm-contract-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverContractSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_contract_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeoverContractSide" }]
+    },
+    {
+      "id": "contract-takeover.confirm-finance-side",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverFinanceSideWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_finance_side" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeoverFinanceSide" }]
+    },
+    {
+      "id": "contract-takeover.withdraw-contract-side-confirmation",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "withdraw_contract_side_confirmation" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "withdrawContractTakeoverContractSideConfirmation" }]
+    },
+    {
+      "id": "contract-takeover.withdraw-finance-side-confirmation",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "withdraw_finance_side_confirmation" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "withdrawContractTakeoverFinanceSideConfirmation" }]
+    },
+    {
+      "id": "contract-takeover.submit-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitContractTakeoverCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "submitContractTakeoverCorrection" }]
+    },
+    {
+      "id": "contract-takeover.review-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewContractTakeoverCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "reviewContractTakeoverCorrection" }]
+    },
+    {
+      "id": "contract-takeover.submit-company-entity-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_company_entity_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "submitContractTakeoverCompanyEntityCorrection" }]
+    },
+    {
+      "id": "contract-takeover.review-company-entity-correction",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_company_entity_correction" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "reviewContractTakeoverCompanyEntityCorrection" }]
+    },
+    {
+      "id": "contract-takeover.file-download-ticket",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createContractTakeoverFileDownloadTicketWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_private_file_download_ticket" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }]
+    },
+    {
+      "id": "contract-tax-fact.create-revision",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_tax_fact_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "createContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.update-revision",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "update_tax_fact_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "updateContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.submit-finance-review",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitContractTaxFactRevisionForFinanceReviewWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_tax_fact_finance_review" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "submitContractTaxFactRevisionForFinanceReview" }]
+    },
+    {
+      "id": "contract-tax-fact.finance-review",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewContractTaxFactRevisionByFinanceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_tax_fact_by_finance" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "reviewContractTaxFactRevisionByFinance" }]
+    },
+    {
+      "id": "contract-tax-fact.contract-confirm",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_tax_fact_by_contract" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "confirmContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.abandon-revision",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonContractTaxFactRevisionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "abandon_tax_fact_revision" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-tax-facts.api.ts", "name": "abandonContractTaxFactRevision" }]
+    },
+    {
+      "id": "contract-tax-fact.upload-evidence",
+      "usage": "background",
+      "routePaths": ["/历史合同接管"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadContractTaxFactEvidenceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "upload_takeover_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadContractTakeoverPrivateFile" }]
+    },
+    {
+      "id": "settlement-draft.save-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "saveSettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "createSettlementDraftRecord"
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.update-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "save_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "updateSettlementDraftRecord"
+        }
+      ]
+    },
+    {
+      "id": "settlement-import.preview-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "previewSettlementImportWithCapability" },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_import"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "uploadSettlementDraftPrivateFile"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+          "name": "previewSettlementImport"
+        }
+      ]
+    },
+    {
+      "id": "settlement-preview.background-local-gate",
+      "usage": "background",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "previewSettlementLinesWithCapability" },
+      "semantic": "technical_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "preview_lines"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+          "name": "previewSettlementLines"
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.abandon-application",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAbandonApplication"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "settlementDraftAvailableActions",
+        "key": "abandon_application"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "executeSettlementDraftLifecycleAction",
+          "variant": "abandon_application"
+        }
+      ]
+    },
+    {
+      "id": "settlement-draft.delete-pristine",
+      "usage": "page_action",
+      "routePaths": [
+        "/结算工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmDeletePristineDraft"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "settlementDraftAvailableActions",
+        "key": "delete_pristine_draft"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+          "name": "executeSettlementDraftLifecycleAction",
+          "variant": "delete_pristine_draft"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "payment-approval-drawer",
+        "event": "approve",
+        "handler": "confirmA5PaymentApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "payment-approval-drawer",
+        "event": "return-to-applicant",
+        "handler": "confirmA5PaymentReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "return_to_applicant"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.legacy-review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmLegacyPaymentApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.legacy-review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星材料付款/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmLegacyPaymentReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementPaymentCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementPaymentReviewAction",
+          "variant": "return_to_applicant"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.abnormal-termination-confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmAbnormalTerminationAction"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "confirm_abnormal_termination"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "confirmSpotProcurementAbnormalTermination"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.abnormal-termination-request",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "requestAbnormalTerminationAction"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "request_abnormal_termination"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "requestSpotProcurementAbnormalTermination"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.invoice-append",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "appendInvoice"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotReceiptCapability.availableActions",
+        "key": "append_invoice"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementInvoiceAppend"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.invoice-invalidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "invalidateInvoice"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotPaymentCapability.invoice.invoices",
+        "key": "invalidate_invoice"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "invalidateSpotProcurementPaymentInvoice"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.receipt-pdf-refresh",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购收货/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "refreshReceiptPdf"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotReceiptCapability.availableActions",
+        "key": "refresh_receipt_pdf"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "refreshSpotProcurementReceiptPdf"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.submit",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "runSubmit"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "submit_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "submitSpotProcurement"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.review-approve",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmReviewApprove"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementReviewAction",
+          "variant": "approve"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.review-reject",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmReviewReject"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementReviewAction",
+          "variant": "reject"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.review-return-to-applicant",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmReviewReturn"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "review_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementReviewAction",
+          "variant": "return_to_applicant"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.withdraw",
+      "usage": "page_action",
+      "routePaths": [
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": {
+        "element": "sensitive-action-dialog",
+        "event": "confirm",
+        "handler": "confirmWithdrawal"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "detail_action",
+        "source": "spotProcurementCapability.availableActions",
+        "key": "withdraw_approval"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "name": "executeSpotProcurementWithdrawalAction"
+        }
+      ]
+    },
+    {
+      "id": "spot-procurement.create",
+      "usage": "background",
+      "routePaths": ["/零星采购工作台"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createSpotProcurementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_spot_procurement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.create-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购工作台"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementCreateFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_spot_procurement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementCreateFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.update",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.delete-pristine",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "deletePristineSpotProcurementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "delete_pristine_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "abandonSpotProcurementDraft", "variant": "delete_pristine_draft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft.abandon-application",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonSpotProcurementApplicationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "abandon_application" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "abandonSpotProcurementDraft", "variant": "abandon_application" }
+      ]
+    },
+    {
+      "id": "spot-procurement.payment-draft.recreate",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recreateSpotProcurementPaymentDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "create_payment_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "recreateSpotProcurementPaymentDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement.version.create",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createSpotProcurementVersionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "create_version" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementVersion" }
+      ]
+    },
+    {
+      "id": "spot-procurement.void",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidSpotProcurementWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "void_procurement" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "voidSpotProcurement" }
+      ]
+    },
+    {
+      "id": "spot-procurement.application-pdf.download",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSpotProcurementApprovalFormWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "download_application_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadApprovalForm" }
+      ]
+    },
+    {
+      "id": "spot-procurement.draft-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementDraftFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementDraftFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft.update",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementPaymentDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementPaymentDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.payer.update",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementPaymentPayerWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "manage_payer" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementPaymentPayer" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft.abandon",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "abandonSpotProcurementPaymentDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "abandon_payment_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "abandonSpotProcurementPaymentDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.withdraw",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "withdrawSpotProcurementPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "withdraw_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "withdrawSpotProcurementPayment" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.execution.record",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordSpotProcurementPaymentExecutionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_execution" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "recordSpotProcurementPaymentExecution" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.submit",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitSpotProcurementPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "submit_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "submitSpotProcurementPayment" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.void",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidSpotProcurementPaymentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "void_payment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "voidSpotProcurementPayment" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.pdf.download",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSpotProcurementPaymentApprovalFormWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "download_payment_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadApprovalForm" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.draft-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementPaymentDraftFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementPaymentDraftFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-payment.execution-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/零星材料付款/:paymentId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementExecutionVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_execution" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementExecutionVoucherFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.draft.update",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateSpotProcurementReceiptDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "edit_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "updateSpotProcurementReceiptDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo.attach",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachSpotProcurementReceiptPhotoWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "append_receipt_photo" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "attachSpotProcurementReceiptPhoto" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo.remove",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "deleteSpotProcurementReceiptPhotoWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "remove_receipt_photo" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "deleteSpotProcurementReceiptPhoto" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.delegate",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createSpotProcurementReceiptDelegationWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "delegate_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementReceiptDelegation" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.draft.reset",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "resetSpotProcurementReceiptDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "reset_receipt_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "resetSpotProcurementReceiptDraft" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.review",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewSpotProcurementReceiptWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "review_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "reviewSpotProcurementReceipt" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.review.revoke",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "revokeSpotProcurementReceiptReviewWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "revoke_receipt_review" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "revokeSpotProcurementReceiptReview" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.submit",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitSpotProcurementReceiptWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "submit_receipt" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "submitSpotProcurementReceipt" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.discrepancy.initiate",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "initiateSpotProcurementDiscrepancyWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "initiate_discrepancy" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementDiscrepancy" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.discrepancy.confirm",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmSpotProcurementDiscrepancyWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "confirm_discrepancy" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "createSpotProcurementDiscrepancy" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.refund.record",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordSpotProcurementRefundWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_refund" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "recordSpotProcurementRefund" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.photo-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementReceiptPhotoWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "append_receipt_photo" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementReceiptPhotoFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.refund-voucher.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementRefundVoucherWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "record_refund" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementRefundVoucherFile" }
+      ]
+    },
+    {
+      "id": "spot-procurement-receipt.invoice-file.upload",
+      "usage": "background",
+      "routePaths": ["/零星采购收货/:procurementId"],
+      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSpotProcurementInvoiceFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "detail_action", "source": "capability.availableActions", "key": "append_invoice" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts", "name": "uploadSpotProcurementInvoiceFile" }
+      ]
+    },
+    {
+      "id": "settlement-detail.review",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reviewSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "review_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "reviewSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.transfer",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "transferSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "transfer_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "transferSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.delegate",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "delegateSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "delegate_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "delegateSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.remind",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "remindSettlementApprovalWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "remind_approval" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "remindSettlementApproval" }
+      ]
+    },
+    {
+      "id": "settlement-detail.approval-pdf",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSettlementApprovalPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "download_approval_form" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadSettlementLatestApprovalPdf" }
+      ]
+    },
+    {
+      "id": "settlement-detail.archive-upload",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSettlementArchiveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "upload_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementArchivePrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementArchiveFile" }
+      ]
+    },
+    {
+      "id": "settlement-detail.archive-confirm-or-regenerate",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmSettlementArchiveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmSettlementArchive" }
+      ]
+    },
+    {
+      "id": "settlement-detail.signed-document-regenerate",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "regenerateSettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "regenerateSettlementSignedDocument" }
+      ]
+    },
+    {
+      "id": "settlement-detail.generation-retry",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "retrySettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "retry_signed_document_generation" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "retrySettlementSignedDocumentGeneration" }
+      ]
+    },
+    {
+      "id": "settlement-detail.pdf-generation",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateSettlementPdfArchiveWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_pdf_archive" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "generateSettlementPdfArchive" }
+      ]
+    },
+    {
+      "id": "settlement-detail.file-download-ticket",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSettlementPrivateFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_private_file_download_ticket" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }
+      ]
+    },
+    {
+      "id": "settlement-import.apply",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "applySettlementImportWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "apply_import" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts", "name": "applySettlementImport" }
+      ]
+    },
+    {
+      "id": "settlement-draft.generate-frozen-document",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "generateSettlementFrozenDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "generate_frozen_document" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "generateSettlementFrozenDocument" }
+      ]
+    },
+    {
+      "id": "settlement-draft.upload-signed-document",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadSettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "link_counterparty_signed_document" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "uploadSettlementDraftPrivateFile" }
+      ]
+    },
+    {
+      "id": "settlement-draft.link-signed-document",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "linkSettlementSignedDocumentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "link_counterparty_signed_document" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "linkSettlementCounterpartySignedDocument" }
+      ]
+    },
+    {
+      "id": "settlement-draft.submit",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "submitSettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "submit_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "submitSettlementDraftRecord" }
+      ]
+    },
+    {
+      "id": "settlement-draft.file-download-ticket",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadSettlementDraftFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_private_file_download_ticket" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createPrivateFileDownloadTicket" }
+      ]
+    },
+    {
+      "id": "settlement-list.copy-abandoned-draft",
+      "usage": "background",
+      "routePaths": ["/结算工作台"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "copySettlementDraftWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "copy_abandoned_draft" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "copyAbandonedSettlementDraft" }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.attach",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "attachSettlementLineFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "attach_line_file" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "uploadSettlementDraftPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "attachSettlementDraftLineFile" }
+      ]
+    },
+    {
+      "id": "settlement-line-attachment.invalidate",
+      "usage": "background",
+      "routePaths": ["/结算工作台/新建"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "invalidateSettlementLineAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "invalidate_line_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts", "name": "invalidateSettlementDraftLineAttachment" }
+      ]
+    },
+    {
+      "id": "settlement-recovery.record",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordSettlementRecoveryWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_recovery" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementRecoveryPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts", "name": "recordSettlementRecovery" }
+      ]
+    },
+    {
+      "id": "settlement-recovery.reverse",
+      "usage": "background",
+      "routePaths": ["/结算管理/:settlementId"],
+      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "reverseSettlementRecoveryWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "reverse_recovery" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadSettlementRecoveryPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/settlement-recovery.api.ts", "name": "reverseSettlementRecovery" }
+      ]
+    },
+    {
+      "id": "project.create",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createProjectWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_project" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "createProject" }
+      ]
+    },
+    {
+      "id": "project.update",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateProjectWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "update_project" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "updateProject" }
+      ]
+    },
+    {
+      "id": "project-expense.purchase-execution",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectExpensePurchaseExecutionWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_purchase_execution" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectExpensePurchaseExecution" }
+      ]
+    },
+    {
+      "id": "project-expense.attachment-download",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadProjectExpenseAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "download_attachment" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadProjectExpenseAttachment" }
+      ]
+    },
+    {
+      "id": "project-expense.approval-pdf-download",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "downloadProjectExpenseApprovalPdfWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "download_approval_pdf" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "downloadProjectExpenseApprovalPdf" }
+      ]
+    },
+    {
+      "id": "project-expense.void",
+      "usage": "background",
+      "routePaths": ["/项目支出/:projectId/:expenseRequestId"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "voidProjectExpenseRequestWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "void" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "voidProjectExpenseRequest" }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectUpstreamFundFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_upstream_fund_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectUpstreamFundFact" }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectUpstreamFundFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_upstream_fund_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectUpstreamFundFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectAffiliateContractFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_contract_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectAffiliateContractFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectAffiliateSettlementFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_settlement_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectAffiliateSettlementFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.record",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "recordProjectAffiliatePaymentFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_payment_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "recordProjectAffiliatePaymentFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectAffiliateContractFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_affiliate_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliateContractFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-fact.supplement-evidence",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "supplementProjectAffiliateBusinessEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "supplement_affiliate_evidence" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliateBusinessPrivateFile" },
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "supplementProjectAffiliateBusinessEvidence" }
+      ]
+    },
+    {
+      "id": "project-expense.attachment-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectExpenseAttachmentWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create_project_expense_request" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectExpensePrivateFile" }
+      ]
+    },
+    {
+      "id": "project.upstream-fund.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectUpstreamFundEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_upstream_fund_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectUpstreamFundPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-contract.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectAffiliateContractEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_contract_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliateContractPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectAffiliateSettlementEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_settlement_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliateSettlementPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.evidence-upload",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadProjectAffiliatePaymentEvidenceWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "record_affiliate_payment_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "uploadProjectAffiliatePaymentPrivateFile" }
+      ]
+    },
+    {
+      "id": "project.affiliate-settlement.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectAffiliateSettlementFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_affiliate_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliateSettlementFact" }
+      ]
+    },
+    {
+      "id": "project.affiliate-payment.confirm",
+      "usage": "background",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmProjectAffiliatePaymentFactWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_affiliate_fact" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliatePaymentFact" }
+      ]
+    }
+  ]
+}

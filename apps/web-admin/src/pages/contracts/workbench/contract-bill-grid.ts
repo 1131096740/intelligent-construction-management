@@ -1,11 +1,20 @@
-import { isContractBillCustomColumn, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
+import {
+  isContractBillCustomColumn,
+  normalizeTaxRatePercent,
+  type DetailActionReadModel
+} from "@jiangkong/shared-domain";
 import type {
   ContractBillBatchSaveRowReadModel,
   ContractBillRowValidationError,
   ReplaceContractBillRowsInput,
   ReplaceContractBillRowsReadModel
 } from "../../../api/contract-workbench.api";
-import type { WorkbenchBill, WorkbenchBillColumn, WorkbenchBillRow } from "./contract-bill-editor";
+import type {
+  WorkbenchBill,
+  WorkbenchBillColumn,
+  WorkbenchBillRemainderCancellationFacts,
+  WorkbenchBillRow
+} from "./contract-bill-editor";
 
 export interface ContractBillCandidateRow {
   clientRowKey: string;
@@ -29,6 +38,8 @@ export interface ContractBillCandidateRow {
   isProvisional: boolean;
   settlementBasis: string;
   customData: Record<string, string>;
+  availableActions?: DetailActionReadModel[];
+  remainderCancellation?: WorkbenchBillRemainderCancellationFacts;
 }
 
 export interface ContractBillCellError {
@@ -116,6 +127,8 @@ export function copyBillCandidateRow(
   delete copied.taxInclusiveAmountCents;
   delete copied.taxExclusiveAmountCents;
   delete copied.taxAmountCents;
+  delete copied.availableActions;
+  delete copied.remainderCancellation;
   return [
     ...rows,
     copied
@@ -126,8 +139,40 @@ export function removeBillCandidateRow(
   rows: ContractBillCandidateRow[],
   clientRowKey: string
 ): ContractBillCandidateRow[] {
-  if (!rows.some((row) => row.clientRowKey === clientRowKey)) return rows;
+  const selected = rows.find((row) => row.clientRowKey === clientRowKey);
+  if (!selected || rowHasRemainderCancellationCapability(selected)) return rows;
   return rows.filter((row) => row.clientRowKey !== clientRowKey);
+}
+
+export function rowHasRemainderCancellationCapability(
+  row: Pick<
+    ContractBillCandidateRow,
+    "availableActions" | "remainderCancellation"
+  >
+): boolean {
+  return Boolean(
+    row.remainderCancellation ||
+    row.availableActions?.some(
+      (action) => action.key === "contract-bill.remainder-cancellation"
+    )
+  );
+}
+
+export function preservesGovernedBillRowKeys(
+  currentRows: readonly ContractBillCandidateRow[],
+  candidateRows: readonly ContractBillCandidateRow[]
+): boolean {
+  const candidateRowKeyCounts = new Map<string, number>();
+  for (const row of candidateRows) {
+    const rowKey = row.rowKey?.trim();
+    if (!rowKey) continue;
+    candidateRowKeyCounts.set(rowKey, (candidateRowKeyCounts.get(rowKey) ?? 0) + 1);
+  }
+  return currentRows.every((row) => {
+    if (!rowHasRemainderCancellationCapability(row)) return true;
+    const rowKey = row.rowKey?.trim();
+    return Boolean(rowKey && candidateRowKeyCounts.get(rowKey) === 1);
+  });
 }
 
 export function moveBillCandidateRow(
@@ -191,7 +236,9 @@ export function applyExcelCandidateRows(
   importedRows: ContractBillCandidateRow[],
   confirmed: boolean
 ): ContractBillCandidateRow[] {
-  if (!confirmed) return currentRows;
+  if (!confirmed || !preservesGovernedBillRowKeys(currentRows, importedRows)) {
+    return currentRows;
+  }
   return importedRows.map(cloneCandidateRow);
 }
 
@@ -356,7 +403,13 @@ function candidateFromWorkbenchRow(row: WorkbenchBillRow, clientRowKey: string):
     taxAmountCents: row.taxAmountCents ?? null,
     isProvisional: Boolean(row.isProvisional),
     settlementBasis: textValue(row.settlementBasis),
-    customData: stringRecord(row.customData)
+    customData: stringRecord(row.customData),
+    ...(Array.isArray(row.availableActions)
+      ? { availableActions: row.availableActions.map((action) => ({ ...action })) }
+      : {}),
+    ...(row.remainderCancellation
+      ? { remainderCancellation: { ...row.remainderCancellation } }
+      : {})
   };
 }
 
@@ -419,6 +472,8 @@ function cloneCandidateRow(row: ContractBillCandidateRow): ContractBillCandidate
   delete candidate.taxInclusiveAmountCents;
   delete candidate.taxExclusiveAmountCents;
   delete candidate.taxAmountCents;
+  delete candidate.availableActions;
+  delete candidate.remainderCancellation;
   return { ...candidate, customData: { ...candidate.customData } };
 }
 

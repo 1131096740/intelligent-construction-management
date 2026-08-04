@@ -257,9 +257,11 @@
             <t-button
               size="small"
               variant="outline"
-              @click="returnToContractDetail"
+              @click="historicalTakeoverRouteRequired
+                ? returnToHistoricalTakeover()
+                : returnToContractDetail()"
             >
-              返回合同详情
+              {{ historicalTakeoverRouteRequired ? "返回历史合同接管" : "返回合同详情" }}
             </t-button>
           </div>
         </template>
@@ -310,6 +312,7 @@
             转移负责人
           </t-button>
           <t-button
+            v-if="contractDraftOperationAvailableActions.includes('save_contract_draft')"
             size="small"
             variant="outline"
             :disabled="editorDisabled"
@@ -319,7 +322,7 @@
             保存草稿
           </t-button>
           <t-button
-            v-if="editable"
+            v-if="contractDraftOperationAvailableActions.includes('submit_contract_draft')"
             size="small"
             theme="primary"
             :loading="submissionBusy"
@@ -339,7 +342,12 @@
         class="workbench-governance-alert"
       >
         <template
-          v-if="leaseCanTakeOver"
+          v-if="
+            leaseCanTakeOver &&
+              contractDraftOperationAvailableActions.includes(
+                'take_over_contract_draft_edit_lease'
+              )
+          "
           #operation
         >
           <t-button
@@ -355,14 +363,15 @@
       <t-alert
         v-if="pendingLocalRecovery"
         theme="warning"
-        title="发现旧服务端修订上的本机副本"
-        message="服务端修订已更新，系统没有自动覆盖当前数据。请先比较，再决定恢复本机副本或放弃副本。"
+        :title="localRecoveryError ? '本机副本已被安全阻止' : '发现旧服务端修订上的本机副本'"
+        :message="localRecoveryError || '服务端修订已更新，系统没有自动覆盖当前数据。请先比较，再决定恢复本机副本或放弃副本。'"
         class="workbench-governance-alert"
       >
         <template #operation>
           <t-space>
             <t-button
               size="small"
+              :disabled="Boolean(localRecoveryError)"
               @click="restorePendingLocalRecovery"
             >
               恢复本机副本
@@ -404,13 +413,43 @@
         </div>
       </div>
 
-      <BusinessDraftAction
-        v-if="workbench && contractDraftActions.length"
-        :actions="contractDraftActions"
-        :blocked-reasons="workbench.lifecycleBlockers ?? []"
-        :subject="contractDraftActionSubject"
-        :execute="executeContractDraftAction"
-      />
+      <section
+        v-if="
+          workbench &&
+            (
+              contractDraftActionEnabled('delete_pristine_draft') ||
+              contractDraftActionEnabled('abandon_application') ||
+              workbench.lifecycleBlockers?.length
+            )
+        "
+        class="contract-draft-lifecycle-actions"
+      >
+        <t-alert
+          v-for="reason in workbench.lifecycleBlockers ?? []"
+          :key="reason"
+          theme="warning"
+          title="当前操作受阻"
+          :message="reason"
+        />
+        <div class="contract-draft-lifecycle-buttons">
+          <t-button
+            v-if="contractDraftActionEnabled('delete_pristine_draft')"
+            theme="danger"
+            :disabled="contractDraftLifecycleActionBusy"
+            @click="openDeletePristineDraft"
+          >
+            {{ deletePristineDraftConfig.label }}
+          </t-button>
+          <t-button
+            v-if="contractDraftActionEnabled('abandon_application')"
+            theme="danger"
+            :disabled="contractDraftLifecycleActionBusy"
+            @click="openAbandonApplication"
+          >
+            {{ abandonApplicationConfig.label }}
+          </t-button>
+        </div>
+      </section>
 
       <t-alert
         v-if="workbench && !exactVersionError && isChangeVersion"
@@ -445,6 +484,8 @@
         :bill="focusedBill"
         :contract-version-id="workbench?.version.id ?? ''"
         :disabled="editorDisabled"
+        :action-disabled="!contractDraftActionEnabled('contract-bill.remainder-cancellation')"
+        :action-handler="executeFocusedBillRemainderCancellation"
         @close="requestBillFocusClose"
         @update:rows="updateFocusedBillRows"
         @edited="markDirty('bills')"
@@ -484,6 +525,7 @@
 
           <ContractNegotiationCanvas
             v-if="activeSection === 'negotiation_documents'"
+            :version-id="workbench?.version.id ?? ''"
             :selected="selectedNegotiation"
             :readiness="workbench?.readiness"
             :disabled="editorDisabled"
@@ -544,7 +586,7 @@
                   <t-select
                     :value="workbench.contract.contractTypeKey"
                     :options="contractTypeOptions"
-                    :disabled="editorDisabled || migrationBusy"
+                    :disabled="editorDisabled || migrationBusy || !contractDraftOperationAvailableActions.includes('preview_contract_type_change')"
                     placeholder="切换合同类型"
                     @change="onExistingTypeChange"
                   />
@@ -571,6 +613,7 @@
               >
                 <ContractPartySection
                   :parties="aggregateModel.parties"
+                  :contract-version-id="workbench?.version.id ?? ''"
                   :disabled="editorDisabled || isChangeVersion"
                   @update:parties="updateParties"
                   @edited="markDirty('parties')"
@@ -618,7 +661,9 @@
                   v-if="isChangeVersion"
                   :contract-version-id="workbench?.version.id ?? ''"
                   :revision="workbench?.version.draftRevision ?? 0"
-                  :disabled="editorDisabled"
+                  :can-save="contractDraftOperationAvailableActions.includes('save_contract_bill_transitions')"
+                  :can-discard="contractDraftOperationAvailableActions.includes('discard_contract_bill_transitions')"
+                  :can-confirm="contractDraftOperationAvailableActions.includes('confirm_contract_bill_transitions')"
                   @changed="reloadCurrent"
                 />
               </section>
@@ -876,6 +921,72 @@
       @confirm="confirmLeaseTakeover"
     />
 
+    <SensitiveActionDialog
+      v-if="contractDraftActionEnabled('delete_pristine_draft')"
+      v-model="deletePristineDraftVisible"
+      :title="deletePristineDraftConfig.label"
+      :description="deletePristineDraftConfig.description"
+      :confirm-text="deletePristineDraftConfig.confirmText"
+      confirm-theme="danger"
+      :require-reason="contractDraftActionRequiresComment('delete_pristine_draft')"
+      :require-password="contractDraftActionRequiresPassword('delete_pristine_draft')"
+      :loading="contractDraftLifecycleActionBusy"
+      :error="deletePristineDraftError"
+      @confirm="confirmDeletePristineDraft"
+    >
+      <dl class="contract-draft-lifecycle-subject">
+        <div>
+          <dt>业务编号</dt>
+          <dd>{{ contractDraftActionSubject.businessCode }}</dd>
+        </div>
+        <div>
+          <dt>业务名称</dt>
+          <dd>{{ contractDraftActionSubject.name }}</dd>
+        </div>
+        <div>
+          <dt>最后保存时间</dt>
+          <dd>{{ contractDraftActionSubject.lastSavedAt }}</dd>
+        </div>
+        <div>
+          <dt>影响范围</dt>
+          <dd>{{ contractDraftActionSubject.impactScope }}</dd>
+        </div>
+      </dl>
+    </SensitiveActionDialog>
+
+    <SensitiveActionDialog
+      v-if="contractDraftActionEnabled('abandon_application')"
+      v-model="abandonApplicationVisible"
+      :title="abandonApplicationConfig.label"
+      :description="abandonApplicationConfig.description"
+      :confirm-text="abandonApplicationConfig.confirmText"
+      confirm-theme="danger"
+      :require-reason="contractDraftActionRequiresComment('abandon_application')"
+      :require-password="contractDraftActionRequiresPassword('abandon_application')"
+      :loading="contractDraftLifecycleActionBusy"
+      :error="abandonApplicationError"
+      @confirm="confirmAbandonApplication"
+    >
+      <dl class="contract-draft-lifecycle-subject">
+        <div>
+          <dt>业务编号</dt>
+          <dd>{{ contractDraftActionSubject.businessCode }}</dd>
+        </div>
+        <div>
+          <dt>业务名称</dt>
+          <dd>{{ contractDraftActionSubject.name }}</dd>
+        </div>
+        <div>
+          <dt>最后保存时间</dt>
+          <dd>{{ contractDraftActionSubject.lastSavedAt }}</dd>
+        </div>
+        <div>
+          <dt>影响范围</dt>
+          <dd>{{ contractDraftActionSubject.impactScope }}</dd>
+        </div>
+      </dl>
+    </SensitiveActionDialog>
+
     <t-dialog
       v-model:visible="navigationConfirmVisible"
       :header="navigationPrompt?.title ?? ''"
@@ -934,23 +1045,156 @@
 import type {
   ContractReadinessResult,
   ContractSettlementMode,
-  ContractWorkbenchReadModel
+  ContractWorkbenchReadModel,
+  DetailActionReadModel
 } from "@jiangkong/shared-domain";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  watch
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import {
-  abandonContractDraft,
   applyContractTypeChange,
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
+  executeContractBillRemainderCancellation,
+  executeContractDraftLifecycleAction,
+  fetchContractDraftOperationCapabilities,
+  fetchContractDraftTransferCapabilities,
+  fetchContractDraftWorkbench,
   listPublishedContractTemplates,
   previewContractTypeChange,
   transferContractDraft,
   type ContractDraftChangedSection,
+  type ContractDraftLifecycleAction,
+  type ContractDraftLifecycleOperationContext,
   type ContractDraftPartyModel,
+  type ContractBillRemainderCancellationOperationContext,
+  type ExecuteContractDraftLifecycleActionResult,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
+
+async function checkContractSubmissionReadinessWithCapability(
+  contractVersionId: string
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "check_contract_submission_readiness"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能检查合同提交条件");
+  }
+  return checkContractSubmissionReadiness(contractVersionId);
+}
+
+async function confirmContractSettlementModeWithCapability(
+  contractVersionId: string,
+  body: { expectedRevision: number; settlementMode: ContractSettlementMode }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "confirm_contract_settlement_mode"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能确认合同结算方式");
+  }
+  return confirmContractSettlementMode(contractVersionId, body);
+}
+
+async function previewContractTypeChangeWithCapability(
+  contractVersionId: string,
+  body: {
+    targetBusinessTemplateVersionId: string;
+    expectedRevision: number;
+  }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "preview_contract_type_change"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能预览合同类型迁移");
+  }
+  return previewContractTypeChange(contractVersionId, body);
+}
+
+async function applyContractTypeChangeWithCapability(
+  contractVersionId: string,
+  body: {
+    targetBusinessTemplateVersionId: string;
+    expectedRevision: number;
+  }
+) {
+  const operationCapabilities =
+    await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion =
+    operationCapabilities.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed =
+    operationCapabilities.draftOperationAvailableActions.includes(
+      "apply_contract_type_change"
+    );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能执行合同类型迁移");
+  }
+  return applyContractTypeChange(contractVersionId, body);
+}
+
+async function transferContractDraftWithCapability(
+  contractId: string,
+  contractVersionId: string,
+  toUserId: string
+) {
+  const capability = await fetchContractDraftTransferCapabilities(contractId);
+  const matchesRequestedContract = capability.contractId === contractId;
+  if (!matchesRequestedContract) {
+    throw new Error("合同草稿能力响应合同不一致");
+  }
+  const matchesRequestedVersion =
+    capability.contractVersionId === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同草稿能力响应版本不一致");
+  }
+  const operationAllowed = capability.availableActions.includes(
+    "transfer_contract_draft"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能转移合同草稿负责人");
+  }
+  return transferContractDraft(contractId, {
+    toUserId,
+    expectedContractVersionId: contractVersionId
+  });
+}
 import {
   fetchApprovalDelegationUserOptions,
   fetchContractCreateProjects
@@ -960,9 +1204,7 @@ import {
   recommendContractScenarioTemplates
 } from "../../api/contract-scenario.api";
 import ContractTemplateUsagePreviewDrawer from "../../components/ContractTemplateUsagePreviewDrawer.vue";
-import BusinessDraftAction, {
-  type BusinessDraftActionRequest
-} from "../../components/BusinessDraftAction.vue";
+import { businessDraftActionConfig } from "../../components/business-draft-action.config";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import {
@@ -970,6 +1212,7 @@ import {
   publishedTemplateForSelection
 } from "../contract-templates/contract-template.config";
 import { contractTypeLabel, contractVersionStatusLabel } from "./contract-labels";
+import { historicalTakeoverReturnTargetFromError } from "./contract-list.config";
 import { centsTextToYuanText } from "../../lib/money";
 import {
   contractApprovalRouteText,
@@ -985,7 +1228,10 @@ import {
 } from "./contract-scenario.state";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
-import ContractBillFocusEditor from "./workbench/ContractBillFocusEditor.vue";
+import ContractBillFocusEditor, {
+  type ContractBillRemainderCancellationExecutionResult,
+  type ContractBillRemainderCancellationRequest
+} from "./workbench/ContractBillFocusEditor.vue";
 import ContractBillTransitionsSection from "./workbench/ContractBillTransitionsSection.vue";
 import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
@@ -1032,7 +1278,10 @@ import type {
   ContractOfflineRevisionReadModel
 } from "../../api/contract-negotiation.api";
 import type { ContractBillCandidateRow } from "./workbench/contract-bill-grid";
-import type { WorkbenchBill } from "./workbench/contract-bill-editor";
+import {
+  mergeFocusedBillAggregate,
+  type WorkbenchBill
+} from "./workbench/contract-bill-editor";
 import {
   useContractDraft,
   type ContractDraftModel
@@ -1077,8 +1326,10 @@ const {
   formalSaveCompleted,
   lastSavedAt,
   lease,
+  currentLeaseToken,
   canEdit,
   pendingLocalRecovery,
+  localRecoveryError,
   saveNow,
   queuePreviewForCurrentRevision,
   submitNow,
@@ -1110,6 +1361,24 @@ const leaveSave = createContractWorkbenchLeaveSave({
   state: () => navigationState.value,
   flushBeforeLeave: saveNow
 });
+const contractDraftAvailableActions =
+  shallowRef<DetailActionReadModel[] | null>(null);
+const contractDraftOperationAvailableActions = shallowRef<string[]>([]);
+const contractDraftLifecycleVersionId = computed(
+  () => workbench.value?.version.id ?? ""
+);
+const deletePristineDraftConfig =
+  businessDraftActionConfig.delete_pristine_draft;
+const abandonApplicationConfig =
+  businessDraftActionConfig.abandon_application;
+const deletePristineDraftVisible = ref(false);
+const abandonApplicationVisible = ref(false);
+const contractDraftLifecycleActionBusy = ref(false);
+const deletePristineDraftError = ref("");
+const abandonApplicationError = ref("");
+let contractWorkbenchComponentAlive = true;
+let contractBillRemainderOperationSequence = 0;
+let activeContractBillRemainderOperationId = 0;
 
 useUnsavedChangesGuard({
   isDirty: () =>
@@ -1146,7 +1415,6 @@ async function flushNavigationAndLeave() {
   resolve?.(true);
 }
 
-const contractDraftActions = computed(() => workbench.value?.availableActions ?? []);
 const contractDraftActionSubject = computed(() => ({
   businessCode: workbench.value?.contract.code ?? workbench.value?.contract.temporaryCode ?? "—",
   name: workbench.value?.contract.name ?? "合同草稿",
@@ -1156,35 +1424,187 @@ const contractDraftActionSubject = computed(() => ({
     : "结束当前纯净草稿；不影响正式合同"
 }));
 
-async function executeContractDraftAction(request: BusinessDraftActionRequest) {
-  if (
-    request.action !== "delete_pristine_draft" &&
-    request.action !== "abandon_application"
-  ) {
-    throw new Error("当前合同草稿不支持该操作，请刷新后重试");
-  }
-  const current = workbench.value;
-  if (!current) throw new Error("合同草稿尚未加载，请刷新后重试");
-  const allowed = contractDraftActions.value.find(
-    (action) => action.key === request.action && action.enabled
+const deletePristineDraftCapability = computed(() =>
+  contractDraftAvailableActions.value?.find(
+    (action) => action.key === "delete_pristine_draft" && action.enabled
+  )
+);
+const abandonApplicationCapability = computed(() =>
+  contractDraftAvailableActions.value?.find(
+    (action) => action.key === "abandon_application" && action.enabled
+  )
+);
+const deletePristineDraftRequiresComment = computed(
+  () => deletePristineDraftCapability.value?.requiresComment === true
+);
+const deletePristineDraftRequiresPassword = computed(
+  () => deletePristineDraftCapability.value?.requiresPassword === true
+);
+const abandonApplicationRequiresComment = computed(
+  () => abandonApplicationCapability.value?.requiresComment === true
+);
+const abandonApplicationRequiresPassword = computed(
+  () => abandonApplicationCapability.value?.requiresPassword === true
+);
+
+function contractDraftActionEnabled(key: string) {
+  return Boolean(
+    contractDraftAvailableActions.value?.some(
+      (action) => action.key === key && action.enabled
+    )
   );
-  if (!allowed) throw new Error("当前结束操作已不可用，请刷新合同工作台后重试");
-  if (!suspendAutosaveForLifecycleAction()) {
-    throw new Error("合同草稿正在保存，请等待保存完成后再结束草稿");
+}
+
+function contractDraftActionRequiresComment(key: ContractDraftLifecycleAction) {
+  return Boolean(
+    contractDraftAvailableActions.value?.some(
+      (action) =>
+        action.key === key &&
+        action.enabled &&
+        action.requiresComment
+    )
+  );
+}
+
+function contractDraftActionRequiresPassword(key: ContractDraftLifecycleAction) {
+  return Boolean(
+    contractDraftAvailableActions.value?.some(
+      (action) =>
+        action.key === key &&
+        action.enabled &&
+        action.requiresPassword
+    )
+  );
+}
+
+function openDeletePristineDraft() {
+  deletePristineDraftError.value = "";
+  deletePristineDraftVisible.value = true;
+}
+
+function openAbandonApplication() {
+  abandonApplicationError.value = "";
+  abandonApplicationVisible.value = true;
+}
+
+function contractDraftLifecycleContextCurrent(
+  context: ContractDraftLifecycleOperationContext
+) {
+  return contractWorkbenchComponentAlive &&
+    context.generation === workbenchLoadRequestId &&
+    contractId.value === context.contractId &&
+    queryText(route.query.versionId).trim() === context.versionId &&
+    workbench.value?.contract.id === context.contractId &&
+    workbench.value.version.id === context.versionId &&
+    savedRevision.value === context.expectedRevision;
+}
+
+async function finishContractDraftLifecycleAction(
+  result: ExecuteContractDraftLifecycleActionResult
+) {
+  if (result.status === "stale") return;
+  discardLocalState();
+  navigationBypass.value = true;
+  await router.push({ path: "/contracts", query: { view: "ended" } });
+}
+
+function hideInvalidContractDraftLifecycleCapability(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+  if (
+    code === "CONTRACT_DRAFT_LIFECYCLE_INVALID_CONTEXT" ||
+    code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
+    code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+  ) {
+    contractDraftAvailableActions.value = null;
+    contractDraftOperationAvailableActions.value = [];
+    deletePristineDraftVisible.value = false;
+    abandonApplicationVisible.value = false;
   }
-  try {
-    await abandonContractDraft(current.version.id, {
-      expectedRevision: savedRevision.value,
-      action: request.action,
-      ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
-    });
-    discardLocalState();
-    navigationBypass.value = true;
-    await router.push({ path: "/contracts", query: { view: "ended" } });
-  } catch (error) {
-    resumeAutosaveAfterLifecycleAction();
-    throw error;
-  }
+}
+
+async function finishDeletePristineDraft(
+  result: ExecuteContractDraftLifecycleActionResult
+) {
+  await finishContractDraftLifecycleAction(result);
+  deletePristineDraftVisible.value = false;
+}
+
+async function finishAbandonApplication(
+  result: ExecuteContractDraftLifecycleActionResult
+) {
+  await finishContractDraftLifecycleAction(result);
+  abandonApplicationVisible.value = false;
+}
+
+function setDeletePristineDraftError(error: unknown) {
+  deletePristineDraftError.value =
+    error instanceof Error ? error.message : "删除草稿失败，请刷新后重试";
+}
+
+function setAbandonApplicationError(error: unknown) {
+  abandonApplicationError.value =
+    error instanceof Error ? error.message : "放弃申请失败，请刷新后重试";
+}
+
+function settleContractDraftLifecycleAction() {
+  contractDraftLifecycleActionBusy.value = false;
+}
+
+async function confirmDeletePristineDraft(request: {
+  reason: string;
+  password: string;
+}) {
+  contractDraftLifecycleActionBusy.value = true;
+  deletePristineDraftError.value = "";
+  await executeContractDraftLifecycleAction({
+    generation: workbenchLoadRequestId,
+    contractId: contractId.value,
+    versionId: contractDraftLifecycleVersionId.value,
+    expectedRevision: savedRevision.value,
+    action: "delete_pristine_draft",
+    reason: request.reason,
+    currentPassword: request.password,
+    expectedRequiresComment: deletePristineDraftRequiresComment.value,
+    expectedRequiresPassword: deletePristineDraftRequiresPassword.value,
+    isCurrent: contractDraftLifecycleContextCurrent,
+    beforeWrite: suspendAutosaveForLifecycleAction,
+    onWriteFailure: resumeAutosaveAfterLifecycleAction,
+    onResult: finishDeletePristineDraft,
+    onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
+    onOperationFailure: setDeletePristineDraftError,
+    onOperationSettled: settleContractDraftLifecycleAction,
+    swallowOperationFailure: true
+  });
+}
+
+async function confirmAbandonApplication(request: {
+  reason: string;
+  password: string;
+}) {
+  contractDraftLifecycleActionBusy.value = true;
+  abandonApplicationError.value = "";
+  await executeContractDraftLifecycleAction({
+    generation: workbenchLoadRequestId,
+    contractId: contractId.value,
+    versionId: contractDraftLifecycleVersionId.value,
+    expectedRevision: savedRevision.value,
+    action: "abandon_application",
+    reason: request.reason,
+    currentPassword: request.password,
+    expectedRequiresComment: abandonApplicationRequiresComment.value,
+    expectedRequiresPassword: abandonApplicationRequiresPassword.value,
+    isCurrent: contractDraftLifecycleContextCurrent,
+    beforeWrite: suspendAutosaveForLifecycleAction,
+    onWriteFailure: resumeAutosaveAfterLifecycleAction,
+    onResult: finishAbandonApplication,
+    onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
+    onOperationFailure: setAbandonApplicationError,
+    onOperationSettled: settleContractDraftLifecycleAction,
+    swallowOperationFailure: true
+  });
 }
 
 // Sections are presentational: they emit a patch instead of mutating the shared
@@ -1238,6 +1658,11 @@ const manualSaveMessage = ref("");
 const sessionLastSavedAt = ref<Date | null>(null);
 const sessionSavedRevision = ref(0);
 const exactVersionError = ref("");
+const historicalTakeoverRouteRequired = ref(false);
+const historicalTakeoverReturnTarget = ref<{
+  projectId: string;
+  takeoverId: string;
+} | null>(null);
 const transferVisible = ref(false);
 const transferUserId = ref("");
 const transferUsers = ref<Array<{ id: string; name: string }>>([]);
@@ -1517,19 +1942,7 @@ const focusedBill = computed<WorkbenchBill | null>(() => {
     (bill) => bill.billKey === base.billKey
   );
   if (!draftBill) return base;
-  return {
-    ...base,
-    revision: draftBill.expectedRevision,
-    rows: draftBill.rows.map((row) => ({
-      ...row,
-      customData:
-        row["customData"] !== null &&
-        typeof row["customData"] === "object" &&
-        !Array.isArray(row["customData"])
-          ? { ...row["customData"] }
-          : {}
-    })) as WorkbenchBill["rows"]
-  };
+  return mergeFocusedBillAggregate(base, draftBill);
 });
 
 function openBillFocus(billKey: string, openImport = false) {
@@ -1625,9 +2038,13 @@ function onNegotiationChanged() {
   void reloadCurrent();
 }
 
-// A contract director may view + transfer even when they cannot edit. We allow
-// transfer whenever a contract is loaded; backend enforces the actual role.
-const canTransfer = computed(() => Boolean(workbench.value));
+// A contract director may transfer even when they cannot edit. The backend
+// publishes that capability explicitly and the mutation rechecks it.
+const canTransfer = computed(() =>
+  contractDraftOperationAvailableActions.value.includes(
+    "transfer_contract_draft"
+  )
+);
 const transferUserOptions = computed(() =>
   transferUsers.value.map((user) => ({ label: user.name, value: user.id }))
 );
@@ -1685,6 +2102,12 @@ watch([saveState, isDirty], ([state, draftDirty]) => {
 });
 
 onBeforeUnmount(() => {
+  contractWorkbenchComponentAlive = false;
+  workbenchLoadRequestId += 1;
+  contractDraftAvailableActions.value = null;
+  contractDraftOperationAvailableActions.value = [];
+  deletePristineDraftVisible.value = false;
+  abandonApplicationVisible.value = false;
   clearManualSaveMessage();
   cancelPendingNavigation();
   disconnectSectionObserver();
@@ -2055,7 +2478,7 @@ async function onExistingTypeChange(value: string) {
       return;
     }
 
-    const preview = (await previewContractTypeChange(wb.version.id, {
+    const preview = (await previewContractTypeChangeWithCapability(wb.version.id, {
       targetBusinessTemplateVersionId: targetTemplateVersionId,
       expectedRevision: wb.version.draftRevision
     })) as Record<string, unknown>;
@@ -2100,7 +2523,7 @@ async function onConfirmMigration() {
   migrationBusy.value = true;
   errorMessage.value = "";
   try {
-    await applyContractTypeChange(wb.version.id, {
+    await applyContractTypeChangeWithCapability(wb.version.id, {
       targetBusinessTemplateVersionId: migrationTargetTemplateVersionId.value,
       expectedRevision: wb.version.draftRevision
     });
@@ -2130,7 +2553,12 @@ async function onCreateDraft() {
 }
 
 async function onSave() {
-  if (writeLocked.value) return;
+  if (
+    writeLocked.value ||
+    !contractDraftOperationAvailableActions.value.includes(
+      "save_contract_draft"
+    )
+  ) return;
   clearManualSaveMessage();
   errorMessage.value = "";
   const wasFormallySaved = formalSaveCompleted.value;
@@ -2200,7 +2628,7 @@ async function onConfirmSettlementMode(mode: ContractSettlementMode) {
     return;
   }
   try {
-    await confirmContractSettlementMode(current.version.id, {
+    await confirmContractSettlementModeWithCapability(current.version.id, {
       expectedRevision: current.version.draftRevision,
       settlementMode: mode
     });
@@ -2236,6 +2664,154 @@ async function prepareGovernanceMutation() {
   }
 }
 
+function contractBillRemainderContextCurrent(
+  context: ContractBillRemainderCancellationOperationContext
+) {
+  const currentBill = focusedBill.value;
+  return contractBillRemainderRouteCurrent(context) &&
+    context.routeGeneration === workbenchLoadRequestId &&
+    workbench.value?.contract.id === context.contractId &&
+    workbench.value.version.id === context.versionId &&
+    currentBill?.id === context.billId &&
+    currentBill.billKey === context.billKey &&
+    currentBill.rows.some((row) => row.rowKey === context.rowKey) &&
+    currentLeaseToken() === context.leaseToken;
+}
+
+function contractBillRemainderRouteCurrent(
+  context: ContractBillRemainderCancellationOperationContext
+) {
+  return contractWorkbenchComponentAlive &&
+    context.operationId === activeContractBillRemainderOperationId &&
+    authStore.user?.id === context.ownerScope &&
+    contractId.value === context.contractId &&
+    queryText(route.query.versionId).trim() === context.versionId;
+}
+
+function executeFocusedBillRemainderCancellation(
+  request: ContractBillRemainderCancellationRequest
+): Promise<ContractBillRemainderCancellationExecutionResult> {
+  let context: ContractBillRemainderCancellationOperationContext | null = null;
+  let operationId = 0;
+  return executeContractBillRemainderCancellation({
+      capture: () => {
+        if (governanceMutationLocked.value) {
+          throw new Error("另一项合同治理操作正在进行，请稍后重试");
+        }
+        const ownerScope = authStore.user?.id?.trim() ?? "";
+        const leaseToken = currentLeaseToken();
+        const currentVersionId = workbench.value?.version.id ?? "";
+        if (!ownerScope || !leaseToken || !currentVersionId) {
+          throw new Error("当前页面未取得有效编辑租约，本次取消未执行");
+        }
+        operationId = ++contractBillRemainderOperationSequence;
+        context = {
+          ownerScope,
+          routeGeneration: workbenchLoadRequestId,
+          operationId,
+          contractId: contractId.value,
+          versionId: currentVersionId,
+          billId: request.billId,
+          billKey: request.billKey,
+          rowKey: request.rowKey,
+          leaseToken,
+          reason: request.reason
+        };
+        activeContractBillRemainderOperationId = operationId;
+        governanceMutationLocked.value = true;
+        errorMessage.value = "";
+        return context;
+      },
+      flush: async () => {
+        try {
+          const saved = await saveNow();
+          return {
+            saved,
+            ...(saved ? { expectedDraftRevision: savedRevision.value } : {}),
+            ...(!saved && saveError.value ? { error: saveError.value } : {})
+          };
+        } catch (error) {
+          return {
+            saved: false,
+            error: error instanceof Error
+              ? error.message
+              : "合同草稿未保存成功"
+          };
+        }
+      },
+      isCurrent: contractBillRemainderContextCurrent
+    })
+    .then(async (
+      result
+    ): Promise<ContractBillRemainderCancellationExecutionResult> => {
+    const operationContext = context;
+    if (!operationContext) {
+      throw new Error("当前合同页面已变化，本次取消已停止");
+    }
+    if (result.status === "completed") {
+      if (contractBillRemainderRouteCurrent(operationContext)) {
+        try {
+          await loadExpectedWorkbench(operationContext.contractId);
+        } catch (reloadError) {
+          return {
+            status: "submitted_refresh_failed",
+            message:
+              "操作已提交，但工作台刷新失败；请手动刷新核对，不要重复提交。" +
+              (reloadError instanceof Error && reloadError.message.trim()
+                ? `（${reloadError.message}）`
+                : "")
+          };
+        }
+        if (contractBillRemainderRouteCurrent(operationContext)) {
+          showManualSaveMessage("未实施余量已按历史完成量收敛，工作台已重新读取。");
+        }
+      }
+      return { status: "completed" };
+    }
+    if (result.status === "not_started" || result.status === "stale") {
+      throw new Error("当前合同页面已变化，本次取消已停止");
+    }
+    if (result.status === "save_failed") throw result.error;
+
+    const code = contractBillRemainderErrorCode(result.error);
+    if (
+      contractBillRemainderRouteCurrent(operationContext) &&
+      (
+        result.resultUnknown ||
+        code === "CONTRACT_BILL_REMAINDER_PREFLIGHT_MISMATCH"
+      )
+    ) {
+      try {
+        await loadExpectedWorkbench(operationContext.contractId);
+      } catch (reloadError) {
+        if (result.resultUnknown) {
+          throw new Error(
+            `取消结果未知，且服务端重新读取失败：${
+              reloadError instanceof Error ? reloadError.message : "请手动刷新核对"
+            }`
+          );
+        }
+      }
+    }
+    throw result.error;
+  })
+    .finally(() => {
+      if (
+        operationId > 0 &&
+        activeContractBillRemainderOperationId === operationId
+      ) {
+        activeContractBillRemainderOperationId = 0;
+        governanceMutationLocked.value = false;
+      }
+    });
+}
+
+function contractBillRemainderErrorCode(error: unknown) {
+  return error && typeof error === "object" && "code" in error
+    ? String(error.code)
+    : "";
+}
+
 async function completeGovernanceMutation(reload: boolean) {
   try {
     if (reload && contractId.value) await loadExpectedWorkbench(contractId.value);
@@ -2245,18 +2821,33 @@ async function completeGovernanceMutation(reload: boolean) {
 }
 
 function requestSubmission() {
+  if (
+    !contractDraftOperationAvailableActions.value.includes(
+      "submit_contract_draft"
+    )
+  ) return;
   submissionError.value = "";
   submissionMessage.value = "";
   submissionConfirmVisible.value = true;
 }
 
 function requestLeaseTakeover() {
+  if (
+    !contractDraftOperationAvailableActions.value.includes(
+      "take_over_contract_draft_edit_lease"
+    )
+  ) return;
   leaseTakeoverError.value = "";
   leaseTakeoverVisible.value = true;
 }
 
 async function confirmLeaseTakeover(values: { password: string }) {
-  if (leaseTakeoverBusy.value) return;
+  if (
+    leaseTakeoverBusy.value ||
+    !contractDraftOperationAvailableActions.value.includes(
+      "take_over_contract_draft_edit_lease"
+    )
+  ) return;
   leaseTakeoverBusy.value = true;
   leaseTakeoverError.value = "";
   try {
@@ -2288,7 +2879,7 @@ async function confirmSubmission() {
   try {
     const current = await prepareGovernanceMutation();
     if (!current) throw new Error("草稿保存失败，本次未提交审批。");
-    const readiness = await checkContractSubmissionReadiness(current.version.id) as {
+    const readiness = await checkContractSubmissionReadinessWithCapability(current.version.id) as {
       ready?: boolean;
       blocking?: unknown[];
       blockingMessages?: string[];
@@ -2342,11 +2933,12 @@ async function onLoadServer() {
 async function onConfirmTransfer() {
   const target = transferUserId.value.trim();
   const id = contractId.value;
-  if (writeLocked.value || !target || !id) {
+  const versionId = workbench.value?.version.id;
+  if (writeLocked.value || !target || !id || !versionId) {
     return;
   }
   try {
-    await transferContractDraft(id, { toUserId: target });
+    await transferContractDraftWithCapability(id, versionId, target);
     transferVisible.value = false;
     transferUserId.value = "";
     await loadExpectedWorkbench(id);
@@ -2356,13 +2948,37 @@ async function onConfirmTransfer() {
 }
 
 async function loadExisting() {
-  if (!contractId.value) {
+  const loadContext = {
+    contractId: contractId.value,
+    versionId: queryText(route.query.versionId).trim()
+  };
+  if (!loadContext.contractId) {
     return;
   }
   try {
     exactVersionError.value = "";
-    await loadExpectedWorkbench(contractId.value);
+    historicalTakeoverRouteRequired.value = false;
+    historicalTakeoverReturnTarget.value = null;
+    await loadExpectedWorkbench(loadContext.contractId);
   } catch (error) {
+    if (!contractWorkbenchLoadContextCurrent(loadContext)) return;
+    const code = error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+    const message = error instanceof Error ? error.message : "";
+    if (
+      code === "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED" ||
+      message.includes("历史接管草稿必须在历史接管工作台办理")
+    ) {
+      historicalTakeoverRouteRequired.value = true;
+      historicalTakeoverReturnTarget.value =
+        historicalTakeoverReturnTargetFromError(error);
+      exactVersionError.value =
+        "这是一份历史合同接管记录，不能按新签合同办理。请返回历史合同接管工作台继续处理。";
+      workbench.value = null;
+      errorMessage.value = "";
+      return;
+    }
     if (
       error instanceof Error &&
       error.message.includes("响应版本与请求版本不一致")
@@ -2375,27 +2991,65 @@ async function loadExisting() {
   }
 }
 
+function contractWorkbenchLoadContextCurrent(context: {
+  contractId: string;
+  versionId: string;
+}) {
+  return contractId.value === context.contractId &&
+    queryText(route.query.versionId).trim() === context.versionId;
+}
+
 async function loadExpectedWorkbench(id: string) {
   const requestId = ++workbenchLoadRequestId;
   const expectedVersionId = queryText(route.query.versionId).trim();
+  contractDraftAvailableActions.value = null;
+  contractDraftOperationAvailableActions.value = [];
+  deletePristineDraftVisible.value = false;
+  abandonApplicationVisible.value = false;
+  deletePristineDraftError.value = "";
+  abandonApplicationError.value = "";
   if (!expectedVersionId) {
     throw new Error("工作台缺少合同版本编号，已停止读取最新草稿");
   }
   await load(expectedVersionId);
   if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
+  const capability = await fetchContractDraftWorkbench(expectedVersionId);
+  if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
   if (
+    capability.contract.id !== id ||
+    capability.version.id !== expectedVersionId ||
+    capability.version.draftRevision !== savedRevision.value ||
     workbench.value?.contract.id !== id ||
-    workbench.value.version.id !== expectedVersionId
+    workbench.value.version.id !== expectedVersionId ||
+    workbench.value.version.draftRevision !== savedRevision.value
   ) {
     exactVersionError.value =
       "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
     workbench.value = null;
     throw new Error(exactVersionError.value);
   }
+  contractDraftAvailableActions.value = capability.availableActions!;
+  contractDraftOperationAvailableActions.value = Array.isArray(
+    capability.draftOperationAvailableActions
+  )
+    ? capability.draftOperationAvailableActions.filter(
+        (action): action is string => typeof action === "string"
+      )
+    : [];
 }
 
 function returnToContractDetail() {
   void router.push(`/contracts/${contractId.value}`);
+}
+
+function returnToHistoricalTakeover() {
+  const target = historicalTakeoverReturnTarget.value;
+  void router.push(target
+    ? {
+        path: "/历史合同接管",
+        query: { projectId: target.projectId, takeoverId: target.takeoverId }
+      }
+    : "/历史合同接管");
 }
 
 onMounted(() => {
@@ -2419,8 +3073,12 @@ watch(contractId, (next, previous) => {
     clearSessionSaveReceipt();
     focusedBillKey.value = "";
     workbenchLoadRequestId += 1;
+    contractDraftAvailableActions.value = null;
+    contractDraftOperationAvailableActions.value = [];
     workbench.value = null;
     exactVersionError.value = "";
+    historicalTakeoverRouteRequired.value = false;
+    historicalTakeoverReturnTarget.value = null;
     void loadExisting();
   }
 });
@@ -2430,8 +3088,12 @@ watch(() => route.query.versionId, (next, previous) => {
     clearManualSaveMessage();
     clearSessionSaveReceipt();
     workbenchLoadRequestId += 1;
+    contractDraftAvailableActions.value = null;
+    contractDraftOperationAvailableActions.value = [];
     workbench.value = null;
     exactVersionError.value = "";
+    historicalTakeoverRouteRequired.value = false;
+    historicalTakeoverReturnTarget.value = null;
     void loadExisting();
   }
 });
@@ -2731,6 +3393,42 @@ function initializeDraftFromQuery() {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--jg-space-md);
   margin-top: var(--jg-space-md);
+}
+
+.contract-draft-lifecycle-actions {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin-top: var(--jg-space-md);
+}
+
+.contract-draft-lifecycle-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--jg-space-sm);
+}
+
+.contract-draft-lifecycle-subject {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin: 0;
+}
+
+.contract-draft-lifecycle-subject div {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr);
+  gap: var(--jg-space-md);
+}
+
+.contract-draft-lifecycle-subject dt {
+  color: var(--jg-color-text-secondary);
+  font-size: var(--jg-font-size-body);
+}
+
+.contract-draft-lifecycle-subject dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--jg-color-text-primary);
+  overflow-wrap: anywhere;
 }
 
 .change-workbench-banner {

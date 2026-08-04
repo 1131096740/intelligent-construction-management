@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { ContractDraftBillExcelController } from "./contract-draft-bill-excel.controller";
 
 describe("ContractDraftBillExcelController", () => {
@@ -67,5 +68,9 @@ describe("ContractDraftBillExcelController", () => {
         ContractDraftBillExcelController.prototype.previewImport
       )
     ).toBe("contract-drafts/:contractVersionId/bills/:billKey/import-preview");
+    expect(Reflect.getMetadata(
+      REQUIRED_PROJECT_ACTION_KEY,
+      ContractDraftBillExcelController.prototype.previewImport
+    )).toBe("contract.create");
   });
 });

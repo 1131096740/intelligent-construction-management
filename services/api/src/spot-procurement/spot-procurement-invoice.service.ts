@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  ACTION_REQUIRED_ROLES,
   resolveEffectiveRoleKeys,
   type RoleKey,
   type SpotProcurementInvoiceStatus
@@ -23,6 +24,9 @@ const FINANCE_APPEND_ROLES = new Set<RoleKey>([
   "finance_staff",
   "finance_director"
 ]);
+const INVOICE_APPEND_ROLES = new Set<RoleKey>(
+  ACTION_REQUIRED_ROLES["spot_procurement.invoice.append"]
+);
 const OPEN_PROCUREMENT_STATUSES = new Set([
   "approved_in_progress",
   "closed",
@@ -86,6 +90,16 @@ export class SpotProcurementInvoiceService {
             return invoiceReadModel(existing);
           }
           throw new ConflictException("该文件已关联其他付款发票事实");
+        }
+        const activeExecution =
+          await tx.spotProcurementPaymentExecution.findFirst({
+            where: { paymentId: payment.id, voidedAt: null },
+            select: { id: true }
+          });
+        if (!activeExecution) {
+          throw new ConflictException(
+            "付款申请尚无有效实际付款，不能追加发票附件"
+          );
         }
         const file = await this.files.assertFileHasNoBusinessBinding(tx, fileId);
         if (file.uploadedByUserId !== actorUserId) {
@@ -303,8 +317,9 @@ export class SpotProcurementInvoiceService {
     }
     const roles = await this.loadActorRoleKeys(tx, actorUserId, payment.projectId);
     if (
-      actorUserId !== payment.handlerUserId &&
-      !roles.some((role) => FINANCE_APPEND_ROLES.has(role))
+      !roles.some((role) => INVOICE_APPEND_ROLES.has(role)) ||
+      (actorUserId !== payment.handlerUserId &&
+        !roles.some((role) => FINANCE_APPEND_ROLES.has(role)))
     ) {
       throw new ForbiddenException("只有采购经办人或本项目财务人员可以追加发票附件");
     }

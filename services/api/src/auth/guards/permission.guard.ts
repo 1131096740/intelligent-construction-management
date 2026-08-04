@@ -24,7 +24,10 @@ import {
 import { PrismaService } from "../../database/prisma.service";
 import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import type { AuthenticatedRequest } from "../auth.types";
-import { REQUIRED_POSITIONS_KEY } from "../decorators/require-positions.decorator";
+import {
+  ANY_PROJECT_POSITION_SCOPE_KEY,
+  REQUIRED_POSITIONS_KEY
+} from "../decorators/require-positions.decorator";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../decorators/require-project-role.decorator";
 
 @Injectable()
@@ -56,7 +59,13 @@ export class PermissionGuard implements CanActivate {
       throw new ForbiddenException("未获取到登录用户，请重新登录");
     }
 
-    const projectId = await this.extractProjectId(request);
+    const anyProjectPositionScope = this.reflector.getAllAndOverride<boolean>(
+      ANY_PROJECT_POSITION_SCOPE_KEY,
+      [context.getHandler(), context.getClass()]
+    );
+    const projectId = anyProjectPositionScope
+      ? undefined
+      : await this.extractProjectId(request);
     const includeAnyProjectRole =
       !projectId &&
       (Boolean(requiredPositions?.length) && !requiredAction ||
@@ -100,7 +109,8 @@ export class PermissionGuard implements CanActivate {
       if (!canPerform(requiredAction, effectiveRoleKeys)) {
         const delegatedApprovalAllowed =
           governedApprovalAccess === true ||
-          (projectId &&
+          (requiredAction !== "project_expense.approve" &&
+            projectId &&
             this.isDelegatedApprovalAction(requiredAction) &&
             (await this.hasDelegatedProjectActionRole(request.user.id, projectId, requiredAction)));
         if (!delegatedApprovalAllowed) {
@@ -186,7 +196,13 @@ export class PermissionGuard implements CanActivate {
   }
 
   private isDelegatedApprovalAction(action: BusinessAction) {
-    return action === "contract.approve" || action === "settlement.approve" || action === "payment.approve" || action === "expense_claim.approve";
+    return (
+      action === "contract.approve" ||
+      action === "settlement.approve" ||
+      action === "payment.approve" ||
+      action === "project_expense.approve" ||
+      action === "expense_claim.approve"
+    );
   }
 
   private async governedApprovalAccess(
@@ -195,12 +211,22 @@ export class PermissionGuard implements CanActivate {
     roleKeys: RoleKey[],
     projectId?: string
   ): Promise<boolean | null> {
-    const target = request.params?.contractVersionId
+    const target: {
+      businessType: string;
+      businessId: string;
+      flowType?: string;
+    } | null = request.params?.contractVersionId
       ? { businessType: "contract_version", businessId: request.params.contractVersionId }
       : request.params?.settlementId
         ? { businessType: "settlement", businessId: request.params.settlementId }
       : request.params?.paymentId
         ? await this.resolvePaymentApprovalTarget(request.params.paymentId)
+        : request.params?.expenseRequestId
+          ? {
+              businessType: "project_expense_request",
+              businessId: request.params.expenseRequestId,
+              flowType: "project_expense.approve"
+            }
         : request.params?.claimId
           ? { businessType: "expense_claim", businessId: request.params.claimId }
           : null;
@@ -218,6 +244,7 @@ export class PermissionGuard implements CanActivate {
       where: {
         businessType: target.businessType,
         businessId: target.businessId,
+        ...(target.flowType ? { flowType: target.flowType } : {}),
         status: "in_progress"
       },
       orderBy: { createdAt: "desc" },
@@ -226,6 +253,14 @@ export class PermissionGuard implements CanActivate {
     if (!instance || !Array.isArray(instance.frozenNodes)) return null;
     const node = instance.frozenNodes[instance.currentNodeIndex] as FrozenApprovalNode | undefined;
     if (!node || !isGovernedFrozenApprovalNode(node)) return null;
+
+    if (target.businessType === "project_expense_request") {
+      return Boolean(resolveApprovalReviewIdentity({
+        node: { ...node, assignments: [] },
+        actorUserId: userId,
+        actorRoleKeys: roleKeys
+      }));
+    }
 
     const delegationClient = this.prisma as Partial<ActiveApprovalDelegationClient>;
     const delegatorIds = delegationClient.approvalDelegation && delegationClient.user
@@ -333,6 +368,44 @@ export class PermissionGuard implements CanActivate {
       return settlement?.projectId;
     }
 
+    const contractBillIdFromParams = request.params?.billId;
+    if (contractBillIdFromParams) {
+      return this.extractProjectIdFromContractBill(contractBillIdFromParams);
+    }
+
+    const targetContractVersionId = request.params?.toContractVersionId;
+    if (targetContractVersionId) {
+      return this.extractProjectIdFromContractVersion(targetContractVersionId);
+    }
+
+    const negotiationRoundId = request.params?.roundId;
+    if (negotiationRoundId) {
+      return this.extractProjectIdFromContractNegotiationRound(
+        negotiationRoundId
+      );
+    }
+
+    const contractDifferenceId = request.params?.differenceId;
+    if (contractDifferenceId) {
+      return this.extractProjectIdFromContractDocumentDifference(
+        contractDifferenceId
+      );
+    }
+
+    const offlineRevisionId = request.params?.revisionId;
+    if (offlineRevisionId && !request.params?.takeoverId) {
+      return this.extractProjectIdFromContractOfflineRevision(
+        offlineRevisionId
+      );
+    }
+
+    const generatedDocumentId = request.params?.documentId;
+    if (generatedDocumentId) {
+      return this.extractProjectIdFromContractGeneratedDocument(
+        generatedDocumentId
+      );
+    }
+
     const contractVersionIdFromParams = request.params?.contractVersionId;
     if (contractVersionIdFromParams) {
       return this.extractProjectIdFromContractVersion(contractVersionIdFromParams);
@@ -409,5 +482,88 @@ export class PermissionGuard implements CanActivate {
     });
 
     return contract?.projectId;
+  }
+
+  private async extractProjectIdFromContractBill(contractBillId: string) {
+    const bill = await this.prisma.contractBill.findUnique({
+      where: { id: contractBillId },
+      select: { contractVersionId: true }
+    });
+    if (!bill) {
+      throw new ForbiddenException("合同清单资源不存在或当前账号无权访问");
+    }
+    const projectId = await this.extractProjectIdFromContractVersion(
+      bill.contractVersionId
+    );
+    if (!projectId) {
+      throw new ForbiddenException("合同清单资源不存在或当前账号无权访问");
+    }
+    return projectId;
+  }
+
+  private async extractProjectIdFromContractNegotiationRound(roundId: string) {
+    const round = await this.prisma.contractNegotiationRound.findUnique({
+      where: { id: roundId },
+      select: { contractVersionId: true }
+    });
+    return this.requireContractDocumentProjectId(round?.contractVersionId);
+  }
+
+  private async extractProjectIdFromContractOfflineRevision(revisionId: string) {
+    const revision = await this.prisma.contractOfflineRevision.findUnique({
+      where: { id: revisionId },
+      select: { contractVersionId: true }
+    });
+    return this.requireContractDocumentProjectId(revision?.contractVersionId);
+  }
+
+  private async extractProjectIdFromContractGeneratedDocument(documentId: string) {
+    const document = await this.prisma.contractGeneratedDocument.findUnique({
+      where: { id: documentId },
+      select: { contractVersionId: true }
+    });
+    return this.requireContractDocumentProjectId(document?.contractVersionId);
+  }
+
+  private async extractProjectIdFromContractDocumentDifference(
+    differenceId: string
+  ) {
+    const difference = await this.prisma.contractDocumentDifference.findUnique({
+      where: { id: differenceId },
+      select: { comparisonId: true }
+    });
+    if (!difference) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    const comparison = await this.prisma.contractDocumentComparison.findUnique({
+      where: { id: difference.comparisonId },
+      select: { negotiationRoundId: true, offlineRevisionId: true }
+    });
+    if (!comparison) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    if (comparison.offlineRevisionId) {
+      return this.extractProjectIdFromContractOfflineRevision(
+        comparison.offlineRevisionId
+      );
+    }
+    return this.extractProjectIdFromContractNegotiationRound(
+      comparison.negotiationRoundId
+    );
+  }
+
+  private async requireContractDocumentProjectId(
+    contractVersionId: string | undefined
+  ) {
+    if (!contractVersionId) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    const projectId = await this.extractProjectIdFromContractVersion(
+      contractVersionId
+    );
+    if (!projectId) {
+      throw new ForbiddenException("合同文档资源不存在或当前账号无权访问");
+    }
+    return projectId;
   }
 }

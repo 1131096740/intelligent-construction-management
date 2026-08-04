@@ -38,6 +38,11 @@ export class MeController {
     return this.me.getSignatureTicket(user.id);
   }
 
+  @Get("signature/canvas-capabilities")
+  canvasSignatureCapabilities(@CurrentUser() user: AuthenticatedUser) {
+    return this.me.getCanvasSignatureCapabilities(user.id);
+  }
+
   @Post("signature/canvas")
   @UseInterceptors(FileInterceptor("file"))
   uploadCanvasSignature(

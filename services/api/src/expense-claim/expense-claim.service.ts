@@ -90,6 +90,7 @@ export class ExpenseClaimService {
       companyEntities,
       projects,
       canProxy,
+      availableActions: ["create_expense_claim"],
       applicantUsers: canProxy ? activeUsers : actor ? [actor] : [],
       factWitnessUsers: activeUsers,
       incidentalExpenseCategories: [
@@ -431,6 +432,121 @@ export class ExpenseClaimService {
         };
       })
     };
+  }
+
+  async getActionCapability(claimId: string, actorUserId: string) {
+    const detail = await this.getMine(claimId, actorUserId);
+    const availableActions: string[] = [];
+    const isHandler = detail.handledByUserId === actorUserId;
+
+    if (detail.status === "draft" && isHandler) {
+      availableActions.push(
+        "submit_expense_claim",
+        "attach_expense_claim_attachment"
+      );
+      if (detail.attachments.some((attachment) => !attachment.removedAt)) {
+        availableActions.push("remove_expense_claim_attachment");
+      }
+    }
+    if (detail.approval?.canReview) {
+      availableActions.push("review_expense_claim");
+    }
+    if (detail.attachmentPermissions.canAppendEvidence) {
+      availableActions.push("append_expense_claim_attachment");
+    }
+    if (detail.paymentSubjectPermissions.canAdjust) {
+      availableActions.push("adjust_expense_claim_payment_subject");
+    }
+    if (detail.fundsPermissions.canRecordPayment) {
+      availableActions.push("record_expense_claim_payment");
+    }
+    if (detail.fundsPermissions.canGenerateFinalPaymentPdf) {
+      availableActions.push("generate_expense_claim_final_payment_pdf");
+    }
+    if (detail.fundsPermissions.canRecordLoanDisbursement) {
+      availableActions.push("record_expense_claim_loan_disbursement");
+    }
+    if (detail.fundsPermissions.canGenerateLoanFinalDisbursementPdf) {
+      availableActions.push(
+        "generate_expense_claim_final_disbursement_pdf"
+      );
+    }
+    if (
+      detail.fundsPermissions.canRecordLoanRepayment &&
+      detail.loanAccount
+    ) {
+      availableActions.push("record_expense_claim_loan_repayment");
+    }
+
+    return {
+      claimId: detail.id,
+      availableActions,
+      removableAttachmentIds:
+        detail.status === "draft" && isHandler
+          ? detail.attachments
+              .filter((attachment) => !attachment.removedAt)
+              .map((attachment) => attachment.id)
+          : []
+    };
+  }
+
+  async getRepaymentActionCapability(
+    claimId: string,
+    repaymentId: string,
+    actorUserId: string
+  ) {
+    const detail = await this.getMine(claimId, actorUserId);
+    const repayment = detail.loanRepayments.find(
+      (candidate) => candidate.id === repaymentId
+    );
+    if (!repayment || !detail.loanAccount) {
+      throw new NotFoundException("员工还款记录不存在或不属于当前借款账户");
+    }
+
+    const availableActions: string[] = [];
+    if (
+      repayment.status === "recorded" &&
+      detail.fundsPermissions.canConfirmLoanRepayment &&
+      BigInt(repayment.amountCents) <= BigInt(detail.loanAccount.balanceAmountCents)
+    ) {
+      availableActions.push("confirm_expense_claim_loan_repayment");
+    }
+    if (
+      repayment.status === "confirmed" &&
+      detail.fundsPermissions.canReverseLoanRepayment
+    ) {
+      const original = await this.prisma.employeeProjectLoanEntry.findFirst({
+        where: {
+          loanAccountId: detail.loanAccount.id,
+          sourceRepaymentId: repayment.id,
+          entryType: "repayment"
+        },
+        select: {
+          id: true,
+          amountCents: true,
+          balanceDeltaCents: true
+        }
+      });
+      if (
+        original?.amountCents === BigInt(repayment.amountCents) &&
+        original.balanceDeltaCents === -BigInt(repayment.amountCents)
+      ) {
+        availableActions.push("reverse_expense_claim_loan_repayment");
+      }
+    }
+
+    return { claimId: detail.id, repaymentId: repayment.id, availableActions };
+  }
+
+  async assertActionAvailable(
+    claimId: string,
+    actorUserId: string,
+    action: string
+  ) {
+    const capability = await this.getActionCapability(claimId, actorUserId);
+    if (!capability.availableActions.includes(action)) {
+      throw new ForbiddenException("当前费用申请不允许执行该文件上传动作");
+    }
   }
 
   async adjustPaymentSubject(claimId: string, actorUserId: string, input: AdjustExpenseClaimPaymentSubjectDto) {

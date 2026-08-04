@@ -9,9 +9,27 @@
     "test": "node scripts/pnpm-workspace.mjs -r test",
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
     "inspect:contract-workbench-capabilities": "node scripts/inspect-contract-workbench-capabilities.mjs --check docs/product/contract-workbench-capability-matrix.md",
+    "preinspect:whole-site-capabilities": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "inspect:whole-site-capabilities": "node scripts/inspect-whole-site-capabilities.mjs --check",
+    "inspect:whole-site-web-api": "node scripts/inspect-whole-site-web-api-manifest.mjs --check",
+    "preinspect:whole-site-web-api:ready": "pnpm run inspect:whole-site-capabilities",
+    "inspect:whole-site-web-api:ready": "node scripts/inspect-whole-site-web-api-manifest.mjs --check --require-ready",
+    "inspect:whole-site-page-actions": "node scripts/inspect-whole-site-page-action-manifest.mjs --check",
+    "preinspect:whole-site-page-actions:ready": "pnpm run inspect:whole-site-web-api:ready",
+    "inspect:whole-site-page-actions:ready": "node scripts/inspect-whole-site-page-action-manifest.mjs --check --require-ready",
+    "inspect:whole-site-route-usage": "node scripts/inspect-whole-site-route-usage-manifest.mjs --check",
+    "preinspect:whole-site-route-usage:ready": "pnpm run inspect:whole-site-web-api:ready",
+    "inspect:whole-site-route-usage:ready": "node scripts/inspect-whole-site-route-usage-manifest.mjs --check --require-ready",
+    "inspect:whole-site-capability-matrix": "node scripts/inspect-whole-site-capability-matrix.mjs --check",
+    "preinspect:whole-site-capability-matrix:ready": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
+    "inspect:whole-site-capability-matrix:ready": "node scripts/inspect-whole-site-capability-matrix.mjs --check --require-ready",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
     "verify:money-bigint:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:money-bigint:local",
-    "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local"
+    "verify:project-financing-quota-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:project-financing-quota-concurrency:local",
+    "verify:settlement-approval-withdrawal-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:settlement-approval-withdrawal-concurrency:local",
+    "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local",
+    "verify:payment-approval-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:payment-approval-concurrency:local",
+    "verify:contract-template-scenario-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:contract-template-scenario-concurrency:local"
   },
   "engines": {
     "node": ">=20.9.0",
@@ -19,7 +37,12 @@
   },
   "pnpm": {
     "overrides": {
-      "multer": "2.2.0"
+      "brace-expansion@1.1.15": "1.1.18",
+      "brace-expansion@2.1.1": "2.1.4",
+      "body-parser@1.20.4": "1.20.6",
+      "multer": "2.2.0",
+      "postcss@8.5.15": "8.5.18",
+      "qs@6.14.2": "6.15.2"
     }
   }
 }

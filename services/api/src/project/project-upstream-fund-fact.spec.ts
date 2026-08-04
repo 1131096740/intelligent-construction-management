@@ -1,3 +1,4 @@
+import { ConflictException } from "@nestjs/common";
 import { ProjectService } from "./project.service";
 
 const confirmedAt = new Date("2026-07-29T02:00:00.000Z");
@@ -50,6 +51,33 @@ function roleTables(roleKey: "finance_staff" | "finance_director") {
 }
 
 describe("ProjectService upstream fund facts", () => {
+  it.each([
+    ["finance_staff", "oral", []],
+    ["finance_director", "oral", ["confirm_upstream_fund_fact"]],
+    ["finance_staff", "written", ["confirm_upstream_fund_fact"]]
+  ])(
+    "derives %s confirmation capability for a %s upstream fund fact",
+    async (roleKey, basisType, expected) => {
+      const prisma = {
+        projectUpstreamFundFact: {
+          findFirst: jest.fn().mockResolvedValue(
+            fundFact({ basisType, status: "pending_confirm" })
+          )
+        },
+        ...roleTables(roleKey as "finance_staff" | "finance_director")
+      };
+      const service = new ProjectService(prisma as never);
+
+      const capability = await service.getUpstreamFundFactConfirmationCapability(
+        "project-1",
+        "fund-fact-1",
+        "actor-1"
+      );
+
+      expect(capability.availableActions).toEqual(expected);
+    }
+  );
+
   it("records an owner payment as a pending external fact instead of company cash", async () => {
     const tx = {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
@@ -276,6 +304,76 @@ describe("ProjectService upstream fund facts", () => {
         confirmationSignatureSha256: "c".repeat(64)
       }
     });
+  });
+
+  it("serializes a cash-decreasing confirmation with funding allocation and rolls back on overdraw", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "fund-fact-1" }])
+        .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
+        .mockResolvedValueOnce([{
+          id: "signature-version-1",
+          fileId: "signature-file-1",
+          contentSha256: "c".repeat(64)
+        }])
+        .mockResolvedValueOnce([{
+          id: "signature-file-1",
+          contentSha256: "c".repeat(64),
+          storageStatus: "active"
+        }]),
+      ...roleTables("finance_staff"),
+      projectUpstreamFundFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(fundFact({
+          factType: "affiliate_remittance_to_company",
+          entryKind: "reversal",
+          adjustsFactId: "fund-fact-original",
+          effectDirection: "decrease"
+        })),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const funding = {
+      lockFundingContext: jest.fn().mockResolvedValue(undefined),
+      assertPersistedProjectFundingLedgerCoverage: jest
+        .fn()
+        .mockRejectedValue(new ConflictException(
+          "项目自有资金占用超过当前确认资金来源"
+        ))
+    };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      auth as never,
+      funding as never
+    );
+
+    await expect(service.confirmUpstreamFundFact(
+      "project-1",
+      "fund-fact-1",
+      "finance-1",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "770930b1-b119-4687-b274-c6e3bd630658"
+      },
+      confirmedAt
+    )).rejects.toThrow("项目自有资金占用超过当前确认资金来源");
+
+    expect(funding.lockFundingContext).toHaveBeenCalledWith(tx, "project-1");
+    expect(funding.assertPersistedProjectFundingLedgerCoverage)
+      .toHaveBeenCalledWith(tx, "project-1");
+    expect(funding.lockFundingContext.mock.invocationCallOrder[0])
+      .toBeLessThan(tx.projectUpstreamFundFact.updateMany.mock.invocationCallOrder[0]);
+    expect(tx.projectUpstreamFundFact.updateMany.mock.invocationCallOrder[0])
+      .toBeLessThan(
+        funding.assertPersistedProjectFundingLedgerCoverage.mock.invocationCallOrder[0]
+      );
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("requires a finance director to confirm oral notification facts", async () => {
@@ -541,7 +639,8 @@ describe("ProjectService upstream fund facts", () => {
       projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) }
+      spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      projectFundingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 

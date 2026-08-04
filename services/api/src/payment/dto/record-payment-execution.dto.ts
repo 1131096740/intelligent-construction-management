@@ -1,10 +1,21 @@
-import { IsDateString } from "class-validator";
+import { IsDateString, IsISO8601, IsUUID } from "class-validator";
 import {
   IsCanonicalMoneyText,
   IsRequiredText
 } from "../../validation/static-field-validation";
 
 export class RecordPaymentExecutionDto {
+  @IsRequiredText({
+    requiredMessage: "缺少预期付款申请版本",
+    typeMessage: "预期付款申请版本格式不正确",
+    blankMessage: "预期付款申请版本格式不正确"
+  })
+  @IsISO8601({}, { message: "预期付款申请版本格式不正确" })
+  expectedPaymentUpdatedAt!: string;
+
+  @IsUUID("4", { message: "付款实付登记幂等键必须是 UUID" })
+  idempotencyKey!: string;
+
   @IsCanonicalMoneyText({
     typeMessage: "实付金额格式不正确",
     formatMessage: "实付金额必须按分填写为 0 或更大的整数"

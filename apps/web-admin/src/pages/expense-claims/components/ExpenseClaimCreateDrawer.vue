@@ -162,12 +162,21 @@ async function save() {
   if (error.value || saving.value) return;
   saving.value = true;
   try {
-    const claim = await createExpenseClaim(payload());
+    const claim = await createExpenseClaimWithCapability(payload());
     visible.value = false;
     emit("saved", claim);
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : "创建费用申请失败";
   } finally { saving.value = false; }
+}
+
+async function createExpenseClaimWithCapability(
+  body: Parameters<typeof createExpenseClaim>[0]
+) {
+  const capability = await fetchExpenseClaimCreateOptions();
+  const operationAllowed = capability.availableActions.includes("create_expense_claim");
+  if (!operationAllowed) throw new Error("当前用户不能新建费用申请");
+  return createExpenseClaim(body);
 }
 </script>
 

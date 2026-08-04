@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 
 export const EDITABLE_STATUSES = ["draft", "approval_rejected"];
 
@@ -14,10 +15,14 @@ export async function loadOwnedEditableBill(
   if (bill.pricingMode !== "tax_inclusive" && bill.pricingMode !== "tax_exclusive") {
     throw new BadRequestException("合同清单计价模式无效");
   }
-  const version = await tx.contractVersion.findUnique({
-    where: { id: bill.contractVersionId }
-  });
-  if (!version) throw new NotFoundException("合同草稿版本不存在");
+  const mutationBoundary =
+    await lockContractDraftMutationBoundary<
+      NonNullable<
+        Awaited<ReturnType<typeof tx.contractVersion.findUnique>>
+      >
+    >(tx, bill.contractVersionId);
+  if (!mutationBoundary) throw new NotFoundException("合同草稿版本不存在");
+  const version = mutationBoundary.version;
   const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
   if (!contract) throw new NotFoundException("合同草稿不存在");
   if (contract.ownerUserId !== actorUserId) {
@@ -25,6 +30,12 @@ export async function loadOwnedEditableBill(
   }
   if (!EDITABLE_STATUSES.includes(version.status)) {
     throw new BadRequestException("当前合同草稿状态不可编辑清单");
+  }
+  if (version.changeType === "historical_takeover") {
+    throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
+  }
+  if (mutationBoundary.formalBlockers.length > 0) {
+    throw new BadRequestException("合同已存在正式业务事实，不能编辑草稿清单");
   }
   if (contract.voidedAt) {
     throw new BadRequestException("合同草稿已作废，不能编辑清单");

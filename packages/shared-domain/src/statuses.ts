@@ -13,6 +13,18 @@ export const CONTRACT_VERSION_STATUSES = [
 
 export type ContractVersionStatus = (typeof CONTRACT_VERSION_STATUSES)[number];
 
+export const CONTRACT_APPROVAL_FORM_AVAILABLE_STATUSES = [
+  "approved",
+  "approved_pending_seal",
+  "in_seal",
+  "seal_approved_pending_archive",
+  "sealed_pending_archive",
+  "pending_archive_confirm",
+  "effective",
+  "superseded",
+  "voided"
+] as const;
+
 export const SETTLEMENT_ELIGIBLE_CONTRACT_STATUSES = ["effective"] as const satisfies readonly ContractVersionStatus[];
 
 export const SETTLEMENT_STATUSES = [
@@ -78,6 +90,14 @@ export type PaymentRequestStatus = (typeof PAYMENT_REQUEST_STATUSES)[number];
 
 export function canCreateSettlementFromContractStatus(status: ContractVersionStatus): boolean {
   return SETTLEMENT_ELIGIBLE_CONTRACT_STATUSES.some((eligibleStatus) => eligibleStatus === status);
+}
+
+export function canUseCurrentContractApprovalForm(
+  status: string | null | undefined
+): boolean {
+  return CONTRACT_APPROVAL_FORM_AVAILABLE_STATUSES.some(
+    (availableStatus) => availableStatus === status
+  );
 }
 
 export function canCreatePaymentFromSettlementStatus(status: SettlementStatus): boolean {

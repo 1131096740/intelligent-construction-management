@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 
 export const CONTRACT_DRAFT_LEASE_TTL_MS = 120_000;
@@ -82,24 +83,37 @@ export class ContractDraftEditLeaseService {
   async heartbeat(contractVersionId: string, rawToken: string) {
     const now = this.currentTime();
     const expiresAt = new Date(now.getTime() + CONTRACT_DRAFT_LEASE_TTL_MS);
-    const result = await this.prisma.contractDraftEditLease.updateMany({
-      where: {
-        contractVersionId,
-        tokenHash: this.hashToken(rawToken),
-        expiresAt: { gt: now }
-      },
-      data: { heartbeatAt: now, expiresAt }
-    });
-    if (result.count !== 1) {
-      throw this.leaseLost();
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.lockEditableDraft(tx, contractVersionId);
+        const result = await tx.contractDraftEditLease.updateMany({
+          where: {
+            contractVersionId,
+            tokenHash: this.hashToken(rawToken),
+            expiresAt: { gt: now }
+          },
+          data: { heartbeatAt: now, expiresAt }
+        });
+        if (result.count !== 1) {
+          throw this.leaseLost();
+        }
+        const lease = await tx.contractDraftEditLease.findUnique({
+          where: { contractVersionId }
+        });
+        return {
+          leaseRevision: lease?.leaseRevision ?? null,
+          expiresAt: expiresAt.toISOString()
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw this.leaseLost();
+      }
+      throw error;
     }
-    const lease = await this.prisma.contractDraftEditLease.findUnique({
-      where: { contractVersionId }
-    });
-    return {
-      leaseRevision: lease?.leaseRevision ?? null,
-      expiresAt: expiresAt.toISOString()
-    };
   }
 
   async takeOver(
@@ -171,12 +185,13 @@ export class ContractDraftEditLeaseService {
     tx: Prisma.TransactionClient,
     contractVersionId: string
   ) {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id"
-      FROM "ContractVersion"
-      WHERE "id" = ${contractVersionId}
-      FOR UPDATE
-    `);
+    const mutationBoundary = await lockContractDraftMutationBoundary(
+      tx,
+      contractVersionId
+    );
+    if (!mutationBoundary) {
+      throw new NotFoundException("未找到合同草稿版本，请刷新后重试");
+    }
     const version = await tx.contractVersion.findUnique({
       where: { id: contractVersionId }
     });
@@ -186,8 +201,16 @@ export class ContractDraftEditLeaseService {
     if (!EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status)) {
       throw new BadRequestException("合同版本当前不可按草稿办理，请刷新后重试");
     }
+    if (version.changeType === "historical_takeover") {
+      throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
+    }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException(
+        "合同已存在正式业务事实，不能继续办理草稿"
+      );
+    }
     const contract = await tx.contract.findUnique({
-      where: { id: version.contractId }
+      where: { id: mutationBoundary.contractId }
     });
     if (!contract) {
       throw new NotFoundException("未找到合同草稿，请刷新后重试");

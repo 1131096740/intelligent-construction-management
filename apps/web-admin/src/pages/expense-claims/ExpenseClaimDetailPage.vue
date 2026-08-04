@@ -2,8 +2,30 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import type { UploadFile } from "tdesign-vue-next";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, confirmExpenseClaimLoanRepayment, fetchExpenseClaimDetail, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reverseExpenseClaimLoanRepayment, reviewExpenseClaim, submitExpenseClaim, type ExpenseClaimDetailReadModel } from "../../api/expense-claim.api";
-import { uploadPrivateFile } from "../../api/core-flow-read.api";
+import {
+  adjustExpenseClaimPaymentSubject,
+  appendExpenseClaimAttachment,
+  attachExpenseClaimAttachment,
+  confirmExpenseClaimLoanRepayment,
+  fetchExpenseClaimActionCapability,
+  fetchExpenseClaimDetail,
+  fetchExpenseClaimRepaymentActionCapability,
+  generateExpenseClaimFinalDisbursementPdf,
+  generateExpenseClaimFinalPaymentPdf,
+  recordExpenseClaimLoanDisbursement,
+  recordExpenseClaimLoanRepayment,
+  recordExpenseClaimPayment,
+  removeExpenseClaimAttachment,
+  reverseExpenseClaimLoanRepayment,
+  reviewExpenseClaim,
+  submitExpenseClaim,
+  uploadExpenseClaimAppendAttachmentFile,
+  uploadExpenseClaimDraftAttachmentFile,
+  uploadExpenseClaimLoanDisbursementVoucherFile,
+  uploadExpenseClaimLoanRepaymentVoucherFile,
+  uploadExpenseClaimPaymentVoucherFile,
+  type ExpenseClaimDetailReadModel
+} from "../../api/expense-claim.api";
 import ApprovalSelfReviewFields from "../../components/ApprovalSelfReviewFields.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
@@ -69,11 +91,197 @@ async function loadDetail() {
   catch (error) { loadError.value = error instanceof Error ? error.message : "费用详情读取失败"; }
   finally { loading.value = false; }
 }
+async function submitExpenseClaimWithCapability(claimId: string) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("submit_expense_claim");
+  if (!operationAllowed) throw new Error("当前费用申请不可提交");
+  return submitExpenseClaim(claimId);
+}
+async function reviewExpenseClaimWithCapability(
+  claimId: string,
+  body: Parameters<typeof reviewExpenseClaim>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("review_expense_claim");
+  if (!operationAllowed) throw new Error("当前用户不能审批该费用申请");
+  return reviewExpenseClaim(claimId, body);
+}
+async function attachExpenseClaimAttachmentWithCapability(
+  claimId: string,
+  body: Parameters<typeof attachExpenseClaimAttachment>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("attach_expense_claim_attachment");
+  if (!operationAllowed) throw new Error("当前用户不能维护该草稿附件");
+  return attachExpenseClaimAttachment(claimId, body);
+}
+async function appendExpenseClaimAttachmentWithCapability(
+  claimId: string,
+  body: Parameters<typeof appendExpenseClaimAttachment>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("append_expense_claim_attachment");
+  if (!operationAllowed) throw new Error("当前用户不能追加该费用资料");
+  return appendExpenseClaimAttachment(claimId, body);
+}
+async function removeExpenseClaimAttachmentWithCapability(
+  claimId: string,
+  attachmentId: string,
+  reason?: string
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("remove_expense_claim_attachment");
+  const matchesRequestedAttachment = capability.removableAttachmentIds.includes(attachmentId);
+  if (!operationAllowed || !matchesRequestedAttachment) {
+    throw new Error("当前费用附件不可移除");
+  }
+  return removeExpenseClaimAttachment(claimId, attachmentId, reason);
+}
+async function adjustExpenseClaimPaymentSubjectWithCapability(
+  claimId: string,
+  body: Parameters<typeof adjustExpenseClaimPaymentSubject>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("adjust_expense_claim_payment_subject");
+  if (!operationAllowed) throw new Error("当前费用申请不能调整实际付款主体");
+  return adjustExpenseClaimPaymentSubject(claimId, body);
+}
+async function recordExpenseClaimPaymentWithCapability(
+  claimId: string,
+  body: Parameters<typeof recordExpenseClaimPayment>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
+  if (!operationAllowed) throw new Error("当前费用申请不能登记公司补付");
+  return recordExpenseClaimPayment(claimId, body);
+}
+async function generateExpenseClaimFinalPaymentPdfWithCapability(claimId: string) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("generate_expense_claim_final_payment_pdf");
+  if (!operationAllowed) throw new Error("当前费用申请不能生成付讫归档 PDF");
+  return generateExpenseClaimFinalPaymentPdf(claimId);
+}
+async function recordExpenseClaimLoanDisbursementWithCapability(
+  claimId: string,
+  body: Parameters<typeof recordExpenseClaimLoanDisbursement>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_disbursement");
+  if (!operationAllowed) throw new Error("当前借款申请不能登记实际放款");
+  return recordExpenseClaimLoanDisbursement(claimId, body);
+}
+async function generateExpenseClaimFinalDisbursementPdfWithCapability(claimId: string) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("generate_expense_claim_final_disbursement_pdf");
+  if (!operationAllowed) throw new Error("当前借款申请不能生成放款归档 PDF");
+  return generateExpenseClaimFinalDisbursementPdf(claimId);
+}
+async function recordExpenseClaimLoanRepaymentWithCapability(
+  claimId: string,
+  body: Parameters<typeof recordExpenseClaimLoanRepayment>[1]
+) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_repayment");
+  if (!operationAllowed) throw new Error("当前借款申请不能登记员工还款");
+  return recordExpenseClaimLoanRepayment(claimId, body);
+}
+async function confirmExpenseClaimLoanRepaymentWithCapability(
+  claimId: string,
+  repaymentId: string,
+  body: Parameters<typeof confirmExpenseClaimLoanRepayment>[2]
+) {
+  const capability = await fetchExpenseClaimRepaymentActionCapability(claimId, repaymentId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  const matchesRequestedRepayment = capability.repaymentId === repaymentId;
+  if (!matchesRequestedClaim || !matchesRequestedRepayment) {
+    throw new Error("员工还款记录已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes("confirm_expense_claim_loan_repayment");
+  if (!operationAllowed) throw new Error("当前员工还款不可确认");
+  return confirmExpenseClaimLoanRepayment(claimId, repaymentId, body);
+}
+async function reverseExpenseClaimLoanRepaymentWithCapability(
+  claimId: string,
+  repaymentId: string,
+  body: Parameters<typeof reverseExpenseClaimLoanRepayment>[2]
+) {
+  const capability = await fetchExpenseClaimRepaymentActionCapability(claimId, repaymentId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  const matchesRequestedRepayment = capability.repaymentId === repaymentId;
+  if (!matchesRequestedClaim || !matchesRequestedRepayment) {
+    throw new Error("员工还款记录已变化，请刷新后重试");
+  }
+  const operationAllowed = capability.availableActions.includes("reverse_expense_claim_loan_repayment");
+  if (!operationAllowed) throw new Error("当前员工还款不可更正");
+  return reverseExpenseClaimLoanRepayment(claimId, repaymentId, body);
+}
+async function uploadExpenseClaimDraftAttachmentWithCapability(claimId: string, file: File) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("attach_expense_claim_attachment");
+  if (!operationAllowed) throw new Error("当前用户不能上传该草稿附件");
+  return uploadExpenseClaimDraftAttachmentFile(claimId, file, file.name);
+}
+async function uploadExpenseClaimAppendAttachmentWithCapability(claimId: string, file: File) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("append_expense_claim_attachment");
+  if (!operationAllowed) throw new Error("当前用户不能上传该追加资料");
+  return uploadExpenseClaimAppendAttachmentFile(claimId, file, file.name);
+}
+async function uploadExpenseClaimPaymentVoucherWithCapability(claimId: string, file: File) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
+  if (!operationAllowed) throw new Error("当前费用申请不能上传付款凭证");
+  return uploadExpenseClaimPaymentVoucherFile(claimId, file, file.name);
+}
+async function uploadExpenseClaimLoanDisbursementVoucherWithCapability(claimId: string, file: File) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_disbursement");
+  if (!operationAllowed) throw new Error("当前借款申请不能上传放款凭证");
+  return uploadExpenseClaimLoanDisbursementVoucherFile(claimId, file, file.name);
+}
+async function uploadExpenseClaimLoanRepaymentVoucherWithCapability(claimId: string, file: File) {
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_repayment");
+  if (!operationAllowed) throw new Error("当前借款申请不能上传还款凭证");
+  return uploadExpenseClaimLoanRepaymentVoucherFile(claimId, file, file.name);
+}
 async function submit() {
   if (!detail.value || submitting.value) return;
   submitting.value = true;
   actionError.value = "";
-  try { await submitExpenseClaim(detail.value.id); await loadDetail(); }
+  try { await submitExpenseClaimWithCapability(detail.value.id); await loadDetail(); }
   catch (error) { actionError.value = error instanceof Error ? error.message : "提交费用申请失败"; }
   finally { submitting.value = false; }
 }
@@ -109,9 +317,9 @@ async function recordPayment() {
   paymentSubmitting.value = true;
   actionError.value = "";
   try {
-    const uploaded = await uploadPrivateFile(voucher, voucher.name);
+    const uploaded = await uploadExpenseClaimPaymentVoucherWithCapability(detail.value.id, voucher);
     const { note, ...payment } = paymentForm.value;
-    await recordExpenseClaimPayment(detail.value.id, { ...payment, voucherFileId: uploaded.id, ...(note.trim() ? { note: note.trim() } : {}) });
+    await recordExpenseClaimPaymentWithCapability(detail.value.id, { ...payment, voucherFileId: uploaded.id, ...(note.trim() ? { note: note.trim() } : {}) });
     paymentConfirmVisible.value = false;
     paymentVisible.value = false;
     await loadDetail();
@@ -147,9 +355,11 @@ async function recordLoanAction() {
   if (!voucher) return;
   loanActionSubmitting.value = true;
   try {
-    const uploaded = await uploadPrivateFile(voucher, voucher.name);
-    if (loanAction.value === "disbursement") await recordExpenseClaimLoanDisbursement(detail.value.id, { amountCents: loanActionForm.value.amountCents, paidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
-    else await recordExpenseClaimLoanRepayment(detail.value.id, { amountCents: loanActionForm.value.amountCents, repaidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
+    const uploaded = loanAction.value === "disbursement"
+      ? await uploadExpenseClaimLoanDisbursementVoucherWithCapability(detail.value.id, voucher)
+      : await uploadExpenseClaimLoanRepaymentVoucherWithCapability(detail.value.id, voucher);
+    if (loanAction.value === "disbursement") await recordExpenseClaimLoanDisbursementWithCapability(detail.value.id, { amountCents: loanActionForm.value.amountCents, paidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
+    else await recordExpenseClaimLoanRepaymentWithCapability(detail.value.id, { amountCents: loanActionForm.value.amountCents, repaidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
     loanActionConfirmVisible.value = false;
     loanActionVisible.value = false;
     await loadDetail();
@@ -167,8 +377,8 @@ async function submitRepaymentAction() {
   if (!repaymentActionForm.value.confirmationPassword || (repaymentAction.value.mode === "reverse" && !repaymentActionForm.value.reason.trim())) { actionError.value = repaymentAction.value.mode === "reverse" ? "请填写更正原因和当前密码" : "请填写当前密码"; return; }
   repaymentActionSubmitting.value = true;
   try {
-    if (repaymentAction.value.mode === "confirm") await confirmExpenseClaimLoanRepayment(detail.value.id, repaymentAction.value.id, { confirmationPassword: repaymentActionForm.value.confirmationPassword, ...(repaymentActionForm.value.confirmationNote.trim() ? { confirmationNote: repaymentActionForm.value.confirmationNote.trim() } : {}) });
-    else await reverseExpenseClaimLoanRepayment(detail.value.id, repaymentAction.value.id, { reason: repaymentActionForm.value.reason.trim(), confirmationPassword: repaymentActionForm.value.confirmationPassword });
+    if (repaymentAction.value.mode === "confirm") await confirmExpenseClaimLoanRepaymentWithCapability(detail.value.id, repaymentAction.value.id, { confirmationPassword: repaymentActionForm.value.confirmationPassword, ...(repaymentActionForm.value.confirmationNote.trim() ? { confirmationNote: repaymentActionForm.value.confirmationNote.trim() } : {}) });
+    else await reverseExpenseClaimLoanRepaymentWithCapability(detail.value.id, repaymentAction.value.id, { reason: repaymentActionForm.value.reason.trim(), confirmationPassword: repaymentActionForm.value.confirmationPassword });
     repaymentActionVisible.value = false;
     await loadDetail();
   } catch (error) { actionError.value = error instanceof Error ? error.message : "办理员工还款失败"; }
@@ -179,8 +389,8 @@ async function generateFinalPdf() {
   finalPdfGenerating.value = true;
   actionError.value = "";
   try {
-    if (detail.value.claimType === "loan") await generateExpenseClaimFinalDisbursementPdf(detail.value.id);
-    else await generateExpenseClaimFinalPaymentPdf(detail.value.id);
+    if (detail.value.claimType === "loan") await generateExpenseClaimFinalDisbursementPdfWithCapability(detail.value.id);
+    else await generateExpenseClaimFinalPaymentPdfWithCapability(detail.value.id);
     await loadDetail();
   }
   catch (error) { actionError.value = error instanceof Error ? error.message : "生成付讫归档 PDF 失败"; }
@@ -193,7 +403,7 @@ async function adjustPaymentSubject() {
   paymentSubjectAdjusting.value = true;
   actionError.value = "";
   try {
-    await adjustExpenseClaimPaymentSubject(detail.value.id, {
+    await adjustExpenseClaimPaymentSubjectWithCapability(detail.value.id, {
       companyEntityId: paymentSubjectForm.value.companyEntityId,
       reason: paymentSubjectForm.value.reason.trim()
     });
@@ -214,7 +424,7 @@ async function review() {
     const selfReview = buildApprovalSelfReviewPayload(detail.value.approval?.requiresSelfReviewConfirmation === true, reviewForm.value);
     if (reviewForm.value.decision === "reject" && !reviewForm.value.comment.trim()) throw new Error("驳回必须填写审批意见");
     reviewing.value = true;
-    await reviewExpenseClaim(detail.value.id, { decision: reviewForm.value.decision, comment: reviewForm.value.comment.trim() || undefined, ...selfReview });
+    await reviewExpenseClaimWithCapability(detail.value.id, { decision: reviewForm.value.decision, comment: reviewForm.value.comment.trim() || undefined, ...selfReview });
     reviewVisible.value = false;
     await loadDetail();
   } catch (error) { actionError.value = error instanceof Error ? error.message : "费用审批办理失败"; }
@@ -235,8 +445,10 @@ async function uploadAttachments() {
   actionError.value = "";
   try {
     for (const file of files) {
-      const uploaded = await uploadPrivateFile(file, file.name);
-      const attach = detail.value.status === "draft" ? attachExpenseClaimAttachment : appendExpenseClaimAttachment;
+      const uploaded = detail.value.status === "draft"
+        ? await uploadExpenseClaimDraftAttachmentWithCapability(detail.value.id, file)
+        : await uploadExpenseClaimAppendAttachmentWithCapability(detail.value.id, file);
+      const attach = detail.value.status === "draft" ? attachExpenseClaimAttachmentWithCapability : appendExpenseClaimAttachmentWithCapability;
       await attach(detail.value.id, {
         fileId: uploaded.id,
         category: attachmentCategory.value,
@@ -253,7 +465,7 @@ async function removeAttachment(attachmentId: string) {
   if (!detail.value || attachmentUploading.value) return;
   attachmentUploading.value = true;
   actionError.value = "";
-  try { await removeExpenseClaimAttachment(detail.value.id, attachmentId); await loadDetail(); }
+  try { await removeExpenseClaimAttachmentWithCapability(detail.value.id, attachmentId); await loadDetail(); }
   catch (error) { actionError.value = error instanceof Error ? error.message : "移除费用附件失败"; }
   finally { attachmentUploading.value = false; }
 }

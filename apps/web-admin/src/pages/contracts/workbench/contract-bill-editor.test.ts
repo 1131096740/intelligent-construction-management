@@ -13,6 +13,7 @@ import {
   importPreviewCounts,
   importPreviewRows,
   inheritedTaxRateText,
+  mergeFocusedBillAggregate,
   normalizeClauseDocument,
   rowValue,
   isUnsavedBillRow,
@@ -193,6 +194,81 @@ describe("contract bill editor helpers", () => {
         bill
       )
     ).toBe("数量必须是最多保留 2 位小数的正数");
+  });
+
+  it("overlays editable aggregate fields while retaining server-only row capability", () => {
+    const base: WorkbenchBill = {
+      ...bills[0],
+      revision: 7,
+      rows: [{
+        ...bills[0].rows[0]!,
+        quantity: "10",
+        availableActions: [{
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null,
+          requiresComment: true,
+          requiresPassword: false
+        }],
+        remainderCancellation: {
+          expectedBillRevision: 7,
+          expectedDraftRevision: 12,
+          expectedOccupancyToken: "occupancy-token-1",
+          historicalQuantity: "3.5",
+          historicalAmountCents: "35000"
+        }
+      }]
+    };
+
+    const merged = mergeFocusedBillAggregate(base, {
+      expectedRevision: 8,
+      rows: [{
+        clientRowKey: "aggregate-1",
+        rowKey: "row-1",
+        sortOrder: 0,
+        itemName: "草稿钢筋",
+        unit: "吨",
+        quantity: "9",
+        unitPrice: "10",
+        taxRateSource: "version_default",
+        isProvisional: false,
+        customData: { source: "aggregate" },
+        availableActions: [{
+          key: "forged-action",
+          label: "伪造能力",
+          kind: "danger",
+          enabled: true,
+          disabledReason: null,
+          requiresComment: false,
+          requiresPassword: false
+        }],
+        remainderCancellation: {
+          expectedBillRevision: 999,
+          expectedDraftRevision: 999,
+          expectedOccupancyToken: "forged-token",
+          historicalQuantity: "999",
+          historicalAmountCents: "999"
+        }
+      }]
+    });
+
+    expect(merged.revision).toBe(8);
+    expect(merged.rows[0]).toMatchObject({
+      itemName: "草稿钢筋",
+      quantity: "9",
+      availableActions: [
+        expect.objectContaining({ key: "contract-bill.remainder-cancellation" })
+      ],
+      remainderCancellation: expect.objectContaining({
+        expectedOccupancyToken: "occupancy-token-1"
+      }),
+      customData: { source: "aggregate" }
+    });
+    expect(merged.rows[0]?.availableActions).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: "forged-action" })])
+    );
   });
 
   it("shows one tab per configured bill", () => {

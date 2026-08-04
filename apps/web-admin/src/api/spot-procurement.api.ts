@@ -79,6 +79,18 @@ export interface SpotProcurementApprovalSummary {
   currentRoleKeys: RoleKey[];
 }
 
+export interface SpotProcurementReviewApprovalContext {
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+}
+
+export interface SpotProcurementWithdrawApprovalContext {
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+}
+
 export interface SpotProcurementFutureUnavailableReadModel {
   available: false;
   status: "not_available";
@@ -151,7 +163,52 @@ export interface SpotProcurementReceiptDetailReadModel {
     nextStep: string | null;
   };
   availableActions: DetailActionReadModel[];
+  removablePhotoIds: string[];
 }
+
+export interface SpotProcurementInvoiceAppendActionContext {
+  procurementId: string;
+  paymentId: string;
+  file: Blob;
+  fileName: string;
+  uploadIdempotencyKey: string;
+}
+
+export interface ExecuteSpotProcurementInvoiceAppendInput<
+  TContext extends SpotProcurementInvoiceAppendActionContext =
+    SpotProcurementInvoiceAppendActionContext
+> {
+  capture: () => TContext | null;
+  upload: (
+    file: Blob,
+    fileName: string,
+    idempotencyKey: string
+  ) => Promise<{ id: string }>;
+  current: (
+    context: TContext,
+    freshReceipt?: SpotProcurementReceiptDetailReadModel,
+    freshPayment?: SpotProcurementPaymentDetailReadModel
+  ) => boolean;
+  stale: (context: TContext) => void | Promise<void>;
+  complete: (context: TContext) => void | Promise<void>;
+  completionFail: (
+    context: TContext,
+    error: unknown
+  ) => void | Promise<void>;
+  fail: (context: TContext, error: unknown) => void | Promise<void>;
+  finish: (context: TContext) => void;
+}
+
+export type ExecuteSpotProcurementInvoiceAppendResult<
+  TContext extends SpotProcurementInvoiceAppendActionContext =
+    SpotProcurementInvoiceAppendActionContext
+> =
+  | { status: "not_started" }
+  | { status: "stale"; context: TContext }
+  | { status: "completed"; context: TContext }
+  | { status: "completed_detached"; context: TContext }
+  | { status: "completed_with_refresh_error"; context: TContext }
+  | { status: "failed"; context: TContext };
 
 export interface SpotProcurementReceiptLineReadModel {
   procurementLineId: string;
@@ -206,15 +263,9 @@ export interface SpotProcurementCapabilitiesReadModel {
   enabled: boolean;
   canCreate: boolean;
   canExecutePayment: boolean;
+  availableActions: string[];
   unavailableReason: string | null;
   handlerOptions: SpotProcurementHandlerOptionReadModel[];
-}
-
-export interface VatRateOptionReadModel {
-  id: string;
-  label: string;
-  rateValue: string;
-  isEnabled?: boolean;
 }
 
 export type SpotProcurementInvoiceComposition =
@@ -471,6 +522,26 @@ export interface SpotProcurementApprovalPdfReadModel {
   disabledReason: string | null;
 }
 
+export interface SpotProcurementPaymentInvoiceReadModel {
+  id: string;
+  paymentId: string;
+  fileId: string;
+  status: string;
+  uploadedByUserId: string;
+  invalidatedAt: string | null;
+  invalidatedByUserId: string | null;
+  invalidationReason: string | null;
+  createdAt: string;
+  file: {
+    id: string;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageStatus: string;
+  } | null;
+  availableActions: DetailActionReadModel[];
+}
+
 export interface SpotProcurementDetailReadModel {
   procurement: {
     id: string;
@@ -515,8 +586,24 @@ export interface SpotProcurementDetailReadModel {
   };
   applicationPdf: SpotProcurementApprovalPdfReadModel;
   availableActions: DetailActionReadModel[];
+  reviewApprovalContext:
+    | SpotProcurementReviewApprovalContext
+    | null;
+  withdrawApprovalContext:
+    | SpotProcurementWithdrawApprovalContext
+    | null;
   primaryAction: string | null;
   disabledReasons: string[];
+  abnormalTermination?: {
+    id: string;
+    procurementId: string;
+    status: string;
+    reason: string;
+    requestedByUserId: string;
+    requestedAt: string;
+    confirmedByUserId: string | null;
+    confirmedAt: string | null;
+  } | null;
   invoice?: {
     status: string;
     statusLabel: string;
@@ -673,7 +760,7 @@ export interface SpotProcurementPaymentDetailReadModel {
     status: string;
     statusLabel: string;
     activeCount: number;
-    invoices: Array<Record<string, unknown>>;
+    invoices: SpotProcurementPaymentInvoiceReadModel[];
   };
   paymentPdf: SpotProcurementApprovalPdfReadModel;
   currentTask: SpotPaymentCurrentTask;
@@ -782,24 +869,246 @@ export interface CreateSpotProcurementVersionPayload extends SpotProcurementDraf
   changeReason: string;
 }
 
-export interface ReviewSpotProcurementPayload {
+export interface SpotProcurementReviewDecisionPayload {
   decision: SpotProcurementReviewDecision;
   comment?: string;
 }
 
-export interface ReviewSpotProcurementPaymentPayload
-  extends ReviewSpotProcurementPayload {
+export interface ReviewSpotProcurementPayload
+  extends SpotProcurementReviewDecisionPayload {
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+}
+
+export type SpotProcurementReviewActionDecision =
+  | "approve"
+  | "reject"
+  | "return_to_applicant";
+
+export interface SpotProcurementReviewActionContext {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  procurementId: string;
+  expectedVersionId: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  decision: SpotProcurementReviewActionDecision;
+  comment?: string;
+}
+
+export interface PrepareSpotProcurementReviewActionInput
+  extends SpotProcurementReviewActionContext {
+  isCurrent: (context: SpotProcurementReviewActionContext) => boolean;
+}
+
+export type PrepareSpotProcurementReviewActionResult =
+  | {
+      status: "ready";
+      context: SpotProcurementReviewActionContext;
+      preflight: SpotProcurementDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementReviewActionContext;
+    };
+
+export interface ExecuteSpotProcurementReviewActionInput {
+  decision: SpotProcurementReviewActionDecision;
+  capture: (
+    decision: SpotProcurementReviewActionDecision
+  ) => SpotProcurementReviewActionContext | null;
+  preflight: (
+    context: SpotProcurementReviewActionContext
+  ) => Promise<PrepareSpotProcurementReviewActionResult>;
+  current: (
+    context: SpotProcurementReviewActionContext,
+    prepared: PrepareSpotProcurementReviewActionResult
+  ) => boolean;
+  complete: (
+    context: SpotProcurementReviewActionContext,
+    response: SpotProcurementWriteReadModel
+  ) => void | Promise<void>;
+  fail: (
+    context: SpotProcurementReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: SpotProcurementReviewActionContext) => void;
+}
+
+export type ExecuteSpotProcurementReviewActionResult =
+  | {
+      status: "not_started";
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: SpotProcurementReviewActionContext;
+      response: SpotProcurementWriteReadModel;
+    }
+  | {
+      status: "failed";
+      context: SpotProcurementReviewActionContext;
+    };
+
+export interface SpotProcurementWithdrawalActionContext
+  extends SpotProcurementWithdrawApprovalContext {
+  action: "withdraw";
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  procurementId: string;
+}
+
+export interface PrepareSpotProcurementWithdrawalActionInput
+  extends SpotProcurementWithdrawalActionContext {
+  isCurrent: (
+    context: SpotProcurementWithdrawalActionContext
+  ) => boolean;
+}
+
+export type PrepareSpotProcurementWithdrawalActionResult =
+  | {
+      status: "ready";
+      context: SpotProcurementWithdrawalActionContext;
+      preflight: SpotProcurementDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementWithdrawalActionContext;
+    };
+
+export interface ExecuteSpotProcurementWithdrawalActionInput {
+  action: "withdraw";
+  capture: (
+    action: "withdraw"
+  ) => SpotProcurementWithdrawalActionContext | null;
+  preflight: (
+    context: SpotProcurementWithdrawalActionContext
+  ) => Promise<PrepareSpotProcurementWithdrawalActionResult>;
+  current: (
+    context: SpotProcurementWithdrawalActionContext,
+    prepared: PrepareSpotProcurementWithdrawalActionResult
+  ) => boolean;
+  complete: (
+    context: SpotProcurementWithdrawalActionContext,
+    response: SpotProcurementWriteReadModel
+  ) => void | Promise<void>;
+  fail: (
+    context: SpotProcurementWithdrawalActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (context: SpotProcurementWithdrawalActionContext) => void;
+}
+
+export type ExecuteSpotProcurementWithdrawalActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: SpotProcurementWithdrawalActionContext;
+    }
+  | {
+      status: "completed";
+      context: SpotProcurementWithdrawalActionContext;
+      response: SpotProcurementWriteReadModel;
+    }
+  | {
+      status: "failed";
+      context: SpotProcurementWithdrawalActionContext;
+      error: unknown;
+    };
+
+export interface ReviewSpotProcurementPaymentPayload {
+  decision: SpotProcurementA5ReviewDecision;
+  comment?: string;
   adjustedSupplierBalanceAmountCents?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
 }
 
-export interface ReviewSpotProcurementA5PaymentPayload {
+export interface SpotProcurementPaymentReviewActionContext {
+  ownerScope: string;
+  routeGeneration: number;
+  detailEpoch: number;
+  dialogGeneration: number;
+  operationId: number;
+  paymentId: string;
+  paymentForm: "real_payment" | "legacy";
   decision: SpotProcurementA5ReviewDecision;
   comment?: string;
+  requiresSelfReviewConfirmation: boolean;
+  requiresLegacySupplierBalanceAdjustment: boolean;
+  adjustedSupplierBalanceAmountCents?: string;
   selfReviewReason?: string;
   confirmationPassword?: string;
 }
+
+export interface PrepareSpotProcurementPaymentReviewActionInput
+  extends SpotProcurementPaymentReviewActionContext {
+  isCurrent: (
+    context: SpotProcurementPaymentReviewActionContext
+  ) => boolean;
+}
+
+export type PrepareSpotProcurementPaymentReviewActionResult =
+  | {
+      status: "ready";
+      context: SpotProcurementPaymentReviewActionContext;
+      preflight: SpotProcurementPaymentDetailReadModel;
+    }
+  | {
+      status: "stale";
+      context: SpotProcurementPaymentReviewActionContext;
+    };
+
+export interface ExecuteSpotProcurementPaymentReviewActionInput {
+  decision: SpotProcurementA5ReviewDecision;
+  capture: (
+    decision: SpotProcurementA5ReviewDecision
+  ) => SpotProcurementPaymentReviewActionContext | null;
+  preflight: (
+    context: SpotProcurementPaymentReviewActionContext
+  ) => Promise<PrepareSpotProcurementPaymentReviewActionResult>;
+  current: (
+    context: SpotProcurementPaymentReviewActionContext,
+    prepared: PrepareSpotProcurementPaymentReviewActionResult
+  ) => boolean;
+  complete: (
+    context: SpotProcurementPaymentReviewActionContext,
+    response: SpotProcurementPaymentWriteReadModel
+  ) => void | Promise<void>;
+  fail: (
+    context: SpotProcurementPaymentReviewActionContext,
+    error: unknown
+  ) => void | Promise<void>;
+  finish: (
+    context: SpotProcurementPaymentReviewActionContext
+  ) => void;
+}
+
+export type ExecuteSpotProcurementPaymentReviewActionResult =
+  | { status: "not_started" }
+  | {
+      status: "stale";
+      context: SpotProcurementPaymentReviewActionContext;
+    }
+  | {
+      status: "completed";
+      context: SpotProcurementPaymentReviewActionContext;
+      response: SpotProcurementPaymentWriteReadModel;
+    }
+  | {
+      status: "failed";
+      context: SpotProcurementPaymentReviewActionContext;
+    };
 
 export interface VoidSpotProcurementPayload {
   reason: string;
@@ -950,6 +1259,120 @@ export function fetchSpotProcurementCapabilities(projectId: string) {
   );
 }
 
+async function uploadSpotProcurementPrivateFile(
+  path: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  const form = new FormData();
+  form.append("file", file, fileName);
+  if (idempotencyKey !== undefined) {
+    form.append("idempotencyKey", idempotencyKey);
+  }
+  const response = await apiFetch(path, { method: "POST", body: form });
+  await ensureOk(response, "零星采购文件上传失败");
+  return response.json() as Promise<{ id: string }>;
+}
+
+export function uploadSpotProcurementCreateFile(
+  projectId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/projects/${encodeURIComponent(projectId)}/draft-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementDraftFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/draft-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementPaymentDraftFile(
+  paymentId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/draft-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementExecutionVoucherFile(
+  paymentId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/execution-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementReceiptPhotoFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt-photo-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementRefundVoucherFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/refund-voucher-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
+export function uploadSpotProcurementInvoiceFile(
+  procurementId: string,
+  file: Blob,
+  fileName: string,
+  idempotencyKey?: string
+) {
+  return uploadSpotProcurementPrivateFile(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/invoice-file-uploads`,
+    file,
+    fileName,
+    idempotencyKey
+  );
+}
+
 export function fetchSpotProcurementCreateProjectOptions() {
   return readJson<SpotProcurementCreateProjectOptionReadModel[]>(
     "/spot-procurements/create-project-options"
@@ -1095,7 +1518,7 @@ export function recordSpotProcurementRefund(
   );
 }
 
-export function appendSpotProcurementPaymentInvoice(
+function postSpotProcurementPaymentInvoice(
   paymentId: string,
   fileId: string
 ) {
@@ -1105,21 +1528,117 @@ export function appendSpotProcurementPaymentInvoice(
   );
 }
 
-export async function fetchVatRateOptions(): Promise<VatRateOptionReadModel[]> {
-  const options = await readJson<
-    Array<{
-      id: string;
-      label: string;
-      rateValue: string;
-      enabled?: boolean;
-    }>
-  >("/vat-rate-options");
-  return options.map((option) => ({
-    id: option.id,
-    label: option.label,
-    rateValue: option.rateValue,
-    ...(option.enabled === undefined ? {} : { isEnabled: option.enabled })
-  }));
+export async function executeSpotProcurementInvoiceAppend<
+  TContext extends SpotProcurementInvoiceAppendActionContext
+>(
+  input: ExecuteSpotProcurementInvoiceAppendInput<TContext>
+): Promise<ExecuteSpotProcurementInvoiceAppendResult<TContext>> {
+  const context = input.capture();
+  if (!context) return { status: "not_started" };
+  let appendCompleted = false;
+
+  try {
+    if (!input.current(context)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    const freshReceipt = await fetchSpotProcurementReceipt(
+      context.procurementId
+    );
+    const appendActions = freshReceipt.availableActions.filter(
+      (action) => action.key === "append_invoice"
+    );
+    if (
+      freshReceipt.receipt.procurementId !== context.procurementId ||
+      appendActions.length !== 1 ||
+      appendActions[0]?.enabled !== true
+    ) {
+      throw new Error(
+        "发票追加权限或采购坐标已变化，请刷新当前收货单后重试"
+      );
+    }
+    if (!input.current(context, freshReceipt)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    const freshPayment = await fetchSpotProcurementPaymentDetail(
+      context.paymentId
+    );
+    if (
+      freshPayment.payment.id !== context.paymentId ||
+      freshPayment.payment.procurement.id !== context.procurementId ||
+      freshPayment.payment.status === "invalidated" ||
+      !freshPayment.payment.paymentType ||
+      !freshPayment.executions.some((execution) => execution.active)
+    ) {
+      throw new Error(
+        "发票对应付款已变化或尚无有效实付，请刷新当前收货单后重试"
+      );
+    }
+    if (!input.current(context, freshReceipt, freshPayment)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    const uploaded = await input.upload(
+      context.file,
+      context.fileName,
+      context.uploadIdempotencyKey
+    );
+    if (!input.current(context, freshReceipt, freshPayment)) {
+      await input.stale(context);
+      return { status: "stale", context };
+    }
+    await postSpotProcurementPaymentInvoice(context.paymentId, uploaded.id);
+    appendCompleted = true;
+    if (!input.current(context, freshReceipt, freshPayment)) {
+      return { status: "completed_detached", context };
+    }
+    await input.complete(context);
+    return { status: "completed", context };
+  } catch (error) {
+    if (appendCompleted) {
+      await input.completionFail(context, error);
+      return { status: "completed_with_refresh_error", context };
+    }
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+export function invalidateSpotProcurementPaymentInvoice(
+  paymentId: string,
+  invoiceId: string,
+  body: { reason: string }
+) {
+  return postJson<unknown>(
+    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/invoices/${encodeURIComponent(invoiceId)}/invalidation`,
+    body
+  );
+}
+
+export function requestSpotProcurementAbnormalTermination(
+  procurementId: string,
+  body: { reason: string }
+) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/abnormal-termination`,
+    body
+  );
+}
+
+export function confirmSpotProcurementAbnormalTermination(procurementId: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/abnormal-termination/confirmation`,
+    { confirmTermination: true }
+  );
+}
+
+export function refreshSpotProcurementReceiptPdf(procurementId: string) {
+  return postJson<unknown>(
+    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/pdf-refresh`
+  );
 }
 
 export function createSpotProcurementDraft(
@@ -1154,7 +1673,7 @@ export function submitSpotProcurement(procurementId: string) {
   );
 }
 
-export function reviewSpotProcurement(
+function reviewSpotProcurement(
   procurementId: string,
   body: ReviewSpotProcurementPayload
 ) {
@@ -1164,9 +1683,284 @@ export function reviewSpotProcurement(
   );
 }
 
-export function withdrawSpotProcurement(procurementId: string) {
+export async function prepareSpotProcurementReviewAction(
+  input: PrepareSpotProcurementReviewActionInput
+): Promise<PrepareSpotProcurementReviewActionResult> {
+  const context = normalizeSpotProcurementReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchSpotProcurementDetail(context.procurementId);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertSpotProcurementReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeSpotProcurementReviewAction(
+  input: ExecuteSpotProcurementReviewActionInput
+): Promise<ExecuteSpotProcurementReviewActionResult> {
+  const context = input.capture(input.decision);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await reviewSpotProcurement(
+      context.procurementId,
+      reviewSpotProcurementActionPayload(context, input.decision)
+    );
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function reviewSpotProcurementActionPayload(
+  context: SpotProcurementReviewActionContext,
+  decision: SpotProcurementReviewActionDecision
+): ReviewSpotProcurementPayload {
+  if (
+    context.decision !== decision ||
+    (decision !== "approve" && !context.comment)
+  ) {
+    throw new Error(
+      "零星采购审批上下文无效，请重新读取当前采购后再操作"
+    );
+  }
+  return {
+    decision,
+    ...(decision !== "approve" ? { comment: context.comment } : {}),
+    expectedVersionId: context.expectedVersionId,
+    expectedApprovalInstanceId: context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex
+  };
+}
+
+function normalizeSpotProcurementReviewAction(
+  input: PrepareSpotProcurementReviewActionInput
+): SpotProcurementReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const procurementId = input.procurementId.trim();
+  const expectedVersionId = input.expectedVersionId.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  const comment =
+    input.decision !== "approve" ? input.comment?.trim() ?? "" : undefined;
+  if (
+    !ownerScope ||
+    !procurementId ||
+    !expectedVersionId ||
+    !expectedApprovalInstanceId ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0 ||
+    !["approve", "reject", "return_to_applicant"].includes(input.decision) ||
+    (input.decision !== "approve" && !comment)
+  ) {
+    throw new Error(
+      "零星采购审批上下文无效，请重新读取当前采购后再操作"
+    );
+  }
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    procurementId,
+    expectedVersionId,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex,
+    decision: input.decision,
+    ...(input.decision !== "approve" ? { comment } : {})
+  });
+}
+
+function assertSpotProcurementReviewPreflight(
+  context: SpotProcurementReviewActionContext,
+  preflight: SpotProcurementDetailReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const coordinates = preflight.reviewApprovalContext;
+  if (
+    preflight.procurement.id !== context.procurementId ||
+    preflight.currentVersion.id !== context.expectedVersionId ||
+    enabledReviewActions.length !== 1 ||
+    coordinates?.expectedVersionId !== context.expectedVersionId ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex
+  ) {
+    throw new Error(
+      "零星采购审批资格或审批坐标已变化，请重新读取当前采购"
+    );
+  }
+}
+
+export async function prepareSpotProcurementWithdrawalAction(
+  input: PrepareSpotProcurementWithdrawalActionInput
+): Promise<PrepareSpotProcurementWithdrawalActionResult> {
+  const context = normalizeSpotProcurementWithdrawalAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchSpotProcurementDetail(
+    context.procurementId
+  );
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertSpotProcurementWithdrawalPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeSpotProcurementWithdrawalAction(
+  input: ExecuteSpotProcurementWithdrawalActionInput
+): Promise<ExecuteSpotProcurementWithdrawalActionResult> {
+  const context = input.capture(input.action);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await postSpotProcurementWithdrawal(
+      context.procurementId,
+      spotProcurementWithdrawalPayload(context)
+    );
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context, error };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function normalizeSpotProcurementWithdrawalAction(
+  input: PrepareSpotProcurementWithdrawalActionInput
+): SpotProcurementWithdrawalActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const procurementId = input.procurementId.trim();
+  const expectedVersionId = input.expectedVersionId.trim();
+  const expectedApprovalInstanceId =
+    input.expectedApprovalInstanceId.trim();
+  if (
+    input.action !== "withdraw" ||
+    !ownerScope ||
+    !procurementId ||
+    !expectedVersionId ||
+    !expectedApprovalInstanceId ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    !Number.isInteger(input.expectedNodeIndex) ||
+    input.expectedNodeIndex < 0
+  ) {
+    throw new Error(
+      "零星采购撤回上下文无效，请重新读取当前采购后再操作"
+    );
+  }
+  return Object.freeze({
+    action: "withdraw",
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    procurementId,
+    expectedVersionId,
+    expectedApprovalInstanceId,
+    expectedNodeIndex: input.expectedNodeIndex
+  });
+}
+
+function assertSpotProcurementWithdrawalPreflight(
+  context: SpotProcurementWithdrawalActionContext,
+  preflight: SpotProcurementDetailReadModel
+) {
+  const enabledWithdrawalActions =
+    preflight.availableActions.filter(
+      (action) =>
+        action.key === "withdraw_approval" && action.enabled
+    );
+  const coordinates = preflight.withdrawApprovalContext;
+  if (
+    preflight.procurement.form !== "real_application" ||
+    preflight.procurement.id !== context.procurementId ||
+    preflight.currentVersion.id !== context.expectedVersionId ||
+    enabledWithdrawalActions.length !== 1 ||
+    coordinates?.expectedVersionId !== context.expectedVersionId ||
+    coordinates.expectedApprovalInstanceId !==
+      context.expectedApprovalInstanceId ||
+    coordinates.expectedNodeIndex !== context.expectedNodeIndex
+  ) {
+    throw new Error(
+      "零星采购撤回资格或审批坐标已变化，请重新读取当前采购"
+    );
+  }
+}
+
+function spotProcurementWithdrawalPayload(
+  context: SpotProcurementWithdrawalActionContext
+): SpotProcurementWithdrawApprovalContext {
+  if (context.action !== "withdraw") {
+    throw new Error(
+      "零星采购撤回上下文无效，请重新读取当前采购后再操作"
+    );
+  }
+  return {
+    expectedVersionId: context.expectedVersionId,
+    expectedApprovalInstanceId:
+      context.expectedApprovalInstanceId,
+    expectedNodeIndex: context.expectedNodeIndex
+  };
+}
+
+function postSpotProcurementWithdrawal(
+  procurementId: string,
+  body: SpotProcurementWithdrawApprovalContext
+) {
   return postJson<SpotProcurementWriteReadModel>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/approval-withdrawal`
+    `/spot-procurements/${encodeURIComponent(procurementId)}/approval-withdrawal`,
+    body
   );
 }
 
@@ -1187,12 +1981,6 @@ export function abandonSpotProcurementDraft(
   return postJson<SpotProcurementWriteReadModel>(
     `/spot-procurements/${encodeURIComponent(procurementId)}/abandonment`,
     body
-  );
-}
-
-export function createSpotProcurementPaymentDraft(procurementId: string) {
-  return postJson<SpotProcurementPaymentWriteReadModel>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/payments`
   );
 }
 
@@ -1218,7 +2006,7 @@ export function submitSpotProcurementPayment(paymentId: string) {
   );
 }
 
-export function reviewSpotProcurementPayment(
+function postSpotProcurementPaymentReview(
   paymentId: string,
   body: ReviewSpotProcurementPaymentPayload
 ) {
@@ -1228,14 +2016,204 @@ export function reviewSpotProcurementPayment(
   );
 }
 
-export function reviewSpotProcurementA5Payment(
-  paymentId: string,
-  body: ReviewSpotProcurementA5PaymentPayload
-) {
-  return postJson<SpotProcurementPaymentWriteReadModel>(
-    `/spot-procurement-payments/${encodeURIComponent(paymentId)}/approval`,
-    body
+export async function prepareSpotProcurementPaymentReviewAction(
+  input: PrepareSpotProcurementPaymentReviewActionInput
+): Promise<PrepareSpotProcurementPaymentReviewActionResult> {
+  const context = normalizeSpotProcurementPaymentReviewAction(input);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  const preflight = await fetchSpotProcurementPaymentDetail(
+    context.paymentId
   );
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  assertSpotProcurementPaymentReviewPreflight(context, preflight);
+  if (!input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+
+  return { status: "ready", context, preflight };
+}
+
+export async function executeSpotProcurementPaymentReviewAction(
+  input: ExecuteSpotProcurementPaymentReviewActionInput
+): Promise<ExecuteSpotProcurementPaymentReviewActionResult> {
+  const context = input.capture(input.decision);
+  if (!context) return { status: "not_started" };
+
+  try {
+    const prepared = await input.preflight(context);
+    if (!input.current(context, prepared)) {
+      return { status: "stale", context };
+    }
+    const response = await postSpotProcurementPaymentReview(
+      context.paymentId,
+      spotProcurementPaymentReviewPayload(context, input.decision)
+    );
+    assertSpotProcurementPaymentReviewResponse(context, response);
+    await input.complete(context, response);
+    return { status: "completed", context, response };
+  } catch (error) {
+    await input.fail(context, error);
+    return { status: "failed", context };
+  } finally {
+    input.finish(context);
+  }
+}
+
+function spotProcurementPaymentReviewPayload(
+  context: SpotProcurementPaymentReviewActionContext,
+  decision: SpotProcurementA5ReviewDecision
+): ReviewSpotProcurementPaymentPayload {
+  if (
+    context.decision !== decision ||
+    (decision === "return_to_applicant" && !context.comment) ||
+    (context.requiresSelfReviewConfirmation &&
+      (!context.selfReviewReason ||
+        !context.confirmationPassword?.trim()))
+  ) {
+    throw new Error(
+      "零星采购付款审批上下文无效，请重新读取当前付款后再操作"
+    );
+  }
+  return {
+    decision,
+    ...(context.comment ? { comment: context.comment } : {}),
+    ...(context.requiresLegacySupplierBalanceAdjustment
+      ? {
+          adjustedSupplierBalanceAmountCents:
+            context.adjustedSupplierBalanceAmountCents
+        }
+      : {}),
+    ...(context.requiresSelfReviewConfirmation
+      ? {
+          selfReviewReason: context.selfReviewReason,
+          confirmationPassword: context.confirmationPassword
+        }
+      : {})
+  };
+}
+
+function normalizeSpotProcurementPaymentReviewAction(
+  input: PrepareSpotProcurementPaymentReviewActionInput
+): SpotProcurementPaymentReviewActionContext {
+  const ownerScope = input.ownerScope.trim();
+  const paymentId = input.paymentId.trim();
+  const comment = input.comment?.trim() || undefined;
+  const selfReviewReason = input.requiresSelfReviewConfirmation
+    ? input.selfReviewReason?.trim() || undefined
+    : undefined;
+  const confirmationPassword = input.requiresSelfReviewConfirmation
+    ? input.confirmationPassword
+    : undefined;
+  const adjustedSupplierBalanceAmountCents =
+    input.adjustedSupplierBalanceAmountCents?.trim();
+  const validAdjustedSupplierBalanceAmount =
+    adjustedSupplierBalanceAmountCents !== undefined &&
+    /^(0|[1-9]\d*)$/u.test(adjustedSupplierBalanceAmountCents);
+  if (
+    !ownerScope ||
+    !paymentId ||
+    !Number.isInteger(input.routeGeneration) ||
+    input.routeGeneration < 0 ||
+    !Number.isInteger(input.detailEpoch) ||
+    input.detailEpoch < 0 ||
+    !Number.isInteger(input.dialogGeneration) ||
+    input.dialogGeneration < 0 ||
+    !Number.isInteger(input.operationId) ||
+    input.operationId < 1 ||
+    (input.paymentForm !== "real_payment" &&
+      input.paymentForm !== "legacy") ||
+    (input.decision !== "approve" &&
+      input.decision !== "return_to_applicant") ||
+    (input.decision === "return_to_applicant" && !comment) ||
+    (input.paymentForm === "real_payment" &&
+      (input.requiresLegacySupplierBalanceAdjustment ||
+        input.adjustedSupplierBalanceAmountCents !== undefined)) ||
+    (input.requiresLegacySupplierBalanceAdjustment &&
+      (input.paymentForm !== "legacy" ||
+        input.decision !== "return_to_applicant" ||
+        !validAdjustedSupplierBalanceAmount)) ||
+    (!input.requiresLegacySupplierBalanceAdjustment &&
+      input.adjustedSupplierBalanceAmountCents !== undefined) ||
+    (input.requiresSelfReviewConfirmation &&
+      (!selfReviewReason || !confirmationPassword?.trim()))
+  ) {
+    throw new Error(
+      "零星采购付款审批上下文无效，请重新读取当前付款后再操作"
+    );
+  }
+  return Object.freeze({
+    ownerScope,
+    routeGeneration: input.routeGeneration,
+    detailEpoch: input.detailEpoch,
+    dialogGeneration: input.dialogGeneration,
+    operationId: input.operationId,
+    paymentId,
+    paymentForm: input.paymentForm,
+    decision: input.decision,
+    requiresSelfReviewConfirmation:
+      input.requiresSelfReviewConfirmation,
+    requiresLegacySupplierBalanceAdjustment:
+      input.requiresLegacySupplierBalanceAdjustment,
+    ...(validAdjustedSupplierBalanceAmount
+      ? {
+          adjustedSupplierBalanceAmountCents:
+            BigInt(adjustedSupplierBalanceAmountCents).toString()
+        }
+      : {}),
+    ...(comment ? { comment } : {}),
+    ...(selfReviewReason ? { selfReviewReason } : {}),
+    ...(confirmationPassword ? { confirmationPassword } : {})
+  });
+}
+
+function assertSpotProcurementPaymentReviewPreflight(
+  context: SpotProcurementPaymentReviewActionContext,
+  preflight: SpotProcurementPaymentDetailReadModel
+) {
+  const enabledReviewActions = preflight.availableActions.filter(
+    (action) => action.key === "review_approval" && action.enabled
+  );
+  const paymentForm =
+    preflight.payment.form === "real_payment"
+      ? "real_payment"
+      : "legacy";
+  const requiresLegacySupplierBalanceAdjustment =
+    paymentForm === "legacy" &&
+    context.decision === "return_to_applicant" &&
+    preflight.approval.currentRoleKeys.length === 1 &&
+    preflight.approval.currentRoleKeys[0] === "finance_director";
+  if (
+    preflight.payment.id !== context.paymentId ||
+    paymentForm !== context.paymentForm ||
+    enabledReviewActions.length !== 1 ||
+    requiresLegacySupplierBalanceAdjustment !==
+      context.requiresLegacySupplierBalanceAdjustment ||
+    (enabledReviewActions[0]?.requiresSelfReviewConfirmation === true) !==
+      context.requiresSelfReviewConfirmation
+  ) {
+    throw new Error(
+      "零星采购付款审批资格已变化，请重新读取当前付款"
+    );
+  }
+}
+
+function assertSpotProcurementPaymentReviewResponse(
+  context: SpotProcurementPaymentReviewActionContext,
+  response: SpotProcurementPaymentWriteReadModel
+) {
+  if (
+    context.decision === "return_to_applicant" &&
+    !response.newDraftPaymentId?.trim()
+  ) {
+    throw new Error(
+      "付款申请已退回，但服务端未返回新草稿编号，请刷新页面核对"
+    );
+  }
 }
 
 export function withdrawSpotProcurementPayment(paymentId: string) {

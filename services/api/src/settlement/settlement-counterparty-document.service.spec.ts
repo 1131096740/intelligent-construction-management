@@ -31,6 +31,27 @@ async function portraitPdf() {
   return Buffer.from(await document.save());
 }
 
+function lifecycleDelegates(draft: Record<string, unknown>) {
+  return {
+    settlementDraft: {
+      findUnique: jest.fn().mockResolvedValue({
+        contractId: "contract-1",
+        contractVersionId: "version-1",
+        code: "JS-DRAFT-001",
+        processId: null,
+        submittedSettlementId: null,
+        submittedAt: null,
+        abandonReason: null,
+        ...draft
+      })
+    },
+    contractSettlementProcess: { findMany: jest.fn().mockResolvedValue([]) },
+    settlement: { findMany: jest.fn().mockResolvedValue([]) },
+    paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+    approvalInstance: { findMany: jest.fn().mockResolvedValue([]) }
+  };
+}
+
 describe("SettlementCounterpartyDocumentService", () => {
   it("links the original uploaded PDF to the current frozen draft revision without rewriting bytes", async () => {
     const buffer = await landscapePdf();
@@ -44,7 +65,16 @@ describe("SettlementCounterpartyDocumentService", () => {
       .mockResolvedValueOnce([file("frozen-file")])
       .mockResolvedValueOnce([file("uploaded-file")]);
     const created = { id: "signed-1", pageCount: 1 };
-    const tx = { $queryRaw, settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created), update: jest.fn() } };
+    const tx = {
+      $queryRaw,
+      ...lifecycleDelegates(draft),
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(created),
+        update: jest.fn()
+      }
+    };
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const files = { getFileBuffer: jest.fn(async (id: string) => ({ file: file(id), buffer })) };
     const service = new SettlementCounterpartyDocumentService(prisma as never, undefined, files as never);
@@ -86,7 +116,15 @@ describe("SettlementCounterpartyDocumentService", () => {
     const draft = { id: "draft-1", projectId: "project-1", ownerUserId: "owner-1", revision: 3, status: "draft", governanceVersion: 1 };
     const frozen = { id: "frozen-1", settlementDraftId: "draft-1", purpose: "frozen_counterparty_copy", fileId: "frozen-file", contentSha256: sha256, pageCount: 2, sourceRevision: 3, businessSnapshotToken: "snapshot-3", status: "active", declarationSnapshot: null, supersedesId: null };
     const file = (id: string) => ({ id, uploadedByUserId: "owner-1", storageStatus: "active", mimeType: "application/pdf", sizeBytes: buffer.length, contentSha256: sha256 });
-    const tx = { $queryRaw: jest.fn().mockResolvedValueOnce([draft]).mockResolvedValueOnce([frozen]).mockResolvedValueOnce([file("frozen-file")]).mockResolvedValueOnce([file("uploaded-file")]), settlementSignedDocument: { findFirst: jest.fn(), create: jest.fn() } };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([draft]).mockResolvedValueOnce([frozen]).mockResolvedValueOnce([file("frozen-file")]).mockResolvedValueOnce([file("uploaded-file")]),
+      ...lifecycleDelegates(draft),
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn(),
+        create: jest.fn()
+      }
+    };
     const files = { getFileBuffer: jest.fn(async (id: string) => ({ file: file(id), buffer })) };
     const service = new SettlementCounterpartyDocumentService({ $transaction: jest.fn(async (callback) => callback(tx)) } as never, undefined, files as never);
 
@@ -113,7 +151,13 @@ describe("SettlementCounterpartyDocumentService", () => {
         .mockResolvedValueOnce([frozen])
         .mockResolvedValueOnce([file("frozen-file", frozenBuffer, frozenSha256)])
         .mockResolvedValueOnce([file("uploaded-file", uploadedBuffer, uploadedSha256)]),
-      settlementSignedDocument: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: "signed-1" }), update: jest.fn() }
+      ...lifecycleDelegates(draft),
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "signed-1" }),
+        update: jest.fn()
+      }
     };
     const files = {
       getFileBuffer: jest.fn(async (id: string) => id === "frozen-file"
@@ -157,7 +201,9 @@ describe("SettlementCounterpartyDocumentService", () => {
         .mockResolvedValueOnce([frozen])
         .mockResolvedValueOnce([file("a-uploaded")])
         .mockResolvedValueOnce([file("z-frozen")]),
+      ...lifecycleDelegates(draft),
       settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: "signed-1" }),
         update: jest.fn()
@@ -194,7 +240,11 @@ describe("SettlementCounterpartyDocumentService", () => {
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValueOnce([draft]),
-      settlementSignedDocument: { create: jest.fn() }
+      ...lifecycleDelegates(draft),
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      }
     };
     const service = new SettlementCounterpartyDocumentService({
       $transaction: jest.fn(async (callback) => callback(tx))
@@ -206,6 +256,53 @@ describe("SettlementCounterpartyDocumentService", () => {
       uploadedFileId: "uploaded-file",
       declaration
     })).rejects.toThrow("未找到当前项目的结算草稿");
+    expect(tx.settlementSignedDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before linking a scan to a marker-drift formal draft", async () => {
+    const draft = {
+      id: "draft-1",
+      projectId: "project-1",
+      ownerUserId: "owner-1",
+      revision: 3,
+      status: "draft",
+      governanceVersion: 1,
+      processId: "process-1"
+    };
+    const delegates = lifecycleDelegates(draft);
+    delegates.contractSettlementProcess.findMany.mockResolvedValueOnce([{
+      id: "process-1",
+      settlementDraftId: "draft-1",
+      settlementId: "settlement-1"
+    }]);
+    delegates.settlement.findMany.mockResolvedValueOnce([{
+      id: "settlement-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "version-1",
+      code: "JS-DRAFT-001",
+      processId: "process-1"
+    }]);
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValueOnce([{ id: "draft-1" }]),
+      ...delegates,
+      settlementSignedDocument: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn()
+      }
+    };
+    const service = new SettlementCounterpartyDocumentService({
+      $transaction: jest.fn(async (callback) => callback(tx))
+    } as never);
+
+    await expect(service.link("project-1", "draft-1", "owner-1", {
+      expectedRevision: 3,
+      frozenDocumentId: "frozen-1",
+      uploadedFileId: "uploaded-file",
+      declaration
+    })).rejects.toThrow("已形成正式结算");
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.settlementSignedDocument.create).not.toHaveBeenCalled();
   });
 

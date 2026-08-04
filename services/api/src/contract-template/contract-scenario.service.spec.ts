@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { ContractScenarioService } from "./contract-scenario.service";
 
 describe("ContractScenarioService", () => {
@@ -246,6 +247,10 @@ describe("ContractScenarioService", () => {
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.contractBusinessScenario.updateMany.mock.invocationCallOrder[0]
     );
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
     expect(JSON.stringify(audit.record.mock.calls[0][1].metadata)).not.toContain("敏感配置理由");
   });
 
@@ -298,5 +303,9 @@ describe("ContractScenarioService", () => {
       })
     ).rejects.toThrow("精确模板版本仍已发布且合同类型一致");
     expect(tx.contractScenarioTemplateMapping.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+    );
   });
 });

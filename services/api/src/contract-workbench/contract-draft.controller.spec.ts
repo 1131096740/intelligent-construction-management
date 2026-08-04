@@ -1,6 +1,8 @@
 import { ContractDraftController } from "./contract-draft.controller";
 import { RequestMethod } from "@nestjs/common";
-import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
+import { RouteParamtypes } from "@nestjs/common/enums/route-paramtypes.enum";
+import { METHOD_METADATA, PATH_METADATA, ROUTE_ARGS_METADATA } from "@nestjs/common/constants";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 
 describe("ContractDraftController", () => {
   function makeController() {
@@ -9,7 +11,8 @@ describe("ContractDraftController", () => {
       saveAggregate: jest.fn().mockResolvedValue({
         contractVersionId: "cv-1",
         draftRevision: 8
-      })
+      }),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" })
     };
     const editLease = {
       acquire: jest.fn().mockResolvedValue({ token: "lease-token" }),
@@ -60,6 +63,80 @@ describe("ContractDraftController", () => {
     expect(aggregate.getWorkbench).toHaveBeenCalledWith("cv-1", "actor-1");
   });
 
+  it("protects the lifecycle capability GET with the same project action as abandonment", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.workbench
+      )
+    ).toBe("contract.create");
+  });
+
+  it("protects aggregate PUT with the contract create project action", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.saveDraft
+      )
+    ).toBe("contract.create");
+  });
+
+  it("uploads a private file through the exact contract version boundary", async () => {
+    const { aggregate, controller } = makeController();
+    const file = {
+      originalname: "授权书.pdf",
+      mimetype: "application/pdf",
+      size: 128,
+      buffer: Buffer.from("private-file")
+    };
+
+    await expect(
+      controller.uploadPrivateFile(
+        "cv-1",
+        file,
+        { id: "owner-1" } as never,
+        { idempotencyKey: "upload-key-1" }
+      )
+    ).resolves.toEqual({ id: "file-1" });
+    expect(aggregate.uploadPrivateFile).toHaveBeenCalledWith(
+      "cv-1",
+      "owner-1",
+      expect.objectContaining({
+        originalName: "授权书.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 128,
+        buffer: file.buffer,
+        idempotencyKey: "upload-key-1"
+      })
+    );
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        ContractDraftController.prototype.uploadPrivateFile
+      )
+    ).toBe(":contractVersionId/files");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.uploadPrivateFile
+      )
+    ).toBe("contract.create");
+  });
+
+  it("passes multipart upload metadata as an object to the API validation pipe", () => {
+    const metadata = Reflect.getMetadata(
+      ROUTE_ARGS_METADATA,
+      ContractDraftController,
+      "uploadPrivateFile"
+    ) as Record<string, { data?: string }>;
+    const bodyMetadata = Object.entries(metadata).find(([key]) =>
+      key.startsWith(`${RouteParamtypes.BODY}:`)
+    );
+
+    expect(bodyMetadata).toBeDefined();
+    expect(bodyMetadata?.[1].data).toBeUndefined();
+  });
+
   it("queues preview generation for the exact saved revision", async () => {
     const { controller, documents } = makeController();
 
@@ -108,6 +185,23 @@ describe("ContractDraftController", () => {
       "cv-1",
       "replacement-token"
     );
+  });
+
+  it("protects preview and every edit-lease mutation with the workbench project action", () => {
+    for (const handler of [
+      "generatePreview",
+      "acquireEditLease",
+      "heartbeatEditLease",
+      "takeOverEditLease",
+      "releaseEditLease"
+    ] as const) {
+      expect(
+        Reflect.getMetadata(
+          REQUIRED_PROJECT_ACTION_KEY,
+          ContractDraftController.prototype[handler]
+        )
+      ).toBe("contract.create");
+    }
   });
 
   it("forwards the global aggregate save with the opaque lease token", async () => {
@@ -161,6 +255,12 @@ describe("ContractDraftController", () => {
         ContractDraftController.prototype.deleteDraft
       )
     ).toBe(":contractVersionId");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.deleteDraft
+      )
+    ).toBe("contract.create");
   });
 
   it("delegates daily deletion to the existing logical draft lifecycle", async () => {
@@ -223,5 +323,11 @@ describe("ContractDraftController", () => {
         ContractDraftController.prototype.submitDraft
       )
     ).toBe(":contractVersionId/submission");
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        ContractDraftController.prototype.submitDraft
+      )
+    ).toBe("contract.submit");
   });
 });

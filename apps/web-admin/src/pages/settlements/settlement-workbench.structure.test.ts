@@ -132,13 +132,25 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("settlement.id");
   });
 
-  it("executes only server-advertised draft lifecycle actions with revision CAS", () => {
-    expect(page).toContain("<BusinessDraftAction");
-    expect(page).toContain("activeDraft.value?.availableActions ?? []");
+  it("executes each draft lifecycle action from an authoritative raw capability with fresh CAS", () => {
+    expect(page).not.toContain("<BusinessDraftAction");
+    expect(page).toContain("shallowRef<DetailActionReadModel[] | null>(null)");
+    expect(page).toContain("settlementDraftAvailableActions.value = fresh.availableActions");
     expect(page).toContain("activeDraft.lifecycleBlockers");
-    expect(page).toContain("abandonSettlementDraftRecord");
-    expect(page).toContain("expectedRevision: current.revision");
-    expect(page).not.toContain("const saved = await persistDraft(false)");
+    expect(page).toContain("executeSettlementDraftLifecycleAction");
+    expect(page).toContain("confirmDeletePristineDraft");
+    expect(page).toContain("action: \"delete_pristine_draft\"");
+    expect(page).toContain("confirmAbandonApplication");
+    expect(page).toContain("action: \"abandon_application\"");
+    expect(page).toContain("expectedRevision: settlementDraftLifecycleRevision.value");
+    expect(page).toContain("settlementDraftLifecycleContextCurrent");
+    expect(page).toContain("routeQueryText(route.query.draftId) === context.draftId");
+    expect(page).toContain("settlementWorkbenchComponentAlive");
+    expect(page).toContain("invalidateSettlementDraftLifecycleCapability");
+    expect(page).toContain("refreshSettlementDraftLifecycleCapability");
+    expect(page).toContain(":disabled=\"settlementDraftLifecycleActionBusy\"");
+    expect(page).not.toContain("abandonSettlementDraftRecord");
+    expect(page).not.toContain("request.action");
     expect(page).not.toContain("enabled: true");
   });
 
@@ -156,7 +168,7 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain('theme="file-input"');
     expect(page).toContain(':auto-upload="false"');
     expect(page).not.toContain("native-file-input");
-    expect(page).toContain("uploadPrivateFile");
+    expect(page).toContain("uploadSettlementDraftPrivateFile");
     expect(page).toContain("previewSettlementImport");
     expect(page).toContain("importApplyDisabledReason");
     expect(page).toContain("applyImportedSettlementLines");
@@ -173,12 +185,16 @@ describe("settlement creation workbench structure", () => {
     expect(page).toContain("原草稿明细");
     expect(page).toContain(":data=\"blockedDraftRows\"");
     expect(page).toContain('v-if="!draftSubmissionBlockingReason"');
-    expect(page).toContain(":disabled=\"Boolean(draftSubmissionBlockingReason)\"");
-    expect(page).toContain(":readonly=\"Boolean(draftSubmissionBlockingReason)\"");
+    expect(page).toContain(
+      ':disabled="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"'
+    );
+    expect(page).toContain(
+      ':readonly="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"'
+    );
     expect(page).toContain("if (draftSubmissionBlockingReason.value) return;");
     expect(page).toContain("activeDraft.value?.submissionBlockingReason");
     expect(page).toMatch(
-      /activeDraft\.value = draft;[\s\S]*if \(draftSubmissionBlockingReason\.value\) \{[\s\S]*return;[\s\S]*await loadSourceLines\(\);/
+      /activeDraft\.value = draft;[\s\S]*if \(draftSubmissionBlockingReason\.value\) \{[\s\S]*return true;[\s\S]*await loadSourceLines\(\);/
     );
     expect(page).toMatch(
       /async function loadSourceLines\(\) \{[\s\S]*if \(draftSubmissionBlockingReason\.value\) return;/

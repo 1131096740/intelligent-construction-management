@@ -2,6 +2,109 @@ import * as ExcelJS from "exceljs";
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
+  it.each([
+    ["approved_pending_seal", "pending_approval"],
+    ["in_seal", "in_seal"],
+    ["seal_approved_pending_archive", "completed"],
+    ["pending_archive_confirm", "completed"]
+  ])("publishes material-change capability only for exact %s/%s coordinates", (
+    status,
+    sealTaskStatus
+  ) => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: [],
+        context: Record<string, unknown>
+      ): Array<{ key: string; enabled: boolean; requiresComment?: boolean }>;
+    };
+    const context = {
+      actorUserId: "handler-1",
+      ownerUserId: "handler-1",
+      governed: true,
+      sealTask: { id: "seal-1", status: sealTaskStatus, handlerUserId: "handler-1" },
+      activeFinal: null,
+      approvalFormAvailable: false,
+      approvalParticipant: false,
+      canUploadGovernedFinal: false,
+      canReportSigningMaterialChange: true,
+      genericDraftActionsAllowed: false
+    };
+    const actions = service.contractActions(
+      status,
+      ["contract_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      context
+    );
+
+    expect(actions).toContainEqual(expect.objectContaining({
+      key: "report_signing_material_change",
+      enabled: true,
+      requiresComment: true
+    }));
+    expect(service.contractActions(
+      status,
+      ["contract_staff"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      {
+        ...context,
+        sealTask: { ...context.sealTask, status: "cancelled" }
+      }
+    )).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "report_signing_material_change", enabled: true })
+    ]));
+  });
+
+  it.each([
+    ["frozen handler", "handler-1", true, true],
+    ["active global director", "director-1", true, true],
+    ["project-only director", "project-director-1", false, true],
+    ["inactive global director", "inactive-director-1", true, false]
+  ])("matches material-change write permission for %s", async (
+    _label,
+    actorUserId,
+    hasGlobalAssignment,
+    isActive
+  ) => {
+    const prisma = {
+      position: { findUnique: jest.fn().mockResolvedValue({ id: "position-director" }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive }) },
+      userPosition: {
+        findFirst: jest.fn().mockResolvedValue(
+          hasGlobalAssignment ? { id: "global-director-assignment" } : null
+        )
+      }
+    };
+    const service = new ContractReadService(prisma as never) as unknown as {
+      canReportSigningMaterialChange(
+        actorUserId: string | undefined,
+        sealTask: { handlerUserId: string } | null
+      ): Promise<boolean>;
+    };
+
+    await expect(service.canReportSigningMaterialChange(
+      actorUserId,
+      { handlerUserId: "handler-1" }
+    )).resolves.toBe(actorUserId === "handler-1" || (hasGlobalAssignment && isActive));
+
+    if (actorUserId !== "handler-1" && isActive) {
+      expect(prisma.userPosition.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: actorUserId,
+          projectId: null,
+          positionId: "position-director"
+        },
+        select: { id: true }
+      });
+    } else if (!isActive) {
+      expect(prisma.userPosition.findFirst).not.toHaveBeenCalled();
+    }
+  });
+
   it("exposes separate governed final-file confirmation and correction actions", () => {
     const service = new ContractReadService({} as never);
     const actions = (service as unknown as {
@@ -105,6 +208,159 @@ describe("ContractReadService", () => {
     );
   });
 
+  it("fails closed when the current-version takeover marker and exact relation drift", () => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractTakeoverLedgerProjection(
+        contract: { id: string; projectId: string; source?: string | null },
+        version: { id: string; contractId: string; changeType?: string | null },
+        takeover: {
+          id: string;
+          contractVersionId: string;
+          contractId: string;
+          projectId: string;
+          takeoverStatus: string;
+        } | undefined,
+        canReadTakeover: boolean
+      ): Record<string, unknown>;
+    };
+    const contract = { id: "contract-1", projectId: "project-1", source: "system" };
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      changeType: "original"
+    };
+    const takeover = {
+      id: "takeover-1",
+      contractVersionId: "version-1",
+      contractId: "contract-1",
+      projectId: "project-1",
+      takeoverStatus: "draft"
+    };
+
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      takeoverReadable: true,
+      currentNode: "接管关联异常",
+      pendingOwner: "历史接管工作台",
+      nextAction: "检查接管关联",
+      workbenchEditable: false,
+      copyAvailable: false
+    }));
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      true
+    )).not.toHaveProperty("takeoverId");
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      true
+    )).not.toHaveProperty("takeoverStatus");
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      { ...version, changeType: "historical_takeover" },
+      undefined,
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      takeoverReadable: true,
+      currentNode: "接管关联异常",
+      nextAction: "检查接管关联",
+      workbenchEditable: false
+    }));
+
+    const protectedProjection = service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      takeover,
+      false
+    );
+    expect(protectedProjection).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      currentNode: "历史合同接管",
+      pendingOwner: "专用工作台",
+      nextAction: "查看详情",
+      takeoverReadable: false,
+      workbenchEditable: false,
+      copyAvailable: false
+    }));
+    expect(protectedProjection).not.toHaveProperty("takeoverId");
+    expect(protectedProjection).not.toHaveProperty("takeoverStatus");
+    expect(protectedProjection).not.toHaveProperty("takeoverRelationMismatch");
+
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      { ...version, changeType: "historical_takeover" },
+      takeover,
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: false,
+      currentNode: "接管准备",
+      nextAction: "继续接管",
+      copyAvailable: false
+    }));
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      { ...version, changeType: "historical_takeover" },
+      { ...takeover, takeoverStatus: "abandoned" },
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      currentNode: "已放弃",
+      copyAvailable: false
+    }));
+    expect(service.contractTakeoverLedgerProjection(
+      contract,
+      version,
+      { ...takeover, takeoverStatus: "abandoned" },
+      true
+    )).toEqual(expect.objectContaining({
+      historicalTakeoverFlow: true,
+      takeoverRelationMismatch: true,
+      copyAvailable: false
+    }));
+
+    for (const driftedTakeover of [
+      { ...takeover, contractId: "contract-other" },
+      { ...takeover, projectId: "project-other" },
+      { ...takeover, contractVersionId: "version-other" }
+    ]) {
+      const projection = service.contractTakeoverLedgerProjection(
+        contract,
+        { ...version, changeType: "historical_takeover" },
+        driftedTakeover,
+        true
+      );
+      expect(projection).toEqual(expect.objectContaining({
+        historicalTakeoverFlow: true,
+        takeoverRelationMismatch: true,
+        currentNode: "接管关联异常",
+        nextAction: "检查接管关联",
+        workbenchEditable: false,
+        copyAvailable: false
+      }));
+      expect(projection).not.toHaveProperty("takeoverId");
+      expect(projection).not.toHaveProperty("takeoverStatus");
+    }
+
+    expect(service.contractTakeoverLedgerProjection(
+      { ...contract, source: "historical_takeover" },
+      { ...version, id: "version-change", changeType: "change" },
+      undefined,
+      true
+    )).toEqual(expect.objectContaining({ historicalTakeoverFlow: false }));
+  });
+
   it("exports only the visible contract ledger rows and records the export audit", async () => {
     jest.useRealTimers();
     const prisma = {};
@@ -118,6 +374,7 @@ describe("ContractReadService", () => {
       rows: [
         {
           id: "HT-2026-009",
+          contractId: "contract-9",
           contractNo: "HT-2026-009",
           name: "幕墙分包合同",
           project: "总部综合楼",
@@ -309,6 +566,69 @@ describe("ContractReadService", () => {
       take: 20,
       orderBy: { updatedAt: "desc" }
     });
+  });
+
+  it("keeps historical takeover drafts out of ordinary status semantics in the legacy ledger", async () => {
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "contract-historical",
+          projectId: "project-1",
+          source: "historical_takeover",
+          code: "CHYB-机械-2026-006",
+          temporaryCode: null,
+          name: "历史机械合同",
+          counterparty: "历史供应商",
+          updatedAt: new Date("2026-08-01T00:00:00.000Z")
+        }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "version-historical",
+          contractId: "contract-historical",
+          versionNo: 1,
+          changeType: "historical_takeover",
+          status: "draft",
+          amountCents: 18_000_000n
+        }])
+      },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "takeover-1",
+          contractVersionId: "version-historical",
+          contractId: "contract-historical",
+          projectId: "project-1",
+          takeoverStatus: "draft"
+        }])
+      },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }])
+      }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const result = await service.listRecent(50, ["project-1"]);
+
+    expect(prisma.contractTakeover.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: { in: ["version-historical"] } },
+      select: {
+        id: true,
+        contractVersionId: true,
+        contractId: true,
+        projectId: true,
+        takeoverStatus: true
+      }
+    });
+    expect(result.rows[0]).toMatchObject({
+      historicalTakeoverFlow: true,
+      currentNode: "历史合同接管",
+      nextAction: "查看详情",
+      takeoverReadable: false,
+      workbenchEditable: false
+    });
+    expect(result.rows[0]).not.toHaveProperty("takeoverId");
+    expect(result.rows[0]).not.toHaveProperty("takeoverStatus");
   });
 
   it("excludes abandoned-only contracts and falls back to the latest non-abandoned version", async () => {
@@ -620,6 +940,7 @@ describe("ContractReadService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "contract-draft-1",
           projectId: "project-1",
+          ownerUserId: "contract-owner-1",
           code: null,
           temporaryCode: "草稿-20260625-12345678",
           name: "",
@@ -661,16 +982,38 @@ describe("ContractReadService", () => {
       },
       paymentExecution: {
         findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "old-approved",
+          status: "approved",
+          applicantUserId: "contract-owner-1"
+        }),
+        findMany: jest.fn().mockResolvedValue([])
       }
     };
     const service = new ContractReadService(prisma as never);
 
-    const detail = await service.getDetail("contract-draft-1");
+    const detail = await service.getDetail(
+      "contract-draft-1",
+      undefined,
+      "contract-owner-1"
+    );
 
     expect(detail.id).toBe("草稿-20260625-12345678");
     expect(detail.title).toBe("草稿-20260625-12345678 · ");
     expect(detail.paymentTermStages).toEqual([]);
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥0.00" });
+    expect(detail.availableActions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "download_approval_form", enabled: true })
+    ]));
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
+      where: {
+        businessType: "contract_version",
+        businessId: "contract-version-draft-1"
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
   });
 
   it("builds contract detail from persisted contract version and payment terms", async () => {
@@ -1058,6 +1401,7 @@ describe("ContractReadService", () => {
       requiredAction: "contract.archive.confirm",
       requiresPassword: true
     });
+    expect(detail.availableActionKeys).toContain("confirm_archive");
     expect(detail.disabledReasons).toEqual([]);
   });
 
@@ -1520,11 +1864,13 @@ describe("ContractReadService", () => {
   it("为本人发起的董事长终审节点返回精确自审访问标记", async () => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "leader-1",
           frozenNodes: [{ roleKeys: ["chairman", "general_manager"] }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       }
     };
     const service = new ContractReadService(prisma as never) as unknown as {
@@ -1534,7 +1880,14 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<unknown>;
+      ): Promise<{
+        access: {
+          canAct: boolean;
+          canReview: boolean;
+          requiresSelfReviewConfirmation: boolean;
+        };
+        approval: unknown;
+      }>;
       contractActions(
         status: string,
         roleKeys: never[],
@@ -1543,19 +1896,26 @@ describe("ContractReadService", () => {
       ): Array<Record<string, unknown>>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
       ["chairman"],
       "leader-1"
     );
-    expect(access).toEqual({
-      canAct: true,
-      canReview: true,
-      requiresSelfReviewConfirmation: true
+    expect(review).toEqual({
+      access: {
+        canAct: true,
+        canReview: true,
+        requiresSelfReviewConfirmation: true
+      },
+      approval: {
+        id: "approval-instance-1",
+        currentNodeIndex: 0,
+        updatedAt: new Date("2026-08-02T01:00:01.000Z")
+      }
     });
-    expect(service.contractActions("approval_pending", ["chairman"] as never[], access, [])).toEqual(
+    expect(service.contractActions("approval_pending", ["chairman"] as never[], review.access, [])).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "review_approval",
@@ -1566,14 +1926,22 @@ describe("ContractReadService", () => {
         expect.objectContaining({ key: "delegate_approval", enabled: true })
       ])
     );
-    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({
+    expect(prisma.approvalInstance.findMany).toHaveBeenCalledWith({
       where: {
         businessType: "contract_version",
         businessId: "contract-version-1",
+        flowType: "contract.approve",
         status: "in_progress"
       },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        frozenNodes: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
     });
   });
 
@@ -1584,11 +1952,13 @@ describe("ContractReadService", () => {
   ] as const)("standing delegation 在%s时 canReview=%s", async (_label, expected, delegatorActive) => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{ roleKeys: ["contract_director"] }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       },
       approvalDelegation: {
         findMany: jest.fn().mockResolvedValue([{ fromUserId: "delegator-1" }])
@@ -1612,10 +1982,10 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canReview: boolean }>;
+      ): Promise<{ access: { canReview: boolean } }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
@@ -1623,13 +1993,14 @@ describe("ContractReadService", () => {
       "delegatee-1"
     );
 
-    expect(access.canReview).toBe(expected);
+    expect(review.access.canReview).toBe(expected);
   });
 
   it("keeps frozen assignment review without consulting standing delegation", async () => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [
             {
@@ -1637,8 +2008,9 @@ describe("ContractReadService", () => {
               assignments: [{ fromRoleKey: "contract_director", toUserId: "assigned-1" }]
             }
           ],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       },
       approvalDelegation: { findMany: jest.fn() }
     };
@@ -1649,10 +2021,10 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canReview: boolean }>;
+      ): Promise<{ access: { canReview: boolean } }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
@@ -1660,7 +2032,7 @@ describe("ContractReadService", () => {
       "assigned-1"
     );
 
-    expect(access.canReview).toBe(true);
+    expect(review.access.canReview).toBe(true);
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
 
@@ -1670,15 +2042,17 @@ describe("ContractReadService", () => {
   ] as const)("受治理合同节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
     const prisma = {
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
           applicantUserId: "applicant-1",
           frozenNodes: [{
             roleKeys: ["contract_director"],
             candidateUserIdsByRole: { contract_director: ["contract-director-1"] },
             candidateUserIds: ["contract-director-1"]
           }],
-          currentNodeIndex: 0
-        })
+          currentNodeIndex: 0,
+          updatedAt: new Date("2026-08-02T01:00:01.000Z")
+        }])
       },
       approvalDelegation: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) }
@@ -1692,10 +2066,10 @@ describe("ContractReadService", () => {
         projectId: string,
         roleKeys: string[],
         actorUserId: string
-      ): Promise<{ canAct: boolean; canReview: boolean }>;
+      ): Promise<{ access: { canAct: boolean; canReview: boolean } }>;
     };
 
-    const access = await service.canReviewCurrentApproval(
+    const review = await service.canReviewCurrentApproval(
       "contract_version",
       "contract-version-1",
       "project-1",
@@ -1703,8 +2077,8 @@ describe("ContractReadService", () => {
       actorUserId
     );
 
-    expect(access.canAct).toBe(expected);
-    expect(access.canReview).toBe(expected);
+    expect(review.access.canAct).toBe(expected);
+    expect(review.access.canReview).toBe(expected);
   });
   it("paginates mutually exclusive lifecycle views with full visible counts", async () => {
     const now = new Date("2026-07-20T01:00:00.000Z");
@@ -1793,5 +2167,443 @@ describe("ContractReadService", () => {
     expect(pendingArchive.rows).toEqual([
       expect.objectContaining({ contractVersionId: "c4-v1", contractNo: "HT-4", currentNode: "合同部主管确认双方最终版" })
     ]);
+  });
+
+  it("batch-projects one exact-version lifecycle classification into both contract ledgers", async () => {
+    const now = new Date("2026-07-31T01:00:00.000Z");
+    const contracts = [
+      {
+        id: "contract-pristine",
+        projectId: "project-1",
+        code: "HT-PRISTINE",
+        temporaryCode: "CG-PRISTINE",
+        name: "纯净草稿",
+        counterparty: "乙方一",
+        ownerUserId: "user-1",
+        voidedAt: null,
+        updatedAt: now
+      },
+      {
+        id: "contract-submitted",
+        projectId: "project-1",
+        code: "HT-SUBMITTED",
+        temporaryCode: null,
+        name: "曾提交草稿",
+        counterparty: "乙方二",
+        ownerUserId: "user-1",
+        voidedAt: null,
+        updatedAt: now
+      },
+      {
+        id: "contract-signed",
+        projectId: "project-1",
+        code: "HT-SIGNED",
+        temporaryCode: null,
+        name: "已有双方签署版",
+        counterparty: "乙方三",
+        ownerUserId: "user-1",
+        voidedAt: null,
+        updatedAt: now
+      },
+      {
+        id: "contract-takeover",
+        projectId: "project-1",
+        source: "historical_takeover",
+        code: "HT-TAKEOVER",
+        temporaryCode: null,
+        name: "历史接管草稿",
+        counterparty: "乙方四",
+        ownerUserId: "user-1",
+        voidedAt: null,
+        updatedAt: now
+      }
+    ];
+    const version = (
+      contractId: string,
+      id: string,
+      draftRevision: number,
+      firstSubmittedAt: Date | null
+    ) => ({
+      id,
+      contractId,
+      versionNo: 1,
+      status: "draft",
+      changeType: "original",
+      firstSubmittedAt,
+      amountCents: 100n,
+      amountLimitType: "capped",
+      pricingNature: "fixed_total",
+      draftRevision,
+      updatedAt: now,
+      abandonedAt: null,
+      abandonReason: null
+    });
+    const versions = [
+      version("contract-pristine", "version-pristine", 4, null),
+      version("contract-submitted", "version-submitted", 7, now),
+      version("contract-signed", "version-signed", 9, null),
+      {
+        ...version("contract-takeover", "version-takeover", 5, null),
+        changeType: "historical_takeover"
+      }
+    ];
+    const prisma = {
+      contract: { findMany: jest.fn().mockResolvedValue(contracts) },
+      contractVersion: { findMany: jest.fn().mockResolvedValue(versions) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }])
+      },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "approval-submitted", businessId: "version-submitted" }
+        ])
+      },
+      approvalActionLog: {
+        findMany: jest.fn().mockResolvedValue([
+          { approvalInstanceId: "approval-submitted" }
+        ])
+      },
+      contractFormalFile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            contractVersionId: "version-signed",
+            purpose: "mutually_signed_final",
+            status: "active"
+          }
+        ])
+      },
+      contractAuthorization: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "takeover-1",
+          projectId: "project-1",
+          contractId: "contract-takeover",
+          contractVersionId: "version-takeover",
+          takeoverStatus: "draft"
+        }])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(new Map([
+        ["project-1", ["contract_staff"]]
+      ]))
+    };
+    const service = new ContractReadService(
+      prisma as never,
+      projectVisibility as never
+    );
+
+    const [workbench, lifecycle] = await Promise.all([
+      service.workbenchLedger("all", 1, 20, ["project-1"], "user-1"),
+      service.lifecycleLedger("my_drafts", 1, 20, ["project-1"], "user-1")
+    ]);
+
+    expect(workbench.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        contractId: "contract-pristine",
+        id: "HT-PRISTINE",
+        contractVersionId: "version-pristine",
+        lifecycleKind: "pristine_draft",
+        lifecycleBlockers: [],
+        draftRevision: 4,
+        source: "system",
+        changeType: "original",
+        takeoverId: null,
+        takeoverStatus: null,
+        workbenchEditable: true
+      }),
+      expect.objectContaining({
+        contractVersionId: "version-submitted",
+        lifecycleKind: "approval_draft",
+        draftRevision: 7,
+        workbenchEditable: true
+      }),
+      expect.objectContaining({
+        contractVersionId: "version-signed",
+        lifecycleKind: "formal_record",
+        draftRevision: 9,
+        workbenchEditable: false
+      }),
+      expect.objectContaining({
+        contractVersionId: "version-takeover",
+        source: "historical_takeover",
+        changeType: "historical_takeover",
+        projectId: "project-1",
+        takeoverId: "takeover-1",
+        takeoverStatus: "draft",
+        takeoverReadable: true,
+        currentNode: "接管准备",
+        pendingOwner: "接管责任人",
+        nextAction: "继续接管",
+        workbenchEditable: false
+      })
+    ]));
+    expect(workbench.summary).toMatchObject({
+      my_drafts: 1,
+      all: 4
+    });
+    expect(lifecycle.rows).toEqual([
+      expect.objectContaining({
+        contractVersionId: "version-pristine",
+        lifecycleKind: "pristine_draft",
+        lifecycleBlockers: [],
+        draftRevision: 4
+      })
+    ]);
+    expect(lifecycle.summary).toEqual({
+      formal_ledger: 1,
+      my_drafts: 1,
+      returned_for_revision: 1,
+      ended: 0
+    });
+    for (const reader of [
+      prisma.approvalInstance,
+      prisma.approvalActionLog,
+      prisma.contractFormalFile,
+      prisma.contractAuthorization,
+      prisma.contractVersionAuthorizationLink,
+      prisma.contractSealTask,
+      prisma.contractArchiveFile,
+      prisma.settlement,
+      prisma.paymentRequest
+    ]) {
+      expect(reader.findMany).toHaveBeenCalledTimes(2);
+    }
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: { in: versions.map((item) => item.id) } },
+      select: { contractVersionId: true }
+    });
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: { in: versions.map((item) => item.id) } },
+      select: { contractVersionId: true }
+    });
+    expect(prisma.contractTakeover.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.contractTakeover.findMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: { in: versions.map((item) => item.id) }
+      },
+      select: {
+        id: true,
+        contractVersionId: true,
+        contractId: true,
+        projectId: true,
+        takeoverStatus: true
+      }
+    });
+
+    projectVisibility.effectiveRoleKeysByProject.mockResolvedValueOnce(new Map([
+      ["project-1", ["budget_staff"]]
+    ]));
+    const ledgerWithoutTakeoverAccess = await service.workbenchLedger(
+      "all",
+      1,
+      20,
+      ["project-1"],
+      "budget-user"
+    );
+    const protectedHistoricalRow = ledgerWithoutTakeoverAccess.rows.find(
+      (row) => row.contractVersionId === "version-takeover"
+    );
+    expect(protectedHistoricalRow).toEqual(expect.objectContaining({
+      source: "historical_takeover",
+      changeType: "historical_takeover",
+      currentNode: "历史合同接管",
+      pendingOwner: "专用工作台",
+      nextAction: "查看详情",
+      takeoverReadable: false,
+      workbenchEditable: false
+    }));
+    expect(protectedHistoricalRow).not.toHaveProperty("takeoverId");
+    expect(protectedHistoricalRow).not.toHaveProperty("takeoverStatus");
+  });
+
+  it("keeps historical takeover detail outside generic draft-ending actions and exact-version downstream facts", async () => {
+    const now = new Date("2026-07-31T02:00:00.000Z");
+    const version = {
+      id: "version-takeover",
+      contractId: "contract-takeover",
+      versionNo: 1,
+      status: "draft",
+      changeType: "historical_takeover",
+      firstSubmittedAt: null,
+      amountCents: 75000000n,
+      amountLimitType: "capped",
+      pricingNature: "fixed_total",
+      draftRevision: 5,
+      updatedAt: now,
+      contractGovernanceVersion: null
+    };
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-takeover",
+          projectId: "project-1",
+          code: "HT-HIS-001",
+          temporaryCode: null,
+          name: "历史接管合同",
+          counterparty: "历史乙方",
+          ownerUserId: "user-1",
+          contractTypeKey: "subcontract",
+          updatedAt: now
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "项目一" })
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([version]) },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-takeover",
+          versionNo: 1,
+          status: "draft"
+        })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractAuthorization: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: { findMany: jest.fn().mockResolvedValue([]) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["contract_staff"])
+    };
+    const service = new ContractReadService(prisma as never, projectVisibility as never);
+
+    const detail = await service.getDetail("HT-HIS-001", ["project-1"], "user-1");
+
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith({
+      where: { contractId: "contract-takeover" },
+      orderBy: { createdAt: "asc" }
+    });
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith({
+      where: { contractId: "contract-takeover" },
+      orderBy: { updatedAt: "desc" }
+    });
+    expect(prisma.settlement.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: { in: ["version-takeover"] } },
+      select: { contractVersionId: true }
+    });
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: { in: ["version-takeover"] } },
+      select: { contractVersionId: true }
+    });
+    expect(detail.lifecycleKind).toBe("approval_draft");
+    expect(detail.availableActions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "submit_approval" }),
+      expect.objectContaining({ key: "delete_pristine_draft" }),
+      expect.objectContaining({ key: "abandon_application" })
+    ]));
+  });
+
+  it("marks the owner abandonment capability as requiring a reason", async () => {
+    const now = new Date("2026-07-31T02:00:00.000Z");
+    const version = {
+      id: "version-submitted",
+      contractId: "contract-submitted",
+      versionNo: 1,
+      status: "draft",
+      changeType: "original",
+      firstSubmittedAt: now,
+      amountCents: 75000000n,
+      amountLimitType: "capped",
+      pricingNature: "fixed_total",
+      draftRevision: 5,
+      updatedAt: now,
+      contractGovernanceVersion: null
+    };
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-submitted",
+          projectId: "project-1",
+          code: null,
+          temporaryCode: "DRAFT-SUBMITTED-001",
+          name: "已提交后退回的合同",
+          counterparty: "乙方",
+          ownerUserId: "user-1",
+          contractTypeKey: "subcontract",
+          updatedAt: now
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "project-1",
+          name: "项目一"
+        })
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([version]) },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "terms-submitted",
+          versionNo: 1,
+          status: "draft"
+        })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractAuthorization: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["contract_staff"])
+    };
+    const service = new ContractReadService(
+      prisma as never,
+      projectVisibility as never
+    );
+
+    const detail = await service.getDetail(
+      "DRAFT-SUBMITTED-001",
+      ["project-1"],
+      "user-1"
+    );
+
+    expect(detail.availableActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "abandon_application",
+          enabled: true,
+          requiresComment: true
+        })
+      ])
+    );
+    expect(detail.availableActionKeys).toContain("abandon_application");
   });
 });

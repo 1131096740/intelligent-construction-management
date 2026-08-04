@@ -1,5 +1,11 @@
-import { BadRequestException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException
+} from "@nestjs/common";
+import { validate } from "class-validator";
 import { PaymentAmountService } from "./payment-amount.service";
+import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { PaymentRequestService } from "./payment-request.service";
 
 describe("PaymentRequestService", () => {
@@ -11,7 +17,8 @@ describe("PaymentRequestService", () => {
     record: jest.fn()
   };
   const fileAccess = {
-    assertCanDownloadFile: jest.fn()
+    assertCanDownloadFile: jest.fn(),
+    assertFileHasNoBusinessBinding: jest.fn()
   };
   const projectFunding = {
     lockFundingContext: jest.fn(),
@@ -23,6 +30,27 @@ describe("PaymentRequestService", () => {
     { name: "财务", mode: "any", roleKeys: ["finance_director"] },
     { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
   ];
+  const paymentReviewCoordinates = {
+    expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z",
+    expectedApprovalInstanceId: "approval-instance-1",
+    expectedNodeIndex: 0,
+    expectedApprovalUpdatedAt: "2026-07-31T01:01:00.000Z"
+  };
+  const paymentExecutionCoordinates = {
+    expectedPaymentUpdatedAt: "2026-07-31T02:00:00.000Z",
+    idempotencyKey: "a1111111-1111-4111-8111-111111111111"
+  };
+  const paymentReviewPaymentVersion = {
+    updatedAt: new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt),
+    paymentSubjectType: "our_company",
+    signingSubjectType: "our_company",
+    companyEntityIdSnapshot: "company-1",
+    companyEntityNameSnapshot: "建工智管建设有限公司",
+    companyEntityCreditCodeSnapshot: "91310000TEST000001"
+  };
+  const paymentReviewApprovalVersion = {
+    updatedAt: new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt)
+  };
 
   beforeEach(() => {
     auth.confirmPassword.mockReset();
@@ -30,6 +58,12 @@ describe("PaymentRequestService", () => {
     audit.record.mockReset();
     fileAccess.assertCanDownloadFile.mockReset();
     fileAccess.assertCanDownloadFile.mockResolvedValue({ id: "file-1" });
+    fileAccess.assertFileHasNoBusinessBinding.mockReset();
+    fileAccess.assertFileHasNoBusinessBinding.mockResolvedValue({
+      id: "file-1",
+      uploadedByUserId: "cashier-1",
+      storageStatus: "active"
+    });
     projectFunding.lockFundingContext.mockReset();
     projectFunding.lockFundingContext.mockResolvedValue(undefined);
     projectFunding.allocateExecution.mockReset();
@@ -201,6 +235,12 @@ describe("PaymentRequestService", () => {
       paymentTermsStageId: string | null;
       settlementId: string | null;
       sourceType: string;
+      updatedAt: Date;
+      paymentSubjectType: string;
+      signingSubjectType: string;
+      companyEntityIdSnapshot: string | null;
+      companyEntityNameSnapshot: string | null;
+      companyEntityCreditCodeSnapshot: string | null;
       status: string;
       requestedAmountCents: bigint;
       approvedAmountCents: bigint | null;
@@ -215,6 +255,12 @@ describe("PaymentRequestService", () => {
       contractVersionId: "contract-version-1",
       settlementId: "settlement-1",
       sourceType: "settlement",
+      updatedAt: new Date(paymentExecutionCoordinates.expectedPaymentUpdatedAt),
+      paymentSubjectType: "our_company",
+      signingSubjectType: "our_company",
+      companyEntityIdSnapshot: "company-1",
+      companyEntityNameSnapshot: "建工智管建设有限公司",
+      companyEntityCreditCodeSnapshot: "91310000TEST000001",
       status: "approved_pending_payment",
       requestedAmountCents: 50_000n,
       approvedAmountCents: 50_000n,
@@ -222,6 +268,166 @@ describe("PaymentRequestService", () => {
       ...overrides
     };
   }
+
+  function paymentExecutionGuardTx<T extends object>(tx: T): T {
+    const current = tx as T & {
+      paymentRequest?: Record<string, unknown>;
+      paymentExecution?: Record<string, unknown>;
+      user?: Record<string, unknown>;
+      userPosition?: Record<string, unknown>;
+      projectMember?: Record<string, unknown>;
+      position?: Record<string, unknown>;
+    };
+    const existingPaymentFindFirst = current.paymentRequest?.findFirst as
+      | ((args: unknown) => Promise<Record<string, unknown> | null | undefined>)
+      | undefined;
+    return Object.assign(tx, {
+      paymentRequest: {
+        ...(current.paymentRequest ?? {}),
+        findFirst: jest.fn(async (args: unknown) => {
+          const existing = await existingPaymentFindFirst?.(args);
+          if (existing === null) return null;
+          if (existing === undefined) {
+            return { id: "payment-1", projectId: "project-1" };
+          }
+          return {
+            ...existing,
+            projectId: existing.projectId ?? "project-1"
+          };
+        })
+      },
+      paymentExecution: {
+        ...(current.paymentExecution ?? {}),
+        findUnique:
+          current.paymentExecution?.findUnique ??
+          current.paymentExecution?.findFirst ??
+          jest.fn().mockResolvedValue(null)
+      },
+      user: {
+        ...(current.user ?? {}),
+        findUnique:
+          current.user?.findUnique ??
+          jest.fn().mockResolvedValue({ id: "cashier-1", isActive: true })
+      },
+      userPosition: {
+        ...(current.userPosition ?? {}),
+        findMany: current.userPosition?.findMany ?? jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        ...(current.projectMember ?? {}),
+        findMany:
+          current.projectMember?.findMany ??
+          jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
+      },
+      position: {
+        ...(current.position ?? {}),
+        findMany: current.position?.findMany ?? jest.fn().mockResolvedValue([])
+      }
+    });
+  }
+
+  function paymentExecutionService(
+    ...args: ConstructorParameters<typeof PaymentRequestService>
+  ): PaymentRequestService {
+    const paymentService = new PaymentRequestService(...args);
+    const dependencies = paymentService as unknown as {
+      files?: typeof fileAccess;
+      projectFunding?: typeof projectFunding;
+    };
+    dependencies.files ??= fileAccess;
+    dependencies.projectFunding ??= projectFunding;
+    return paymentService;
+  }
+
+  function hardenedPaymentExecutionFixture(
+    paymentOverrides: Parameters<typeof paymentExecutionRow>[0] = {},
+    existingExecution: Record<string, unknown> | null = null
+  ) {
+    const payment = paymentExecutionRow(paymentOverrides);
+    const createdExecution = {
+      id: "execution-hardened-1",
+      idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
+      paymentRequestId: payment.id,
+      settlementId: payment.settlementId,
+      paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: payment.companyEntityIdSnapshot,
+      companyEntityNameSnapshot: payment.companyEntityNameSnapshot,
+      companyEntityCreditCodeSnapshot:
+        payment.companyEntityCreditCodeSnapshot,
+      amountCents: 30_000n,
+      paidAt: new Date("2026-06-22T00:00:00.000Z"),
+      executedByUserId: "cashier-1",
+      voucherFileId: "file-1"
+    };
+    const tx = paymentExecutionGuardTx({
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([payment])
+        .mockResolvedValueOnce([{ id: "settlement-1" }]),
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: payment.id,
+          projectId: payment.projectId
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: payment.id,
+          status: "paid",
+          paidAmountCents: 30_000n
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          contractId: payment.contractId,
+          contractVersionId: payment.contractVersionId,
+          status: "effective",
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
+        }),
+        update: jest.fn()
+      },
+      paymentExecution: {
+        findUnique: jest.fn().mockResolvedValue(existingExecution),
+        create: jest.fn().mockResolvedValue(createdExecution)
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "cashier-1",
+          isActive: true
+        })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { positionKey: "finance_staff" }
+        ])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    });
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    return { payment, createdExecution, tx, prisma };
+  }
+
+  it("requires payment execution CAS and UUID v4 idempotency coordinates", async () => {
+    const dto = Object.assign(new RecordPaymentExecutionDto(), {
+      amountCents: "10000",
+      paidAt: "2026-07-31T01:00:00.000Z",
+      voucherFileId: "voucher-1",
+      confirmationPassword: "current-password"
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors.map((error) => error.property)).toEqual(
+      expect.arrayContaining(["expectedPaymentUpdatedAt", "idempotencyKey"])
+    );
+  });
 
   it("rejects payment request creation when the service is unavailable", async () => {
     await expect(
@@ -3061,6 +3267,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3076,6 +3283,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: governedPaymentApprovalNodes
@@ -3102,6 +3310,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "pm-1", {
+      ...paymentReviewCoordinates,
       decision: "approve"
     });
 
@@ -3181,6 +3390,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "comprehensive-director-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
@@ -3194,6 +3404,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3210,6 +3421,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3246,7 +3458,10 @@ describe("PaymentRequestService", () => {
   ] as const)("付款领导自审缺少确认事实时零写入", async (input, message) => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
 
-    await expect(service.reviewApproval("payment-1", "leader-1", input)).rejects.toThrow(message);
+    await expect(service.reviewApproval("payment-1", "leader-1", {
+      ...paymentReviewCoordinates,
+      ...input
+    })).rejects.toThrow(message);
     expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
@@ -3260,6 +3475,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       service.reviewApproval("payment-1", "leader-1", {
+        ...paymentReviewCoordinates,
         decision: "approve",
         selfReviewReason: "业务紧急",
         confirmationPassword: "wrong-password"
@@ -3275,6 +3491,7 @@ describe("PaymentRequestService", () => {
     const { service, tx } = paymentLeaderSelfReviewFixture();
 
     await service.reviewApproval("payment-1", "leader-1", {
+      ...paymentReviewCoordinates,
       decision: "approve",
       selfReviewReason: "  业务紧急且由本人发起  ",
       confirmationPassword: "top-secret"
@@ -3298,6 +3515,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3308,6 +3526,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: paymentApprovalNodes
@@ -3329,6 +3548,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "pm-1", {
+        ...paymentReviewCoordinates,
         decision: "approve",
         approvedAmountCents: "45000"
       })
@@ -3341,6 +3561,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "pm-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("付款审批服务暂不可用，请稍后重试或联系管理员");
@@ -3356,6 +3577,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3371,6 +3593,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 3,
           frozenNodes
@@ -3392,6 +3615,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      ...paymentReviewCoordinates,
+      expectedNodeIndex: 3,
       decision: "approve",
       approvedAmountCents: "45000"
     });
@@ -3437,6 +3662,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3447,6 +3673,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 3,
           frozenNodes
@@ -3468,6 +3695,8 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        expectedNodeIndex: 3,
         decision: "approve",
         approvedAmountCents
       })
@@ -3475,10 +3704,70 @@ describe("PaymentRequestService", () => {
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
+  it("fails closed before final approval when the frozen payer snapshot is not our company", async () => {
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n,
+          signingSubjectType: "affiliate",
+          companyEntityIdSnapshot: null,
+          companyEntityNameSnapshot: null,
+          companyEntityCreditCodeSnapshot: null
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            {
+              name: "董事长/总经理",
+              mode: "any",
+              roleKeys: ["chairman", "general_manager"]
+            }
+          ]
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
+      ...approvalRoleTables("chairman")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never
+    );
+
+    await expect(
+      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        decision: "approve"
+      })
+    ).rejects.toThrow(
+      "付款合同不是完整的我方付款主体，不能完成付款审批"
+    );
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("persists the approver's remark on the approval action log", async () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3494,6 +3783,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3513,6 +3803,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      ...paymentReviewCoordinates,
       decision: "approve",
       comment: "  同意付款  "
     });
@@ -3533,6 +3824,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3548,6 +3840,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3614,6 +3907,7 @@ describe("PaymentRequestService", () => {
     );
 
     const approved = await paymentService.reviewApproval("FK-2026-012", "delegate-user-1", {
+      ...paymentReviewCoordinates,
       decision: "approve",
       approvedAmountCents: "45000"
     });
@@ -3642,6 +3936,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3657,6 +3952,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3684,6 +3980,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const rejected = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates,
       decision: "reject",
       comment: "付款条件尚未满足"
     });
@@ -3724,6 +4021,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "invalid"
       } as never)
     ).rejects.toThrow("不支持的付款审批处理方式");
@@ -3738,6 +4036,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "reject_previous",
         comment: "   "
       })
@@ -3763,6 +4062,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3777,6 +4077,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 1,
           frozenNodes
@@ -3797,6 +4098,8 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+      ...paymentReviewCoordinates,
+      expectedNodeIndex: 1,
       decision: "reject_previous",
       comment: "请上一节点复核付款金额"
     });
@@ -3847,6 +4150,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3857,6 +4161,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3881,6 +4186,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "reject_previous",
         comment: "无法退回上一节点"
       })
@@ -3893,6 +4199,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -3907,6 +4214,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -3934,6 +4242,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "general-manager-1", {
+      ...paymentReviewCoordinates,
       decision: "return_to_applicant",
       comment: "退回申请人补充付款依据"
     });
@@ -4056,6 +4365,7 @@ describe("PaymentRequestService", () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -4069,6 +4379,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -4115,6 +4426,7 @@ describe("PaymentRequestService", () => {
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
     const result = await paymentService.reviewApproval("FK-2026-012", "transfer-user-1", {
+      ...paymentReviewCoordinates,
       decision: "approve"
     });
 
@@ -4400,11 +4712,16 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await expect(
-      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
-    ).rejects.toThrow("当前付款申请已离开审批中，不能处理审批");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("当前付款申请已离开审批中，不能处理审批");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
   });
 
@@ -4425,6 +4742,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("未找到付款申请，请刷新付款台账后重试");
@@ -4443,20 +4761,31 @@ describe("PaymentRequestService", () => {
         update: jest.fn()
       },
       approvalInstance: {
-        findFirst: jest.fn().mockResolvedValue(null)
-      }
+        findFirst: jest.fn().mockResolvedValue(null),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() }
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await expect(
-      paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
-    ).rejects.toThrow("未找到进行中的付款审批，请刷新后重试");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("未找到进行中的付款审批，请刷新后重试");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects approval review when the current approval node cannot be found", async () => {
@@ -4491,6 +4820,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve"
       })
     ).rejects.toThrow("当前付款审批节点异常，请刷新后重试");
@@ -4524,8 +4854,12 @@ describe("PaymentRequestService", () => {
               candidateUserIds: ["chairman-1"]
             }
           ]
-        })
+        }),
+        update: jest.fn()
       },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...financingUsageUpdates(),
       ...approvalRoleTables("employee")
     };
     const prisma = {
@@ -4533,18 +4867,155 @@ describe("PaymentRequestService", () => {
     };
     const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-    await expect(
-      paymentService.reviewApproval("FK-2026-012", "employee-1", {
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "employee-1", {
+        ...paymentReviewCoordinates,
+        expectedApprovalInstanceId: "forged-instance",
+        expectedNodeIndex: 99,
         decision: "approve"
       })
-    ).rejects.toThrow("当前账号不能处理“董事长/总经理”付款审批节点");
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect((error as ForbiddenException).getStatus()).toBe(403);
+    expect((error as Error).message).toBe("当前账号不能处理“董事长/总经理”付款审批节点");
     expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.projectFinancingQuotaUsage.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["payment version", { expectedPaymentUpdatedAt: "2026-07-31T01:00:01.000Z" }],
+    ["approval instance", { expectedApprovalInstanceId: "approval-instance-stale" }],
+    ["approval node", { expectedNodeIndex: 1 }],
+    ["approval version", { expectedApprovalUpdatedAt: "2026-07-31T01:01:01.000Z" }]
+  ] as const)("rejects a stale %s coordinate before approval writes", async (_label, override) => {
+    const paymentUpdatedAt = new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt);
+    const approvalUpdatedAt = new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt);
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          updatedAt: paymentUpdatedAt
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ],
+          applicantUserId: "applicant-1",
+          updatedAt: approvalUpdatedAt
+        }),
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          frozenNodes: [
+            { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+          ],
+          applicantUserId: "applicant-1",
+          updatedAt: approvalUpdatedAt
+        }]),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("chairman"),
+      ...financingUsageUpdates()
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        ...override,
+        decision: "approve"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("付款审批坐标已变化，请刷新页面后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.projectFinancingQuotaUsage.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate in-progress payment approval instances before approval writes", async () => {
+    const paymentUpdatedAt = new Date(paymentReviewCoordinates.expectedPaymentUpdatedAt);
+    const approvalUpdatedAt = new Date(paymentReviewCoordinates.expectedApprovalUpdatedAt);
+    const approval = {
+      id: "approval-instance-1",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+      ],
+      applicantUserId: "applicant-1",
+      updatedAt: approvalUpdatedAt
+    };
+    const tx = {
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-1",
+          code: "FK-2026-012",
+          projectId: "project-1",
+          status: "approval_pending",
+          requestedAmountCents: 50_000n,
+          approvedAmountCents: null,
+          updatedAt: paymentUpdatedAt
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(approval),
+        findMany: jest.fn().mockResolvedValue([
+          approval,
+          { ...approval, id: "approval-instance-2" }
+        ]),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("chairman"),
+      ...financingUsageUpdates()
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    const error = await paymentService
+      .reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
+        decision: "approve"
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getStatus()).toBe(409);
+    expect((error as Error).message).toBe("付款审批实例异常，请刷新页面后重试");
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects approved amount above requested amount", async () => {
     const tx = {
       paymentRequest: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewPaymentVersion,
           id: "payment-1",
           code: "FK-2026-012",
           projectId: "project-1",
@@ -4555,6 +5026,7 @@ describe("PaymentRequestService", () => {
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
+          ...paymentReviewApprovalVersion,
           id: "approval-instance-1",
           currentNodeIndex: 0,
           frozenNodes: [
@@ -4575,6 +5047,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.reviewApproval("FK-2026-012", "chairman-1", {
+        ...paymentReviewCoordinates,
         decision: "approve",
         approvedAmountCents: "50001"
       })
@@ -4632,9 +5105,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -4643,6 +5116,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -4658,9 +5132,13 @@ describe("PaymentRequestService", () => {
     );
     expect(tx.paymentExecution.create).toHaveBeenCalledWith({
       data: {
+        idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
         paymentRequestId: "payment-1",
         settlementId: "settlement-1",
         paymentSubjectType: "our_company",
+        companyEntityIdSnapshot: "company-1",
+        companyEntityNameSnapshot: "建工智管建设有限公司",
+        companyEntityCreditCodeSnapshot: "91310000TEST000001",
         amountCents: 30_000n,
         paidAt: new Date("2026-06-22T00:00:00.000Z"),
         executedByUserId: "cashier-1",
@@ -4740,9 +5218,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       audit as never,
@@ -4754,6 +5232,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -4771,8 +5250,41 @@ describe("PaymentRequestService", () => {
       occurredAt: new Date("2026-06-22T00:00:00.000Z"),
       actorUserId: "cashier-1"
     });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        actorUserId: "cashier-1",
+        action: "payment.execution.record",
+        businessType: "payment_request",
+        businessId: "payment-1",
+        metadata: expect.objectContaining({
+          projectId: "project-1",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
+          payer: {
+            paymentSubjectType: "our_company",
+            companyEntityIdSnapshot: "company-1",
+            companyEntityNameSnapshot: "建工智管建设有限公司",
+            companyEntityCreditCodeSnapshot: "91310000TEST000001"
+          },
+          funding: expect.objectContaining({
+            kind: "allocated",
+            projectCashAmountCents: "30000",
+            financingQuotaAmountCents: "0"
+          })
+        })
+      })
+    );
     expect(tx.paymentExecution.create.mock.invocationCallOrder[0]).toBeLessThan(
       projectFunding.allocateExecution.mock.invocationCallOrder[0]
+    );
+    expect(tx.settlement.findUnique.mock.invocationCallOrder[0]).toBeLessThan(
+      fileAccess.assertFileHasNoBusinessBinding.mock.invocationCallOrder[0]
+    );
+    expect(
+      fileAccess.assertFileHasNoBusinessBinding.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      tx.paymentExecution.create.mock.invocationCallOrder[0]
     );
     expect(projectFunding.allocateExecution.mock.invocationCallOrder[0]).toBeLessThan(
       audit.record.mock.invocationCallOrder[0]
@@ -4817,9 +5329,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       audit as never,
@@ -4832,6 +5344,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -4860,12 +5373,18 @@ describe("PaymentRequestService", () => {
     });
     const payment = paymentExecutionRow({
       status: "paid",
-      paidAmountCents: 50_000n
+      paidAmountCents: 50_000n,
+      updatedAt: new Date("2026-07-31T02:00:01.000Z")
     });
     const existingExecution = {
       id: "execution-1",
+      idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
       paymentRequestId: "payment-1",
       settlementId: "settlement-1",
+      paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: "company-1",
+      companyEntityNameSnapshot: "建工智管建设有限公司",
+      companyEntityCreditCodeSnapshot: "91310000TEST000001",
       amountCents: 30_000n,
       paidAt: new Date("2026-06-22T00:00:00.000Z"),
       executedByUserId: "cashier-1",
@@ -4887,9 +5406,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       audit as never,
@@ -4902,6 +5421,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -4919,25 +5439,391 @@ describe("PaymentRequestService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("rejects payment execution when the actor cannot read the voucher file", async () => {
+  it("normalizes an uppercase UUID to the canonical lowercase execution key", async () => {
+    const { tx, prisma } = hardenedPaymentExecutionFixture();
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+
+    await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+      ...paymentExecutionCoordinates,
+      idempotencyKey:
+        paymentExecutionCoordinates.idempotencyKey.toUpperCase(),
+      amountCents: "30000",
+      paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1",
+      confirmationPassword: "current-password"
+    });
+
+    expect(tx.paymentExecution.findUnique).toHaveBeenCalledWith({
+      where: {
+        idempotencyKey: paymentExecutionCoordinates.idempotencyKey
+      }
+    });
+    expect(tx.paymentExecution.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey: paymentExecutionCoordinates.idempotencyKey
+      })
+    });
+  });
+
+  it("rejects a reused payment execution idempotency key with different persisted facts before CAS", async () => {
+    const existingExecution = {
+      id: "execution-existing-1",
+      idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
+      paymentRequestId: "payment-1",
+      settlementId: "settlement-1",
+      paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: "company-1",
+      companyEntityNameSnapshot: "建工智管建设有限公司",
+      companyEntityCreditCodeSnapshot: "91310000TEST000001",
+      amountCents: 29_999n,
+      paidAt: new Date("2026-06-22T00:00:00.000Z"),
+      executedByUserId: "cashier-1",
+      voucherFileId: "file-1"
+    };
+    const { tx, prisma } = hardenedPaymentExecutionFixture(
+      { updatedAt: new Date("2026-07-31T02:00:01.000Z") },
+      existingExecution
+    );
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("该付款实付登记幂等键已绑定不同的持久事实");
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(fileAccess.assertFileHasNoBusinessBinding).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale payment execution CAS before binding the voucher or writing money", async () => {
+    const { tx, prisma } = hardenedPaymentExecutionFixture({
+      updatedAt: new Date("2026-07-31T02:00:01.000Z")
+    });
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("付款申请已变化，请刷新后重试");
+    expect(fileAccess.assertFileHasNoBusinessBinding).not.toHaveBeenCalled();
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["inactive actor", false, ["finance_staff"], "当前付款登记账号不存在或已停用"],
+    ["non-project finance actor", true, [], "只有当前项目财务人员可以登记实际付款"]
+  ])(
+    "fails closed for %s",
+    async (_label, isActive, projectRoles, expectedMessage) => {
+      const { tx, prisma } = hardenedPaymentExecutionFixture();
+      tx.user.findUnique.mockResolvedValue({ id: "cashier-1", isActive });
+      tx.projectMember.findMany.mockResolvedValue(
+        projectRoles.map((positionKey) => ({ positionKey }))
+      );
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      await expect(
+        paymentService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "30000",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).rejects.toThrow(expectedMessage);
+      expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+      expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [
+      "non-company payment request",
+      { paymentSubjectType: "affiliate" },
+      "付款申请或合同版本不是我方付款主体，不能登记实际付款"
+    ],
+    [
+      "incomplete company snapshot",
+      { companyEntityCreditCodeSnapshot: null },
+      "付款合同缺少完整的我方付款主体快照，请先补齐合同主体后重试"
+    ]
+  ])("rejects %s before execution writes", async (_label, overrides, message) => {
+    const { tx, prisma } = hardenedPaymentExecutionFixture(overrides);
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow(message);
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects a voucher uploaded by a different actor after taking the unbound-file lock", async () => {
+    const { tx, prisma } = hardenedPaymentExecutionFixture();
+    fileAccess.assertFileHasNoBusinessBinding.mockResolvedValueOnce({
+      id: "file-1",
+      uploadedByUserId: "other-user",
+      storageStatus: "active"
+    });
+    const paymentService = paymentExecutionService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      fileAccess as never,
+      auth as never,
+      undefined,
+      undefined,
+      projectFunding as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("付款凭证必须由当前登记人上传");
+    expect(fileAccess.assertFileHasNoBusinessBinding).toHaveBeenCalledWith(
+      tx,
+      "file-1"
+    );
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["file binding", undefined, projectFunding],
+    ["project funding", fileAccess, undefined]
+  ])("fails closed when the %s dependency is unavailable", async (_label, files, funding) => {
+    const prisma = { $transaction: jest.fn() };
+    const paymentService = new PaymentRequestService(
+      new PaymentAmountService(),
+      prisma as never,
+      audit as never,
+      files as never,
+      auth as never,
+      undefined,
+      undefined,
+      funding as never
+    );
+
+    await expect(
+      paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
+        amountCents: "30000",
+        paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1",
+        confirmationPassword: "current-password"
+      })
+    ).rejects.toThrow("付款实付登记依赖服务暂不可用，请稍后重试或联系管理员");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(["P2002", "P2034"])(
+    "returns only the exact committed winner after %s",
+    async (code) => {
+      const existingExecution = {
+        id: "execution-winner-1",
+        idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
+        paymentRequestId: "payment-1",
+        settlementId: "settlement-1",
+        paymentSubjectType: "our_company",
+        companyEntityIdSnapshot: "company-1",
+        companyEntityNameSnapshot: "建工智管建设有限公司",
+        companyEntityCreditCodeSnapshot: "91310000TEST000001",
+        amountCents: 30_000n,
+        paidAt: new Date("2026-06-22T00:00:00.000Z"),
+        executedByUserId: "cashier-1",
+        voucherFileId: "file-1"
+      };
+      const prisma = {
+        $transaction: jest.fn().mockRejectedValue({ code }),
+        paymentExecution: {
+          findUnique: jest.fn().mockResolvedValue(existingExecution)
+        },
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "payment-1",
+            settlementId: "settlement-1",
+            contractVersionId: "contract-version-1",
+            paymentSubjectType: "our_company"
+          })
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            signingSubjectType: "our_company",
+            companyEntityIdSnapshot: "company-1",
+            companyEntityNameSnapshot: "建工智管建设有限公司",
+            companyEntityCreditCodeSnapshot: "91310000TEST000001"
+          })
+        }
+      };
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      await expect(
+        paymentService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "30000",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).resolves.toEqual({
+        ...existingExecution,
+        amountCents: "30000"
+      });
+    }
+  );
+
+  it.each(["P2002", "P2034"])(
+    "rejects a non-exact concurrent winner after %s",
+    async (code) => {
+      const prisma = {
+        $transaction: jest.fn().mockRejectedValue({ code }),
+        paymentExecution: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "execution-winner-1",
+            idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
+            paymentRequestId: "payment-1",
+            settlementId: "settlement-1",
+            paymentSubjectType: "our_company",
+            companyEntityIdSnapshot: "company-1",
+            companyEntityNameSnapshot: "建工智管建设有限公司",
+            companyEntityCreditCodeSnapshot: "91310000TEST000001",
+            amountCents: 30_001n,
+            paidAt: new Date("2026-06-22T00:00:00.000Z"),
+            executedByUserId: "cashier-1",
+            voucherFileId: "file-1"
+          })
+        },
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "payment-1",
+            settlementId: "settlement-1",
+            contractVersionId: "contract-version-1",
+            paymentSubjectType: "our_company"
+          })
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            signingSubjectType: "our_company",
+            companyEntityIdSnapshot: "company-1",
+            companyEntityNameSnapshot: "建工智管建设有限公司",
+            companyEntityCreditCodeSnapshot: "91310000TEST000001"
+          })
+        }
+      };
+      const paymentService = paymentExecutionService(
+        new PaymentAmountService(),
+        prisma as never,
+        audit as never,
+        fileAccess as never,
+        auth as never,
+        undefined,
+        undefined,
+        projectFunding as never
+      );
+
+      await expect(
+        paymentService.recordExecution("FK-2026-012", "cashier-1", {
+          ...paymentExecutionCoordinates,
+          amountCents: "30000",
+          paidAt: "2026-06-22T00:00:00.000Z",
+          voucherFileId: "file-1",
+          confirmationPassword: "current-password"
+        })
+      ).rejects.toBeInstanceOf(ConflictException);
+    }
+  );
+
+  it("rejects payment execution when the voucher cannot be bound", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([
-        {
-          id: "payment-1",
-          code: "FK-2026-012",
-          projectId: "project-1",
-          contractId: "contract-1",
-          settlementId: "settlement-1",
-          sourceType: "settlement",
-          status: "approved_pending_payment",
-          requestedAmountCents: 50_000n,
-          approvedAmountCents: 50_000n,
-          paidAmountCents: 20_000n
-        }
+        paymentExecutionRow({ paidAmountCents: 20_000n })
       ]),
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          status: "effective",
           payableAmountCents: 100_000n,
           paidAmountCents: 70_000n
         }),
@@ -4949,12 +5835,12 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    fileAccess.assertCanDownloadFile.mockRejectedValueOnce(
-      new Error("Actor cannot download private file")
+    fileAccess.assertFileHasNoBusinessBinding.mockRejectedValueOnce(
+      new Error("Voucher already has a business binding")
     );
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -4964,16 +5850,16 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-other",
         confirmationPassword: "current-password"
       })
-    ).rejects.toThrow("Actor cannot download private file");
-    expect(fileAccess.assertCanDownloadFile).toHaveBeenCalledWith(
+    ).rejects.toThrow("Voucher already has a business binding");
+    expect(fileAccess.assertFileHasNoBusinessBinding).toHaveBeenCalledWith(
       tx,
-      "file-other",
-      "cashier-1"
+      "file-other"
     );
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
@@ -5013,9 +5899,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5025,6 +5911,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "30000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -5089,9 +5976,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5101,6 +5988,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -5154,9 +6042,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5166,6 +6054,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -5223,9 +6112,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5235,6 +6124,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -5289,7 +6179,7 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
     const balances = {
       assertNoAbnormalOverpayForContract: jest
@@ -5300,7 +6190,7 @@ describe("PaymentRequestService", () => {
           )
         )
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       audit as never,
@@ -5317,6 +6207,7 @@ describe("PaymentRequestService", () => {
         "FK-2026-012",
         "cashier-1",
         {
+        ...paymentExecutionCoordinates,
           amountCents: "80000",
           paidAt: "2026-06-22T00:00:00.000Z",
           voucherFileId: "file-1",
@@ -5388,9 +6279,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5399,6 +6290,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-YF-2026-001", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "100000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -5414,9 +6306,13 @@ describe("PaymentRequestService", () => {
     expect(tx.settlement.update).not.toHaveBeenCalled();
     expect(tx.paymentExecution.create).toHaveBeenCalledWith({
       data: {
+        idempotencyKey: paymentExecutionCoordinates.idempotencyKey,
         paymentRequestId: "payment-advance-1",
         settlementId: null,
         paymentSubjectType: "our_company",
+        companyEntityIdSnapshot: "company-1",
+        companyEntityNameSnapshot: "建工智管建设有限公司",
+        companyEntityCreditCodeSnapshot: "91310000TEST000001",
         amountCents: 100_000n,
         paidAt: new Date("2026-07-03T00:00:00.000Z"),
         executedByUserId: "cashier-1",
@@ -5544,9 +6440,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5555,6 +6451,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-HT-2026-001", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "50000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -5666,6 +6563,10 @@ describe("PaymentRequestService", () => {
         createMany: jest.fn()
       },
       paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-generic-1",
+          projectId: "project-1"
+        }),
         update: jest.fn().mockResolvedValue({
           id: "payment-generic-1",
           status: "paid",
@@ -5680,8 +6581,8 @@ describe("PaymentRequestService", () => {
       auditLog: { create: jest.fn() },
       ...financingUsageUpdates()
     };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const paymentService = new PaymentRequestService(
+    const prisma = { $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx))) };
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5690,6 +6591,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-TY-2026-001", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "50000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -5777,9 +6679,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5791,6 +6693,7 @@ describe("PaymentRequestService", () => {
       "FK-HT-2026-NO-SOURCE",
       "cashier-1",
       {
+        ...paymentExecutionCoordinates,
         amountCents: "50000",
         paidAt: "2026-07-03T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -5942,9 +6845,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -5953,6 +6856,7 @@ describe("PaymentRequestService", () => {
     );
 
     const execution = await paymentService.recordExecution("FK-HT-HIS-ALLOC-001", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "50000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -5999,7 +6903,10 @@ describe("PaymentRequestService", () => {
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }, { id: "settlement-2" }]),
       paymentRequest: {
-        findFirst: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-due-2",
+          projectId: "project-1"
+        }),
         update: jest.fn().mockResolvedValue({
           id: "payment-due-2",
           status: "paid",
@@ -6092,9 +6999,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6103,6 +7010,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-HT-2026-002", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -6139,7 +7047,10 @@ describe("PaymentRequestService", () => {
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{ id: "settlement-1" }]),
       paymentRequest: {
-        findFirst: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-due-3",
+          projectId: "project-1"
+        }),
         update: jest.fn().mockResolvedValue({
           id: "payment-due-3",
           status: "paid",
@@ -6244,9 +7155,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6255,6 +7166,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-HT-2026-003", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "30000",
       paidAt: "2026-07-03T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -6324,9 +7236,9 @@ describe("PaymentRequestService", () => {
       ...financingUsageUpdates()
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6335,6 +7247,7 @@ describe("PaymentRequestService", () => {
     );
 
     await paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
       amountCents: "20000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
@@ -6385,9 +7298,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6397,6 +7310,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "20000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6414,9 +7328,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6426,6 +7340,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-MISSING", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "20000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6439,7 +7354,7 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn()
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6449,6 +7364,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "20000",
         paidAt: "2999-07-04T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6463,7 +7379,7 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn()
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6473,6 +7389,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "20000",
         paidAt: "not-a-date",
         voucherFileId: "file-1",
@@ -6510,9 +7427,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6522,6 +7439,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "30001",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6568,9 +7486,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6580,6 +7498,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6609,9 +7528,9 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6621,6 +7540,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "80000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6644,12 +7564,13 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = paymentExecutionService(new PaymentAmountService(), prisma as never);
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "0",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "",
@@ -6660,10 +7581,11 @@ describe("PaymentRequestService", () => {
   });
 
   it("rejects actual payment execution when payment record service is unavailable", async () => {
-    const paymentService = new PaymentRequestService(new PaymentAmountService());
+    const paymentService = paymentExecutionService(new PaymentAmountService());
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6687,12 +7609,13 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = paymentExecutionService(new PaymentAmountService(), prisma as never);
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "",
@@ -6709,12 +7632,13 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = paymentExecutionService(new PaymentAmountService(), prisma as never);
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: undefined as never,
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6723,6 +7647,7 @@ describe("PaymentRequestService", () => {
     ).rejects.toThrow("实付金额必须大于 0");
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: undefined as never,
@@ -6739,12 +7664,13 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = paymentExecutionService(new PaymentAmountService(), prisma as never);
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6764,12 +7690,13 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
-    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const paymentService = paymentExecutionService(new PaymentAmountService(), prisma as never);
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",
@@ -6790,10 +7717,10 @@ describe("PaymentRequestService", () => {
       }
     };
     const prisma = {
-      $transaction: jest.fn(async (callback) => callback(tx))
+      $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
     auth.confirmPassword.mockRejectedValue(new Error("当前密码不正确，请重新输入"));
-    const paymentService = new PaymentRequestService(
+    const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
@@ -6803,6 +7730,7 @@ describe("PaymentRequestService", () => {
 
     await expect(
       paymentService.recordExecution("FK-2026-012", "cashier-1", {
+        ...paymentExecutionCoordinates,
         amountCents: "10000",
         paidAt: "2026-06-22T00:00:00.000Z",
         voucherFileId: "file-1",

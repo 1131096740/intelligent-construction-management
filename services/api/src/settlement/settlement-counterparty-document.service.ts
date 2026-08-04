@@ -6,6 +6,7 @@ import { inspectSignedPdf } from "../contract/contract-formal-pdf-inspector";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import type { LinkSettlementCounterpartySignedDocumentDto } from "./dto/settlement-signed-document.dto";
+import { lockSettlementDraftMutationBoundary } from "./settlement-draft-lifecycle";
 
 const SHA256 = /^[0-9a-f]{64}$/u;
 
@@ -201,9 +202,20 @@ export class SettlementCounterpartyDocumentService {
   }
 
   private async lockDraft(tx: Prisma.TransactionClient, id: string) {
-    const [draft] = await tx.$queryRaw<LockedDraft[]>(Prisma.sql`SELECT "id", "projectId", "ownerUserId", "revision", "status", "governanceVersion" FROM "SettlementDraft" WHERE "id" = ${id} FOR UPDATE`);
-    if (!draft) throw this.deny("未找到结算草稿，请刷新后重试", "settlement.counterparty_document.draft_denied");
-    return draft;
+    const boundary = await lockSettlementDraftMutationBoundary(tx, id);
+    if (!boundary) {
+      throw this.deny(
+        "未找到结算草稿，请刷新后重试",
+        "settlement.counterparty_document.draft_denied"
+      );
+    }
+    if (boundary.lifecycle.lifecycleKind === "formal_record") {
+      throw this.deny(
+        `该结算草稿已形成正式结算，不能再关联乙方扫描件：${boundary.lifecycle.blockers.join("、")}`,
+        "settlement.counterparty_document.draft_denied"
+      );
+    }
+    return boundary.draft;
   }
 
   private lockDocuments(tx: Prisma.TransactionClient, draftId: string) {

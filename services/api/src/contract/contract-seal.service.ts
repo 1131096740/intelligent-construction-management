@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Optional
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -38,6 +44,25 @@ const SETTLEMENT_CONTRACT_TYPES = new Set([
   "labor_subcontract",
   "professional_subcontract"
 ]);
+
+function isSerializationConflict(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const candidate = error as { code?: unknown; meta?: unknown };
+  if (["P2034", "40001", "40P01"].includes(String(candidate.code))) {
+    return true;
+  }
+  if (
+    candidate.code === "P2010" &&
+    candidate.meta &&
+    typeof candidate.meta === "object" &&
+    "code" in candidate.meta
+  ) {
+    return ["40001", "40P01"].includes(
+      String((candidate.meta as { code?: unknown }).code)
+    );
+  }
+  return false;
+}
 
 @Injectable()
 export class ContractSealService {
@@ -532,23 +557,47 @@ export class ContractSealService {
     actorUserId: string,
     input: InvalidateContractSigningDto
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const audit = this.audit;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
       const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
       this.assertGoverned(version);
       const isDirector = await this.hasGlobalRole(tx, actorUserId, "contract_director");
       if (task.handlerUserId !== actorUserId && !isDirector) {
         throw new ForbiddenException("只有冻结经办人或合同部主管可以申报签署文件实质变化");
       }
-      if (!["approved_pending_seal", "in_seal", "seal_approved_pending_archive", "pending_archive_confirm"].includes(version.status)) {
-        throw new BadRequestException("当前合同不在签署归档阶段，不能执行该操作");
+      if (
+        input.expectedRevision !== version.draftRevision ||
+        input.expectedSealTaskId !== task.id ||
+        input.expectedStatus !== version.status
+      ) {
+        throw new BadRequestException("合同签署状态已变化，请刷新后重新申报");
+      }
+      const expectedTaskStatusByVersionStatus: Record<string, string> = {
+        approved_pending_seal: "pending_approval",
+        in_seal: "in_seal",
+        seal_approved_pending_archive: "completed",
+        pending_archive_confirm: "completed"
+      };
+      const expectedTaskStatus = expectedTaskStatusByVersionStatus[version.status];
+      if (!expectedTaskStatus || task.status !== expectedTaskStatus) {
+        throw new BadRequestException("合同签署任务状态与合同阶段不一致，请联系管理员核对");
+      }
+      if (!audit) {
+        throw new BadRequestException("合同签署变更审计服务暂不可用，请稍后重试");
       }
       const now = new Date();
-      await tx.contractFormalFile.updateMany({
+      const invalidatedFiles = await tx.contractFormalFile.findMany({
+        where: { contractVersionId: version.id, status: "active" },
+        select: { id: true },
+        orderBy: { id: "asc" }
+      });
+      const invalidated = await tx.contractFormalFile.updateMany({
         where: { contractVersionId: version.id, status: "active" },
         data: { status: "invalidated", invalidatedAt: now, invalidationReason: input.reason.trim() }
       });
-      await tx.contractSealTask.update({
-        where: { id: task.id },
+      const cancelled = await tx.contractSealTask.updateMany({
+        where: { id: task.id, status: expectedTaskStatus },
         data: {
           status: "cancelled",
           cancelledByUserId: actorUserId,
@@ -556,8 +605,12 @@ export class ContractSealService {
           cancellationReason: input.reason.trim()
         }
       });
-      await tx.contractVersion.update({
-        where: { id: version.id },
+      const reverted = await tx.contractVersion.updateMany({
+        where: {
+          id: version.id,
+          status: input.expectedStatus,
+          draftRevision: input.expectedRevision
+        },
         data: {
           status: "draft",
           draftRevision: { increment: 1 },
@@ -566,15 +619,43 @@ export class ContractSealService {
           taxFactsFrozenAt: null
         }
       });
-      await this.audit?.record(tx, {
+      if (
+        invalidated.count !== invalidatedFiles.length ||
+        cancelled.count !== 1 ||
+        reverted.count !== 1
+      ) {
+        throw new BadRequestException("合同签署状态已变化，请刷新后重新申报");
+      }
+      await audit.record(tx, {
         actorUserId,
         action: "contract.signing.material_change",
         businessType: "contract_version",
         businessId: version.id,
-        metadata: { reason: input.reason.trim(), sealTaskId: task.id }
+        metadata: {
+          reason: input.reason.trim(),
+          sealTaskId: task.id,
+          fromStatus: version.status,
+          toStatus: "draft",
+          fromRevision: version.draftRevision,
+          toRevision: version.draftRevision + 1,
+          invalidatedFormalFileIds: invalidatedFiles.map((file) => file.id),
+          invalidatedFormalFileCount: invalidatedFiles.length
+        }
       });
-      return { status: "draft", requiresReapproval: true };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return {
+        status: "draft",
+        draftRevision: version.draftRevision + 1,
+        requiresReapproval: true
+      };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (isSerializationConflict(error)) {
+        throw new ConflictException(
+          "合同签署状态已并发变化，请刷新后重新申报"
+        );
+      }
+      throw error;
+    }
   }
 
   private assertCompletion(input: CompleteContractSealDto) {

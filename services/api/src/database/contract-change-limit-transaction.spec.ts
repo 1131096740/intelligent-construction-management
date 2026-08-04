@@ -31,6 +31,9 @@ describe("contract change limit transaction evidence", () => {
     try {
       await admin.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
       await client.$executeRawUnsafe(`CREATE TABLE "Contract" ("id" TEXT PRIMARY KEY)`);
+      await client.$executeRawUnsafe(`CREATE TABLE "ContractTakeover" (
+        "id" TEXT PRIMARY KEY, "contractVersionId" TEXT
+      )`);
       await client.$executeRawUnsafe(`CREATE TABLE "ContractVersion" (
         "id" TEXT PRIMARY KEY, "contractId" TEXT NOT NULL, "versionNo" INTEGER NOT NULL,
         "status" TEXT NOT NULL, "changeType" TEXT NOT NULL, "baseVersionId" TEXT,
@@ -50,6 +53,25 @@ describe("contract change limit transaction evidence", () => {
         "id" TEXT PRIMARY KEY, "actorUserId" TEXT NOT NULL, "action" TEXT NOT NULL,
         "businessId" TEXT NOT NULL, "metadata" JSONB NOT NULL
       )`);
+      await client.$executeRawUnsafe(`CREATE TABLE "ContractFormalFile" (
+        "id" TEXT PRIMARY KEY, "contractVersionId" TEXT, "purpose" TEXT, "status" TEXT
+      )`);
+      await client.$executeRawUnsafe(`CREATE TABLE "ContractSealTask" (
+        "id" TEXT PRIMARY KEY, "contractVersionId" TEXT, "status" TEXT
+      )`);
+      await client.$executeRawUnsafe(`CREATE TABLE "ContractArchiveFile" (
+        "id" TEXT PRIMARY KEY, "contractVersionId" TEXT
+      )`);
+      await client.$executeRawUnsafe(`CREATE TABLE "Settlement" (
+        "id" TEXT PRIMARY KEY, "contractVersionId" TEXT
+      )`);
+      await client.$executeRawUnsafe(`CREATE TABLE "PaymentRequest" (
+        "id" TEXT PRIMARY KEY, "contractVersionId" TEXT
+      )`);
+      await client.$executeRawUnsafe(`CREATE TABLE "Project" (
+        "id" TEXT PRIMARY KEY, "isActive" BOOLEAN NOT NULL DEFAULT TRUE
+      )`);
+      await client.$executeRaw`INSERT INTO "Project" VALUES ('project-1', TRUE)`;
       await client.$executeRawUnsafe(`INSERT INTO "Contract" VALUES ('contract-1')`);
       await client.$executeRawUnsafe(`INSERT INTO "ContractVersion" (
         "id","contractId","versionNo","status","changeType","baseVersionId","effectiveAt",
@@ -62,6 +84,9 @@ describe("contract change limit transaction evidence", () => {
         ('candidate-exact','contract-1',4,'draft','change','prior-down',NULL,1000000,100000,50000,'fixed_total','capped','e','ev','company','credit'),
         ('candidate','contract-1',5,'draft','change','prior-down',NULL,1000001,100001,50000,'fixed_total','capped','e','ev','company','credit')
       `);
+      await client.$executeRaw`UPDATE "ContractVersion" SET
+        "originalBaseAmountCents" = 1000000
+        WHERE "id" = 'root'`;
       await client.$executeRaw`UPDATE "ContractVersion" SET
         "originalBaseAmountCents" = 1000000,
         "changeDirection" = 'increase', "changeAmountCents" = 50000

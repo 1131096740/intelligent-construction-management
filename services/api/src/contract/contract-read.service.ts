@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
   CONTRACT_INVOICE_TYPES,
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canCreatePaymentFromSettlementStatus,
+  canUseCurrentContractApprovalForm,
   contractInvoiceTypeLabel,
   type ContractWorkbenchLedgerPage,
   type ContractWorkbenchView,
@@ -9,6 +11,7 @@ import {
   ContractBusinessOptionReadModel,
   ContractDetailReadModel,
   ContractSettlementPaymentReadModel,
+  type ContractSigningMaterialChangeStatus,
   CoreFlowTone,
   type DetailActionReadModel,
   type DraftLedgerView,
@@ -46,12 +49,50 @@ import {
 } from "../payment/contract-takeover-balance";
 import type { HistoricalContractPaymentBalance } from "../payment/settlement-payment-capacity";
 import { contractChangeVersionsReadModel } from "./contract-change-read-model";
+import {
+  classifyContractDraftLifecycle,
+  type ContractDraftLifecycleClassification,
+  type ContractDraftLifecycleFacts
+} from "./contract-draft-lifecycle";
 import { loadContractOwnerRisk } from "./contract-owner-risk";
 import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
   return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
 }
+
+interface CurrentContractApprovalReview {
+  access: ApprovalReviewAccess;
+  approval: {
+    id: string;
+    currentNodeIndex: number;
+    updatedAt: Date;
+  } | null;
+}
+
+interface CurrentContractApprovalWithdrawal {
+  id: string;
+  currentNodeIndex: number;
+  updatedAt: Date;
+}
+
+function emptyCurrentContractApprovalReview(): CurrentContractApprovalReview {
+  return { access: emptyApprovalReviewAccess(), approval: null };
+}
+
+const HISTORICAL_TAKEOVER_READ_ROLES = new Set<RoleKey>(
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS
+);
+
+const MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS: Record<
+  ContractSigningMaterialChangeStatus,
+  string
+> = {
+  approved_pending_seal: "pending_approval",
+  in_seal: "in_seal",
+  seal_approved_pending_archive: "completed",
+  pending_archive_confirm: "completed"
+};
 
 @Injectable()
 export class ContractReadService {
@@ -264,6 +305,9 @@ export class ContractReadService {
         where: { id: { in: [...new Set(contracts.map((contract) => contract.projectId))] } }
       })
     ]);
+    const takeovers = await this.contractTakeoverLedgerRows(
+      versions.map((version) => version.id)
+    );
     const versionByContractId = new Map<string, (typeof versions)[number]>();
     for (const version of versions) {
       if (!versionByContractId.has(version.contractId)) versionByContractId.set(version.contractId, version);
@@ -280,12 +324,26 @@ export class ContractReadService {
       }
     }
     const projectById = new Map(projects.map((project) => [project.id, project]));
+    const takeoverByVersion = new Map(
+      takeovers.map((takeover) => [takeover.contractVersionId, takeover])
+    );
 
     const rows = contracts.flatMap((contract) => {
       const version = versionByContractId.get(contract.id);
       if (!version) return [];
       const termsVersion = termsByContractId.get(contract.id);
-      return [this.contractLedgerRow(contract, version, termsVersion, projectById.get(contract.projectId))];
+      return [this.contractLedgerRow(
+        contract,
+        version,
+        termsVersion,
+        projectById.get(contract.projectId),
+        this.contractTakeoverLedgerProjection(
+          contract,
+          version,
+          takeoverByVersion.get(version.id),
+          false
+        )
+      )];
     });
 
     return {
@@ -298,6 +356,219 @@ export class ContractReadService {
         effective: rows.filter((row) => row.currentNode === "可发起结算").length
       }
     };
+  }
+
+  private async contractDraftLifecycleByVersion<
+    V extends {
+      id: string;
+      changeType?: string | null;
+      versionNo?: number | null;
+      status: string;
+      firstSubmittedAt?: Date | null;
+    }
+  >(
+    versions: V[]
+  ): Promise<Map<string, ContractDraftLifecycleClassification>> {
+    const versionIds = versions.map((version) => version.id);
+    if (!versionIds.length) return new Map();
+
+    type VersionFact = { contractVersionId?: string };
+    const client = this.prisma as unknown as {
+      approvalInstance?: {
+        findMany(args: unknown): Promise<Array<{ id?: string; businessId?: string }>>;
+      };
+      approvalActionLog?: {
+        findMany(args: unknown): Promise<Array<{ approvalInstanceId?: string }>>;
+      };
+      contractFormalFile?: {
+        findMany(args: unknown): Promise<Array<
+          VersionFact & { purpose?: string; status?: string }
+        >>;
+      };
+      contractAuthorization?: {
+        findMany(args: unknown): Promise<Array<{ originContractVersionId?: string }>>;
+      };
+      contractVersionAuthorizationLink?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+      contractSealTask?: {
+        findMany(args: unknown): Promise<Array<VersionFact & { status?: string }>>;
+      };
+      contractArchiveFile?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+      settlement?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+      paymentRequest?: {
+        findMany(args: unknown): Promise<Array<VersionFact>>;
+      };
+    };
+    const [
+      approvalInstances,
+      formalFiles,
+      authorizations,
+      authorizationLinks,
+      sealTasks,
+      archiveFiles,
+      settlements,
+      paymentRequests
+    ] = await Promise.all([
+      client.approvalInstance?.findMany({
+        where: {
+          businessType: "contract_version",
+          businessId: { in: versionIds }
+        },
+        select: { id: true, businessId: true }
+      }) ?? Promise.resolve([]),
+      client.contractFormalFile?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true, purpose: true, status: true }
+      }) ?? Promise.resolve([]),
+      client.contractAuthorization?.findMany({
+        where: { originContractVersionId: { in: versionIds } },
+        select: { originContractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.contractVersionAuthorizationLink?.findMany({
+        where: {
+          contractVersionId: { in: versionIds },
+          authorizationId: { not: null }
+        },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.contractSealTask?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true, status: true }
+      }) ?? Promise.resolve([]),
+      client.contractArchiveFile?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.settlement?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([]),
+      client.paymentRequest?.findMany({
+        where: { contractVersionId: { in: versionIds } },
+        select: { contractVersionId: true }
+      }) ?? Promise.resolve([])
+    ]);
+    const versionIdSet = new Set(versionIds);
+    const soleVersionId = versionIds.length === 1 ? versionIds[0] : undefined;
+    const versionIdOf = (value?: string) => value
+      ? versionIdSet.has(value) ? value : undefined
+      : soleVersionId;
+    const approvalVersionById = new Map<string, string>();
+    const approvalInstanceCounts = new Map<string, number>();
+    for (const instance of approvalInstances) {
+      const versionId = versionIdOf(instance.businessId);
+      if (!versionId) continue;
+      approvalInstanceCounts.set(
+        versionId,
+        (approvalInstanceCounts.get(versionId) ?? 0) + 1
+      );
+      if (instance.id) approvalVersionById.set(instance.id, versionId);
+    }
+    const approvalInstanceIds = [...approvalVersionById.keys()];
+    const approvalActions = approvalInstanceIds.length
+      ? await client.approvalActionLog?.findMany({
+          where: { approvalInstanceId: { in: approvalInstanceIds } },
+          select: { approvalInstanceId: true }
+        }) ?? []
+      : [];
+    const approvalActionCounts = new Map<string, number>();
+    for (const action of approvalActions) {
+      const versionId = action.approvalInstanceId
+        ? approvalVersionById.get(action.approvalInstanceId)
+        : undefined;
+      if (!versionId) continue;
+      approvalActionCounts.set(
+        versionId,
+        (approvalActionCounts.get(versionId) ?? 0) + 1
+      );
+    }
+    const countByVersion = <T>(
+      rows: T[],
+      readVersionId: (row: T) => string | undefined,
+      predicate: (row: T) => boolean = () => true
+    ) => {
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        if (!predicate(row)) continue;
+        const versionId = versionIdOf(readVersionId(row));
+        if (!versionId) continue;
+        counts.set(versionId, (counts.get(versionId) ?? 0) + 1);
+      }
+      return counts;
+    };
+    const formalFileCounts = countByVersion(
+      formalFiles,
+      (row) => row.contractVersionId
+    );
+    const signedFormalFileCounts = countByVersion(
+      formalFiles,
+      (row) => row.contractVersionId,
+      (row) => row.purpose === "mutually_signed_final"
+    );
+    const activeSignedFormalFileCounts = countByVersion(
+      formalFiles,
+      (row) => row.contractVersionId,
+      (row) =>
+        row.purpose === "mutually_signed_final" && row.status === "active"
+    );
+    const authorizationCounts = countByVersion(
+      authorizations,
+      (row) => row.originContractVersionId
+    );
+    const authorizationLinkCounts = countByVersion(
+      authorizationLinks,
+      (row) => row.contractVersionId
+    );
+    const sealTaskCounts = countByVersion(
+      sealTasks,
+      (row) => row.contractVersionId
+    );
+    const activeSealTaskCounts = countByVersion(
+      sealTasks,
+      (row) => row.contractVersionId,
+      (row) => row.status !== "cancelled"
+    );
+    const archiveFileCounts = countByVersion(
+      archiveFiles,
+      (row) => row.contractVersionId
+    );
+    const settlementCounts = countByVersion(
+      settlements,
+      (row) => row.contractVersionId
+    );
+    const paymentRequestCounts = countByVersion(
+      paymentRequests,
+      (row) => row.contractVersionId
+    );
+
+    return new Map(versions.map((version) => {
+      const facts: ContractDraftLifecycleFacts = {
+        changeType: version.changeType ?? "original",
+        versionNo: version.versionNo ?? 1,
+        // An ended row retains the lifecycle it had before the controlled close.
+        status: version.status === "abandoned" ? "draft" : version.status,
+        firstSubmittedAt: version.firstSubmittedAt ?? null,
+        approvalInstanceCount: approvalInstanceCounts.get(version.id) ?? 0,
+        approvalActionCount: approvalActionCounts.get(version.id) ?? 0,
+        formalFileCount: formalFileCounts.get(version.id) ?? 0,
+        signedFormalFileCount: signedFormalFileCounts.get(version.id) ?? 0,
+        activeSignedFormalFileCount:
+          activeSignedFormalFileCounts.get(version.id) ?? 0,
+        authorizationCount: authorizationCounts.get(version.id) ?? 0,
+        authorizationLinkCount: authorizationLinkCounts.get(version.id) ?? 0,
+        sealTaskCount: sealTaskCounts.get(version.id) ?? 0,
+        activeSealTaskCount: activeSealTaskCounts.get(version.id) ?? 0,
+        archiveFileCount: archiveFileCounts.get(version.id) ?? 0,
+        settlementCount: settlementCounts.get(version.id) ?? 0,
+        paymentRequestCount: paymentRequestCounts.get(version.id) ?? 0
+      };
+      return [version.id, classifyContractDraftLifecycle(facts)];
+    }));
   }
 
   async lifecycleLedger(
@@ -314,48 +585,28 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const versions = contractIds.length
-      ? await this.prisma.contractVersion.findMany({
-          where: { contractId: { in: contractIds } },
-          orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
-        })
-      : [];
-    const terms = contractIds.length
-      ? await this.prisma.paymentTermsVersion.findMany({
-          where: { contractId: { in: contractIds } },
-          orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
-        })
-      : [];
-    const projects = visibleProjectIds.length
-      ? await this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
-      : [];
-    const versionIds = versions.map((version) => version.id);
-    const evidenceReaders = this.prisma as unknown as {
-      approvalInstance?: { findMany(args: unknown): Promise<Array<{ businessId: string }>> };
-      contractFormalFile?: { findMany(args: unknown): Promise<Array<{ contractVersionId: string }>> };
-      contractVersionAuthorizationLink?: {
-        findMany(args: unknown): Promise<Array<{ contractVersionId: string }>>;
-      };
-    };
-    const [approvalFacts, formalFileFacts, authorizationFacts] = versionIds.length
-      ? await Promise.all([
-          evidenceReaders.approvalInstance?.findMany({
-            where: { businessType: "contract_version", businessId: { in: versionIds } },
-            select: { businessId: true }
-          }) ?? Promise.resolve([]),
-          evidenceReaders.contractFormalFile?.findMany({
-            where: { contractVersionId: { in: versionIds } },
-            select: { contractVersionId: true }
-          }) ?? Promise.resolve([]),
-          evidenceReaders.contractVersionAuthorizationLink?.findMany({
-            where: { contractVersionId: { in: versionIds } },
-            select: { contractVersionId: true }
-          }) ?? Promise.resolve([])
-        ])
-      : [[], [], []];
-    const approvedVersionIds = new Set(approvalFacts.map((fact) => fact.businessId));
-    const formalFileVersionIds = new Set(formalFileFacts.map((fact) => fact.contractVersionId));
-    const authorizedVersionIds = new Set(authorizationFacts.map((fact) => fact.contractVersionId));
+    const [versions, terms, projects, takeoverReadableProjectIds] = await Promise.all([
+      contractIds.length
+        ? this.prisma.contractVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      contractIds.length
+        ? this.prisma.paymentTermsVersion.findMany({
+            where: { contractId: { in: contractIds } },
+            orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
+          })
+        : Promise.resolve([]),
+      visibleProjectIds.length
+        ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
+        : Promise.resolve([]),
+      this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds)
+    ]);
+    const [takeovers, lifecycleByVersion] = await Promise.all([
+      this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
+      this.contractDraftLifecycleByVersion(versions)
+    ]);
     const projectById = new Map(projects.map((project) => [project.id, project]));
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
@@ -365,11 +616,21 @@ export class ContractReadService {
       ]);
     }
     const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
+    const takeoverByVersion = new Map(
+      takeovers.map((takeover) => [takeover.contractVersionId, takeover])
+    );
     const classified = contracts.flatMap((contract) => {
       const all = versionsByContract.get(contract.id) ?? [];
-      const lifecycle = this.classifyContractLifecycle(contract, all, actorUserId);
+      const lifecycle = this.classifyContractLifecycle(
+        contract,
+        all,
+        lifecycleByVersion,
+        actorUserId
+      );
       const rowVersion = lifecycle.versionByView[view];
       if (!lifecycle.matches[view] || !rowVersion) return [];
+      const draftLifecycle = lifecycleByVersion.get(rowVersion.id);
+      if (!draftLifecycle) return [];
       return [this.contractLedgerRow(
         contract,
         rowVersion,
@@ -377,33 +638,53 @@ export class ContractReadService {
         projectById.get(contract.projectId),
         {
           contractVersionId: rowVersion.id,
-          lifecycleKind: this.contractLedgerLifecycleKind(rowVersion, {
-            hasApproval: approvedVersionIds.has(rowVersion.id),
-            hasFormalFile: formalFileVersionIds.has(rowVersion.id),
-            hasAuthorization: authorizedVersionIds.has(rowVersion.id)
-          }),
-          lifecycleBlockers: [
-            ...(rowVersion.changeType !== "original" || rowVersion.versionNo !== 1
-              ? ["合同变更或派生版本"] : []),
-            ...(approvedVersionIds.has(rowVersion.id) ? ["存在审批记录"] : []),
-            ...(formalFileVersionIds.has(rowVersion.id) ? ["存在正式合同文件"] : []),
-            ...(authorizedVersionIds.has(rowVersion.id) ? ["存在授权委托书"] : [])
-          ],
+          lifecycleKind: draftLifecycle.lifecycleKind,
+          lifecycleBlockers: draftLifecycle.blockers,
           draftRevision: rowVersion.draftRevision,
           lifecycleUpdatedAt: rowVersion.updatedAt.toISOString(),
           abandonedAt: rowVersion.abandonedAt?.toISOString() ?? null,
           abandonReason: rowVersion.abandonReason ?? null,
           copyAvailable: view === "ended" && rowVersion.status === "abandoned" &&
             rowVersion.changeType === "original" && rowVersion.versionNo === 1 &&
-            contract.ownerUserId === actorUserId
+            contract.ownerUserId === actorUserId,
+          ...this.contractTakeoverLedgerProjection(
+            contract,
+            rowVersion,
+            takeoverByVersion.get(rowVersion.id),
+            takeoverReadableProjectIds.has(contract.projectId)
+          )
         }
       )];
     });
     const summary = {
-      formal_ledger: this.lifecycleCount(contracts, versionsByContract, actorUserId, "formal_ledger"),
-      my_drafts: this.lifecycleCount(contracts, versionsByContract, actorUserId, "my_drafts"),
-      returned_for_revision: this.lifecycleCount(contracts, versionsByContract, actorUserId, "returned_for_revision"),
-      ended: this.lifecycleCount(contracts, versionsByContract, actorUserId, "ended")
+      formal_ledger: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "formal_ledger"
+      ),
+      my_drafts: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "my_drafts"
+      ),
+      returned_for_revision: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "returned_for_revision"
+      ),
+      ended: this.lifecycleCount(
+        contracts,
+        versionsByContract,
+        lifecycleByVersion,
+        actorUserId,
+        "ended"
+      )
     };
     const start = (page - 1) * pageSize;
     return {
@@ -427,7 +708,13 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const [versions, terms, projects, pendingWorkItems] = await Promise.all([
+    const [
+      versions,
+      terms,
+      projects,
+      pendingWorkItems,
+      takeoverReadableProjectIds
+    ] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
             where: { contractId: { in: contractIds } },
@@ -443,22 +730,40 @@ export class ContractReadService {
       visibleProjectIds.length
         ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
         : Promise.resolve([]),
-      this.me?.getContractPendingWorkItems(actorUserId) ?? Promise.resolve([])
+      this.me?.getContractPendingWorkItems(actorUserId) ?? Promise.resolve([]),
+      this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds)
     ]);
     const pendingVersionIds = new Set(
       pendingWorkItems
         .map((item) => item.businessId)
         .filter((businessId): businessId is string => Boolean(businessId))
     );
+    const [takeovers, lifecycleByVersion] = await Promise.all([
+      this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
+      this.contractDraftLifecycleByVersion(versions)
+    ]);
     const versionsByContract = new Map<string, typeof versions>();
     for (const version of versions) {
       versionsByContract.set(version.contractId, [...(versionsByContract.get(version.contractId) ?? []), version]);
     }
     const termsByVersion = new Map(terms.map((term) => [term.contractVersionId, term]));
     const projectById = new Map(projects.map((project) => [project.id, project]));
+    const takeoverByVersion = new Map(
+      takeovers.map((takeover) => [takeover.contractVersionId, takeover])
+    );
     const classified = contracts.flatMap((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
-      if (!version || !this.matchesWorkbenchView(view, version, contract.ownerUserId, actorUserId, pendingVersionIds)) return [];
+      if (!version) return [];
+      const draftLifecycle = lifecycleByVersion.get(version.id);
+      if (!draftLifecycle) return [];
+      if (!this.matchesWorkbenchView(
+        view,
+        version,
+        draftLifecycle,
+        contract.ownerUserId,
+        actorUserId,
+        pendingVersionIds
+      )) return [];
       return [this.contractLedgerRow(
         contract,
         version,
@@ -467,18 +772,41 @@ export class ContractReadService {
         {
           contractVersionId: version.id,
           status: version.status,
-          workbenchEditable: ["draft", "approval_rejected"].includes(version.status),
+          lifecycleKind: draftLifecycle.lifecycleKind,
+          lifecycleBlockers: draftLifecycle.blockers,
+          draftRevision: version.draftRevision,
+          workbenchEditable:
+            Boolean(draftLifecycle.expectedAction) &&
+            ["draft", "approval_rejected"].includes(version.status),
           copyAvailable: view === "all" && version.status === "abandoned" &&
             version.changeType === "original" && version.versionNo === 1 &&
             contract.ownerUserId === actorUserId,
           lifecycleUpdatedAt: version.updatedAt.toISOString(),
-          abandonReason: version.abandonReason ?? null
+          abandonReason: version.abandonReason ?? null,
+          ...this.contractTakeoverLedgerProjection(
+            contract,
+            version,
+            takeoverByVersion.get(version.id),
+            takeoverReadableProjectIds.has(contract.projectId)
+          )
         }
       )];
     });
     const count = (targetView: ContractWorkbenchView) => contracts.filter((contract) => {
       const version = this.currentWorkbenchVersion(versionsByContract.get(contract.id) ?? []);
-      return Boolean(version && this.matchesWorkbenchView(targetView, version, contract.ownerUserId, actorUserId, pendingVersionIds));
+      if (!version) return false;
+      const draftLifecycle = lifecycleByVersion.get(version.id);
+      return Boolean(
+        draftLifecycle &&
+        this.matchesWorkbenchView(
+          targetView,
+          version,
+          draftLifecycle,
+          contract.ownerUserId,
+          actorUserId,
+          pendingVersionIds
+        )
+      );
     }).length;
     const summary = {
       pending_action: count("pending_action"),
@@ -778,7 +1106,7 @@ export class ContractReadService {
       contractArchiveFiles,
       approvalTimeline,
       signingFacts,
-      approvedInstance,
+      latestApprovalInstance,
       historicalApprovedInstances
     ] = await Promise.all([
       this.prisma.paymentTermsStage.findMany({
@@ -799,8 +1127,8 @@ export class ContractReadService {
         ? this.governedSigningFacts(version.id)
         : Promise.resolve({ sealTask: null, formalFiles: [] }),
       this.prisma.approvalInstance?.findFirst({
-        where: { businessType: "contract_version", businessId: version.id, status: "approved" },
-        orderBy: { updatedAt: "desc" }
+        where: { businessType: "contract_version", businessId: version.id },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
       }) ?? Promise.resolve(null),
       this.prisma.approvalInstance?.findMany({
         where: {
@@ -838,18 +1166,60 @@ export class ContractReadService {
       this.confirmedHistoricalBalanceForContract(contract.id),
       this.actorRoleKeys(actorUserId, contract.projectId)
     ]);
-    const approvalReviewAccess = await this.canReviewCurrentApproval(
+    const currentApprovalReview = await this.canReviewCurrentApproval(
       "contract_version",
       version.id,
       contract.projectId,
       roleKeys,
       actorUserId
     );
+    const candidateReviewApprovalContext =
+      currentApprovalReview.access.canReview &&
+      version.updatedAt instanceof Date &&
+      currentApprovalReview.approval?.updatedAt instanceof Date
+        ? {
+            expectedContractUpdatedAt: version.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalReview.approval.id,
+            expectedNodeIndex: currentApprovalReview.approval.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              currentApprovalReview.approval.updatedAt.toISOString()
+          }
+        : null;
+    const currentApprovalWithdrawal = await this.currentApprovalWithdrawal(
+      "contract_version",
+      version.id,
+      actorUserId
+    );
+    const withdrawApprovalContext =
+      version.status === "in_approval" &&
+      version.updatedAt instanceof Date &&
+      currentApprovalWithdrawal?.updatedAt instanceof Date
+        ? {
+            expectedContractUpdatedAt: version.updatedAt.toISOString(),
+            expectedApprovalInstanceId: currentApprovalWithdrawal.id,
+            expectedNodeIndex: currentApprovalWithdrawal.currentNodeIndex,
+            expectedApprovalUpdatedAt:
+              currentApprovalWithdrawal.updatedAt.toISOString()
+          }
+        : null;
+    const approvalReviewAccess = candidateReviewApprovalContext
+      ? currentApprovalReview.access
+      : { ...currentApprovalReview.access, canReview: false };
     const canUploadGovernedFinal = await this.canUploadGovernedFinal(
       actorUserId,
       contract.projectId,
       signingFacts.sealTask
     );
+    const canReportSigningMaterialChange = await this.canReportSigningMaterialChange(
+      actorUserId,
+      signingFacts.sealTask
+    );
+    const draftLifecycle = (
+      await this.contractDraftLifecycleByVersion([version])
+    ).get(version.id);
+    if (!draftLifecycle) {
+      throw new NotFoundException("未找到合同版本生命周期，请刷新合同台账后重试");
+    }
     const ownerRiskClient = this.prisma as unknown as {
       projectOwnerContract?: { findMany?: unknown };
       contract?: { findMany?: unknown };
@@ -877,48 +1247,56 @@ export class ContractReadService {
         activeFinal: signingFacts.formalFiles.find((item) =>
           item.purpose === "mutually_signed_final" && item.status === "active"
         ) ?? null,
-        approvalFormAvailable: Boolean(approvedInstance),
-        approvalParticipant: Boolean(actorUserId && approvedInstance && (
-          approvedInstance.applicantUserId === actorUserId ||
+        approvalFormAvailable: Boolean(
+          latestApprovalInstance?.status === "approved" &&
+          canUseCurrentContractApprovalForm(version.status)
+        ),
+        approvalParticipant: Boolean(
+          actorUserId &&
+          latestApprovalInstance?.status === "approved" &&
+          canUseCurrentContractApprovalForm(version.status) && (
+          latestApprovalInstance.applicantUserId === actorUserId ||
           await this.prisma.approvalActionLog?.findFirst({
-            where: { approvalInstanceId: approvedInstance.id, actorUserId, action: "approve" },
+            where: {
+              approvalInstanceId: latestApprovalInstance.id,
+              actorUserId,
+              action: "approve"
+            },
             select: { id: true }
           })
         )),
-        canUploadGovernedFinal
+        canUploadGovernedFinal,
+        canReportSigningMaterialChange,
+        genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction),
+        withdrawApprovalContext
       }
     );
 
-    const lifecycleBlockers = [
-      ...(version.changeType !== "original" || version.versionNo !== 1
-        ? ["合同变更或派生版本"]
-        : []),
-      ...(version.status !== "draft" ? ["合同曾进入审批或正式流程"] : []),
-      ...(approvalTimeline.length ? ["存在审批记录"] : []),
-      ...(signingFacts.formalFiles.length ? ["存在正式合同文件"] : []),
-      ...(signingFacts.sealTask ? ["存在用印记录"] : []),
-      ...(contractArchiveFiles.length ? ["存在归档记录"] : []),
-      ...(settlements.length ? ["存在关联结算"] : []),
-      ...(paymentRequests.length ? ["存在关联付款"] : [])
-    ];
-    const lifecycleKind = ["draft", "approval_rejected"].includes(version.status)
-      ? lifecycleBlockers.length === 0 ? "pristine_draft" : "approval_draft"
-      : "formal_record";
     if (
-      lifecycleKind !== "formal_record" &&
+      draftLifecycle.expectedAction &&
       actorUserId && actorUserId === contract.ownerUserId
     ) {
       availableActions.push(detailAction({
-        key: lifecycleKind === "pristine_draft"
-          ? "delete_pristine_draft"
-          : "abandon_application",
-        label: lifecycleKind === "pristine_draft" ? "删除草稿" : "放弃申请",
+        key: draftLifecycle.expectedAction,
+        label: draftLifecycle.expectedAction === "delete_pristine_draft"
+          ? "删除草稿"
+          : "放弃申请",
         kind: "danger",
         roleKeys,
         skipRoleCheck: true,
-        enabled: true
+        enabled: true,
+        requiresComment:
+          draftLifecycle.expectedAction === "abandon_application"
       }));
     }
+
+    const enabledReviewActions = availableActions.filter(
+      (action) => action.key === "review_approval" && action.enabled
+    );
+    const reviewApprovalContext =
+      candidateReviewApprovalContext && enabledReviewActions.length === 1
+        ? candidateReviewApprovalContext
+        : null;
 
     const contractCode = contract.code ?? contract.temporaryCode ?? contract.id;
     const latestSettlement = settlements.at(-1);
@@ -953,6 +1331,17 @@ export class ContractReadService {
           )
         } satisfies NonNullable<ContractDetailReadModel["ownerContractRisk"]>
       : null;
+    const signingMaterialChangeContext =
+      signingFacts.sealTask &&
+      availableActions.some(
+        (action) => action.key === "report_signing_material_change" && action.enabled
+      )
+        ? {
+            expectedRevision: version.draftRevision,
+            expectedSealTaskId: signingFacts.sealTask.id,
+            expectedStatus: version.status as ContractSigningMaterialChangeStatus
+          }
+        : null;
     return {
       id: contractCode,
       contractVersionId: version.id,
@@ -1014,10 +1403,16 @@ export class ContractReadService {
         ? { ownerContractRisk: ownerContractRiskReadModel }
         : {}),
       sealTask: signingFacts.sealTask,
+      signingMaterialChangeContext,
       approvalTimeline,
       availableActions,
-      lifecycleKind,
-      lifecycleBlockers,
+      availableActionKeys: availableActions
+        .filter((action) => action.enabled)
+        .map((action) => action.key),
+      reviewApprovalContext,
+      withdrawApprovalContext,
+      lifecycleKind: draftLifecycle.lifecycleKind,
+      lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       primaryAction: primaryActionKey(availableActions),
@@ -1105,6 +1500,9 @@ export class ContractReadService {
       archiveFiles: [],
       approvalTimeline: [],
       availableActions: [],
+      availableActionKeys: [],
+      reviewApprovalContext: null,
+      withdrawApprovalContext: null,
       primaryAction: null,
       disabledReasons: [],
       chainLinks: [
@@ -1444,37 +1842,64 @@ export class ContractReadService {
     projectId: string,
     roleKeys: RoleKey[],
     actorUserId?: string
-  ): Promise<ApprovalReviewAccess> {
+  ): Promise<CurrentContractApprovalReview> {
     if (!actorUserId) {
-      return emptyApprovalReviewAccess();
+      return emptyCurrentContractApprovalReview();
     }
 
     const approvalClient = (this.prisma as unknown as {
       approvalInstance?: {
-        findFirst(args: {
-          where: { businessType: string; businessId: string; status: string };
-          orderBy: { createdAt: "desc" };
-          select: { applicantUserId: true; frozenNodes: true; currentNodeIndex: true };
-        }): Promise<{
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "contract.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            frozenNodes: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
           applicantUserId: string;
           frozenNodes: unknown;
           currentNodeIndex: number;
-        } | null>;
+          updatedAt: Date;
+        }>>;
       };
     }).approvalInstance;
-    if (!approvalClient) {
-      return emptyApprovalReviewAccess();
+    if (!approvalClient?.findMany) {
+      return emptyCurrentContractApprovalReview();
     }
 
-    const instance = await approvalClient.findFirst({
-      where: { businessType, businessId, status: "in_progress" },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "contract.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        frozenNodes: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
     });
 
-    if (!instance) {
-      return emptyApprovalReviewAccess();
+    if (instances.length !== 1) {
+      return emptyCurrentContractApprovalReview();
     }
+    const instance = instances[0];
 
     const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
@@ -1485,14 +1910,21 @@ export class ContractReadService {
       false
     );
     if (directOrAssignedAccess.canAct) {
-      return directOrAssignedAccess;
+      return {
+        access: directOrAssignedAccess,
+        approval: {
+          id: instance.id,
+          currentNodeIndex: instance.currentNodeIndex,
+          updatedAt: instance.updatedAt
+        }
+      };
     }
 
     const activeDelegators = await this.activeDelegatedApprovalIdentities(
       actorUserId,
       projectId
     );
-    return approvalReviewAccessOnFrozenNode(
+    const delegatedAccess = approvalReviewAccessOnFrozenNode(
       instance.frozenNodes,
       instance.currentNodeIndex,
       roleKeys,
@@ -1500,6 +1932,73 @@ export class ContractReadService {
       instance.applicantUserId,
       activeDelegators
     );
+    return {
+      access: delegatedAccess,
+      approval: delegatedAccess.canAct
+        ? {
+            id: instance.id,
+            currentNodeIndex: instance.currentNodeIndex,
+            updatedAt: instance.updatedAt
+          }
+        : null
+    };
+  }
+
+  private async currentApprovalWithdrawal(
+    businessType: string,
+    businessId: string,
+    actorUserId?: string
+  ): Promise<CurrentContractApprovalWithdrawal | null> {
+    if (!actorUserId) return null;
+
+    const approvalClient = (this.prisma as unknown as {
+      approvalInstance?: {
+        findMany(args: {
+          where: {
+            businessType: string;
+            businessId: string;
+            flowType: "contract.approve";
+            status: "in_progress";
+          };
+          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
+          take: 2;
+          select: {
+            id: true;
+            applicantUserId: true;
+            currentNodeIndex: true;
+            updatedAt: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          applicantUserId: string;
+          currentNodeIndex: number;
+          updatedAt: Date;
+        }>>;
+      };
+    }).approvalInstance;
+    if (!approvalClient?.findMany) return null;
+
+    const instances = await approvalClient.findMany({
+      where: {
+        businessType,
+        businessId,
+        flowType: "contract.approve",
+        status: "in_progress"
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        id: true,
+        applicantUserId: true,
+        currentNodeIndex: true,
+        updatedAt: true
+      }
+    });
+    if (instances.length !== 1 || instances[0]?.applicantUserId !== actorUserId) {
+      return null;
+    }
+
+    return instances[0];
   }
 
   private async activeDelegatedApprovalIdentities(
@@ -1535,8 +2034,28 @@ export class ContractReadService {
       approvalFormAvailable: boolean;
       approvalParticipant: boolean;
       canUploadGovernedFinal: boolean;
+      canReportSigningMaterialChange: boolean;
+      genericDraftActionsAllowed: boolean;
+      withdrawApprovalContext: ContractDetailReadModel["withdrawApprovalContext"];
     }
   ): DetailActionReadModel[] {
+    const materialChangeStatus = status as ContractSigningMaterialChangeStatus;
+    const expectedMaterialChangeTaskStatus =
+      MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS[materialChangeStatus];
+    const signingMaterialChangeActions =
+      context?.governed &&
+      context.canReportSigningMaterialChange &&
+      context.sealTask?.status === expectedMaterialChangeTaskStatus
+        ? [detailAction({
+            key: "report_signing_material_change",
+            label: "申报签署内容实质变化（退回重审）",
+            kind: "danger",
+            roleKeys,
+            skipRoleCheck: true,
+            enabled: true,
+            requiresComment: true
+          })]
+        : [];
     const workflowActions = [
       detailAction({
         key: "download_approval_form",
@@ -1553,14 +2072,16 @@ export class ContractReadService {
         )),
         disabledReason: "审批单尚未生成或当前账号无下载权限"
       }),
-      detailAction({
-        key: "withdraw_approval",
-        label: "撤回审批",
-        kind: "normal",
-        roleKeys,
-        requiredAction: "contract.submit",
-        enabled: ["in_approval", "approval_pending"].includes(status)
-      }),
+      ...(context?.withdrawApprovalContext
+        ? [detailAction({
+            key: "withdraw_approval",
+            label: "撤回审批",
+            kind: "normal",
+            roleKeys,
+            skipRoleCheck: true,
+            enabled: true
+          })]
+        : []),
       detailAction({
         key: "remind_approval",
         label: "催办审批",
@@ -1598,6 +2119,9 @@ export class ContractReadService {
     ];
 
     if (status === "draft") {
+      if (context?.genericDraftActionsAllowed === false) {
+        return [];
+      }
       return [
         detailAction({
           key: "submit_approval",
@@ -1642,6 +2166,7 @@ export class ContractReadService {
           enabled: true,
           requiresPassword: true
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1657,6 +2182,7 @@ export class ContractReadService {
           enabled: Boolean(context?.actorUserId && context.sealTask?.handlerUserId === context.actorUserId),
           disabledReason: "仅冻结经办人可确认线下签署盖章完成"
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1676,6 +2202,7 @@ export class ContractReadService {
           disabledReason: "仅冻结经办人或符合条件的替代上传人可上传",
           requiresFile: true
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1703,6 +2230,7 @@ export class ContractReadService {
             : true,
           requiresPassword: true
         }),
+        ...signingMaterialChangeActions,
         ...workflowActions
       ];
     }
@@ -1767,6 +2295,33 @@ export class ContractReadService {
       this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } })
     ]);
     return Boolean(member && actor?.isActive);
+  }
+
+  private async canReportSigningMaterialChange(
+    actorUserId: string | undefined,
+    sealTask: ContractDetailReadModel["sealTask"]
+  ) {
+    if (!actorUserId || !sealTask) return false;
+    if (sealTask.handlerUserId === actorUserId) return true;
+    const [position, user] = await Promise.all([
+      this.prisma.position.findUnique({
+        where: { key: "contract_director" },
+        select: { id: true }
+      }),
+      this.prisma.user.findUnique({
+        where: { id: actorUserId },
+        select: { isActive: true }
+      })
+    ]);
+    if (!position || !user?.isActive) return false;
+    return Boolean(await this.prisma.userPosition.findFirst({
+      where: {
+        userId: actorUserId,
+        projectId: null,
+        positionId: position.id
+      },
+      select: { id: true }
+    }));
   }
 
   private statusView(status: string): { label: string; tone: CoreFlowTone } {
@@ -2115,6 +2670,195 @@ export class ContractReadService {
     return dbMoneyToBigInt(amountCents, "合同金额");
   }
 
+  private async contractTakeoverLedgerRows(
+    contractVersionIds: string[]
+  ): Promise<Array<{
+    id: string;
+    contractVersionId: string;
+    contractId: string;
+    projectId: string;
+    takeoverStatus: string;
+  }>> {
+    if (!contractVersionIds.length) return [];
+    const client = (this.prisma as unknown as {
+      contractTakeover?: {
+        findMany(args: {
+          where: {
+            contractVersionId: { in: string[] };
+          };
+          select: {
+            id: true;
+            contractVersionId: true;
+            contractId: true;
+            projectId: true;
+            takeoverStatus: true;
+          };
+        }): Promise<Array<{
+          id: string;
+          contractVersionId: string;
+          contractId: string;
+          projectId: string;
+          takeoverStatus: string;
+        }>>;
+      };
+    }).contractTakeover;
+    if (!client) return [];
+    return client.findMany({
+      where: {
+        contractVersionId: { in: contractVersionIds }
+      },
+      select: {
+        id: true,
+        contractVersionId: true,
+        contractId: true,
+        projectId: true,
+        takeoverStatus: true
+      }
+    });
+  }
+
+  private async historicalTakeoverReadableProjectIds(
+    actorUserId: string,
+    visibleProjectIds: string[]
+  ): Promise<Set<string>> {
+    if (!this.projectVisibility || !visibleProjectIds.length) return new Set();
+    const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
+      actorUserId,
+      visibleProjectIds
+    );
+    return new Set(visibleProjectIds.filter((projectId) =>
+      (roleKeysByProject.get(projectId) ?? []).some((roleKey) =>
+        HISTORICAL_TAKEOVER_READ_ROLES.has(roleKey)
+      )
+    ));
+  }
+
+  private contractTakeoverLedgerProjection(
+    contract: { id: string; projectId: string; source?: string | null },
+    version: { id: string; contractId: string; changeType?: string | null },
+    takeover: {
+      id: string;
+      contractVersionId: string;
+      contractId: string;
+      projectId: string;
+      takeoverStatus: string;
+    } | undefined,
+    canReadTakeover: boolean
+  ): Record<string, unknown> {
+    const hasHistoricalMarker = version.changeType === "historical_takeover";
+    const hasTakeoverRelation = Boolean(takeover);
+    const hasExactTakeoverRelation = Boolean(
+      takeover &&
+      takeover.contractVersionId === version.id &&
+      takeover.contractId === version.contractId &&
+      takeover.contractId === contract.id &&
+      takeover.projectId === contract.projectId
+    );
+    const historicalTakeoverFlow = hasHistoricalMarker || hasTakeoverRelation;
+    const takeoverRelationMismatch =
+      hasHistoricalMarker !== hasExactTakeoverRelation ||
+      (hasTakeoverRelation && !hasExactTakeoverRelation);
+    const base = {
+      projectId: contract.projectId,
+      source: contract.source === "historical_takeover" ? "historical_takeover" : "system",
+      changeType: version.changeType ?? null,
+      historicalTakeoverFlow
+    };
+    if (!historicalTakeoverFlow) {
+      return {
+        ...base,
+        takeoverId: null,
+        takeoverStatus: null,
+        takeoverReadable: false
+      };
+    }
+    const historicalBase = {
+      ...base,
+      copyAvailable: false
+    };
+    if (!canReadTakeover) {
+      return {
+        ...historicalBase,
+        currentNode: "历史合同接管",
+        nodeTone: "default",
+        pendingOwner: "专用工作台",
+        ownerDepartment: "专用工作台",
+        nextAction: "查看详情",
+        takeoverReadable: false,
+        workbenchEditable: false
+      };
+    }
+
+    if (takeoverRelationMismatch) {
+      return {
+        ...historicalBase,
+        takeoverReadable: true,
+        takeoverRelationMismatch: true,
+        currentNode: "接管关联异常",
+        nodeTone: "danger",
+        pendingOwner: "历史接管工作台",
+        ownerDepartment: "历史接管工作台",
+        nextAction: "检查接管关联",
+        workbenchEditable: false
+      };
+    }
+
+    const view = ({
+      draft: {
+        currentNode: "接管准备",
+        nodeTone: "warning",
+        pendingOwner: "接管责任人",
+        nextAction: "继续接管"
+      },
+      needs_supplement: {
+        currentNode: "待补充",
+        nodeTone: "warning",
+        pendingOwner: "接管责任人",
+        nextAction: "补充接管资料"
+      },
+      pending_review: {
+        currentNode: "复核确认",
+        nodeTone: "primary",
+        pendingOwner: "合同部/财务部主管",
+        nextAction: "继续复核"
+      },
+      confirmed: {
+        currentNode: "已接管",
+        nodeTone: "success",
+        pendingOwner: "系统归档",
+        nextAction: "查看接管台账"
+      },
+      voided: {
+        currentNode: "已作废",
+        nodeTone: "danger",
+        pendingOwner: "系统归档",
+        nextAction: "查看历史记录"
+      },
+      abandoned: {
+        currentNode: "已放弃",
+        nodeTone: "default",
+        pendingOwner: "系统归档",
+        nextAction: "查看合同详情"
+      }
+    } as const)[takeover?.takeoverStatus as "draft" | "needs_supplement" |
+      "pending_review" | "confirmed" | "voided" | "abandoned"] ?? {
+      currentNode: "接管关联异常",
+      nodeTone: "danger",
+      pendingOwner: "历史接管工作台",
+      nextAction: "检查接管关联"
+    };
+    return {
+      ...historicalBase,
+      takeoverId: takeover?.id ?? null,
+      takeoverStatus: takeover?.takeoverStatus ?? null,
+      takeoverReadable: true,
+      takeoverRelationMismatch: false,
+      ...view,
+      ownerDepartment: view.pendingOwner,
+      workbenchEditable: false
+    };
+  }
+
   private contractLedgerRow(
     contract: {
       id: string; code: string | null; temporaryCode: string | null; name: string;
@@ -2133,6 +2877,7 @@ export class ContractReadService {
     const pendingOwner = this.currentOwnerLabel(version.status);
     return {
       id: contract.code ?? contract.id,
+      contractId: contract.id,
       contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
       name: contract.name,
       project: project?.name ?? contract.projectId,
@@ -2155,36 +2900,60 @@ export class ContractReadService {
 
   private lifecycleCount(
     contracts: Array<{ id: string; ownerUserId: string | null; voidedAt: Date | null }>,
-    versionsByContract: Map<string, Array<{ status: string }>>,
+    versionsByContract: Map<string, Array<{ id: string; status: string }>>,
+    lifecycleByVersion: ReadonlyMap<
+      string,
+      ContractDraftLifecycleClassification
+    >,
     actorUserId: string,
     view: DraftLedgerView
   ) {
     return contracts.filter((contract) => this.classifyContractLifecycle(
       contract,
       versionsByContract.get(contract.id) ?? [],
+      lifecycleByVersion,
       actorUserId
     ).matches[view]).length;
   }
 
-  private classifyContractLifecycle<V extends { status: string }>(
+  private classifyContractLifecycle<V extends { id: string; status: string }>(
     contract: { ownerUserId: string | null; voidedAt: Date | null },
     versions: V[],
+    lifecycleByVersion: ReadonlyMap<
+      string,
+      ContractDraftLifecycleClassification
+    >,
     actorUserId: string
   ) {
     const latest = versions[0];
     const latestNotAbandoned = versions.find((candidate) => candidate.status !== "abandoned");
     const latestFormal = versions.find((candidate) =>
-      !["draft", "approval_rejected", "abandoned", "voided"].includes(candidate.status)
+      (
+        !["draft", "approval_rejected", "abandoned", "voided"].includes(
+          candidate.status
+        ) ||
+        lifecycleByVersion.get(candidate.id)?.lifecycleKind === "formal_record"
+      ) &&
+      !["abandoned", "voided"].includes(candidate.status)
     );
+    const latestDraftLifecycle = latestNotAbandoned
+      ? lifecycleByVersion.get(latestNotAbandoned.id)
+      : undefined;
     const matches = {
       formal_ledger: Boolean(
         latest && !contract.voidedAt && latest.status !== "voided" && latestFormal
       ),
       my_drafts: Boolean(
-        latestNotAbandoned?.status === "draft" && contract.ownerUserId === actorUserId
+        latestNotAbandoned?.status === "draft" &&
+        latestDraftLifecycle?.lifecycleKind === "pristine_draft" &&
+        contract.ownerUserId === actorUserId
       ),
       returned_for_revision: Boolean(
-        latestNotAbandoned?.status === "approval_rejected" && contract.ownerUserId === actorUserId
+        latestNotAbandoned &&
+        ["draft", "approval_rejected"].includes(latestNotAbandoned.status) &&
+        latestDraftLifecycle?.lifecycleKind === "approval_draft" &&
+        latestDraftLifecycle.expectedAction === "abandon_application" &&
+        contract.ownerUserId === actorUserId
       ),
       ended: Boolean(
         latest && (contract.voidedAt || ["abandoned", "voided"].includes(latest.status))
@@ -2210,6 +2979,7 @@ export class ContractReadService {
   private matchesWorkbenchView(
     view: ContractWorkbenchView,
     version: { id: string; status: string },
+    draftLifecycle: ContractDraftLifecycleClassification,
     ownerUserId: string | null,
     actorUserId: string,
     pendingVersionIds: ReadonlySet<string>
@@ -2220,29 +2990,17 @@ export class ContractReadService {
       return pendingVersionIds.has(version.id) ||
         (status === "approval_rejected" && ownerUserId === actorUserId);
     }
-    if (view === "my_drafts") return status === "draft" && ownerUserId === actorUserId;
+    if (view === "my_drafts") {
+      return status === "draft" &&
+        draftLifecycle.lifecycleKind === "pristine_draft" &&
+        ownerUserId === actorUserId;
+    }
     if (view === "in_approval") return ["in_approval", "approval_pending"].includes(status);
     if (view === "pending_seal") return ["approved", "approved_pending_seal", "in_seal"].includes(status);
     if (view === "pending_archive") {
       return ["seal_approved_pending_archive", "pending_archive_confirm", "sealed_pending_archive"].includes(status);
     }
     return status === "effective";
-  }
-
-  private contractLedgerLifecycleKind(
-    version: { status: string; changeType: string; versionNo: number },
-    evidence: { hasApproval: boolean; hasFormalFile: boolean; hasAuthorization: boolean }
-  ): "pristine_draft" | "approval_draft" | "formal_record" {
-    if (version.status === "voided") return "formal_record";
-    if (version.status === "abandoned") {
-      return version.changeType !== "original" || version.versionNo !== 1 ||
-        evidence.hasApproval || evidence.hasFormalFile || evidence.hasAuthorization
-        ? "approval_draft"
-        : "pristine_draft";
-    }
-    if (version.status === "draft") return "pristine_draft";
-    if (version.status === "approval_rejected") return "approval_draft";
-    return "formal_record";
   }
 
   private page(raw?: string | number) {

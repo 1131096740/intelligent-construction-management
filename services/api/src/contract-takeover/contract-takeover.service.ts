@@ -2926,9 +2926,23 @@ export class ContractTakeoverService {
       await this.assertTakeoverPaymentStages(tx, takeover);
 
       const confirmedAt = new Date();
+      const contract = await tx.contract.findUnique({
+        where: { id: takeover.contractId },
+        select: { contractTypeKey: true }
+      });
       await tx.contractVersion.update({
         where: { id: takeover.contractVersionId },
-        data: { status: "effective", effectiveAt: confirmedAt }
+        data: {
+          status: "effective",
+          effectiveAt: confirmedAt,
+          settlementMode:
+            contract?.contractTypeKey === "generic_contract"
+              ? "direct_payment"
+              : "settlement_required",
+          settlementModeSource: "backfill",
+          settlementModeConfirmedByUserId: actorUserId,
+          settlementModeConfirmedAt: confirmedAt
+        }
       });
       await tx.paymentTermsVersion.update({
         where: { id: takeover.paymentTermsVersionId },

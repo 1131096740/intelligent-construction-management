@@ -27,43 +27,73 @@ describe("ContractNegotiationService", () => {
     });
   });
 
-  function makeTx() {
-    return {
-      $queryRaw: jest.fn().mockResolvedValue([
+  function makeTx(options: {
+    formalEvidence?: boolean;
+    historicalTakeoverRelation?: boolean;
+  } = {}) {
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      changeType: "original",
+      draftRevision: 7,
+      amountCents: 12_300n,
+      draftData: { fieldValues: { signingDate: "2026-07-12" } },
+      templateSnapshot: {
+        fieldSchema: [{ key: "signingDate", label: "签订日期" }]
+      },
+      clauseSnapshot: [
         {
-          id: "round-1",
-          contractVersionId: "version-1",
-          roundNo: 1,
-          status: "open",
-          sourceGeneratedDocumentId: "generated-1",
-          sourceRevision: 7,
-          note: null,
-          openedAt: new Date("2026-07-12T10:00:00.000Z"),
-          closedAt: null
+          key: "payment",
+          title: "付款条款",
+          content: { text: "付款条款：按月结算" }
         }
-      ]),
+      ]
+    };
+    const contract = {
+      id: "contract-1",
+      ownerUserId: "owner-1",
+      voidedAt: null
+    };
+    const round = {
+      id: "round-1",
+      contractVersionId: "version-1",
+      roundNo: 1,
+      status: "open",
+      sourceGeneratedDocumentId: "generated-1",
+      sourceRevision: 7,
+      note: null,
+      openedAt: new Date("2026-07-12T10:00:00.000Z"),
+      closedAt: null
+    };
+    return {
+      $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            ...version,
+            hasHistoricalTakeoverRelation:
+              options.historicalTakeoverRelation ?? false
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) return [contract];
+        if (sql.includes('AS "hasSignedFormalFile"')) {
+          return [{
+            hasSignedFormalFile: options.formalEvidence ?? false,
+            hasActiveSealTask: false,
+            hasArchiveFile: false,
+            hasSettlement: false,
+            hasPaymentRequest: false
+          }];
+        }
+        if (sql.includes('FROM "ContractNegotiationRound"')) return [round];
+        return [];
+      }),
       contractVersion: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "version-1",
-          contractId: "contract-1",
-          status: "draft",
-          draftRevision: 7,
-          amountCents: 12_300n,
-          draftData: { fieldValues: { signingDate: "2026-07-12" } },
-          templateSnapshot: {
-            fieldSchema: [{ key: "signingDate", label: "签订日期" }]
-          },
-          clauseSnapshot: [
-            { key: "payment", title: "付款条款", content: { text: "付款条款：按月结算" } }
-          ]
-        })
+        findUnique: jest.fn().mockResolvedValue(version)
       },
       contract: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "contract-1",
-          ownerUserId: "owner-1",
-          voidedAt: null
-        })
+        findUnique: jest.fn().mockResolvedValue(contract)
       },
       contractGeneratedDocument: {
         findFirst: jest.fn().mockResolvedValue({
@@ -149,6 +179,22 @@ describe("ContractNegotiationService", () => {
     };
   }
 
+  function expectContractThenVersionBoundary(tx: ReturnType<typeof makeTx>) {
+    const sql = tx.$queryRaw.mock.calls.map(
+      ([query]: [{ strings?: readonly string[] }]) =>
+        query.strings?.join(" ") ?? ""
+    );
+    expect(sql[0]).toContain("FOR UPDATE OF c");
+    expect(sql[1]).toContain("FOR UPDATE OF cv");
+    expect(sql[2]).toContain('AS "hasSignedFormalFile"');
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[1]
+    );
+    expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[2]
+    );
+  }
+
   it("opens a round from the latest current successful DOCX without accepting a client source", async () => {
     const { service: subject, tx } = service();
 
@@ -175,6 +221,34 @@ describe("ContractNegotiationService", () => {
       tx,
       expect.objectContaining({ action: "contract.negotiation_round.open" })
     );
+  });
+
+  it("does not open a negotiation round after signed formal evidence exists", async () => {
+    const tx = makeTx({ formalEvidence: true });
+    const { service: subject } = service(tx);
+
+    await expect(
+      subject.openRound("version-1", "owner-1")
+    ).rejects.toThrow("正式业务事实");
+    expect(tx.contractNegotiationRound.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("blocks relation-only takeover before opening a negotiation round", async () => {
+    const tx = makeTx({ historicalTakeoverRelation: true });
+    const { service: subject } = service(tx);
+
+    await expect(
+      subject.openRound("version-1", "owner-1")
+    ).rejects.toMatchObject({
+      response: {
+        code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+        projectId: null,
+        takeoverId: null
+      }
+    });
+    expect(tx.contractNegotiationRound.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("derives upload source and source revision only from the open round", async () => {
@@ -224,10 +298,14 @@ describe("ContractNegotiationService", () => {
     expect(JSON.stringify(result)).not.toContain("revision-file");
     expect(JSON.stringify(result)).not.toContain("generated-1");
     expect(JSON.stringify(result)).not.toContain("owner-1");
-    expect(tx.contractNegotiationRound.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
-      tx.$queryRaw.mock.invocationCallOrder[0]
+    expectContractThenVersionBoundary(tx);
+    expect(tx.$queryRaw.mock.invocationCallOrder[2]).toBeLessThan(
+      tx.contractNegotiationRound.findFirst.mock.invocationCallOrder[0]
     );
-    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(tx.contractNegotiationRound.findFirst.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.$queryRaw.mock.invocationCallOrder[3]
+    );
+    expect(tx.$queryRaw.mock.invocationCallOrder[3]).toBeLessThan(
       tx.contractOfflineRevision.create.mock.invocationCallOrder[0]
     );
   });
@@ -246,7 +324,8 @@ describe("ContractNegotiationService", () => {
       subject.disposeDifference("difference-1", "owner-1", { disposition: "confirmed" })
     ).rejects.toThrow("结构候选与当前合同账本不一致");
     expect(tx.contractDocumentDifference.updateMany).not.toHaveBeenCalled();
-    expect(tx.contractVersion.findUnique).toHaveBeenCalled();
+    expectContractThenVersionBoundary(tx);
+    expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -281,7 +360,8 @@ describe("ContractNegotiationService", () => {
     await expect(
       subject.disposeDifference("difference-1", "owner-1", { disposition: "confirmed" })
     ).resolves.toBeDefined();
-    expect(tx.contractVersion.findUnique).toHaveBeenCalled();
+    expectContractThenVersionBoundary(tx);
+    expect(tx.contractVersion.findUnique).not.toHaveBeenCalled();
     expect(tx.contractVersion).not.toHaveProperty("update");
     expect(audit.record).toHaveBeenCalledWith(
       tx,
@@ -371,6 +451,115 @@ describe("ContractNegotiationService", () => {
     expect(serialized).not.toContain("preview-pdf-secret");
     expect(serialized).not.toContain("owner-secret");
     expect(serialized).not.toContain("generated-secret");
+  });
+
+  it("merges governed and legacy offline revisions by time without leaking private identifiers", async () => {
+    const tx = makeTx();
+    const rawRevision = (id: string, createdAt: string) => ({
+      id,
+      label: id,
+      note: null,
+      status: "succeeded",
+      fileId: `${id}-file-secret`,
+      previewPdfFileId: `${id}-preview-secret`,
+      confirmedByUserId: `${id}-confirmed-actor-secret`,
+      actorUserId: `${id}-generic-actor-secret`,
+      sourceGeneratedDocumentId: `${id}-source-secret`,
+      errorMessage: null,
+      createdAt: new Date(createdAt),
+      completedAt: null
+    });
+    tx.contractNegotiationRound.findMany.mockResolvedValue([
+      {
+        id: "round-2",
+        roundNo: 2,
+        status: "open",
+        sourceRevision: 9,
+        sourceGeneratedDocumentId: "generated-secret",
+        openedByUserId: "round-actor-secret",
+        note: "第二轮磋商",
+        openedAt: new Date("2026-07-12T10:00:00.000Z"),
+        closedAt: null
+      }
+    ]);
+    tx.contractOfflineRevision.findMany.mockImplementation(
+      async ({ where }: { where: { negotiationRoundId?: string | null } }) => {
+        if (where.negotiationRoundId === "round-2") {
+          return [
+            rawRevision("governed-late", "2026-07-12T10:04:00.000Z"),
+            rawRevision("governed-early", "2026-07-12T10:01:00.000Z")
+          ];
+        }
+        if (where.negotiationRoundId === null) {
+          return [rawRevision("legacy-middle", "2026-07-12T10:03:00.000Z")];
+        }
+        return [];
+      }
+    );
+    tx.contractDocumentComparison.findMany.mockResolvedValue([]);
+    const { service: subject } = service(tx);
+
+    const revisions = await subject.listOfflineRevisionHistory("version-1", "owner-1");
+    const serialized = JSON.stringify(revisions);
+
+    expect(revisions.map((revision) => revision.id)).toEqual([
+      "governed-late",
+      "legacy-middle",
+      "governed-early"
+    ]);
+    expect(revisions[0]).toMatchObject({
+      id: "governed-late",
+      hasPreviewPdf: true,
+      negotiationRound: {
+        id: "round-2",
+        roundNo: 2,
+        status: "open",
+        sourceRevision: 9
+      }
+    });
+    expect(revisions[1]).toMatchObject({
+      id: "legacy-middle",
+      hasPreviewPdf: false,
+      comparison: null,
+      negotiationRound: null
+    });
+    expect(tx.contractOfflineRevision.findMany).toHaveBeenNthCalledWith(1, {
+      where: { negotiationRoundId: "round-2" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    expect(tx.contractOfflineRevision.findMany).toHaveBeenNthCalledWith(2, {
+      where: { contractVersionId: "version-1", negotiationRoundId: null },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+    for (const revision of revisions) {
+      expect(revision).not.toHaveProperty("fileId");
+      expect(revision).not.toHaveProperty("previewPdfFileId");
+      expect(revision).not.toHaveProperty("sourceGeneratedDocumentId");
+      expect(revision).not.toHaveProperty("actorUserId");
+      expect(revision).not.toHaveProperty("confirmedByUserId");
+      if (revision.negotiationRound) {
+        expect(revision.negotiationRound).not.toHaveProperty("sourceGeneratedDocumentId");
+        expect(revision.negotiationRound).not.toHaveProperty("openedByUserId");
+      }
+    }
+    expect(serialized).not.toContain("fileId");
+    expect(serialized).not.toContain("previewPdfFileId");
+    expect(serialized).not.toContain("sourceGeneratedDocumentId");
+    expect(serialized).not.toContain("openedByUserId");
+    expect(serialized).not.toContain("confirmedByUserId");
+    expect(serialized).not.toContain("actorUserId");
+    expect(serialized).not.toContain("-secret");
+  });
+
+  it("reuses the owned-version boundary before listing offline revision history", async () => {
+    const tx = makeTx();
+    const { service: subject } = service(tx);
+
+    await expect(
+      subject.listOfflineRevisionHistory("version-1", "not-owner")
+    ).rejects.toThrow("只有合同经办人可以管理合同磋商和文档差异");
+    expect(tx.contractNegotiationRound.findMany).not.toHaveBeenCalled();
+    expect(tx.contractOfflineRevision.findMany).not.toHaveBeenCalled();
   });
 
   it("issues a revision-scoped preview ticket without returning the raw file id", async () => {

@@ -12,7 +12,7 @@ describe("contract section aggregate editing boundary", () => {
     expect(source).toContain('emit("update:rows"');
     expect(source).toContain('emit("edited"');
     expect(source).toContain("previewContractDraftBillExcelImport");
-    expect(source).toContain("uploadPrivateFile");
+    expect(source).toContain("uploadContractWorkbenchPrivateFile");
     expect(source).not.toContain("replaceContractBillRows");
     expect(source).not.toContain("applyBillExcelImport");
     expect(source).not.toContain("保存全部");
@@ -21,7 +21,7 @@ describe("contract section aggregate editing boundary", () => {
   it("keeps party file upload independent but stages the association in the aggregate", () => {
     const source = read("./ContractPartySection.vue");
 
-    expect(source).toContain("uploadPrivateFile");
+    expect(source).toContain("uploadContractWorkbenchPrivateFile");
     expect(source).toContain('"update:parties"');
     expect(source).toContain('"edited"');
     expect(source).not.toContain("addContractParty");

@@ -98,6 +98,8 @@ const validProjectReceiptBody = {
   voucherFileId: "file-1",
   confirmationPassword: "current-password"
 };
+const validFinancingQuotaIdempotencyKey =
+  "11111111-1111-4111-8111-111111111111";
 
 describe("ProjectController authorization wiring", () => {
   type OwnerContractRecordBody = {
@@ -126,17 +128,23 @@ describe("ProjectController authorization wiring", () => {
     comment?: string;
   };
   type ProjectFinancingQuotaRequestBody = {
+    idempotencyKey: string;
     amountCents: string;
     reason: string;
     validUntil: string;
     attachmentFileId: string;
   };
   type ProjectFinancingQuotaReviewBody = {
+    actionId: string;
+    expectedLifecycleToken: string;
     decision: "approve" | "reject";
     confirmationPassword: string;
     comment?: string;
+    selfReviewReason?: string;
   };
   type ProjectFinancingQuotaTerminationBody = {
+    actionId: string;
+    expectedLifecycleToken: string;
     reason: string;
     confirmationPassword: string;
   };
@@ -319,6 +327,7 @@ describe("ProjectController authorization wiring", () => {
     [
       "requestProjectFinancingQuota",
       {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
         amountCents: "10000",
         reason: "项目垫资",
         validUntil: "2099-07-11T10:00:00.000Z",
@@ -327,11 +336,22 @@ describe("ProjectController authorization wiring", () => {
     ],
     [
       "reviewProjectFinancingQuota",
-      { decision: "reject", confirmationPassword: "current-password", comment: "资料不足" }
+      {
+        actionId: "22222222-2222-4222-8222-222222222222",
+        expectedLifecycleToken: "a".repeat(64),
+        decision: "reject",
+        confirmationPassword: "current-password",
+        comment: "资料不足"
+      }
     ],
     [
       "terminateProjectFinancingQuota",
-      { reason: "项目已具备自有资金，不再允许新占用", confirmationPassword: "current-password" }
+      {
+        actionId: "33333333-3333-4333-8333-333333333333",
+        expectedLifecycleToken: "a".repeat(64),
+        reason: "项目已具备自有资金，不再允许新占用",
+        confirmationPassword: "current-password"
+      }
     ]
   ] as const)("accepts a valid %s body through its controller runtime DTO", async (method, value) => {
     const result = await validateProjectMoneyBody(method, value);
@@ -519,8 +539,11 @@ describe("ProjectController authorization wiring", () => {
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
   });
 
-  it.each(["not-a-date", "2026-13-40"])("rejects invalid quota date %s", async (validUntil) => {
+  it.each(["not-a-date", "2026-13-40", "2099-07-11T10:00:00"])(
+    "rejects invalid quota date %s",
+    async (validUntil) => {
     const response = await getProjectMoneyValidationResponse("requestProjectFinancingQuota", {
+      idempotencyKey: validFinancingQuotaIdempotencyKey,
       amountCents: "10000",
       reason: "项目垫资",
       validUntil,
@@ -528,7 +551,8 @@ describe("ProjectController authorization wiring", () => {
     });
 
     expect(response.errors).toContain("额度有效期格式不正确");
-  });
+    }
+  );
 
   it.each([
     ["recordReceipt", { ...validProjectReceiptBody, receivedAt: "2026-02-30" }, "到账日期格式不正确"],
@@ -580,7 +604,13 @@ describe("ProjectController authorization wiring", () => {
     ],
     [
       "requestProjectFinancingQuota",
-      { amountCents: "100", reason: "垫资", validUntil: "2026-02-30", attachmentFileId: "file-1" },
+      {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
+        amountCents: "100",
+        reason: "垫资",
+        validUntil: "2026-02-30",
+        attachmentFileId: "file-1"
+      },
       "额度有效期格式不正确"
     ]
   ] as const)("rejects a non-existent calendar date for %s", async (method, value, message) => {
@@ -594,6 +624,7 @@ describe("ProjectController authorization wiring", () => {
     async (validUntil) => {
       await expect(
         validateProjectMoneyBody("requestProjectFinancingQuota", {
+          idempotencyKey: validFinancingQuotaIdempotencyKey,
           amountCents: "10000",
           reason: "项目垫资",
           validUntil,
@@ -603,15 +634,55 @@ describe("ProjectController authorization wiring", () => {
     }
   );
 
+  it("enforces the project financing quota reason Unicode boundary in the API", async () => {
+    await expect(
+      validateProjectMoneyBody("requestProjectFinancingQuota", {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
+        amountCents: "10000",
+        reason: "🚀".repeat(500),
+        attachmentFileId: "file-1"
+      })
+    ).resolves.toBeDefined();
+
+    const response = await getProjectMoneyValidationResponse(
+      "requestProjectFinancingQuota",
+      {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
+        amountCents: "10000",
+        reason: "🚀".repeat(501),
+        attachmentFileId: "file-1"
+      }
+    );
+    expect(response.errors).toContain("融资额度申请原因不能超过 500 个字符");
+  });
+
   it("accepts a project financing quota without an expiry date", async () => {
     await expect(
       validateProjectMoneyBody("requestProjectFinancingQuota", {
+        idempotencyKey: validFinancingQuotaIdempotencyKey,
         amountCents: "10000",
         reason: "项目垫资",
         attachmentFileId: "file-1"
       })
     ).resolves.toBeDefined();
   });
+
+  it.each([undefined, "", "not-a-uuid", "11111111-1111-3111-8111-111111111111"])(
+    "rejects an invalid project financing quota idempotency key %p",
+    async (idempotencyKey) => {
+      const response = await getProjectMoneyValidationResponse(
+        "requestProjectFinancingQuota",
+        {
+          amountCents: "10000",
+          reason: "项目垫资",
+          attachmentFileId: "file-1",
+          ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+        }
+      );
+
+      expect(response.errors).toContain("项目垫资申请幂等键必须是 UUID");
+    }
+  );
 
   it("rejects empty required project money fields and unknown fields", async () => {
     const requiredResponse = await getProjectMoneyValidationResponse("recordReceipt", {
@@ -679,11 +750,45 @@ describe("ProjectController authorization wiring", () => {
         description: null
       }
     ],
-    ["reviewProjectFinancingQuota", { decision: "approve", confirmationPassword: "pwd", comment: null }]
+    ["reviewProjectFinancingQuota", {
+      actionId: "22222222-2222-4222-8222-222222222222",
+      expectedLifecycleToken: "a".repeat(64),
+      decision: "approve",
+      confirmationPassword: "pwd",
+      comment: null
+    }]
   ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
     const response = await getProjectMoneyValidationResponse(method, value);
 
     expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
+  });
+
+  it.each([
+    [
+      {
+        actionId: "not-a-uuid",
+        expectedLifecycleToken: "a".repeat(64),
+        decision: "approve",
+        confirmationPassword: "pwd"
+      },
+      "审批 actionId 必须是 UUIDv4"
+    ],
+    [
+      {
+        actionId: "22222222-2222-4222-8222-222222222222",
+        expectedLifecycleToken: "A".repeat(64),
+        decision: "approve",
+        confirmationPassword: "pwd"
+      },
+      "审批生命周期令牌无效"
+    ]
+  ])("rejects invalid project financing review coordinates", async (value, message) => {
+    const response = await getProjectMoneyValidationResponse(
+      "reviewProjectFinancingQuota",
+      value
+    );
+
+    expect(response.errors).toEqual([message]);
   });
 
   it.each([
@@ -760,6 +865,33 @@ describe("ProjectController authorization wiring", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.operatingFundsOverview)).toEqual(
       PROJECT_OVERVIEW_READ_POSITION_KEYS
     );
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.projectFinancingQuotaWorkbench
+      )
+    ).toEqual(PROJECT_OVERVIEW_READ_POSITION_KEYS);
+  });
+
+  it("adds contract staff only to the affiliate-company contract read route", () => {
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.affiliateCompanyContractList
+      )
+    ).toEqual([...PROJECT_OVERVIEW_READ_POSITION_KEYS, "contract_staff"]);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.operatingFundsOverview
+      )
+    ).toEqual(PROJECT_OVERVIEW_READ_POSITION_KEYS);
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        ProjectController.prototype.affiliateBusinessFacts
+      )
+    ).toEqual(PROJECT_OVERVIEW_READ_POSITION_KEYS);
   });
 
   it("guards project receipt recording with finance project role", () => {
@@ -955,10 +1087,26 @@ describe("ProjectController authorization wiring", () => {
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
+        (ProjectController.prototype as never as {
+          projectFinancingQuotaReviewCapability: object;
+        }).projectFinancingQuotaReviewCapability
+      )
+    ).toBe("project.financing_quota.approve");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
         (ProjectController.prototype as never as { reviewProjectFinancingQuota: object })
           .reviewProjectFinancingQuota
       )
     ).toBe("project.financing_quota.approve");
+    expect(
+      Reflect.getMetadata(
+        "requiredProjectAction",
+        (ProjectController.prototype as never as {
+          projectFinancingQuotaTerminationCapability: object;
+        }).projectFinancingQuotaTerminationCapability
+      )
+    ).toBe("project.financing_quota.terminate");
     expect(
       Reflect.getMetadata(
         "requiredProjectAction",
@@ -1004,6 +1152,63 @@ describe("ProjectController authorization wiring", () => {
     await controller.operatingFundsOverview("project-1");
 
     expect(projects.getOperatingFundsOverview).toHaveBeenCalledWith("project-1");
+  });
+
+  it("forwards financing quota workbench project and authenticated user coordinates", async () => {
+    const projects = { getProjectFinancingQuotaWorkbench: jest.fn() };
+    const controller = new ProjectController(projects as never);
+
+    await controller.projectFinancingQuotaWorkbench(
+      "project-1",
+      { id: "finance-1" } as never
+    );
+
+    expect(projects.getProjectFinancingQuotaWorkbench).toHaveBeenCalledWith(
+      "project-1",
+      "finance-1"
+    );
+  });
+
+  it("forwards immutable coordinates for the financing quota review capability", async () => {
+    const projects = {
+      getProjectFinancingQuotaReviewCapability: jest.fn()
+    };
+    const controller = new ProjectController(projects as never);
+
+    await controller.projectFinancingQuotaReviewCapability(
+      "project-1",
+      "quota-1",
+      { id: "finance-director-1" } as never
+    );
+
+    expect(
+      projects.getProjectFinancingQuotaReviewCapability
+    ).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "finance-director-1"
+    );
+  });
+
+  it("forwards immutable coordinates for the financing quota termination capability", async () => {
+    const projects = {
+      getProjectFinancingQuotaTerminationCapability: jest.fn()
+    };
+    const controller = new ProjectController(projects as never);
+
+    await controller.projectFinancingQuotaTerminationCapability(
+      "project-1",
+      "quota-1",
+      { id: "finance-director-1" } as never
+    );
+
+    expect(
+      projects.getProjectFinancingQuotaTerminationCapability
+    ).toHaveBeenCalledWith(
+      "project-1",
+      "quota-1",
+      "finance-director-1"
+    );
   });
 
   it("forwards project receipt payload with authenticated user id", async () => {
@@ -1238,6 +1443,7 @@ describe("ProjectController authorization wiring", () => {
     const projects = { requestProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
+      idempotencyKey: validFinancingQuotaIdempotencyKey,
       amountCents: "1000000",
       reason: "阶段性垫资保障项目付款",
       validUntil: "2099-07-02T00:00:00.000Z",
@@ -1263,6 +1469,8 @@ describe("ProjectController authorization wiring", () => {
     const projects = { reviewProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
+      actionId: "22222222-2222-4222-8222-222222222222",
+      expectedLifecycleToken: "a".repeat(64),
       decision: "approve" as const,
       confirmationPassword: "current-password",
       comment: "同意"
@@ -1289,6 +1497,8 @@ describe("ProjectController authorization wiring", () => {
     const projects = { terminateProjectFinancingQuota: jest.fn() };
     const controller = new ProjectController(projects as never);
     const body = {
+      actionId: "33333333-3333-4333-8333-333333333333",
+      expectedLifecycleToken: "a".repeat(64),
       reason: "项目已具备自有资金，不再允许新占用",
       confirmationPassword: "current-password"
     };

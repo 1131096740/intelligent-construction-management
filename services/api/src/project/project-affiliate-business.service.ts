@@ -408,6 +408,87 @@ export class ProjectAffiliateBusinessService {
     }
   }
 
+  async getRecordCapability(
+    projectId: string,
+    actorUserId: string,
+    inputBusinessType: unknown,
+    inputEntryKind: unknown,
+    inputAdjustsFactId: unknown
+  ) {
+    const businessType = normalizeBusinessType(inputBusinessType);
+    const entryKind = normalizeEntryKind(inputEntryKind ?? "original");
+    const adjustsFactId = optionalTrimmed(inputAdjustsFactId);
+    return this.prisma.$transaction(async (tx) => {
+      await this.requireActiveProject(tx, projectId);
+      const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
+      const originalAllowed =
+        (businessType === "contract" && roleKeys.includes("contract_staff")) ||
+        (businessType === "settlement" && roleKeys.includes("budget_staff")) ||
+        (businessType === "payment" &&
+          (roleKeys.includes("finance_staff") || roleKeys.includes("finance_director")));
+      let allowed = entryKind === "original" && originalAllowed;
+      if (entryKind !== "original" && adjustsFactId) {
+        const target = await factDelegate(tx, businessType).findFirst({
+          where: { id: adjustsFactId, projectId }
+        });
+        const requiredAction =
+          entryKind === "correction" ? "record_correction" : "record_reversal";
+        const targetEntryKind = (target as { entryKind?: string } | null)
+          ?.entryKind;
+        if (target && targetEntryKind === "original") {
+          allowed = availableActions(
+            businessType,
+            target.status as AffiliateFactStatus,
+            target.basisType,
+            roleKeys
+          ).includes(requiredAction);
+        }
+      }
+      const action = `record_affiliate_${businessType}_fact`;
+      return {
+        projectId,
+        businessType,
+        entryKind,
+        adjustsFactId: adjustsFactId ?? null,
+        availableActions: allowed ? [action] : []
+      };
+    });
+  }
+
+  async getFactCapability(
+    projectId: string,
+    factId: string,
+    actorUserId: string,
+    inputBusinessType: unknown
+  ) {
+    const businessType = normalizeBusinessType(inputBusinessType);
+    return this.prisma.$transaction(async (tx) => {
+      await this.requireActiveProject(tx, projectId);
+      const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
+      const fact = await factDelegate(tx, businessType).findFirst({
+        where: { id: factId, projectId }
+      });
+      if (!fact) throw new NotFoundException("挂靠外部事实不存在");
+      const factActions = availableActions(
+        businessType,
+        fact.status as AffiliateFactStatus,
+        fact.basisType,
+        roleKeys
+      );
+      return {
+        projectId,
+        factId,
+        businessType,
+        availableActions: [
+          ...(factActions.includes("confirm") ? ["confirm_affiliate_fact"] : []),
+          ...(factActions.includes("supplement_evidence")
+            ? ["supplement_affiliate_evidence"]
+            : [])
+        ]
+      };
+    });
+  }
+
   async recordSettlementFact(
     projectId: string,
     actorUserId: string,
@@ -872,6 +953,27 @@ export class ProjectAffiliateBusinessService {
       }
       throw error;
     }
+  }
+
+  async assertEvidenceUploadAllowed(
+    projectId: string,
+    factId: string,
+    actorUserId: string,
+    inputBusinessType: unknown
+  ) {
+    const businessType = normalizeBusinessType(inputBusinessType);
+    return this.prisma.$transaction(async (tx) => {
+      await this.requireActiveProject(tx, projectId);
+      const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
+      requireEvidenceRole(roleKeys, businessType);
+      await assertFactExists(tx, businessType, projectId, factId);
+      return {
+        projectId,
+        factId,
+        businessType,
+        availableActions: ["supplement_evidence"]
+      };
+    });
   }
 
   private async confirmFact(

@@ -8,18 +8,31 @@ import {
   Post,
   Put,
   Res,
-  StreamableFile
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
-import { HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  canPerform,
+  type BusinessAction
+} from "@jiangkong/shared-domain";
 import {
   ContractCutoverLegacyWrite,
   ContractCutoverSurface
 } from "../contract-cutover/contract-cutover.decorators";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { ContractTaxFactsService } from "../contract-tax-facts/contract-tax-facts.service";
+import { FileService } from "../file/file.service";
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "../file/uploaded-file";
 import {
   ReviewContractTaxFactRevisionDto,
   SaveContractTaxFactRevisionDto
@@ -61,12 +74,86 @@ import { SaveContractTakeoverFinanceFactsDto } from "./dto/save-contract-takeove
 import { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
 import { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
 
+const CONTRACT_TAKEOVER_PROJECT_ACTION_RULES = [
+  { key: "create_takeover", actions: ["contract.create"] },
+  { key: "precheck_import", actions: ["contract.create"] },
+  { key: "create_import_drafts", actions: ["contract.create"] },
+  { key: "preview_excel_import", actions: ["contract.create"] },
+  { key: "apply_excel_import", actions: ["contract.create"] },
+  { key: "preview_batch_abandonment", actions: ["contract.create"] },
+  { key: "apply_batch_abandonment", actions: ["contract.create"] },
+  { key: "review_import_batch", actions: ["contract.archive.confirm"] },
+  {
+    key: "upload_takeover_file",
+    actions: ["contract.takeover.file.upload"]
+  },
+  { key: "update_takeover", actions: ["contract.create"] },
+  { key: "abandon_takeover", actions: ["contract.create"] },
+  { key: "submit_review", actions: ["contract.submit"] },
+  { key: "confirm_takeover", actions: ["contract.archive.confirm"] },
+  { key: "return_for_supplement", actions: ["contract.archive.confirm"] },
+  { key: "confirm_change_baseline", actions: ["contract.archive.confirm"] },
+  {
+    key: "attach_contract_evidence",
+    actions: ["contract.takeover.contract_facts.edit"]
+  },
+  {
+    key: "attach_payment_voucher",
+    actions: ["contract.takeover.payment_evidence.upload"]
+  },
+  { key: "save_contract_side", actions: ["contract.takeover.contract_facts.edit"] },
+  { key: "save_finance_side", actions: ["contract.takeover.finance_facts.edit"] },
+  {
+    key: "confirm_contract_side",
+    actions: ["contract.takeover.contract_facts.confirm"]
+  },
+  {
+    key: "confirm_finance_side",
+    actions: ["contract.takeover.finance_facts.confirm"]
+  },
+  {
+    key: "withdraw_contract_side_confirmation",
+    actions: ["contract.takeover.confirmation.withdraw"]
+  },
+  {
+    key: "withdraw_finance_side_confirmation",
+    actions: ["contract.takeover.confirmation.withdraw"]
+  },
+  { key: "submit_correction", actions: ["contract.takeover.correction.submit"] },
+  { key: "review_correction", actions: ["contract.takeover.correction.review"] },
+  { key: "submit_company_entity_correction", actions: ["contract.create"] },
+  {
+    key: "review_company_entity_correction",
+    actions: ["contract.archive.confirm"]
+  },
+  { key: "create_tax_fact_revision", actions: ["contract.tax_fact.supplement"] },
+  { key: "update_tax_fact_revision", actions: ["contract.tax_fact.supplement"] },
+  {
+    key: "submit_tax_fact_finance_review",
+    actions: ["contract.tax_fact.supplement"]
+  },
+  {
+    key: "review_tax_fact_by_finance",
+    actions: ["contract.tax_fact.finance_review"]
+  },
+  {
+    key: "confirm_tax_fact_by_contract",
+    actions: ["contract.tax_fact.confirm"]
+  },
+  { key: "abandon_tax_fact_revision", actions: ["contract.tax_fact.supplement"] }
+] as const satisfies readonly {
+  key: string;
+  actions: readonly BusinessAction[];
+}[];
+
 @ContractCutoverSurface()
 @Controller("projects/:projectId/contract-takeovers")
 export class ContractTakeoverController {
   constructor(
     private readonly takeovers: ContractTakeoverService,
     private readonly corrections: ContractTakeoverCorrectionService,
+    private readonly projectVisibility: ProjectVisibilityService,
+    private readonly files: FileService,
     @Optional()
     private readonly excel?: ContractTakeoverExcelService,
     private readonly taxFacts?: ContractTaxFactsService
@@ -76,6 +163,51 @@ export class ContractTakeoverController {
   @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
   list(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.takeovers.list(projectId, user.id);
+  }
+
+  @Get("capability")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
+  async capability(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const effectiveRoleKeys = await this.projectVisibility.effectiveRoleKeys(
+      user.id,
+      projectId
+    );
+    return {
+      projectId,
+      availableActions: CONTRACT_TAKEOVER_PROJECT_ACTION_RULES.filter((rule) =>
+        rule.actions.some((action) => canPerform(action, effectiveRoleKeys))
+      ).map((rule) => rule.key)
+    };
+  }
+
+  @Post("files")
+  @RequireProjectRole("contract.takeover.file.upload")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  uploadPrivateFile(
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    if (!file) {
+      throw new Error("请选择要上传的资料文件");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: user.id,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 
   @Get("import-batches")
@@ -450,7 +582,7 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/payment-evidence-files")
-  @RequireProjectRole("contract.takeover.finance_facts.edit")
+  @RequireProjectRole("contract.takeover.payment_evidence.upload")
   attachHistoricalPaymentVoucher(
     @Param("projectId") projectId: string,
     @Param("takeoverId") takeoverId: string,

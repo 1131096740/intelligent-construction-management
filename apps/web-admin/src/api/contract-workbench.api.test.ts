@@ -4,8 +4,6 @@ import {
   addBillRow,
   abandonContractDraft,
   acquireContractDraftEditLease,
-  addContractParty,
-  applyBillExcelImport,
   applyContractTypeChange,
   cloneContractTemplateVersion,
   cloneLayoutTemplateVersion,
@@ -28,14 +26,16 @@ import {
   discardStandardClauseVersion,
   downloadBillExcelTemplate,
   downloadContractDraftBillExcelTemplate,
+  executeContractDraftLifecycleAction,
+  executeContractBillRemainderCancellation,
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
   fetchContractDraftWorkbench,
   fetchContractWorkbench,
   heartbeatContractDraftEditLease,
   setContractAuthorization,
-  submitContractFromWorkbench,
   uploadContractFormalApprovalFile,
+  uploadContractWorkbenchPrivateFile,
   getBusinessParty,
   getContractTemplate,
   getLayoutTemplate,
@@ -50,7 +50,6 @@ import {
   listPublishedStandardClauses,
   listStandardClauseHistory,
   type PublishedStandardClause,
-  previewBillExcelImport,
   previewContractDraftBillExcelImport,
   previewContractTypeChange,
   publishContractTemplateVersion,
@@ -61,7 +60,6 @@ import {
   queueContractDocument,
   releaseContractDraftEditLease,
   reorderBillRows,
-  replaceContractBillRows,
   revokeContractTemplateVersion,
   revokeLayoutTemplateVersion,
   restoreDraftCheckpoint,
@@ -113,6 +111,148 @@ function makeOkBlob(content: string, contentType: string, disposition: string) {
   );
 }
 
+function deferred<T>() {
+  let resolvePromise!: (value: T | PromiseLike<T>) => void;
+  let rejectPromise!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  return {
+    promise,
+    resolve: resolvePromise,
+    reject: rejectPromise
+  };
+}
+
+function contractDraftLifecycleWorkbench(
+  overrides: {
+    contractId?: string;
+    versionId?: string;
+    revision?: number;
+    action?: "delete_pristine_draft" | "abandon_application";
+    requiresComment?: boolean;
+    requiresPassword?: boolean;
+  } = {}
+) {
+  const action = overrides.action ?? "delete_pristine_draft";
+  return {
+    contract: { id: overrides.contractId ?? "contract-1" },
+    version: {
+      id: overrides.versionId ?? "version-1",
+      draftRevision: overrides.revision ?? 12
+    },
+    availableActions: [{
+      key: action,
+      label: action,
+      kind: "danger",
+      enabled: true,
+      disabledReason: null,
+      requiresComment:
+        overrides.requiresComment ?? action === "abandon_application",
+      requiresPassword: overrides.requiresPassword ?? false
+    }]
+  };
+}
+
+function contractDraftLifecycleInput(
+  overrides: Partial<Parameters<typeof executeContractDraftLifecycleAction>[0]> = {}
+) {
+  return {
+    generation: 7,
+    contractId: "contract-1",
+    versionId: "version-1",
+    expectedRevision: 12,
+    action: "delete_pristine_draft",
+    reason: "用户确认结束",
+    currentPassword: "",
+    expectedRequiresComment: false,
+    expectedRequiresPassword: false,
+    isCurrent: vi.fn(() => true),
+    beforeWrite: vi.fn(() => true),
+    onWriteFailure: vi.fn(),
+    onResult: vi.fn(),
+    onCapabilityFailure: vi.fn(),
+    ...overrides
+  };
+}
+
+function contractBillRemainderWorkbench(
+  overrides: {
+    ownerUserId?: string;
+    versionId?: string;
+    draftRevision?: number;
+    billId?: string;
+    billKey?: string;
+    billRevision?: number;
+    rowKey?: string;
+    actionEnabled?: boolean;
+    occupancyToken?: string;
+  } = {}
+) {
+  const draftRevision = overrides.draftRevision ?? 12;
+  const billRevision = overrides.billRevision ?? 7;
+  return {
+    contract: {
+      id: "contract-1",
+      ownerUserId: overrides.ownerUserId ?? "owner-1"
+    },
+    version: {
+      id: overrides.versionId ?? "version-1",
+      draftRevision
+    },
+    bills: [{
+      id: overrides.billId ?? "bill-1",
+      billKey: overrides.billKey ?? "materials",
+      revision: billRevision,
+      rows: [{
+        rowKey: overrides.rowKey ?? "row/1",
+        availableActions: [{
+          key: "contract-bill.remainder-cancellation",
+          label: "取消未实施余量",
+          kind: "danger",
+          enabled: overrides.actionEnabled ?? true,
+          disabledReason: overrides.actionEnabled === false ? "历史占用已变化" : null,
+          requiresComment: true,
+          requiresPassword: false
+        }],
+        remainderCancellation: {
+          expectedBillRevision: billRevision,
+          expectedDraftRevision: draftRevision,
+          expectedOccupancyToken: overrides.occupancyToken ?? "occupancy-token-1",
+          historicalQuantity: "3.5",
+          historicalAmountCents: "35000"
+        }
+      }]
+    }]
+  };
+}
+
+function contractBillRemainderInput(
+  overrides: Partial<Parameters<typeof executeContractBillRemainderCancellation>[0]> = {}
+) {
+  return {
+    capture: () => ({
+      ownerScope: "owner-1",
+      routeGeneration: 4,
+      operationId: 9,
+      contractId: "contract-1",
+      versionId: "version-1",
+      billId: "bill-1",
+      billKey: "materials",
+      rowKey: "row/1",
+      leaseToken: "lease-token-1",
+      reason: "已核对历史完成量"
+    }),
+    flush: vi.fn().mockResolvedValue({
+      saved: true,
+      expectedDraftRevision: 12
+    }),
+    isCurrent: vi.fn(() => true),
+    ...overrides
+  } satisfies Parameters<typeof executeContractBillRemainderCancellation>[0];
+}
+
 describe("contract workbench API client", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -155,6 +295,26 @@ describe("contract workbench API client", () => {
     await fetchContractWorkbench("contract/1");
 
     expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/contract%2F1");
+  });
+
+  it("preserves the stable historical-takeover routing code on a workbench read failure", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({
+      statusCode: 400,
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      message: "历史接管草稿必须在历史接管工作台办理",
+      projectId: "project-2",
+      takeoverId: "takeover-1"
+    }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" }
+    }));
+
+    await expect(fetchContractDraftWorkbench("version-takeover")).rejects.toMatchObject({
+      code: "HISTORICAL_TAKEOVER_WORKBENCH_REQUIRED",
+      projectId: "project-2",
+      takeoverId: "takeover-1",
+      message: expect.stringContaining("历史接管草稿必须在历史接管工作台办理")
+    });
   });
 
   it("uses the exact version-scoped aggregate draft routes and lease header", async () => {
@@ -372,7 +532,471 @@ describe("contract workbench API client", () => {
     })).rejects.toThrow("合同草稿已被更新，请刷新后再处理");
   });
 
-  it("connects the governed signing facts and unique workbench submission routes", async () => {
+  it("coalesces one governed lifecycle operation without persisting the password in its fingerprint", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: "2026-07-30T00:00:00.000Z",
+        abandonedByUserId: "user-1",
+        reason: "用户确认结束",
+        idempotent: false
+      }));
+
+    const onResult = vi.fn();
+    const duplicateOnResult = vi.fn();
+    const first = executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        currentPassword: "first-password",
+        onResult
+      })
+    );
+    const duplicate = executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        currentPassword: "different-password",
+        onResult: duplicateOnResult
+      })
+    );
+
+    expect(duplicate).toBe(first);
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
+    await expect(first).resolves.toBeUndefined();
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed" })
+    );
+    expect(duplicateOnResult).not.toHaveBeenCalled();
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contracts/version-1/abandonment",
+      expect.objectContaining({
+        body: JSON.stringify({
+          expectedRevision: 12,
+          action: "delete_pristine_draft",
+          reason: "用户确认结束",
+          currentPassword: "first-password"
+        })
+      })
+    );
+    expect(JSON.stringify(mockApiFetch.mock.calls)).not.toContain(
+      "different-password"
+    );
+  });
+
+  it("rejects a different lifecycle operation while one owner is active", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: "用户确认结束",
+        idempotent: false
+      }));
+    const first = executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput()
+    );
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({ reason: "另一项结束原因" })
+    )).rejects.toMatchObject({
+      code: "CONTRACT_DRAFT_LIFECYCLE_BUSY"
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+
+    pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
+    await first;
+  });
+
+  it("does not settle page feedback when a different lifecycle operation is rejected as busy", async () => {
+    const pendingRead = deferred<Response>();
+    mockApiFetch
+      .mockReturnValueOnce(pendingRead.promise)
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: "用户确认结束",
+        idempotent: false
+      }));
+    const ownerSettled = vi.fn();
+    const rejectedSettled = vi.fn();
+    const rejectedFailure = vi.fn();
+    const first = executeContractDraftLifecycleAction({
+      ...contractDraftLifecycleInput(),
+      onOperationFailure: vi.fn(),
+      onOperationSettled: ownerSettled,
+      swallowOperationFailure: true
+    });
+
+    await executeContractDraftLifecycleAction({
+      ...contractDraftLifecycleInput({ reason: "另一项结束原因" }),
+      onOperationFailure: rejectedFailure,
+      onOperationSettled: rejectedSettled,
+      swallowOperationFailure: true
+    });
+
+    expect(rejectedFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "CONTRACT_DRAFT_LIFECYCLE_BUSY" })
+    );
+    expect(rejectedSettled).not.toHaveBeenCalled();
+    expect(ownerSettled).not.toHaveBeenCalled();
+
+    pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
+    await first;
+    expect(ownerSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed before POST when the fresh capability coordinates or action change", async () => {
+    mockApiFetch.mockReturnValueOnce(
+      makeOkJson(contractDraftLifecycleWorkbench({
+        revision: 13,
+        action: "abandon_application"
+      }))
+    );
+    const beforeWrite = vi.fn(() => true);
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({ beforeWrite })
+    )).rejects.toMatchObject({
+      code: "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(beforeWrite).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["comment", true, false],
+    ["password", false, true]
+  ] as const)(
+    "fails closed before POST when the fresh capability changes its %s requirement",
+    async (_requirement, requiresComment, requiresPassword) => {
+      mockApiFetch.mockReturnValueOnce(
+        makeOkJson(contractDraftLifecycleWorkbench({
+          requiresComment,
+          requiresPassword
+        }))
+      );
+      const beforeWrite = vi.fn(() => true);
+      const onCapabilityFailure = vi.fn();
+
+      await expect(executeContractDraftLifecycleAction(
+        contractDraftLifecycleInput({
+          expectedRequiresComment: false,
+          expectedRequiresPassword: false,
+          beforeWrite,
+          onCapabilityFailure
+        })
+      )).rejects.toMatchObject({
+        code: "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
+      });
+
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+      expect(beforeWrite).not.toHaveBeenCalled();
+      expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("returns stale without POST when the component generation changes after the fresh GET", async () => {
+    mockApiFetch.mockReturnValueOnce(
+      makeOkJson(contractDraftLifecycleWorkbench())
+    );
+    const onResult = vi.fn();
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        isCurrent: vi.fn(() => false),
+        onResult
+      })
+    )).resolves.toBeUndefined();
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "stale" })
+    );
+  });
+
+  it("fails closed after a mismatched POST response and keeps autosave suspended", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-other",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: null,
+        idempotent: false
+    }));
+    const onWriteFailure = vi.fn();
+    const onCapabilityFailure = vi.fn();
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({
+        onWriteFailure,
+        onCapabilityFailure
+      })
+    )).rejects.toMatchObject({
+      code: "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+    });
+
+    expect(onWriteFailure).not.toHaveBeenCalled();
+    expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the lifecycle owner and resumes autosave after a POST failure", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        message: "结束接口暂时不可用"
+      }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" }
+      }))
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "pristine_draft",
+        action: "delete_pristine_draft",
+        abandonedAt: null,
+        abandonedByUserId: null,
+        reason: null,
+        idempotent: false
+      }));
+    const onWriteFailure = vi.fn();
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput({ onWriteFailure })
+    )).rejects.toThrow("结束接口暂时不可用");
+    expect(onWriteFailure).toHaveBeenCalledTimes(1);
+
+    await expect(executeContractDraftLifecycleAction(
+      contractDraftLifecycleInput()
+    )).resolves.toBeUndefined();
+    expect(mockApiFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("flushes first, then re-reads and submits the fresh remainder capability coordinates", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench({
+        billId: "bill/1"
+      })))
+      .mockReturnValueOnce(makeOkJson({ revision: 13 }));
+    const input = contractBillRemainderInput({
+      capture: () => ({
+        ownerScope: "owner-1",
+        routeGeneration: 4,
+        operationId: 9,
+        contractId: "contract-1",
+        versionId: "version-1",
+        billId: "bill/1",
+        billKey: "materials",
+        rowKey: "row/1",
+        leaseToken: "lease-token-1",
+        reason: "已核对历史完成量"
+      })
+    });
+
+    await expect(
+      executeContractBillRemainderCancellation(input)
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(input.flush).toHaveBeenCalledOnce();
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      1,
+      "/contract-drafts/version-1/workbench"
+    );
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contract-bills/bill%2F1/rows/row%2F1/remainder-cancellation",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Contract-Draft-Lease": "lease-token-1"
+        },
+        body: JSON.stringify({
+          expectedBillRevision: 7,
+          expectedDraftRevision: 12,
+          expectedOccupancyToken: "occupancy-token-1",
+          reason: "已核对历史完成量"
+        })
+      })
+    );
+  });
+
+  it("performs zero preflight and zero write when the dirty aggregate flush fails", async () => {
+    const input = contractBillRemainderInput({
+      flush: vi.fn().mockResolvedValue({
+        saved: false,
+        error: "草稿保存失败"
+      })
+    });
+
+    await expect(
+      executeContractBillRemainderCancellation(input)
+    ).resolves.toMatchObject({
+      status: "save_failed",
+      error: expect.objectContaining({ message: "草稿保存失败" })
+    });
+
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("performs zero flush, zero preflight and zero POST when the current lease token is missing", async () => {
+    const input = contractBillRemainderInput({
+      capture: () => ({
+        ownerScope: "owner-1",
+        routeGeneration: 4,
+        operationId: 9,
+        contractId: "contract-1",
+        versionId: "version-1",
+        billId: "bill-1",
+        billKey: "materials",
+        rowKey: "row/1",
+        leaseToken: "",
+        reason: "已核对历史完成量"
+      })
+    });
+
+    await expect(
+      executeContractBillRemainderCancellation(input)
+    ).resolves.toMatchObject({
+      status: "failed",
+      resultUnknown: false,
+      error: expect.objectContaining({
+        code: "CONTRACT_BILL_REMAINDER_INVALID_CONTEXT"
+      })
+    });
+
+    expect(input.flush).not.toHaveBeenCalled();
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["owner", { ownerUserId: "owner-2" }],
+    ["draft revision", { draftRevision: 13 }],
+    ["bill identity", { billId: "bill-2" }],
+    ["row identity", { rowKey: "row-2" }],
+    ["disabled action", { actionEnabled: false }],
+    ["occupancy token", { occupancyToken: "" }]
+  ] as const)("fails closed before POST when the fresh %s drifts", async (_label, drift) => {
+    mockApiFetch.mockReturnValueOnce(
+      makeOkJson(contractBillRemainderWorkbench(drift))
+    );
+
+    await expect(
+      executeContractBillRemainderCancellation(contractBillRemainderInput())
+    ).resolves.toMatchObject({
+      status: "failed",
+      resultUnknown: false,
+      error: expect.objectContaining({
+        code: "CONTRACT_BILL_REMAINDER_PREFLIGHT_MISMATCH"
+      })
+    });
+
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns stale without POST when the route owner changes after the fresh GET", async () => {
+    const preflight = deferred<Response>();
+    let current = true;
+    mockApiFetch.mockReturnValueOnce(preflight.promise);
+    const input = contractBillRemainderInput({
+      isCurrent: vi.fn(() => current)
+    });
+    const operation = executeContractBillRemainderCancellation(input);
+
+    await vi.waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    });
+    current = false;
+    preflight.resolve(await makeOkJson(contractBillRemainderWorkbench()));
+
+    await expect(operation).resolves.toMatchObject({ status: "stale" });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a transport failure as result unknown so callers can force an authoritative reload", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench()))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    await expect(
+      executeContractBillRemainderCancellation(contractBillRemainderInput())
+    ).resolves.toMatchObject({
+      status: "failed",
+      resultUnknown: true,
+      error: expect.objectContaining({
+        code: "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN"
+      })
+    });
+  });
+
+  it.each([408, 500, 503])(
+    "marks an ambiguous POST %s response as result unknown",
+    async (status) => {
+      mockApiFetch
+        .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench()))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          message: "提交结果未能确认"
+        }), {
+          status,
+          headers: { "Content-Type": "application/json" }
+        }));
+
+      await expect(
+        executeContractBillRemainderCancellation(contractBillRemainderInput())
+      ).resolves.toMatchObject({
+        status: "failed",
+        resultUnknown: true,
+        error: expect.objectContaining({
+          code: "CONTRACT_BILL_REMAINDER_RESULT_UNKNOWN"
+        })
+      });
+    }
+  );
+
+  it("reports a successful late POST response as completed so the caller can authoritatively reload", async () => {
+    const post = deferred<Response>();
+    let current = true;
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractBillRemainderWorkbench()))
+      .mockReturnValueOnce(post.promise);
+    const operation = executeContractBillRemainderCancellation(
+      contractBillRemainderInput({
+        isCurrent: vi.fn(() => current)
+      })
+    );
+
+    await vi.waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledTimes(2);
+    });
+    current = false;
+    post.resolve(await makeOkJson({ revision: 13 }));
+
+    await expect(operation).resolves.toMatchObject({ status: "completed" });
+    expect(mockApiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("connects the governed signing facts and submission readiness routes", async () => {
     mockApiFetch.mockImplementation(() => makeOkJson({ ready: true }));
 
     await setContractAuthorization("version-1", {
@@ -390,7 +1014,6 @@ describe("contract workbench API client", () => {
       authorizationsBeforeSignaturePageConfirmed: true
     });
     await checkContractSubmissionReadiness("version-1");
-    await submitContractFromWorkbench("version-1", { numberRuleId: "rule-1" });
 
     expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/contracts/version-1/authorizations", expect.objectContaining({
       method: "POST"
@@ -399,9 +1022,6 @@ describe("contract workbench API client", () => {
       method: "POST"
     }));
     expect(mockApiFetch).toHaveBeenNthCalledWith(3, "/contracts/version-1/readiness", expect.objectContaining({
-      method: "POST"
-    }));
-    expect(mockApiFetch).toHaveBeenNthCalledWith(4, "/contracts/version-1/approval-submission", expect.objectContaining({
       method: "POST"
     }));
   });
@@ -711,51 +1331,6 @@ describe("contract workbench API client", () => {
         name: "云南示例供应商有限公司",
         unifiedSocialCreditCode: "91530000EXAMPLE01",
         attachments: []
-      })
-    });
-  });
-
-  it("addContractParty – POST /contract-workbench/:contractVersionId/parties", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({}));
-
-    await addContractParty("version-1", {
-      roleKey: "party_b",
-      businessPartyVersionId: "party-version-1"
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/parties", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ roleKey: "party_b", businessPartyVersionId: "party-version-1" })
-    });
-  });
-
-  it("addContractParty – POST inline snapshot for temporary party data", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({}));
-
-    await addContractParty("version-1", {
-      roleKey: "party_b",
-      snapshot: {
-        name: "云南示例供应商有限公司",
-        unifiedSocialCreditCode: "91530000EXAMPLE01",
-        openingBank: "建设银行昆明支行",
-        bankAccount: "530000000000000000",
-        attachments: []
-      }
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-workbench/version-1/parties", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        roleKey: "party_b",
-        snapshot: {
-          name: "云南示例供应商有限公司",
-          unifiedSocialCreditCode: "91530000EXAMPLE01",
-          openingBank: "建设银行昆明支行",
-          bankAccount: "530000000000000000",
-          attachments: []
-        }
       })
     });
   });
@@ -1128,198 +1703,6 @@ describe("contract workbench API client", () => {
     });
   });
 
-  it("replaceContractBillRows – PUTs the complete candidate rows and preserves row validation errors", async () => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({
-        code: "CONTRACT_BILL_VALIDATION_FAILED",
-        message: "清单有 1 处需要修改",
-        rowErrors: [{
-          clientRowKey: "local-2",
-          field: "brand",
-          message: "必填自定义字段未填写：brand"
-        }]
-      }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-    const input = {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-001",
-      rows: [{
-        clientRowKey: "local-2",
-        sortOrder: 0,
-        itemName: "螺纹钢",
-        unit: "吨",
-        quantity: "12.3456789",
-        unitPrice: "3500.00",
-        taxRatePercent: "13",
-        taxRateSource: "version_default" as const,
-        isProvisional: false,
-        settlementBasis: "按实际验收数量结算",
-        customData: { brand: "建龙" }
-      }]
-    };
-
-    await expect(replaceContractBillRows("bill-1", input)).rejects.toMatchObject({
-      code: "CONTRACT_BILL_VALIDATION_FAILED",
-      rowErrors: [{
-        clientRowKey: "local-2",
-        field: "brand",
-        message: "必填自定义字段未填写：brand"
-      }]
-    });
-    expect(mockApiFetch).toHaveBeenCalledTimes(1);
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill-1/rows", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input)
-    });
-  });
-
-  it("replaceContractBillRows – returns the authoritative bill and row read model without dropping fields", async () => {
-    const response = {
-      bill: {
-        id: "bill-1",
-        contractVersionId: "version-1",
-        billKey: "material_list",
-        name: "材料清单",
-        amountRole: "included",
-        pricingMode: "tax_inclusive",
-        quantityScale: 6,
-        unitPriceScale: 2,
-        schemaSnapshot: { columns: [{ key: "brand", label: "品牌", type: "text" }] },
-        sourceExcelFileId: null,
-        revision: 8,
-        taxInclusiveAmountCents: "3955000",
-        taxExclusiveAmountCents: "3500000",
-        taxAmountCents: "455000",
-        createdAt: "2026-07-24T01:00:00.000Z",
-        updatedAt: "2026-07-24T01:01:00.000Z"
-      },
-      rows: [{
-        id: "row-id-1",
-        contractBillId: "bill-1",
-        rowKey: "row-1",
-        sortOrder: 0,
-        itemCode: "GC-001",
-        itemName: "螺纹钢",
-        specification: "HRB400E",
-        unit: "吨",
-        quantity: "10.000000",
-        unitPrice: "3500.00",
-        taxRate: "13",
-        taxRateSource: "version_default",
-        pricingFactStatus: "confirmed",
-        precisionPolicy: "two_decimal",
-        taxInclusiveAmountCents: "3955000",
-        taxExclusiveAmountCents: "3500000",
-        taxAmountCents: "455000",
-        isProvisional: false,
-        settlementBasis: "按实际验收数量结算",
-        customData: { brand: "建龙" },
-        createdAt: "2026-07-24T01:00:00.000Z",
-        updatedAt: "2026-07-24T01:01:00.000Z"
-      }]
-    };
-    mockApiFetch.mockReturnValue(makeOkJson(response));
-
-    await expect(replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-002",
-      rows: []
-    })).resolves.toEqual(response);
-  });
-
-  it.each([
-    [404, "Contract bill not found", "未找到对应业务单据，请确认单据是否存在或你是否有权查看。"],
-    [500, "Internal server error", "系统暂时无法完成操作，请稍后重试或联系管理员。"]
-  ])("replaceContractBillRows – keeps ordinary %i errors on the existing Chinese path", async (status, message, expected) => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({ message }), {
-        status,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-
-    await expect(replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-003",
-      rows: []
-    })).rejects.toThrow(expected);
-  });
-
-  it.each([
-    [404, "Contract bill not found", "未找到对应业务单据，请确认单据是否存在或你是否有权查看。"],
-    [500, "Internal server error", "系统暂时无法完成操作，请稍后重试或联系管理员。"]
-  ])("replaceContractBillRows – only permits 400 to expose a valid cell-error payload (%i)", async (status, message, expected) => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify({
-        code: "CONTRACT_BILL_VALIDATION_FAILED",
-        message,
-        rowErrors: [{
-          clientRowKey: "local-1",
-          field: "quantity",
-          message: "数量最多保留 6 位小数"
-        }]
-      }), {
-        status,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-
-    const error = await replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-status-boundary",
-      rows: []
-    }).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(Error);
-    expect(error).toHaveProperty("message", expected);
-    expect(error).not.toHaveProperty("code");
-    expect(error).not.toHaveProperty("rowErrors");
-  });
-
-  it.each([
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: {} },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ field: "quantity", message: "数量错误" }] },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ clientRowKey: "local-1", field: "quantity", message: 123 }] },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: "清单有问题", rowErrors: [{ clientRowKey: "local-1", field: " ", message: "数量错误" }] },
-    { code: "CONTRACT_BILL_VALIDATION_FAILED", message: 123, rowErrors: [{ clientRowKey: "local-1", field: "quantity", message: "数量错误" }] }
-  ])("replaceContractBillRows – never exposes malformed validation payloads as cell errors", async (payload) => {
-    mockApiFetch.mockResolvedValue(
-      new Response(JSON.stringify(payload), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
-      })
-    );
-
-    const error = await replaceContractBillRows("bill-1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-004",
-      rows: []
-    }).catch((reason: unknown) => reason);
-
-    expect(error).toBeInstanceOf(Error);
-    expect(error).not.toHaveProperty("code");
-    expect(error).not.toHaveProperty("rowErrors");
-  });
-
-  it("replaceContractBillRows – encodes the bill id and calls the API once", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ bill: {}, rows: [] }));
-
-    await replaceContractBillRows("bill / 1", {
-      expectedBillRevision: 7,
-      idempotencyKey: "batch-save-20260724-005",
-      rows: []
-    });
-
-    expect(mockApiFetch).toHaveBeenCalledTimes(1);
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bills/bill%20%2F%201/rows", expect.objectContaining({
-      method: "PUT"
-    }));
-  });
-
   it("downloadBillExcelTemplate – GET blob from /contract-bills/:billId/excel-template", async () => {
     // Minimal DOM stubs for a Node environment (no jsdom).
     const anchor = { href: "", download: "", click: vi.fn(), remove: vi.fn() };
@@ -1372,23 +1755,6 @@ describe("contract workbench API client", () => {
     );
   });
 
-  it("previewBillExcelImport – POST JSON body (NOT FormData) to /contract-bills/:billId/excel-imports", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({ importId: "import-1", rows: [] }));
-
-    await previewBillExcelImport("bill-1", { fileId: "file-1", mode: "update" });
-
-    const [path, options] = mockApiFetch.mock.calls[0];
-    expect(path).toBe("/contract-bills/bill-1/excel-imports");
-    expect((options as RequestInit).method).toBe("POST");
-    // Must NOT use FormData
-    expect((options as RequestInit).body).not.toBeInstanceOf(FormData);
-    expect((options as RequestInit).headers).toMatchObject({ "Content-Type": "application/json" });
-    expect(JSON.parse((options as RequestInit).body as string)).toEqual({
-      fileId: "file-1",
-      mode: "update"
-    });
-  });
-
   it("previewContractDraftBillExcelImport – returns candidates without an apply id", async () => {
     mockApiFetch.mockReturnValue(
       makeOkJson({
@@ -1415,16 +1781,23 @@ describe("contract workbench API client", () => {
     });
   });
 
-  it("applyBillExcelImport – POST /contract-bill-imports/:importId/apply", async () => {
-    mockApiFetch.mockReturnValue(makeOkJson({}));
+  it("uploadContractWorkbenchPrivateFile – binds the multipart upload to the exact version", async () => {
+    mockApiFetch.mockReturnValue(makeOkJson({ id: "file-1" }));
+    const file = new Blob(["private-file"], { type: "application/pdf" });
 
-    await applyBillExcelImport("import-1");
+    await uploadContractWorkbenchPrivateFile(
+      "version / 1",
+      file,
+      "授权书.pdf",
+      "upload-key-1"
+    );
 
-    expect(mockApiFetch).toHaveBeenCalledWith("/contract-bill-imports/import-1/apply", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
-    });
+    const [path, options] = mockApiFetch.mock.calls[0];
+    expect(path).toBe("/contract-drafts/version%20%2F%201/files");
+    expect((options as RequestInit).method).toBe("POST");
+    const body = (options as RequestInit).body as FormData;
+    expect(body.get("file")).toBeInstanceOf(Blob);
+    expect(body.get("idempotencyKey")).toBe("upload-key-1");
   });
 
   it("queueContractDocument – POST /contract-workbench/:contractVersionId/documents", async () => {

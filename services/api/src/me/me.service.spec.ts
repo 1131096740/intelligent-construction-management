@@ -269,7 +269,8 @@ describe("MeService", () => {
     };
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "canvas-file-1" }) };
-    const service = new MeService(prisma as never, files as never);
+    const audit = { record: jest.fn().mockResolvedValue({}) };
+    const service = new MeService(prisma as never, files as never, audit as never);
     const input = { originalName: "ignored.png", mimeType: "image/png", sizeBytes: PNG.length, buffer: PNG };
     const sha256 = createHash("sha256").update(PNG).digest("hex");
     tx.fileObject.findUnique.mockResolvedValue({ contentSha256: sha256, storageStatus: "active" });
@@ -281,6 +282,105 @@ describe("MeService", () => {
       data: { userId: "user-1", fileId: "canvas-file-1", contentSha256: sha256, source: "canvas" }
     });
     expect(tx.user.update).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { signatureFileId: "canvas-file-1" } });
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "user-1",
+      action: "me.signature.canvas.update",
+      businessType: "handwritten_signature_version",
+      businessId: "canvas-version-1",
+      metadata: {
+        fileId: "canvas-file-1",
+        source: "direct"
+      }
+    });
+  });
+
+  it("locks an open handoff and records its completion with the signature version", async () => {
+    const token = "opaque-token";
+    const sha256 = createHash("sha256").update(PNG).digest("hex");
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: "handoff-1",
+        ownerUserId: "user-1",
+        expiresAt: new Date(Date.now() + 60_000),
+        invalidatedAt: null,
+        completedAt: null
+      }]),
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ contentSha256: sha256, storageStatus: "active" })
+      },
+      handwrittenSignatureVersion: {
+        create: jest.fn().mockResolvedValue({ id: "canvas-version-1" })
+      },
+      handwrittenSignatureHandoff: { update: jest.fn().mockResolvedValue({}) },
+      user: { update: jest.fn().mockResolvedValue({}) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "canvas-file-1" }) };
+    const audit = { record: jest.fn().mockResolvedValue({}) };
+    const service = new MeService(prisma as never, files as never, audit as never);
+    const input = {
+      originalName: "ignored.png",
+      mimeType: "image/png",
+      sizeBytes: PNG.length,
+      buffer: PNG
+    };
+
+    await expect(service.setCanvasSignature("user-1", input, { handoffToken: token })).resolves.toEqual({
+      signatureFileId: "canvas-file-1",
+      signatureVersionId: "canvas-version-1"
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.handwrittenSignatureHandoff.update).toHaveBeenCalledWith({
+      where: { id: "handoff-1" },
+      data: { completedAt: expect.any(Date), signatureVersionId: "canvas-version-1" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      actorUserId: "user-1",
+      action: "me.signature.canvas.update",
+      businessType: "handwritten_signature_version",
+      businessId: "canvas-version-1",
+      metadata: {
+        fileId: "canvas-file-1",
+        source: "handoff",
+        handoffId: "handoff-1"
+      }
+    }));
+  });
+
+  it("does not report canvas signature success when the domain audit fails", async () => {
+    const sha256 = createHash("sha256").update(PNG).digest("hex");
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({ contentSha256: sha256, storageStatus: "active" })
+      },
+      handwrittenSignatureVersion: {
+        create: jest.fn().mockResolvedValue({ id: "canvas-version-1" })
+      },
+      user: { update: jest.fn().mockResolvedValue({}) }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "canvas-file-1" }) };
+    const audit = { record: jest.fn().mockRejectedValue(new Error("audit unavailable")) };
+    const service = new MeService(prisma as never, files as never, audit as never);
+
+    await expect(service.setCanvasSignature("user-1", {
+      originalName: "ignored.png",
+      mimeType: "image/png",
+      sizeBytes: PNG.length,
+      buffer: PNG
+    })).rejects.toThrow("audit unavailable");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes only authenticated self-service canvas signature capabilities", () => {
+    const service = new MeService({} as never, {} as never);
+
+    expect(service.getCanvasSignatureCapabilities("user-1")).toEqual({
+      availableActions: [
+        "upload_canvas_signature",
+        "create_canvas_signature_handoff"
+      ]
+    });
   });
 
   it("does not treat a legacy upload as a canvas signature version", async () => {
@@ -332,9 +432,30 @@ describe("MeService", () => {
     const service = new MeService(prisma as never, {} as never);
 
     await expect(service.getCanvasSignatureHandoff("user-1", token)).resolves.toMatchObject({
-      completedAt: "2026-07-23T08:00:00.000Z", signatureVersionId: "version-1"
+      completedAt: "2026-07-23T08:00:00.000Z",
+      signatureVersionId: "version-1",
+      availableActions: []
     });
     await expect(service.getCanvasSignatureHandoff("other-user", token)).rejects.toThrow("同一账号");
+  });
+
+  it("publishes handoff completion only while the same-account token is open", async () => {
+    const prisma = {
+      handwrittenSignatureHandoff: {
+        findUnique: jest.fn().mockResolvedValue({
+          ownerUserId: "user-1",
+          expiresAt: new Date(Date.now() + 60_000),
+          invalidatedAt: null,
+          completedAt: null,
+          signatureVersionId: null
+        })
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    await expect(service.getCanvasSignatureHandoff("user-1", "opaque-token")).resolves.toMatchObject({
+      availableActions: ["complete_canvas_signature_handoff"]
+    });
   });
 
   it("rejects a non-image disguised as an image mime type in business Chinese", async () => {

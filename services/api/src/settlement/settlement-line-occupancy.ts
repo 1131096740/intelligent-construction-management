@@ -4,6 +4,17 @@ import { createHash } from "node:crypto";
 import { SETTLEMENT_OCCUPANCY_STATUSES } from "@jiangkong/shared-domain";
 
 export const SETTLEMENT_LINE_OCCUPANCY_STATUSES = SETTLEMENT_OCCUPANCY_STATUSES;
+export const SETTLEMENT_LINE_EFFECTIVE_STATUSES = [
+  "effective",
+  "partially_paid",
+  "paid"
+] as const;
+export const SETTLEMENT_LINE_REVERSIBLE_STATUSES =
+  SETTLEMENT_LINE_OCCUPANCY_STATUSES.filter(
+    (status) => !SETTLEMENT_LINE_EFFECTIVE_STATUSES.includes(
+      status as typeof SETTLEMENT_LINE_EFFECTIVE_STATUSES[number]
+    )
+  );
 
 export interface SettlementLineOccupancy {
   amountCents: bigint;
@@ -11,6 +22,7 @@ export interface SettlementLineOccupancy {
   quantityComplete: boolean;
   count: number;
   sourceSnapshotToken: string | null;
+  hasReversibleOccupancy: boolean;
 }
 
 type SourceRow = { id: string; lineageId: string | null };
@@ -25,8 +37,16 @@ type OccupancyStore = {
   settlementLine?: {
     findMany(args: {
       where: { settlementId: { in: string[] }; contractBillRowId: { in: string[] } };
-      select: { contractBillRowId: true; quantity: true; amountCents: true };
+      select: {
+        id: true;
+        settlementId: true;
+        contractBillRowId: true;
+        quantity: true;
+        amountCents: true;
+      };
     }): Promise<Array<{
+      id: string;
+      settlementId: string;
       contractBillRowId: string | null;
       quantity: Prisma.Decimal | null;
       amountCents: bigint;
@@ -63,15 +83,24 @@ type OccupancyStore = {
 export async function loadSettlementLineOccupancy(
   tx: unknown,
   contractVersionId: string,
-  rows: SourceRow[]
+  rows: SourceRow[],
+  options: { mode?: "availability" | "irreversible_history" } = {}
 ): Promise<Map<string, SettlementLineOccupancy>> {
   const store = tx as OccupancyStore;
   const rowIds = rows.map((row) => row.id);
   if (!rowIds.length || !store.settlement || !store.settlementLine) return new Map();
 
+  const irreversibleHistory = options.mode === "irreversible_history";
   const [settlements, carries] = await Promise.all([
     store.settlement.findMany({
-      where: { contractVersionId, status: { in: SETTLEMENT_LINE_OCCUPANCY_STATUSES } },
+      where: {
+        contractVersionId,
+        status: {
+          in: irreversibleHistory
+            ? SETTLEMENT_LINE_EFFECTIVE_STATUSES
+            : SETTLEMENT_LINE_OCCUPANCY_STATUSES
+        }
+      },
       select: { id: true }
     }),
     store.contractBillRowCarryForward?.findMany({
@@ -86,11 +115,33 @@ export async function loadSettlementLineOccupancy(
       }
     }) ?? Promise.resolve([])
   ]);
-  const settlementIds = settlements.map((settlement) => settlement.id);
-  const currentLines = settlementIds.length
+  const reversibleSettlements = irreversibleHistory
+    ? await store.settlement.findMany({
+        where: {
+          contractVersionId,
+          status: { in: SETTLEMENT_LINE_REVERSIBLE_STATUSES }
+        },
+        select: { id: true }
+      })
+    : [];
+  const effectiveSettlementIds = new Set(settlements.map((settlement) => settlement.id));
+  const reversibleSettlementIds = new Set(
+    reversibleSettlements.map((settlement) => settlement.id)
+  );
+  const settlementIds = [
+    ...effectiveSettlementIds,
+    ...reversibleSettlementIds
+  ];
+  const allCurrentLines = settlementIds.length
     ? await store.settlementLine.findMany({
         where: { settlementId: { in: settlementIds }, contractBillRowId: { in: rowIds } },
-        select: { contractBillRowId: true, quantity: true, amountCents: true }
+        select: {
+          id: true,
+          settlementId: true,
+          contractBillRowId: true,
+          quantity: true,
+          amountCents: true
+        }
       })
     : [];
   const carryByRowId = new Map(carries.map((carry) => [carry.contractBillRowId, carry]));
@@ -104,7 +155,15 @@ export async function loadSettlementLineOccupancy(
     if (carry && carry.lineageId !== row.lineageId) {
       throw unresolved(`清单行 ${row.id} 的来源身份与历史承接快照不一致`);
     }
-    const current = currentLines.filter((line) => line.contractBillRowId === row.id);
+    const rowLines = allCurrentLines.filter(
+      (line) => line.contractBillRowId === row.id
+    );
+    const current = irreversibleHistory
+      ? rowLines.filter((line) => effectiveSettlementIds.has(line.settlementId))
+      : rowLines;
+    const hasReversibleOccupancy = irreversibleHistory && rowLines.some(
+      (line) => reversibleSettlementIds.has(line.settlementId)
+    );
     const quantityComplete = (carry?.priorSettledQuantity !== null) && current.every((line) => line.quantity !== null);
     const quantity = current.reduce(
       (total, line) => line.quantity === null ? total : total.plus(line.quantity),
@@ -120,9 +179,13 @@ export async function loadSettlementLineOccupancy(
       quantity,
       quantityComplete,
       count,
-      sourceSnapshotToken: row.lineageId
-        ? snapshotToken(row, carry, settlements, current)
-        : null
+      sourceSnapshotToken: snapshotToken(
+        row,
+        carry,
+        [...settlements, ...reversibleSettlements],
+        rowLines
+      ),
+      hasReversibleOccupancy
     });
   }
   return result;
@@ -161,7 +224,12 @@ function snapshotToken(
   row: SourceRow,
   carry: Awaited<ReturnType<NonNullable<OccupancyStore["contractBillRowCarryForward"]>["findMany"]>>[number] | undefined,
   settlements: Array<{ id: string }>,
-  lines: Array<{ amountCents: bigint; quantity: Prisma.Decimal | null }>
+  lines: Array<{
+    id?: string;
+    settlementId?: string;
+    amountCents: bigint;
+    quantity: Prisma.Decimal | null;
+  }>
 ) {
   return createHash("sha256").update(JSON.stringify({
     rowId: row.id,
@@ -170,8 +238,15 @@ function snapshotToken(
       sourceSnapshotHash: carry.sourceSnapshotHash,
       updatedAt: carry.updatedAt.toISOString()
     },
-    settlements: settlements.map((settlement) => settlement.id),
-    lines: lines.map((line) => [line.amountCents.toString(), line.quantity?.toString() ?? null])
+    settlements: settlements.map((settlement) => settlement.id).sort(),
+    lines: lines
+      .map((line) => [
+        line.settlementId ?? null,
+        line.id ?? null,
+        line.amountCents.toString(),
+        line.quantity?.toString() ?? null
+      ])
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
   })).digest("hex");
 }
 

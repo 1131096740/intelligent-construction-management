@@ -497,6 +497,21 @@ async function uploadPrivateBuffer(fileName, mimeType, buffer, token) {
   return response.json();
 }
 
+async function uploadCanvasSignature(fileName, buffer, token) {
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: "image/png" }), fileName);
+  const response = await fetch(`${baseUrl}/me/signature/canvas`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`上传手写签名失败：HTTP ${response.status} ${body}`);
+  }
+  return response.json();
+}
+
 async function uploadPrivateFile(fileName, token) {
   return uploadPrivateBuffer(
     fileName,
@@ -536,13 +551,15 @@ async function prepareSettlementSignatures(tokens) {
     "projectManager", "financeDirector"
   ]) {
     const userId = await userIdByPhone(role);
-    const signature = await uploadPrivateBuffer(
+    const signature = await uploadCanvasSignature(
       `UAT-${RUN_ID}-${role}-signature.png`,
-      "image/png",
       signaturePng,
       tokens[role]
     );
-    await prisma.user.update({ where: { id: userId }, data: { signatureFileId: signature.id } });
+    await prisma.user.update({
+      where: { id: userId },
+      data: { signatureFileId: signature.signatureFileId }
+    });
   }
 }
 
@@ -727,6 +744,8 @@ async function createHistoricalTakeover(token) {
       name: "P0-5B UAT 脱敏历史材料采购合同",
       counterparty: "P0-5B UAT 脱敏供应商",
       contractTypeKey: "material_purchase",
+      companyEntityId: coreFlowSeedData.companyEntity.id,
+      companyEntityName: coreFlowSeedData.companyEntity.name,
       amountCents: "10000000",
       signedAt: "2026-05-20",
       takeoverLevel: "A",
@@ -1211,7 +1230,10 @@ async function assertTakeoverEvidenceDownloadReasonRequired(fileId, token) {
 }
 
 async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
-  for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
+  const contractEvidencePurposes = TAKEOVER_EVIDENCE_PURPOSES.filter(
+    (purpose) => purpose !== "historical_payment_voucher"
+  );
+  for (const purpose of contractEvidencePurposes) {
     const uploaded = await uploadPrivateFile(`UAT-${CODES.contract}-${purpose}.pdf`, token);
     await postJson(
       `/projects/${PROJECT_ID}/contract-takeovers/${takeoverId}/evidence-files`,
@@ -1227,7 +1249,7 @@ async function attachAndDownloadTakeoverEvidence(takeoverId, token) {
       .filter((item) => item.uploaded)
       .map((item) => item.purpose)
   );
-  for (const purpose of TAKEOVER_EVIDENCE_PURPOSES) {
+  for (const purpose of contractEvidencePurposes) {
     assert(uploadedPurposes.has(purpose), `接管资料清单未显示已上传：${purpose}`);
   }
 
@@ -1326,7 +1348,14 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
   const [version, terms] = await Promise.all([
     prisma.contractVersion.findUnique({
       where: { id: takeoverRecord.contractVersionId },
-      select: { status: true, effectiveAt: true }
+      select: {
+        status: true,
+        effectiveAt: true,
+        settlementMode: true,
+        settlementModeSource: true,
+        settlementModeConfirmedByUserId: true,
+        settlementModeConfirmedAt: true
+      }
     }),
     prisma.paymentTermsVersion.findUnique({
       where: { id: takeoverRecord.paymentTermsVersionId },
@@ -1340,7 +1369,14 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
   await prisma.$transaction([
     prisma.contractVersion.update({
       where: { id: takeoverRecord.contractVersionId },
-      data: { status: "effective", effectiveAt: now }
+      data: {
+        status: "effective",
+        effectiveAt: now,
+        settlementMode: "direct_payment",
+        settlementModeSource: "backfill",
+        settlementModeConfirmedByUserId: coreFlowSeedData.users.contractStaff.id,
+        settlementModeConfirmedAt: now
+      }
     }),
     prisma.paymentTermsVersion.update({
       where: { id: takeoverRecord.paymentTermsVersionId },
@@ -1356,7 +1392,11 @@ async function withTemporaryEffectiveVersionForBlockCheck(takeoverRecord, callba
         where: { id: takeoverRecord.contractVersionId },
         data: {
           status: version.status,
-          effectiveAt: version.effectiveAt
+          effectiveAt: version.effectiveAt,
+          settlementMode: version.settlementMode,
+          settlementModeSource: version.settlementModeSource,
+          settlementModeConfirmedByUserId: version.settlementModeConfirmedByUserId,
+          settlementModeConfirmedAt: version.settlementModeConfirmedAt
         }
       }),
       prisma.paymentTermsVersion.update({
@@ -1412,6 +1452,10 @@ async function verifyPaymentBlockedBeforeConfirmation(contractVersionId, token) 
   assert(
     failed.status >= 400,
     `未确认接管付款拦截 HTTP 状态异常：${failed.status}`
+  );
+  assert(
+    failed.body.includes("历史合同接管尚未主管确认"),
+    `未确认接管付款未命中接管门禁：${failed.body}`
   );
 }
 
@@ -1549,6 +1593,16 @@ async function assertDuplicateSettlementPeriodBlocked(
       String(failed.body ?? "").includes("已存在结算单"),
       `同期间重复结算未返回中文业务提示：${failed.body}`
     );
+    await postJson(
+      `/projects/${PROJECT_ID}/settlement-drafts/${duplicateDraft.id}/abandonment`,
+      {
+        expectedRevision: duplicateDraft.revision,
+        action: "abandon_application",
+        reason: "重复期间校验完成，正式作废验证草稿"
+      },
+      token,
+      `作废重复期间校验草稿 ${periodLabel}`
+    );
   }
 }
 
@@ -1587,10 +1641,20 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
     ["chairman", tokens.chairman]
   ]) {
     const isFinalPaymentApproval = role === "chairman";
+    const detail = await readJson(
+      `/payments/${payment.id}`,
+      token,
+      `${ROLE_LABELS[role]} 读取 UAT 付款审批坐标`
+    );
+    assert(
+      detail.reviewApprovalContext,
+      `${ROLE_LABELS[role]} 未获得 UAT 付款审批坐标`
+    );
     payment = await postJson(
       `/payments/${payment.id}/approval`,
       {
         decision: "approve",
+        ...detail.reviewApprovalContext,
         ...(isFinalPaymentApproval ? { approvedAmountCents: "1000000" } : {}),
         comment: "P0-5B UAT 脱敏审批通过"
       },
@@ -1606,9 +1670,17 @@ async function createAndApprovePayment(contractVersionId, settlementId, tokens) 
 async function recordPaymentExecutionFinanceAndArchive(payment, tokens) {
   const voucherFile = await uploadPrivateFile(`${CODES.payment}-voucher.pdf`, tokens.cashier);
   const paidAt = new Date().toISOString();
+  const detail = await readJson(
+    `/payments/${payment.id}`,
+    tokens.cashier,
+    "出纳读取 UAT 付款实付坐标"
+  );
+  assert(detail.executionContext, "出纳未获得 UAT 付款实付坐标");
   const execution = await postJson(
     `/payments/${payment.id}/executions`,
     {
+      ...detail.executionContext,
+      idempotencyKey: randomUUID(),
       amountCents: "1000000",
       paidAt,
       voucherFileId: voucherFile.id,
@@ -1837,7 +1909,22 @@ async function assertAuditActions(input) {
 }
 
 function userFacingErrorMessage(error) {
-  const raw = String(error?.message ?? error ?? "未知错误");
+  if (error == null) {
+    return `验证器抛出了${String(error)}，而不是 Error 实例`;
+  }
+  const rawMessage = error?.message;
+  const errorStack = error?.stack;
+  if (!rawMessage && (error?.name || error?.code || error?.meta)) {
+    return [
+      error.name || "PrismaError",
+      error.code ? `code=${error.code}` : "",
+      error.meta ? `meta=${JSON.stringify(error.meta)}` : "",
+      errorStack ? `stack=${errorStack}` : ""
+    ].filter(Boolean).join(" ");
+  }
+  const raw = String(
+    rawMessage || errorStack || error?.name || error || "未知错误"
+  );
 
   if (error?.code === "P1001" || raw.includes("Can't reach database server")) {
     return "无法连接本地 PostgreSQL（默认 localhost:5432）。请先启动 services/api/docker-compose.yml 中的 postgres，完成 migrate/seed 后重试。";
@@ -1847,7 +1934,9 @@ function userFacingErrorMessage(error) {
     return `无法访问 API 服务（${baseUrl}）。请先启动 @jiangkong/api 服务后重试。`;
   }
 
-  return raw.split("\n")[0] || "未知错误";
+  const firstNonEmptyLine = raw.split("\n").find((line) => line.trim());
+  if (firstNonEmptyLine) return raw;
+  return `验证器抛出了空错误对象（${error?.name || Object.prototype.toString.call(error)}，code=${error?.code || "-"}，meta=${JSON.stringify(error?.meta || {})}）`;
 }
 
 async function main() {

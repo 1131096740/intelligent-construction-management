@@ -14,6 +14,17 @@ const trialRunVerifier = readFileSync(
   resolve(prismaRoot, "verify-trial-run.cjs"),
   "utf8"
 );
+const settlementSignatureStart = trialRunVerifier.indexOf(
+  "async function prepareSettlementSignatures"
+);
+const settlementSignatureEnd = trialRunVerifier.indexOf(
+  "\nasync function prepareGovernedSettlementDraft",
+  settlementSignatureStart
+);
+const settlementSignatureSource = trialRunVerifier.slice(
+  settlementSignatureStart,
+  settlementSignatureEnd
+);
 
 describe("contract settlement governance UAT runners", () => {
   it("keeps the governed runner fail-closed and covers the exact 20 release cases", () => {
@@ -92,5 +103,17 @@ describe("contract settlement governance UAT runners", () => {
     expect(trialRunVerifier).not.toContain(
       "`/projects/${PROJECT_ID}/contract-takeovers/${takeover.id}/confirmation`"
     );
+  });
+
+  it("prepares settlement signatures through the personal signature route", () => {
+    expect(trialRunVerifier).toMatch(/async function uploadCanvasSignature\(/u);
+    expect(settlementSignatureSource).toMatch(
+      /uploadCanvasSignature\(\s*`UAT-\$\{RUN_ID\}-\$\{role\}-signature\.png`,\s*signaturePng,\s*tokens\[role\]/u
+    );
+    expect(settlementSignatureSource).not.toMatch(
+      /uploadPrivateBuffer\(\s*`UAT-\$\{RUN_ID\}-\$\{role\}-signature\.png`/u
+    );
+    expect(settlementSignatureSource).toContain("signature.signatureFileId");
+    expect(settlementSignatureSource).not.toContain("signatureFileId: signature.id");
   });
 });

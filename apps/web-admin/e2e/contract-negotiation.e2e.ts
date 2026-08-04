@@ -53,6 +53,29 @@ test("合同磋商在中央画布逐差异处置并安全打开修订 PDF", asyn
       ]
     }
   ];
+  const offlineRevisionHistory = () => [
+    {
+      ...rounds()[0].revisions[0],
+      negotiationRound: {
+        id: "round-1",
+        roundNo: 1,
+        status: roundStatus,
+        sourceRevision: 3
+      }
+    },
+    {
+      id: "legacy-revision-1",
+      label: "上线前旧流程修订稿",
+      note: "仅保留历史查阅",
+      status: "succeeded",
+      hasPreviewPdf: false,
+      errorMessage: null,
+      createdAt: "2026-07-11T09:00:00.000Z",
+      completedAt: "2026-07-11T09:01:00.000Z",
+      comparison: null,
+      negotiationRound: null
+    }
+  ];
 
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
@@ -98,6 +121,13 @@ test("合同磋商在中央画布逐差异处置并安全打开修订 PDF", asyn
   await page.route("**/api/contract-workbench/version-1/negotiation-rounds", (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(rounds()) });
+  });
+  await page.route("**/api/contract-workbench/version-1/offline-revisions", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(offlineRevisionHistory())
+    });
   });
   await page.route("**/api/contract-document-differences/difference-1/disposition", async (route) => {
     expect(route.request().postDataJSON()).toEqual({
@@ -185,6 +215,16 @@ test("合同磋商在中央画布逐差异处置并安全打开修订 PDF", asyn
   await expect(page.getByText("只读结构候选：合同金额：¥1,200,000.00", { exact: true })).toBeVisible();
   await expect(page.getByText("应用到合同", { exact: true })).toHaveCount(0);
   await expect(page.getByText("difference-1", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("旧流程修订记录", { exact: true })).toBeVisible();
+  await expect(page.getByText("上线前旧流程修订稿", { exact: true })).toBeVisible();
+  await expect(page.getByText("仅保留历史查阅", { exact: true })).toBeVisible();
+  const legacyRevisionCards = page.locator(".legacy-revision-card");
+  await expect(legacyRevisionCards).toHaveCount(1);
+  await expect(
+    legacyRevisionCards.getByText("业主第一轮修订稿", { exact: true })
+  ).toHaveCount(0);
+  await expect(legacyRevisionCards.getByRole("link")).toHaveCount(0);
+  await expect(legacyRevisionCards.getByRole("button")).toHaveCount(0);
 
   const desktopCanvas = await page.locator(".document-canvas-slot").boundingBox();
   const desktopSidebar = await page.locator(".business-sidebar").boundingBox();

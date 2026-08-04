@@ -472,6 +472,7 @@ const LEGACY_PROJECT_EXPENSE_FIELDS = [
   "purchaseExecutionNote",
   "receiptConfirmedByUserId",
   "receiptConfirmedAt",
+  "receiptConfirmationIdempotencyKey",
   "receiptConfirmationNote",
   "status",
   "voidedAt",

@@ -145,8 +145,26 @@ export class ProjectAffiliateCompanyContractService {
           );
         }
         const affiliate = await resolveCurrentProjectAffiliate(tx, projectId);
+        await acquireFileBusinessBindingTransactionLock(tx);
+        const replayAfterFileBindingLock =
+          await tx.projectAffiliateCompanyContract.findUnique({
+            where: { idempotencyKey }
+          });
+        if (replayAfterFileBindingLock) {
+          assertReplay(
+            replayAfterFileBindingLock,
+            projectId,
+            actorUserId,
+            requestFingerprint
+          );
+          return toReadModel(replayAfterFileBindingLock, roles);
+        }
         const company = await lockAndLoadCompanyEntity(tx, companyEntityId);
-        const file = await lockAndValidateSignedFile(tx, actorUserId, fileId);
+        const file = await validateSignedFileAfterBindingLock(
+          tx,
+          actorUserId,
+          fileId
+        );
         const created = await tx.projectAffiliateCompanyContract.create({
           data: {
             projectId,
@@ -202,7 +220,10 @@ export class ProjectAffiliateCompanyContractService {
       });
       if (replay) {
         assertReplay(replay, projectId, actorUserId, requestFingerprint);
-        return toReadModel(replay, []);
+        return toReadModel(
+          replay,
+          await loadActorRoleKeys(this.prisma, actorUserId, projectId)
+        );
       }
       throw new ConflictException(
         "该线下合同编号或正式文件已登记，不能跨项目或跨业务重复绑定"
@@ -239,92 +260,140 @@ export class ProjectAffiliateCompanyContractService {
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
-      const replay = await tx.projectAffiliateCompanyContract.findUnique({
-        where: { confirmationActionId }
-      });
-      if (replay) {
-        if (
-          replay.id !== contractId ||
-          replay.projectId !== projectId ||
-          replay.confirmedByUserId !== actorUserId
-        ) {
-          throw new ConflictException("线下合同确认幂等键已用于不同动作");
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const replay = await tx.projectAffiliateCompanyContract.findUnique({
+          where: { confirmationActionId }
+        });
+        if (replay) {
+          assertConfirmationReplay(
+            replay,
+            projectId,
+            contractId,
+            actorUserId
+          );
+          return toReadModel(
+            replay,
+            await loadActorRoleKeys(tx, actorUserId, projectId)
+          );
         }
-        return toReadModel(
-          replay,
-          await loadActorRoleKeys(tx, actorUserId, projectId)
-        );
-      }
 
-      await tx.$queryRaw(Prisma.sql`
-        SELECT "id" FROM "ProjectAffiliateCompanyContract"
-        WHERE "id" = ${contractId} AND "projectId" = ${projectId}
-        FOR UPDATE
-      `);
-      const contract = await tx.projectAffiliateCompanyContract.findFirst({
-        where: { id: contractId, projectId }
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "ProjectAffiliateCompanyContract"
+          WHERE "id" = ${contractId} AND "projectId" = ${projectId}
+          FOR UPDATE
+        `);
+        const replayAfterLock =
+          await tx.projectAffiliateCompanyContract.findUnique({
+            where: { confirmationActionId }
+          });
+        if (replayAfterLock) {
+          assertConfirmationReplay(
+            replayAfterLock,
+            projectId,
+            contractId,
+            actorUserId
+          );
+          return toReadModel(
+            replayAfterLock,
+            await loadActorRoleKeys(tx, actorUserId, projectId)
+          );
+        }
+        const contract = await tx.projectAffiliateCompanyContract.findFirst({
+          where: { id: contractId, projectId }
+        });
+        if (!contract) {
+          throw new NotFoundException("待确认的挂靠企业与我方线下合同不存在");
+        }
+        if (contract.status !== "pending_confirm") {
+          throw new BadRequestException("当前线下合同状态不可确认");
+        }
+        const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
+        if (!roles.includes("contract_director")) {
+          throw new ForbiddenException(
+            "只有合同主管可以确认挂靠企业与我方已签线下合同"
+          );
+        }
+        const signature = await snapshotApprovalSignature(tx, actorUserId, {
+          required: true
+        });
+        const updated = await tx.projectAffiliateCompanyContract.updateMany({
+          where: {
+            id: contractId,
+            projectId,
+            status: "pending_confirm",
+            confirmationActionId: null
+          },
+          data: {
+            status: "confirmed",
+            confirmedByUserId: actorUserId,
+            confirmedAt: now,
+            confirmationActionId,
+            confirmationSignatureVersionId: signature.versionId,
+            confirmationSignatureFileId: signature.fileId,
+            confirmationSignatureSha256: signature.sha256
+          }
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException("线下合同已被其他操作确认，请刷新后核对");
+        }
+        const confirmed = await tx.projectAffiliateCompanyContract.findUnique({
+          where: { id: contractId }
+        });
+        if (!confirmed) {
+          throw new InternalServerErrorException("线下合同确认结果未正确保存");
+        }
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.affiliate_company_contract.confirm",
+          businessType: "project_affiliate_company_contract",
+          businessId: contractId,
+          metadata: {
+            projectId,
+            contractReference: confirmed.contractReference,
+            confirmationActionId,
+            confirmationSignatureVersionId: signature.versionId,
+            confirmedAt: now.toISOString(),
+            companyApprovalCreated: false,
+            companySealCreated: false,
+            ownerReceiptCreated: false,
+            paymentWorkflowCreated: false
+          }
+        });
+        return toReadModel(confirmed, roles);
       });
-      if (!contract) {
-        throw new NotFoundException("待确认的挂靠企业与我方线下合同不存在");
-      }
-      if (contract.status !== "pending_confirm") {
-        throw new BadRequestException("当前线下合同状态不可确认");
-      }
-      const roles = await loadActorRoleKeys(tx, actorUserId, projectId);
-      if (!roles.includes("contract_director")) {
-        throw new ForbiddenException(
-          "只有合同主管可以确认挂靠企业与我方已签线下合同"
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const replay =
+        await this.prisma.projectAffiliateCompanyContract.findUnique({
+          where: { confirmationActionId }
+        });
+      if (replay) {
+        assertConfirmationReplay(
+          replay,
+          projectId,
+          contractId,
+          actorUserId
         );
+        return toReadModel(replay, []);
       }
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: true
-      });
-      const updated = await tx.projectAffiliateCompanyContract.updateMany({
-        where: {
-          id: contractId,
-          projectId,
-          status: "pending_confirm",
-          confirmationActionId: null
-        },
-        data: {
-          status: "confirmed",
-          confirmedByUserId: actorUserId,
-          confirmedAt: now,
-          confirmationActionId,
-          confirmationSignatureVersionId: signature.versionId,
-          confirmationSignatureFileId: signature.fileId,
-          confirmationSignatureSha256: signature.sha256
-        }
-      });
-      if (updated.count !== 1) {
-        throw new ConflictException("线下合同已被其他操作确认，请刷新后核对");
-      }
-      const confirmed = await tx.projectAffiliateCompanyContract.findUnique({
-        where: { id: contractId }
-      });
-      if (!confirmed) {
-        throw new InternalServerErrorException("线下合同确认结果未正确保存");
-      }
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project.affiliate_company_contract.confirm",
-        businessType: "project_affiliate_company_contract",
-        businessId: contractId,
-        metadata: {
-          projectId,
-          contractReference: confirmed.contractReference,
-          confirmationActionId,
-          confirmationSignatureVersionId: signature.versionId,
-          confirmedAt: now.toISOString(),
-          companyApprovalCreated: false,
-          companySealCreated: false,
-          ownerReceiptCreated: false,
-          paymentWorkflowCreated: false
-        }
-      });
-      return toReadModel(confirmed, roles);
-    });
+      throw new ConflictException("线下合同确认幂等键已用于不同动作");
+    }
+  }
+}
+
+function assertConfirmationReplay(
+  replay: AffiliateCompanyContractRow,
+  projectId: string,
+  contractId: string,
+  actorUserId: string
+) {
+  if (
+    replay.id !== contractId ||
+    replay.projectId !== projectId ||
+    replay.confirmedByUserId !== actorUserId
+  ) {
+    throw new ConflictException("线下合同确认幂等键已用于不同动作");
   }
 }
 
@@ -390,27 +459,31 @@ async function lockAndLoadCompanyEntity(
   };
 }
 
-async function lockAndValidateSignedFile(
+async function validateSignedFileAfterBindingLock(
   tx: Prisma.TransactionClient,
   actorUserId: string,
   fileId: string
 ) {
-  await acquireFileBusinessBindingTransactionLock(tx);
+  const rows = await tx.$queryRaw<
+    Array<{
+      id: string;
+      uploadedByUserId: string;
+      storageStatus: string;
+      contentSha256: string | null;
+    }>
+  >(Prisma.sql`
+    SELECT "id", "uploadedByUserId", "storageStatus", "contentSha256"
+    FROM "FileObject"
+    WHERE "id" = ${fileId}
+    FOR UPDATE
+  `);
+  const file = rows[0];
+  if (!file) throw new NotFoundException("已签线下合同文件不存在，请重新上传");
   if (await hasNonReceiptBusinessFileBinding(tx, [fileId])) {
     throw new ConflictException(
       "已签线下合同文件已绑定其他项目或业务事实，不能重复使用"
     );
   }
-  const file = await tx.fileObject.findUnique({
-    where: { id: fileId },
-    select: {
-      id: true,
-      uploadedByUserId: true,
-      storageStatus: true,
-      contentSha256: true
-    }
-  });
-  if (!file) throw new NotFoundException("已签线下合同文件不存在，请重新上传");
   if (file.uploadedByUserId !== actorUserId) {
     throw new BadRequestException("只能使用本人上传的已签线下合同文件");
   }

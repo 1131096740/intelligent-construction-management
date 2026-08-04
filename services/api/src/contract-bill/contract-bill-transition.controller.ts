@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import { ContractBillTransitionService } from "./contract-bill-transition.service";
 import type {
@@ -25,6 +26,7 @@ export class ContractBillTransitionController {
   }
 
   @Put()
+  @RequireProjectRole("contract.create")
   save(
     @Param("toContractVersionId") toContractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -34,6 +36,7 @@ export class ContractBillTransitionController {
   }
 
   @Post("confirm")
+  @RequireProjectRole("contract.create")
   confirm(
     @Param("toContractVersionId") toContractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -43,6 +46,7 @@ export class ContractBillTransitionController {
   }
 
   @Delete()
+  @RequireProjectRole("contract.create")
   discard(
     @Param("toContractVersionId") toContractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,

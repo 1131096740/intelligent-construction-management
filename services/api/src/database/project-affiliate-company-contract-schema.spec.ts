@@ -15,11 +15,11 @@ function model(name: string) {
 }
 
 describe("project affiliate-company offline contract schema", () => {
-  it("adds the next forward-only migration and immutable contract ledger", () => {
+  it("keeps its forward-only migration and immutable contract ledger", () => {
     const names = readdirSync(migrationsPath)
       .filter((name) => /^\d/u.test(name))
       .sort();
-    expect(names.at(-1)).toBe(migrationName);
+    expect(names).toContain(migrationName);
     expect(migration).toMatch(/\nBEGIN;\n/u);
     expect(migration).toMatch(/COMMIT;\s*$/u);
     expect(migration).not.toMatch(/\b(?:DROP\s+TABLE|TRUNCATE|DELETE\s+FROM)\b/iu);

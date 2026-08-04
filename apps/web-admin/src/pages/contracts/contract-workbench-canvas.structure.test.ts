@@ -199,7 +199,7 @@ describe("contract workbench document canvas structure", () => {
     expect(formalSource).toContain(':request-method="uploadApprovalPdf"');
     expect(formalSource).not.toContain('type="file"');
     expect(authorizationSource).toContain("<t-upload");
-    expect(authorizationSource).toContain("uploadPrivateFile");
+    expect(authorizationSource).toContain("uploadContractWorkbenchPrivateFile");
     expect(authorizationSource).toContain("尚未选择");
   });
 

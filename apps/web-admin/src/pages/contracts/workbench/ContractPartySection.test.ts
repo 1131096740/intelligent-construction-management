@@ -84,6 +84,7 @@ async function renderPartySection(disabled: boolean) {
   const updates: ContractDraftPartyModel[][] = [];
   const app = createSSRApp(ContractPartySection, {
     parties,
+    contractVersionId: "version-1",
     disabled,
     "onUpdate:parties": (next: ContractDraftPartyModel[]) => updates.push(next)
   });

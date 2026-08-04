@@ -60,6 +60,14 @@ interface LockedHistoricalPaymentVoucher {
 interface LockedContract {
   id: string;
   contractTypeKey: string | null;
+  companyEntityId: string | null;
+  companyEntityName: string | null;
+  companyEntityIsActive: boolean | null;
+  companyEntityDataStatus: string | null;
+  companyEntityVersionId: string | null;
+  companyEntityVersionName: string | null;
+  companyEntityCreditCode: string | null;
+  companyEntityRegisteredAddress: string | null;
 }
 
 interface LockedContractVersion {
@@ -152,10 +160,25 @@ export class ContractTakeoverActivationService {
         FOR UPDATE OF voucher
       `);
     const [contract] = await tx.$queryRaw<LockedContract[]>(Prisma.sql`
-      SELECT "id", "contractTypeKey"
-      FROM "Contract"
-      WHERE "id" = ${takeover.contractId}
-      FOR UPDATE
+      SELECT
+        c."id",
+        c."contractTypeKey",
+        c."companyEntityId",
+        c."companyEntityName",
+        entity."isActive" AS "companyEntityIsActive",
+        entity."dataStatus" AS "companyEntityDataStatus",
+        entityVersion."id" AS "companyEntityVersionId",
+        entityVersion."name" AS "companyEntityVersionName",
+        entityVersion."unifiedSocialCreditCode" AS "companyEntityCreditCode",
+        entityVersion."registeredAddress" AS "companyEntityRegisteredAddress"
+      FROM "Contract" c
+      LEFT JOIN "CompanyEntity" entity
+        ON entity."id" = c."companyEntityId"
+      LEFT JOIN "CompanyEntityVersion" entityVersion
+        ON entityVersion."companyEntityId" = entity."id"
+       AND entityVersion."versionNo" = entity."currentVersionNo"
+      WHERE c."id" = ${takeover.contractId}
+      FOR UPDATE OF c
     `);
     const [contractVersion] =
       await tx.$queryRaw<LockedContractVersion[]>(Prisma.sql`
@@ -343,7 +366,29 @@ export class ContractTakeoverActivationService {
 
     const contractVersionUpdated = await tx.contractVersion.updateMany({
       where: { id: takeover.contractVersionId },
-      data: { status: "effective", effectiveAt: activatedAt }
+      data: {
+        status: "effective",
+        effectiveAt: activatedAt,
+        settlementMode: isSettlementContract ? "settlement_required" : "direct_payment",
+        settlementModeSource: "backfill",
+        settlementModeConfirmedByUserId: actorUserId,
+        settlementModeConfirmedAt: activatedAt,
+        ...(contract.companyEntityId &&
+        contract.companyEntityIsActive === true &&
+        contract.companyEntityDataStatus === "complete" &&
+        contract.companyEntityVersionId &&
+        contract.companyEntityVersionName &&
+        contract.companyEntityCreditCode
+          ? {
+              companyEntityIdSnapshot: contract.companyEntityId,
+              companyEntityVersionId: contract.companyEntityVersionId,
+              companyEntityNameSnapshot: contract.companyEntityVersionName,
+              companyEntityCreditCodeSnapshot: contract.companyEntityCreditCode,
+              companyEntityRegisteredAddressSnapshot:
+                contract.companyEntityRegisteredAddress
+            }
+          : {})
+      }
     });
     const paymentTermsUpdated =
       await tx.paymentTermsVersion.updateMany({

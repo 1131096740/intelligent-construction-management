@@ -1,15 +1,22 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Optional,
   Param,
   Patch,
   Post,
-  Query
+  Query,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { FileService } from "../file/file.service";
+import { type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { AbandonSpotProcurementDraftDto } from "./dto/abandon-spot-procurement-draft.dto";
 import { CreateProcurementDiscrepancyDto } from "./dto/create-procurement-discrepancy.dto";
 import { ConfirmAbnormalTerminationDto } from "./dto/confirm-abnormal-termination.dto";
@@ -21,6 +28,7 @@ import { RequestAbnormalTerminationDto } from "./dto/request-abnormal-terminatio
 import { ReviewSpotProcurementDto } from "./dto/review-spot-procurement.dto";
 import { UpdateSpotProcurementDraftDto } from "./dto/update-spot-procurement-draft.dto";
 import { VoidSpotProcurementDto } from "./dto/void-spot-procurement.dto";
+import { WithdrawSpotProcurementApprovalDto } from "./dto/withdraw-spot-procurement-approval.dto";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
 import { SpotProcurementPaymentService } from "./spot-procurement-payment.service";
 import { SpotProcurementReadService } from "./spot-procurement-read.service";
@@ -32,7 +40,8 @@ export class SpotProcurementController {
     private readonly applications: SpotProcurementApplicationService,
     private readonly reads: SpotProcurementReadService,
     private readonly settlements: SpotProcurementSettlementService,
-    private readonly payments: SpotProcurementPaymentService
+    private readonly payments: SpotProcurementPaymentService,
+    @Optional() private readonly files?: FileService
   ) {}
 
   @Get("capabilities")
@@ -100,6 +109,55 @@ export class SpotProcurementController {
     return this.applications.createDraft(user.id, body);
   }
 
+  @Post("projects/:projectId/draft-file-uploads")
+  @RequireProjectRole("spot_procurement.create")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadCreateDraftFile(
+    @Param("projectId") projectId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      () => this.reads.assertCreateActionAvailable(user.id, projectId),
+      user.id,
+      file,
+      idempotencyKey,
+      "采购草稿附件"
+    );
+  }
+
+  @Post(":procurementId/draft-file-uploads")
+  @RequireProjectRole("spot_procurement.create")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadDraftFile(
+    @Param("procurementId") procurementId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      () =>
+        this.reads.assertProcurementActionAvailable(
+          procurementId,
+          user.id,
+          "edit_draft"
+        ),
+      user.id,
+      file,
+      idempotencyKey,
+      "采购草稿附件"
+    );
+  }
+
   @Patch(":procurementId/draft")
   @RequireProjectRole("spot_procurement.create")
   updateDraft(
@@ -151,9 +209,14 @@ export class SpotProcurementController {
   @Post(":procurementId/approval-withdrawal")
   withdrawApproval(
     @Param("procurementId") procurementId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawSpotProcurementApprovalDto
   ) {
-    return this.applications.withdrawApproval(procurementId, user.id);
+    return this.applications.withdrawApproval(
+      procurementId,
+      user.id,
+      body
+    );
   }
 
   @Post(":procurementId/voiding")
@@ -248,5 +311,27 @@ export class SpotProcurementController {
       user.id,
       body
     );
+  }
+
+  private async uploadPrivateFile(
+    preflight: () => Promise<unknown>,
+    actorUserId: string,
+    file: MemoryUploadedFile | undefined,
+    idempotencyKey: string | undefined,
+    label: string
+  ) {
+    await preflight();
+    if (!file) throw new BadRequestException(`请选择要上传的${label}`);
+    if (!this.files) {
+      throw new BadRequestException("零星采购文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: actorUserId,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 }

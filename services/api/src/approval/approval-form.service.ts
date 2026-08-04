@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Optional
@@ -7,7 +8,10 @@ import {
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import {
+  canUseCurrentContractApprovalForm,
+  type RoleKey
+} from "@jiangkong/shared-domain";
 import PDFDocument = require("pdfkit");
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
@@ -36,6 +40,14 @@ const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf"
 const GENERATION_CLAIM_STALE_MS = 120_000;
 const GENERATION_WAIT_ATTEMPTS = 30;
 const GENERATION_WAIT_INTERVAL_MS = 100;
+
+interface ContractApprovalFormRenderToken {
+  approvalInstanceId: string;
+  approvalInstanceUpdatedAt: number;
+  versionStatus: string;
+  draftRevision: number;
+  versionUpdatedAt: number;
+}
 
 type ApprovalFormClient = Pick<
   Prisma.TransactionClient,
@@ -235,6 +247,7 @@ interface RenderInput {
   nodes: FrozenNode[];
   logs: Array<{
     actionKey?: string;
+    approvedRoleKey: string | null;
     name: string;
     position: string;
     action: string;
@@ -444,16 +457,18 @@ function spotProcurementApprovalBusinessCode(
 
 function approvalSignatureForRoles(
   logs: RenderInput["logs"],
-  roleLabels: string[]
+  roleKeys: string[]
 ): ApprovalSignature {
   const log = logs.find(
     (candidate) =>
-      candidate.action === "通过" &&
-      roleLabels.some((role) => candidate.position.includes(role))
+      candidate.actionKey === "approve" &&
+      typeof candidate.approvedRoleKey === "string" &&
+      roleKeys.includes(candidate.approvedRoleKey)
   );
   return {
     name: log?.name ?? null,
-    signedAt: log ? new Date(log.signedAt) : null
+    signedAt: log ? new Date(log.signedAt) : null,
+    signature: log?.signature ?? null
   };
 }
 
@@ -618,6 +633,59 @@ export class ApprovalFormService {
     private readonly spotAccess?: SpotProcurementAccessService
   ) {}
 
+  private async loadContractApprovalFormRenderToken(
+    client: ApprovalFormClient,
+    contractVersionId: string
+  ): Promise<ContractApprovalFormRenderToken | null> {
+    const [instance, version] = await Promise.all([
+      client.approvalInstance.findFirst({
+        where: {
+          businessType: "contract_version",
+          businessId: contractVersionId
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        select: { id: true, status: true, updatedAt: true }
+      }),
+      client.contractVersion.findUnique({
+        where: { id: contractVersionId },
+        select: {
+          status: true,
+          draftRevision: true,
+          updatedAt: true
+        }
+      })
+    ]);
+    if (
+      !instance ||
+      instance.status !== "approved" ||
+      !version ||
+      !canUseCurrentContractApprovalForm(version.status)
+    ) {
+      return null;
+    }
+    return {
+      approvalInstanceId: instance.id,
+      approvalInstanceUpdatedAt: instance.updatedAt.getTime(),
+      versionStatus: version.status,
+      draftRevision: version.draftRevision,
+      versionUpdatedAt: version.updatedAt.getTime()
+    };
+  }
+
+  private sameContractApprovalFormRenderToken(
+    left: ContractApprovalFormRenderToken,
+    right: ContractApprovalFormRenderToken | null
+  ) {
+    return Boolean(
+      right &&
+      left.approvalInstanceId === right.approvalInstanceId &&
+      left.approvalInstanceUpdatedAt === right.approvalInstanceUpdatedAt &&
+      left.versionStatus === right.versionStatus &&
+      left.draftRevision === right.draftRevision &&
+      left.versionUpdatedAt === right.versionUpdatedAt
+    );
+  }
+
   // 审批通过后由各业务流程事务外调用，best-effort 生成审批单 PDF 并归档。幂等。
   async generateForInstance(instanceId: string, actorUserId: string) {
     if (!this.prisma || !this.files) {
@@ -633,6 +701,17 @@ export class ApprovalFormService {
       if (!instance || instance.status !== "approved") return { kind: "unavailable" as const };
       if (SPOT_PROCUREMENT_APPROVAL_TYPES.has(instance.businessType)) {
         return { kind: "spot" as const, instance };
+      }
+
+      const contractApprovalFormRenderToken =
+        instance.businessType === "contract_version"
+          ? await this.loadContractApprovalFormRenderToken(tx, instance.businessId)
+          : null;
+      if (
+        instance.businessType === "contract_version" &&
+        contractApprovalFormRenderToken?.approvalInstanceId !== instance.id
+      ) {
+        return { kind: "unavailable" as const };
       }
 
       const existing = await tx.pdfDocument.findFirst({
@@ -677,7 +756,8 @@ export class ApprovalFormService {
       return {
         kind: "claimed" as const,
         instance,
-        uploadedFileId: claim?.uploadedFileId ?? null
+        uploadedFileId: claim?.uploadedFileId ?? null,
+        contractApprovalFormRenderToken
       };
     });
 
@@ -742,6 +822,22 @@ export class ApprovalFormService {
         if (!claim || claim.claimToken !== claimToken || claim.status !== "uploaded" ||
           claim.uploadedFileId !== uploadedFileId) {
           throw new Error("审批单生成权已变化，请稍后重试");
+        }
+        if (acquisition.contractApprovalFormRenderToken) {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id" FROM "ContractVersion"
+            WHERE "id" = ${acquisition.instance.businessId} FOR SHARE
+          `);
+          const currentToken = await this.loadContractApprovalFormRenderToken(
+            tx,
+            acquisition.instance.businessId
+          );
+          if (!this.sameContractApprovalFormRenderToken(
+            acquisition.contractApprovalFormRenderToken,
+            currentToken
+          )) {
+            throw new ConflictException("合同审批状态已变化，请刷新后重试");
+          }
         }
         const existing = await tx.pdfDocument.findFirst({
           where: { approvalInstanceId: instanceId }
@@ -1019,7 +1115,26 @@ export class ApprovalFormService {
     if (!pdfDocument) {
       throw new Error("审批单暂未生成，请先确认审批已完成后再下载");
     }
-    await this.files.assertCanDownloadFileById(pdfDocument.fileId, downloaderUserId);
+    await this.files.assertApprovalFormArchiveAnchor({
+      pdfDocumentId: pdfDocument.id,
+      fileId: pdfDocument.fileId,
+      businessType,
+      businessId,
+      approvalInstanceId: pdfDocument.approvalInstanceId ?? null
+    });
+    const contractRenderToken = businessType === "contract_version"
+      ? await this.loadContractApprovalFormRenderToken(this.prisma, businessId)
+      : null;
+    if (
+      businessType === "contract_version" &&
+      (
+        !contractRenderToken ||
+        pdfDocument.approvalInstanceId !==
+          contractRenderToken.approvalInstanceId
+      )
+    ) {
+      throw new ConflictException("合同审批状态已变化，请刷新后重新下载");
+    }
 
     const instance = pdfDocument.approvalInstanceId
       ? await this.prisma.approvalInstance.findUnique({
@@ -1056,6 +1171,16 @@ export class ApprovalFormService {
       buffer = await this.renderPdf({ ...input, watermark });
       businessCode = input.businessCode;
       fileName = approvalFileName(input);
+    }
+
+    if (contractRenderToken) {
+      const currentToken = await this.loadContractApprovalFormRenderToken(
+        this.prisma,
+        businessId
+      );
+      if (!this.sameContractApprovalFormRenderToken(contractRenderToken, currentToken)) {
+        throw new ConflictException("合同审批状态已变化，请刷新后重新下载");
+      }
     }
 
     await this.audit.record(this.prisma, {
@@ -1145,6 +1270,7 @@ export class ApprovalFormService {
       }
       return {
         actionKey: log.action,
+        approvedRoleKey: log.approvedRoleKey ?? null,
         name: nameById.get(log.actorUserId) ?? "处理人未读取",
         position: log.approvedRoleKey
           ? roleLabel(log.approvedRoleKey as RoleKey)
@@ -1205,11 +1331,16 @@ export class ApprovalFormService {
       ? currentSpotPaymentApprovalRoundLogs(rendered.logs)
       : rendered.logs;
     const signatures = {
-      materialDirector: approvalSignatureForRoles(signatureLogs, ["物资主管"]),
-      projectManager: approvalSignatureForRoles(signatureLogs, ["项目经理"]),
-      comprehensiveDirector: approvalSignatureForRoles(signatureLogs, ["综合部主管"]),
-      financeDirector: approvalSignatureForRoles(signatureLogs, ["财务主管"]),
-      finalApprover: approvalSignatureForRoles(signatureLogs, ["董事长", "总经理"])
+      materialDirector: approvalSignatureForRoles(signatureLogs, ["material_director"]),
+      projectManager: approvalSignatureForRoles(signatureLogs, ["project_manager"]),
+      comprehensiveDirector: approvalSignatureForRoles(signatureLogs, [
+        "comprehensive_director"
+      ]),
+      financeDirector: approvalSignatureForRoles(signatureLogs, ["finance_director"]),
+      finalApprover: approvalSignatureForRoles(signatureLogs, [
+        "chairman",
+        "general_manager"
+      ])
     };
 
     if (instance.businessType === "spot_procurement_version") {
@@ -1328,6 +1459,32 @@ export class ApprovalFormService {
         actorUserId,
         "download.repair"
       );
+    }
+    if (businessType === "contract_version") {
+      const [instance, version] = await Promise.all([
+        this.prisma.approvalInstance.findFirst({
+          where: { businessType, businessId },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+        }),
+        this.prisma.contractVersion.findUnique({
+          where: { id: businessId },
+          select: { status: true }
+        })
+      ]);
+      if (
+        !instance ||
+        instance.status !== "approved" ||
+        !canUseCurrentContractApprovalForm(version?.status)
+      ) {
+        throw new Error("当前业务尚未完成审批，暂不能生成审批单");
+      }
+
+      const existing = await this.prisma.pdfDocument.findFirst({
+        where: { approvalInstanceId: instance.id }
+      });
+      if (existing) return existing;
+
+      return this.generateForInstance(instance.id, actorUserId);
     }
     const instance = await this.prisma.approvalInstance.findFirst({
       where: { businessType, businessId, status: "approved" },

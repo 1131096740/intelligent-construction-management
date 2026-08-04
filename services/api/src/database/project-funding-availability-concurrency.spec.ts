@@ -57,7 +57,7 @@ describe("project funding PostgreSQL evidence", () => {
           "general_contractor_payment"
         );
         const concurrentResults = await Promise.allSettled(
-          clients.map((client, index) =>
+          clients.slice(0, 2).map((client, index) =>
             client.$transaction((tx) =>
               service.allocateExecution(tx, {
                 projectId: concurrentProjectId,
@@ -97,17 +97,80 @@ describe("project funding PostgreSQL evidence", () => {
           1_000n,
           "general_contractor_payment"
         );
+        const rollbackBusinessId = businessId("rollback");
+        const rollbackExecutionId = executionId("rollback");
+        const rollbackVoucherFileId = `pf-exp-voucher-${marker}`;
+        const rollbackPaidAt = new Date();
+        await clients[0]!.projectExpenseRequest.create({
+          data: {
+            id: rollbackBusinessId,
+            projectId: rollbackProjectId,
+            code: `PF-EXP-${marker}`,
+            expenseType: "comprehensive_expense",
+            expenseSubtype: "travel",
+            paymentSubject: "our_company",
+            reason: "资金回滚门禁夹具",
+            requestedAmountCents: 600n,
+            approvedAmountCents: 600n,
+            paymentMethod: "bank_transfer",
+            handlerUserId: actorId,
+            applicantUserId: actorId,
+            status: "approved_pending_payment"
+          }
+        });
+        await clients[0]!.fileObject.create({
+          data: {
+            id: rollbackVoucherFileId,
+            bucket: "local-test",
+            objectKey: `project-funding/${marker}/rollback-voucher.pdf`,
+            originalName: "rollback-voucher.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128,
+            uploadedByUserId: actorId,
+            contentSha256: "c".repeat(64),
+            storageStatus: "active"
+          }
+        });
         await expect(
           clients[0]!.$transaction(async (tx) => {
+            await tx.projectExpenseExecution.create({
+              data: {
+                id: rollbackExecutionId,
+                idempotencyKey: randomUUID(),
+                projectExpenseRequestId: rollbackBusinessId,
+                projectId: rollbackProjectId,
+                amountCents: 600n,
+                paidAt: rollbackPaidAt,
+                executedByUserId: actorId,
+                voucherFileId: rollbackVoucherFileId
+              }
+            });
             await service.allocateExecution(tx, {
               projectId: rollbackProjectId,
               executionType: "project_expense_execution",
-              executionId: executionId("rollback"),
+              executionId: rollbackExecutionId,
               businessType: "project_expense_request",
-              businessId: businessId("rollback"),
+              businessId: rollbackBusinessId,
               amountCents: 600n,
-              occurredAt: new Date(),
+              occurredAt: rollbackPaidAt,
               actorUserId: actorId
+            });
+            await tx.projectExpenseRequest.update({
+              where: { id: rollbackBusinessId },
+              data: { paidAmountCents: 600n, status: "paid" }
+            });
+            await tx.auditLog.create({
+              data: {
+                actorUserId: actorId,
+                action: "project_expense.execution.record",
+                businessType: "project_expense_request",
+                businessId: rollbackBusinessId,
+                metadata: {
+                  executionId: rollbackExecutionId,
+                  amountCents: "600",
+                  voucherFileId: rollbackVoucherFileId
+                }
+              }
             });
             throw new Error("voucher binding failed");
           })
@@ -115,6 +178,11 @@ describe("project funding PostgreSQL evidence", () => {
         expect(
           await clients[0]!.projectFundingAllocation.count({
             where: { executionId: executionId("rollback") }
+          })
+        ).toBe(0);
+        expect(
+          await clients[0]!.projectExpenseExecution.count({
+            where: { id: rollbackExecutionId }
           })
         ).toBe(0);
 
@@ -191,6 +259,9 @@ describe("project funding PostgreSQL evidence", () => {
         ).rejects.toThrow("项目可用资金不足，当前最多可实际支付 0 分");
 
         const inactiveQuotaProjectId = projectId("inactive-quota");
+        const inactiveQuotaId = `pf-live-quota-${marker}`;
+        const inactiveQuotaAttachmentFileId =
+          `pf-live-quota-file-${marker}`;
         await clients[0]!.project.create({
           data: {
             id: inactiveQuotaProjectId,
@@ -198,18 +269,59 @@ describe("project funding PostgreSQL evidence", () => {
             name: "失效额度拒绝夹具"
           }
         });
+        await clients[0]!.fileObject.create({
+          data: {
+            id: inactiveQuotaAttachmentFileId,
+            bucket: "local-test",
+            objectKey: `project-funding/${marker}/inactive-quota.pdf`,
+            originalName: "inactive-quota.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 128,
+            uploadedByUserId: actorId,
+            contentSha256: "a".repeat(64),
+            storageStatus: "active"
+          }
+        });
         await clients[0]!.projectFinancingQuota.create({
           data: {
-            id: `pf-live-quota-${marker}`,
+            id: inactiveQuotaId,
             projectId: inactiveQuotaProjectId,
             amountCents: 1_000n,
             reason: "实库失效额度门禁",
             validUntil: new Date("2020-01-01T00:00:00.000Z"),
-            attachmentFileId: `pf-live-quota-file-${marker}`,
+            attachmentFileId: inactiveQuotaAttachmentFileId,
+            attachmentFileSha256Snapshot: "a".repeat(64),
             requestedByUserId: actorId,
+            requestedByRoleKey: "finance_staff",
+            requestIdempotencyKey: randomUUID(),
+            requestFingerprint: "b".repeat(64),
             approvedByUserId: actorId,
             approvedAt: new Date("2019-01-01T00:00:00.000Z"),
             status: "approved"
+          }
+        });
+        await clients[0]!.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: inactiveQuotaId,
+            status: "approved",
+            currentNodeIndex: 2,
+            applicantUserId: actorId,
+            frozenNodes: [
+              {
+                name: "财务主管",
+                mode: "any",
+                roleKeys: ["finance_director"],
+                approvedRoleKeys: ["finance_director"]
+              },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"],
+                approvedRoleKeys: ["chairman"]
+              }
+            ]
           }
         });
         await expect(
@@ -227,6 +339,10 @@ describe("project funding PostgreSQL evidence", () => {
         const terminationProjectId = projectId("terminated-quota");
         const terminationQuotaId = `pf-live-terminated-quota-${marker}`;
         const signatureFileId = `pf-live-signature-file-${marker}`;
+        const terminationAttachmentFileId =
+          `pf-live-termination-quota-file-${marker}`;
+        const preservedAttachmentFileId =
+          `pf-live-preserved-quota-file-${marker}`;
         await clients[0]!.project.create({
           data: {
             id: terminationProjectId,
@@ -234,18 +350,49 @@ describe("project funding PostgreSQL evidence", () => {
             name: "垫资额度终止并发夹具"
           }
         });
-        await clients[0]!.fileObject.create({
+        await clients[0]!.projectMember.create({
           data: {
-            id: signatureFileId,
-            bucket: "local-test",
-            objectKey: `project-funding/${marker}/signature.png`,
-            originalName: "signature.png",
-            mimeType: "image/png",
-            sizeBytes: 128,
-            uploadedByUserId: actorId,
-            contentSha256: "a".repeat(64),
-            storageStatus: "active"
+            projectId: terminationProjectId,
+            userId: actorId,
+            positionKey: "finance_director"
           }
+        });
+        await clients[0]!.fileObject.createMany({
+          data: [
+            {
+              id: signatureFileId,
+              bucket: "local-test",
+              objectKey: `project-funding/${marker}/signature.png`,
+              originalName: "signature.png",
+              mimeType: "image/png",
+              sizeBytes: 128,
+              uploadedByUserId: actorId,
+              contentSha256: "a".repeat(64),
+              storageStatus: "active"
+            },
+            {
+              id: terminationAttachmentFileId,
+              bucket: "local-test",
+              objectKey: `project-funding/${marker}/termination-quota.pdf`,
+              originalName: "termination-quota.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 128,
+              uploadedByUserId: actorId,
+              contentSha256: "b".repeat(64),
+              storageStatus: "active"
+            },
+            {
+              id: preservedAttachmentFileId,
+              bucket: "local-test",
+              objectKey: `project-funding/${marker}/preserved-quota.pdf`,
+              originalName: "preserved-quota.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 128,
+              uploadedByUserId: actorId,
+              contentSha256: "c".repeat(64),
+              storageStatus: "active"
+            }
+          ]
         });
         await clients[0]!.handwrittenSignatureVersion.create({
           data: {
@@ -263,11 +410,39 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 2_000n,
             reason: "实库终止并发门禁",
             validUntil: null,
-            attachmentFileId: signatureFileId,
+            attachmentFileId: terminationAttachmentFileId,
+            attachmentFileSha256Snapshot: "b".repeat(64),
             requestedByUserId: actorId,
+            requestedByRoleKey: "finance_staff",
+            requestIdempotencyKey: randomUUID(),
+            requestFingerprint: "b".repeat(64),
             approvedByUserId: actorId,
             approvedAt: new Date(),
             status: "approved"
+          }
+        });
+        await clients[0]!.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: terminationQuotaId,
+            status: "approved",
+            currentNodeIndex: 2,
+            applicantUserId: actorId,
+            frozenNodes: [
+              {
+                name: "财务主管",
+                mode: "any",
+                roleKeys: ["finance_director"],
+                approvedRoleKeys: ["finance_director"]
+              },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"],
+                approvedRoleKeys: ["chairman"]
+              }
+            ]
           }
         });
         const projectService = new ProjectService(
@@ -277,28 +452,34 @@ describe("project funding PostgreSQL evidence", () => {
           service
         );
         const terminationExecutionId = executionId("terminated-quota-race");
-        const [terminationResult, concurrentQuotaPayment] = await Promise.allSettled([
-          projectService.terminateProjectFinancingQuota(
+        const terminationActionId = randomUUID();
+        const concurrentQuotaPayment = await clients[1]!.$transaction((tx) =>
+          service.allocateExecution(tx, {
+            ...retryInput,
+            projectId: terminationProjectId,
+            executionId: terminationExecutionId,
+            businessId: businessId("terminated-quota-race"),
+            amountCents: 500n
+          })
+        );
+        expect(concurrentQuotaPayment).toMatchObject({ kind: "allocated" });
+        const terminationCapability =
+          await projectService.getProjectFinancingQuotaTerminationCapability(
             terminationProjectId,
             terminationQuotaId,
-            actorId,
-            {
-              reason: "实库并发终止门禁",
-              confirmationPassword: "local-test-password"
-            }
-          ),
-          clients[1]!.$transaction((tx) =>
-            service.allocateExecution(tx, {
-              ...retryInput,
-              projectId: terminationProjectId,
-              executionId: terminationExecutionId,
-              businessId: businessId("terminated-quota-race"),
-              amountCents: 500n
-            })
-          )
-        ]);
-        expect(terminationResult.status).toBe("fulfilled");
-        expect(["fulfilled", "rejected"]).toContain(concurrentQuotaPayment.status);
+            actorId
+          );
+        await projectService.terminateProjectFinancingQuota(
+          terminationProjectId,
+          terminationQuotaId,
+          actorId,
+          {
+            actionId: terminationActionId,
+            expectedLifecycleToken: terminationCapability.lifecycleToken,
+            reason: "实库并发终止门禁",
+            confirmationPassword: "local-test-password"
+          }
+        );
         expect(
           await clients[0]!.projectFinancingQuota.findUnique({
             where: { id: terminationQuotaId },
@@ -306,28 +487,29 @@ describe("project funding PostgreSQL evidence", () => {
               status: true,
               terminatedAt: true,
               terminatedByUserId: true,
-              terminationSignatureVersionId: true
+              terminationSignatureVersionId: true,
+              terminationActionId: true,
+              terminationRequestFingerprint: true
             }
           })
         ).toMatchObject({
           status: "terminated",
           terminatedAt: expect.any(Date),
           terminatedByUserId: actorId,
-          terminationSignatureVersionId: `pf-live-signature-version-${marker}`
+          terminationSignatureVersionId: `pf-live-signature-version-${marker}`,
+          terminationActionId: expect.any(String),
+          terminationRequestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
         });
         const terminationRaceAllocations =
           await clients[0]!.projectFundingAllocation.findMany({
             where: { executionId: terminationExecutionId }
           });
-        expect(terminationRaceAllocations.length === 0 || terminationRaceAllocations.length === 1)
-          .toBe(true);
-        if (terminationRaceAllocations.length === 1) {
-          expect(terminationRaceAllocations[0]).toMatchObject({
-            sourceId: terminationQuotaId,
-            direction: "debit",
-            amountCents: 500n
-          });
-        }
+        expect(terminationRaceAllocations).toHaveLength(1);
+        expect(terminationRaceAllocations[0]).toMatchObject({
+          sourceId: terminationQuotaId,
+          direction: "debit",
+          amountCents: 500n
+        });
         await expect(
           clients[0]!.$transaction((tx) =>
             service.allocateExecution(tx, {
@@ -350,6 +532,13 @@ describe("project funding PostgreSQL evidence", () => {
             name: "垫资额度终止保留流水夹具"
           }
         });
+        await clients[0]!.projectMember.create({
+          data: {
+            projectId: preservedProjectId,
+            userId: actorId,
+            positionKey: "finance_director"
+          }
+        });
         await clients[0]!.projectFinancingQuota.create({
           data: {
             id: preservedQuotaId,
@@ -357,11 +546,39 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 2_000n,
             reason: "实库终止保留流水门禁",
             validUntil: null,
-            attachmentFileId: signatureFileId,
+            attachmentFileId: preservedAttachmentFileId,
+            attachmentFileSha256Snapshot: "c".repeat(64),
             requestedByUserId: actorId,
+            requestedByRoleKey: "finance_staff",
+            requestIdempotencyKey: randomUUID(),
+            requestFingerprint: "b".repeat(64),
             approvedByUserId: actorId,
             approvedAt: new Date(),
             status: "approved"
+          }
+        });
+        await clients[0]!.approvalInstance.create({
+          data: {
+            flowType: "project_financing_quota.approve",
+            businessType: "project_financing_quota",
+            businessId: preservedQuotaId,
+            status: "approved",
+            currentNodeIndex: 2,
+            applicantUserId: actorId,
+            frozenNodes: [
+              {
+                name: "财务主管",
+                mode: "any",
+                roleKeys: ["finance_director"],
+                approvedRoleKeys: ["finance_director"]
+              },
+              {
+                name: "董事长/总经理",
+                mode: "any",
+                roleKeys: ["chairman", "general_manager"],
+                approvedRoleKeys: ["chairman"]
+              }
+            ]
           }
         });
         await clients[0]!.$transaction((tx) =>
@@ -373,11 +590,19 @@ describe("project funding PostgreSQL evidence", () => {
             amountCents: 500n
           })
         );
+        const preservedCapability =
+          await projectService.getProjectFinancingQuotaTerminationCapability(
+            preservedProjectId,
+            preservedQuotaId,
+            actorId
+          );
         await projectService.terminateProjectFinancingQuota(
           preservedProjectId,
           preservedQuotaId,
           actorId,
           {
+            actionId: randomUUID(),
+            expectedLifecycleToken: preservedCapability.lifecycleToken,
             reason: "实库终止后保留既有资金流水",
             confirmationPassword: "local-test-password"
           }

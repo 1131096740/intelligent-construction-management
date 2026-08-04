@@ -1,21 +1,38 @@
 <script setup lang="ts">
 import type { BusinessSummaryTone } from "../../components/business-status-summary.config";
 import type { UploadFile } from "tdesign-vue-next";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   abandonSpotProcurementDraft,
+  confirmSpotProcurementAbnormalTermination,
   createSpotProcurementVersion,
+  executeSpotProcurementReviewAction,
+  executeSpotProcurementWithdrawalAction,
   fetchSpotProcurementDetail,
-  reviewSpotProcurement,
+  prepareSpotProcurementReviewAction,
+  prepareSpotProcurementWithdrawalAction,
+  requestSpotProcurementAbnormalTermination,
   recreateSpotProcurementPaymentDraft,
   submitSpotProcurement,
+  uploadSpotProcurementDraftFile,
   updateSpotProcurementDraft,
   voidSpotProcurement,
-  withdrawSpotProcurement,
+  type PrepareSpotProcurementReviewActionResult,
+  type PrepareSpotProcurementWithdrawalActionResult,
+  type SpotProcurementReviewActionContext,
+  type SpotProcurementReviewActionDecision,
+  type SpotProcurementWithdrawalActionContext,
   type SpotProcurementDetailReadModel
 } from "../../api/spot-procurement.api";
-import { downloadApprovalForm, uploadPrivateFile } from "../../api/core-flow-read.api";
+import { downloadApprovalForm } from "../../api/core-flow-read.api";
 import ApprovalTimeline from "../../components/ApprovalTimeline.vue";
 import BusinessActionPanel from "../../components/BusinessActionPanel.vue";
 import BusinessDraftAction, {
@@ -51,6 +68,7 @@ type ActionKind =
 
 const route = useRoute();
 const router = useRouter();
+const spotProcurementCapability = ref<SpotProcurementDetailReadModel | null>(null);
 const detail = ref<SpotProcurementDetailReadModel | null>(null);
 const loading = ref(false);
 const actionBusy = ref(false);
@@ -76,14 +94,64 @@ const editForm = reactive({
 const confirmation = reactive({
   visible: false,
   kind: "withdraw" as ActionKind,
+  procurementId: "",
   title: "",
   description: "",
   confirmText: "确认",
   confirmTheme: "primary" as "primary" | "danger",
   requireReason: false,
   requirePassword: false,
-  reasonLabel: "操作原因"
+  reasonLabel: "操作原因",
+  error: ""
 });
+const reviewConfirmation = reactive({
+  dialogGeneration: -1,
+  procurementId: "",
+  expectedVersionId: "",
+  expectedApprovalInstanceId: "",
+  expectedNodeIndex: -1
+});
+const withdrawalConfirmation = reactive({
+  dialogGeneration: -1,
+  procurementId: "",
+  expectedVersionId: "",
+  expectedApprovalInstanceId: "",
+  expectedNodeIndex: -1
+});
+const abnormalTerminationRequestVisible = ref(false);
+const abnormalTerminationRequestError = ref("");
+const abnormalTerminationRequestProcurementId = ref("");
+const abnormalTerminationConfirmVisible = ref(false);
+const abnormalTerminationConfirmError = ref("");
+const abnormalTerminationConfirmProcurementId = ref("");
+let detailRouteGeneration = 0;
+let detailLoadRequestId = 0;
+let submitOperationId = 0;
+let detailEpoch = 0;
+let reviewDialogGeneration = 0;
+let reviewOperationSequence = 0;
+let reviewBusyOwnerId = 0;
+let reviewComponentActive = true;
+const reviewOwnerScope = globalThis.crypto.randomUUID();
+let withdrawalDialogGeneration = 0;
+let withdrawalOperationSequence = 0;
+let withdrawalBusyOwnerId = 0;
+let withdrawalComponentActive = true;
+const withdrawalOwnerScope = globalThis.crypto.randomUUID();
+
+type AbnormalTerminationActionContext = {
+  procurementId: string;
+  routeGeneration: number;
+};
+type SubmitActionContext = {
+  procurementId: string;
+  routeGeneration: number;
+  operationId: number;
+};
+type ReviewConfirmationKind =
+  | "review_approve"
+  | "review_reject"
+  | "review_return";
 
 const quotationSizeLimit = {
   size: SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.limitBytes,
@@ -94,8 +162,82 @@ const quotationSizeLimit = {
 const procurementId = computed(() =>
   typeof route.params.procurementId === "string" ? route.params.procurementId : ""
 );
-const primaryAction = computed(() =>
-  detail.value?.availableActions.find((action) => action.key === detail.value?.primaryAction)
+const primaryAction = computed(() => {
+  const action = detail.value?.availableActions.find(
+    (candidate) => candidate.key === detail.value?.primaryAction
+  );
+  if (
+    action?.key === "withdraw_approval" &&
+    (detail.value?.procurement.form !== "real_application" ||
+      spotProcurementCapability.value?.procurement.form !==
+        "real_application")
+  ) {
+    return undefined;
+  }
+  return action;
+});
+const submitApprovalAction = computed(() =>
+  spotProcurementCapability.value?.procurement.id === procurementId.value
+    ? spotProcurementCapability.value.availableActions.find(
+        (action) => action.key === "submit_approval"
+      ) ?? null
+    : null
+);
+function reviewApprovalActionEnabled(key: "review_approval") {
+  return Boolean(
+    spotProcurementCapability.value?.availableActions.some(
+      (action) => action.key === key && action.enabled
+    )
+  );
+}
+function withdrawalApprovalActionEnabled(
+  key: "withdraw_approval"
+) {
+  return Boolean(
+    spotProcurementCapability.value?.procurement.form ===
+      "real_application" &&
+      spotProcurementCapability.value.availableActions.some(
+        (action) => action.key === key && action.enabled
+      )
+  );
+}
+const reviewApprovalEnabled = computed(() =>
+  spotProcurementCapability.value?.procurement.id ===
+    procurementId.value &&
+  spotProcurementCapability.value.currentVersion.id ===
+    spotProcurementCapability.value.reviewApprovalContext
+      ?.expectedVersionId &&
+  Boolean(
+    spotProcurementCapability.value.reviewApprovalContext
+      ?.expectedApprovalInstanceId
+  ) &&
+  Number.isInteger(
+    spotProcurementCapability.value.reviewApprovalContext
+      ?.expectedNodeIndex
+  ) &&
+  (spotProcurementCapability.value.reviewApprovalContext
+    ?.expectedNodeIndex ?? -1) >= 0 &&
+  reviewApprovalActionEnabled("review_approval")
+);
+const withdrawalApprovalEnabled = computed(() =>
+  spotProcurementCapability.value?.procurement.form ===
+    "real_application" &&
+  spotProcurementCapability.value.procurement.id ===
+    procurementId.value &&
+  spotProcurementCapability.value.currentVersion.id ===
+    spotProcurementCapability.value.withdrawApprovalContext
+      ?.expectedVersionId &&
+  Boolean(
+    spotProcurementCapability.value.withdrawApprovalContext
+      ?.expectedApprovalInstanceId
+  ) &&
+  Number.isInteger(
+    spotProcurementCapability.value.withdrawApprovalContext
+      ?.expectedNodeIndex
+  ) &&
+  (spotProcurementCapability.value.withdrawApprovalContext
+    ?.expectedNodeIndex ?? -1) >= 0 &&
+  withdrawalApprovalActionEnabled("withdraw_approval")
 );
 const linkedPayment = computed(() => {
   const paymentId = detail.value?.procurement.payment?.paymentId;
@@ -112,6 +254,28 @@ const operationalActions = computed(() =>
     (action) => !["delete_pristine_draft", "abandon_application"].includes(action.key)
   ) ?? []
 );
+const abnormalTerminationRequestAction = computed(() =>
+  spotProcurementCapability.value?.procurement.id ===
+  abnormalTerminationRequestProcurementId.value
+    ? spotProcurementCapability.value.availableActions.find(
+        (action) => action.key === "request_abnormal_termination"
+      ) ?? null
+    : null
+);
+const abnormalTerminationConfirmAction = computed(() =>
+  spotProcurementCapability.value?.procurement.id ===
+  abnormalTerminationConfirmProcurementId.value
+    ? spotProcurementCapability.value.availableActions.find(
+        (action) => action.key === "confirm_abnormal_termination"
+      ) ?? null
+    : null
+);
+const abnormalTerminationConfirmDescription = computed(() => {
+  const reason = detail.value?.abnormalTermination?.reason;
+  return reason
+    ? `确认后采购将异常终止，已形成事实继续保留。发起原因：${reason}`
+    : "确认后采购将异常终止，已形成的付款、收货与审计事实继续保留。";
+});
 const draftActionSubject = computed(() => ({
   businessCode: detail.value?.procurement.code ?? "—",
   name: detail.value?.currentVersion.reason ?? "零星采购申请",
@@ -197,17 +361,91 @@ function openLinkedPayment() {
   void router.push(paymentDetailUrl(linkedPayment.value.id));
 }
 
+function reviewKind(kind: ActionKind): kind is ReviewConfirmationKind {
+  return (
+    kind === "review_approve" ||
+    kind === "review_reject" ||
+    kind === "review_return"
+  );
+}
+
+function clearReviewConfirmation() {
+  reviewConfirmation.dialogGeneration = -1;
+  reviewConfirmation.procurementId = "";
+  reviewConfirmation.expectedVersionId = "";
+  reviewConfirmation.expectedApprovalInstanceId = "";
+  reviewConfirmation.expectedNodeIndex = -1;
+}
+
+function invalidateReviewDialog(close: boolean) {
+  reviewDialogGeneration += 1;
+  clearReviewConfirmation();
+  if (close && reviewKind(confirmation.kind)) {
+    confirmation.visible = false;
+    confirmation.error = "";
+  }
+}
+
+function clearWithdrawalConfirmation() {
+  withdrawalConfirmation.dialogGeneration = -1;
+  withdrawalConfirmation.procurementId = "";
+  withdrawalConfirmation.expectedVersionId = "";
+  withdrawalConfirmation.expectedApprovalInstanceId = "";
+  withdrawalConfirmation.expectedNodeIndex = -1;
+}
+
+function invalidateWithdrawalDialog(close: boolean) {
+  withdrawalDialogGeneration += 1;
+  clearWithdrawalConfirmation();
+  if (close && confirmation.kind === "withdraw") {
+    confirmation.visible = false;
+    confirmation.error = "";
+  }
+}
+
 async function loadDetail() {
-  if (!procurementId.value) return;
+  const expectedProcurementId = procurementId.value;
+  const generation = detailRouteGeneration;
+  const requestId = ++detailLoadRequestId;
+  if (!expectedProcurementId) return;
+  detailEpoch += 1;
+  invalidateReviewDialog(true);
+  invalidateWithdrawalDialog(true);
+  spotProcurementCapability.value = null;
   loading.value = true;
   loadError.value = "";
   try {
-    detail.value = await fetchSpotProcurementDetail(procurementId.value);
+    const detailRequest = fetchSpotProcurementDetail(expectedProcurementId);
+    const serverDetail = await detailRequest;
+    if (
+      requestId !== detailLoadRequestId ||
+      generation !== detailRouteGeneration ||
+      procurementId.value !== expectedProcurementId
+    ) {
+      return;
+    }
+    const viewDetail = structuredClone(serverDetail);
+    spotProcurementCapability.value = serverDetail;
+    detail.value = viewDetail;
   } catch (error) {
+    if (
+      requestId !== detailLoadRequestId ||
+      generation !== detailRouteGeneration ||
+      procurementId.value !== expectedProcurementId
+    ) {
+      return;
+    }
+    spotProcurementCapability.value = null;
     detail.value = null;
     loadError.value = error instanceof Error ? error.message : "零星采购详情读取失败";
   } finally {
-    loading.value = false;
+    if (
+      requestId === detailLoadRequestId &&
+      generation === detailRouteGeneration &&
+      procurementId.value === expectedProcurementId
+    ) {
+      loading.value = false;
+    }
   }
 }
 
@@ -251,13 +489,19 @@ async function saveDraft() {
     for (const file of selectedUploadFiles(editQuotationFiles.value)) {
       const validationError = spotProcurementQuotationFileError(file);
       if (validationError) throw new Error(validationError);
-      const uploaded = await uploadPrivateFile(file, file.name);
+      const uploaded = await uploadSpotProcurementDraftFileWithCapability(
+        current.procurement.id,
+        file
+      );
       attachments.push({ fileId: uploaded.id, category: "merchant_quote" });
     }
     for (const file of selectedUploadFiles(editReferencePhotoFiles.value)) {
       const validationError = spotProcurementReferencePhotoFileError(file);
       if (validationError) throw new Error(validationError);
-      const uploaded = await uploadPrivateFile(file, file.name);
+      const uploaded = await uploadSpotProcurementDraftFileWithCapability(
+        current.procurement.id,
+        file
+      );
       attachments.push({ fileId: uploaded.id, category: "reference_photo" });
     }
     const draft = {
@@ -276,12 +520,15 @@ async function saveDraft() {
       attachments
     };
     if (editMode.value === "version") {
-      await createSpotProcurementVersion(current.procurement.id, {
+      await createSpotProcurementVersionWithCapability(current.procurement.id, {
         ...draft,
         changeReason: requiredText(editForm.changeReason, "版本变更原因")
       });
     } else {
-      await updateSpotProcurementDraft(current.procurement.id, draft);
+      await updateSpotProcurementDraftWithCapability(
+        current.procurement.id,
+        draft
+      );
     }
     editVisible.value = false;
     showSuccess(editMode.value === "version" ? "采购修订版本已创建。" : "采购草稿已保存。");
@@ -293,25 +540,74 @@ async function saveDraft() {
   }
 }
 
-async function runSubmit() {
-  const current = detail.value;
-  if (!current) return;
-  actionBusy.value = true;
-  try {
-    await submitSpotProcurement(current.procurement.id);
-    showSuccess("零星材料采购申请已提交审批。");
-    await loadDetail();
-  } catch (error) {
-    showError(error, "提交失败");
-  } finally {
-    actionBusy.value = false;
+function captureSubmitContext(): SubmitActionContext {
+  return {
+    procurementId: procurementId.value,
+    routeGeneration: detailRouteGeneration,
+    operationId: submitOperationId + 1
+  };
+}
+
+function submitContextIsCurrent(context: SubmitActionContext) {
+  return Boolean(context.procurementId) &&
+    context.procurementId === procurementId.value &&
+    context.routeGeneration === detailRouteGeneration &&
+    spotProcurementCapability.value?.procurement.id ===
+      context.procurementId &&
+    submitApprovalAction.value?.enabled === true;
+}
+
+function requireCurrentSubmitProcurementId(context: SubmitActionContext) {
+  if (!submitContextIsCurrent(context)) {
+    throw new Error("采购提交操作上下文已失效，请重新读取当前采购");
   }
+  return context.procurementId;
+}
+
+function submitOperationIsCurrent(context: SubmitActionContext) {
+  return context.procurementId === procurementId.value &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.operationId === submitOperationId;
+}
+
+function submitResultCanWrite(context: SubmitActionContext) {
+  return submitContextIsCurrent(context) &&
+    submitOperationIsCurrent(context);
+}
+
+function completeSubmit(context: SubmitActionContext) {
+  if (!submitResultCanWrite(context)) return;
+  showSuccess("零星材料采购申请已提交审批。");
+  return loadDetail();
+}
+
+function failSubmit(error: unknown, context: SubmitActionContext) {
+  if (!submitResultCanWrite(context)) return;
+  showError(error, "提交失败");
+}
+
+function finishSubmit(context: SubmitActionContext) {
+  if (!submitOperationIsCurrent(context)) return;
+  actionBusy.value = false;
+}
+
+function runSubmit() {
+  const context = captureSubmitContext();
+  const request = submitSpotProcurement(
+    requireCurrentSubmitProcurementId(context)
+  );
+  submitOperationId = context.operationId;
+  actionBusy.value = true;
+  return request
+    .then(() => completeSubmit(context))
+    .catch((error) => failSubmit(error, context))
+    .finally(() => finishSubmit(context));
 }
 
 async function executeDraftAction(request: BusinessDraftActionRequest) {
   const current = detail.value;
   if (!current || !["delete_pristine_draft", "abandon_application"].includes(request.action)) return;
-  await abandonSpotProcurementDraft(current.procurement.id, {
+  await abandonSpotProcurementDraftWithCapability(current.procurement.id, {
     action: request.action as "delete_pristine_draft" | "abandon_application",
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
   });
@@ -324,7 +620,9 @@ async function recreatePaymentDraft() {
   if (!current || !actionEnabled("create_payment_draft")) return;
   actionBusy.value = true;
   try {
-    const result = await recreateSpotProcurementPaymentDraft(current.procurement.id);
+    const result = await recreateSpotProcurementPaymentDraftWithCapability(
+      current.procurement.id
+    );
     showSuccess("新的付款草稿已创建，原付款草稿继续保留为历史记录。");
     await router.push(`/零星材料付款/${encodeURIComponent(result.id)}`);
   } catch (error) {
@@ -335,7 +633,64 @@ async function recreatePaymentDraft() {
 }
 
 function openConfirmation(kind: ActionKind) {
-  const configurations: Record<ActionKind, Omit<typeof confirmation, "visible" | "kind">> = {
+  const current = detail.value;
+  if (!current) return;
+  if (reviewKind(kind)) {
+    invalidateWithdrawalDialog(false);
+    const coordinates =
+      spotProcurementCapability.value?.reviewApprovalContext;
+    if (
+      !reviewApprovalEnabled.value ||
+      spotProcurementCapability.value?.procurement.id !==
+        current.procurement.id ||
+      !coordinates
+    ) {
+      return;
+    }
+    reviewDialogGeneration += 1;
+    reviewConfirmation.dialogGeneration = reviewDialogGeneration;
+    reviewConfirmation.procurementId =
+      spotProcurementCapability.value.procurement.id;
+    reviewConfirmation.expectedVersionId =
+      coordinates.expectedVersionId;
+    reviewConfirmation.expectedApprovalInstanceId =
+      coordinates.expectedApprovalInstanceId;
+    reviewConfirmation.expectedNodeIndex =
+      coordinates.expectedNodeIndex;
+  } else if (kind === "withdraw") {
+    invalidateReviewDialog(false);
+    const coordinates =
+      spotProcurementCapability.value?.withdrawApprovalContext;
+    if (
+      !withdrawalApprovalEnabled.value ||
+      spotProcurementCapability.value?.procurement.id !==
+        current.procurement.id ||
+      !coordinates
+    ) {
+      return;
+    }
+    withdrawalDialogGeneration += 1;
+    withdrawalConfirmation.dialogGeneration =
+      withdrawalDialogGeneration;
+    withdrawalConfirmation.procurementId =
+      spotProcurementCapability.value.procurement.id;
+    withdrawalConfirmation.expectedVersionId =
+      coordinates.expectedVersionId;
+    withdrawalConfirmation.expectedApprovalInstanceId =
+      coordinates.expectedApprovalInstanceId;
+    withdrawalConfirmation.expectedNodeIndex =
+      coordinates.expectedNodeIndex;
+  } else {
+    invalidateReviewDialog(false);
+    invalidateWithdrawalDialog(false);
+  }
+  const configurations: Record<
+    ActionKind,
+    Omit<
+      typeof confirmation,
+      "visible" | "kind" | "procurementId" | "error"
+    >
+  > = {
     review_approve: {
       title: "确认通过采购审批",
       description: "通过后审批流进入下一节点或完成，并冻结本次采购审批单。",
@@ -391,34 +746,451 @@ function openConfirmation(kind: ActionKind) {
       reasonLabel: "下载原因"
     }
   };
-  Object.assign(confirmation, configurations[kind], { visible: true, kind });
+  Object.assign(confirmation, configurations[kind], {
+    visible: true,
+    kind,
+    procurementId: current.procurement.id,
+    error: ""
+  });
+}
+
+function reviewCapabilityMatches(
+  context: SpotProcurementReviewActionContext
+) {
+  const coordinates =
+    spotProcurementCapability.value?.reviewApprovalContext;
+  return (
+    spotProcurementCapability.value?.procurement.id ===
+      context.procurementId &&
+    spotProcurementCapability.value.currentVersion.id ===
+      context.expectedVersionId &&
+    spotProcurementCapability.value.availableActions.some(
+      (action) =>
+        action.key === "review_approval" && action.enabled
+    ) &&
+    coordinates?.expectedVersionId === context.expectedVersionId &&
+    coordinates.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    coordinates.expectedNodeIndex === context.expectedNodeIndex
+  );
+}
+
+function reviewSelectionMatches(
+  context: SpotProcurementReviewActionContext
+) {
+  const expectedKind =
+    context.decision === "approve"
+      ? "review_approve"
+      : context.decision === "reject"
+        ? "review_reject"
+        : "review_return";
+  return (
+    confirmation.visible &&
+    confirmation.kind === expectedKind &&
+    confirmation.procurementId === context.procurementId &&
+    reviewConfirmation.dialogGeneration === context.dialogGeneration &&
+    reviewConfirmation.procurementId === context.procurementId &&
+    reviewConfirmation.expectedVersionId === context.expectedVersionId &&
+    reviewConfirmation.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    reviewConfirmation.expectedNodeIndex === context.expectedNodeIndex
+  );
+}
+
+function reviewContextIsCurrent(
+  context: SpotProcurementReviewActionContext
+) {
+  return (
+    reviewComponentActive &&
+    context.ownerScope === reviewOwnerScope &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.detailEpoch === detailEpoch &&
+    context.dialogGeneration === reviewDialogGeneration &&
+    context.procurementId === procurementId.value &&
+    reviewBusyOwnerId === context.operationId &&
+    reviewSelectionMatches(context) &&
+    reviewCapabilityMatches(context)
+  );
+}
+
+function captureReviewContext(
+  decision: SpotProcurementReviewActionDecision,
+  reason: string
+): SpotProcurementReviewActionContext | null {
+  const coordinates = reviewConfirmation;
+  const expectedKind =
+    decision === "approve"
+      ? "review_approve"
+      : decision === "reject"
+        ? "review_reject"
+        : "review_return";
+  const comment = decision !== "approve" ? reason.trim() : undefined;
+  if (
+    confirmation.kind !== expectedKind ||
+    !confirmation.visible ||
+    coordinates.dialogGeneration !== reviewDialogGeneration ||
+    !coordinates.procurementId ||
+    !coordinates.expectedVersionId ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0 ||
+    (decision !== "approve" && !comment)
+  ) {
+    confirmation.error =
+      decision !== "approve" && !comment
+        ? decision === "reject"
+          ? "请填写驳回原因"
+          : "请填写退回原因"
+        : "审批上下文已失效，请重新打开审批确认";
+    return null;
+  }
+  if (actionBusy.value || reviewBusyOwnerId !== 0) {
+    confirmation.error = "当前审批正在提交，请等待本次操作完成";
+    return null;
+  }
+  const context = Object.freeze({
+    ownerScope: reviewOwnerScope,
+    routeGeneration: detailRouteGeneration,
+    detailEpoch,
+    dialogGeneration: coordinates.dialogGeneration,
+    operationId: ++reviewOperationSequence,
+    procurementId: coordinates.procurementId,
+    expectedVersionId: coordinates.expectedVersionId,
+    expectedApprovalInstanceId:
+      coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex,
+    decision,
+    ...(decision !== "approve" ? { comment } : {})
+  });
+  reviewBusyOwnerId = context.operationId;
+  actionBusy.value = true;
+  confirmation.error = "";
+  return context;
+}
+
+function sameReviewContext(
+  left: SpotProcurementReviewActionContext,
+  right: SpotProcurementReviewActionContext
+) {
+  return (
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.procurementId === right.procurementId &&
+    left.expectedVersionId === right.expectedVersionId &&
+    left.expectedApprovalInstanceId ===
+      right.expectedApprovalInstanceId &&
+    left.expectedNodeIndex === right.expectedNodeIndex &&
+    left.decision === right.decision &&
+    left.comment === right.comment
+  );
+}
+
+function preparedReviewIsCurrent(
+  context: SpotProcurementReviewActionContext,
+  result: PrepareSpotProcurementReviewActionResult
+) {
+  return (
+    result.status === "ready" &&
+    sameReviewContext(context, result.context) &&
+    reviewContextIsCurrent(context)
+  );
+}
+
+function completeReview(context: SpotProcurementReviewActionContext) {
+  if (!reviewContextIsCurrent(context)) return;
+  confirmation.visible = false;
+  confirmation.error = "";
+  showSuccess(
+    context.decision === "approve"
+      ? "采购审批已通过。"
+      : context.decision === "reject"
+        ? "采购申请已驳回。"
+        : "采购申请已退回，并已生成新的修改草稿。"
+  );
+  return loadDetail();
+}
+
+function failReview(
+  context: SpotProcurementReviewActionContext,
+  error: unknown
+) {
+  if (!reviewContextIsCurrent(context)) return;
+  confirmation.error =
+    error instanceof Error ? error.message : "采购审批操作失败";
+}
+
+function finishReview(context: SpotProcurementReviewActionContext) {
+  if (reviewBusyOwnerId !== context.operationId) return;
+  reviewBusyOwnerId = 0;
+  actionBusy.value = false;
+}
+
+function confirmReviewApprove(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementReviewAction({
+    decision: "approve",
+    capture: () => captureReviewContext("approve", values.reason),
+    preflight: (context) =>
+      prepareSpotProcurementReviewAction({
+        ...context,
+        decision: "approve",
+        isCurrent: reviewContextIsCurrent
+      }),
+    current: preparedReviewIsCurrent,
+    complete: completeReview,
+    fail: failReview,
+    finish: finishReview
+  });
+}
+
+function confirmReviewReject(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementReviewAction({
+    decision: "reject",
+    capture: () => captureReviewContext("reject", values.reason),
+    preflight: (context) =>
+      prepareSpotProcurementReviewAction({
+        ...context,
+        decision: "reject",
+        isCurrent: reviewContextIsCurrent
+      }),
+    current: preparedReviewIsCurrent,
+    complete: completeReview,
+    fail: failReview,
+    finish: finishReview
+  });
+}
+
+function confirmReviewReturn(values: {
+  reason: string;
+  password: string;
+}) {
+  return executeSpotProcurementReviewAction({
+    decision: "return_to_applicant",
+    capture: () =>
+      captureReviewContext("return_to_applicant", values.reason),
+    preflight: (context) =>
+      prepareSpotProcurementReviewAction({
+        ...context,
+        decision: "return_to_applicant",
+        isCurrent: reviewContextIsCurrent
+      }),
+    current: preparedReviewIsCurrent,
+    complete: completeReview,
+    fail: failReview,
+    finish: finishReview
+  });
+}
+
+function withdrawalCapabilityMatches(
+  context: SpotProcurementWithdrawalActionContext
+) {
+  const coordinates =
+    spotProcurementCapability.value?.withdrawApprovalContext;
+  return (
+    spotProcurementCapability.value?.procurement.form ===
+      "real_application" &&
+    spotProcurementCapability.value.procurement.id ===
+      context.procurementId &&
+    spotProcurementCapability.value.currentVersion.id ===
+      context.expectedVersionId &&
+    spotProcurementCapability.value.availableActions.some(
+      (action) =>
+        action.key === "withdraw_approval" && action.enabled
+    ) &&
+    coordinates?.expectedVersionId === context.expectedVersionId &&
+    coordinates.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    coordinates.expectedNodeIndex === context.expectedNodeIndex
+  );
+}
+
+function withdrawalSelectionMatches(
+  context: SpotProcurementWithdrawalActionContext
+) {
+  return (
+    confirmation.visible &&
+    confirmation.kind === "withdraw" &&
+    confirmation.procurementId === context.procurementId &&
+    withdrawalConfirmation.dialogGeneration ===
+      context.dialogGeneration &&
+    withdrawalConfirmation.procurementId === context.procurementId &&
+    withdrawalConfirmation.expectedVersionId ===
+      context.expectedVersionId &&
+    withdrawalConfirmation.expectedApprovalInstanceId ===
+      context.expectedApprovalInstanceId &&
+    withdrawalConfirmation.expectedNodeIndex ===
+      context.expectedNodeIndex
+  );
+}
+
+function withdrawalContextIsCurrent(
+  context: SpotProcurementWithdrawalActionContext
+) {
+  return (
+    withdrawalComponentActive &&
+    context.ownerScope === withdrawalOwnerScope &&
+    context.routeGeneration === detailRouteGeneration &&
+    context.detailEpoch === detailEpoch &&
+    context.dialogGeneration === withdrawalDialogGeneration &&
+    context.procurementId === procurementId.value &&
+    withdrawalBusyOwnerId === context.operationId &&
+    withdrawalSelectionMatches(context) &&
+    withdrawalCapabilityMatches(context)
+  );
+}
+
+function captureWithdrawalContext():
+  | SpotProcurementWithdrawalActionContext
+  | null {
+  const coordinates = withdrawalConfirmation;
+  if (
+    confirmation.kind !== "withdraw" ||
+    !confirmation.visible ||
+    coordinates.dialogGeneration !== withdrawalDialogGeneration ||
+    !coordinates.procurementId ||
+    !coordinates.expectedVersionId ||
+    !coordinates.expectedApprovalInstanceId ||
+    !Number.isInteger(coordinates.expectedNodeIndex) ||
+    coordinates.expectedNodeIndex < 0
+  ) {
+    confirmation.error =
+      "撤回上下文已失效，请重新打开撤回确认";
+    return null;
+  }
+  if (actionBusy.value || withdrawalBusyOwnerId !== 0) {
+    confirmation.error = "当前撤回正在提交，请等待本次操作完成";
+    return null;
+  }
+  const context = Object.freeze({
+    action: "withdraw" as const,
+    ownerScope: withdrawalOwnerScope,
+    routeGeneration: detailRouteGeneration,
+    detailEpoch,
+    dialogGeneration: coordinates.dialogGeneration,
+    operationId: ++withdrawalOperationSequence,
+    procurementId: coordinates.procurementId,
+    expectedVersionId: coordinates.expectedVersionId,
+    expectedApprovalInstanceId:
+      coordinates.expectedApprovalInstanceId,
+    expectedNodeIndex: coordinates.expectedNodeIndex
+  });
+  withdrawalBusyOwnerId = context.operationId;
+  actionBusy.value = true;
+  confirmation.error = "";
+  return context;
+}
+
+function sameWithdrawalContext(
+  left: SpotProcurementWithdrawalActionContext,
+  right: SpotProcurementWithdrawalActionContext
+) {
+  return (
+    left.action === right.action &&
+    left.ownerScope === right.ownerScope &&
+    left.routeGeneration === right.routeGeneration &&
+    left.detailEpoch === right.detailEpoch &&
+    left.dialogGeneration === right.dialogGeneration &&
+    left.operationId === right.operationId &&
+    left.procurementId === right.procurementId &&
+    left.expectedVersionId === right.expectedVersionId &&
+    left.expectedApprovalInstanceId ===
+      right.expectedApprovalInstanceId &&
+    left.expectedNodeIndex === right.expectedNodeIndex
+  );
+}
+
+function preparedWithdrawalIsCurrent(
+  context: SpotProcurementWithdrawalActionContext,
+  result: PrepareSpotProcurementWithdrawalActionResult
+) {
+  return (
+    result.status === "ready" &&
+    sameWithdrawalContext(context, result.context) &&
+    withdrawalContextIsCurrent(context)
+  );
+}
+
+function completeWithdrawal(
+  context: SpotProcurementWithdrawalActionContext
+) {
+  if (!withdrawalContextIsCurrent(context)) return;
+  confirmation.visible = false;
+  confirmation.error = "";
+  showSuccess(
+    "采购审批已撤回，并已生成新的可修改采购草稿。"
+  );
+  return loadDetail();
+}
+
+function failWithdrawal(
+  context: SpotProcurementWithdrawalActionContext,
+  error: unknown
+) {
+  if (!withdrawalContextIsCurrent(context)) return;
+  confirmation.error =
+    error instanceof Error ? error.message : "采购审批撤回失败";
+}
+
+function finishWithdrawal(
+  context: SpotProcurementWithdrawalActionContext
+) {
+  if (withdrawalBusyOwnerId !== context.operationId) return;
+  withdrawalBusyOwnerId = 0;
+  actionBusy.value = false;
+}
+
+function confirmWithdrawal() {
+  return executeSpotProcurementWithdrawalAction({
+    action: "withdraw",
+    capture: captureWithdrawalContext,
+    preflight: (context) =>
+      prepareSpotProcurementWithdrawalAction({
+        ...context,
+        isCurrent: withdrawalContextIsCurrent
+      }),
+    current: preparedWithdrawalIsCurrent,
+    complete: completeWithdrawal,
+    fail: failWithdrawal,
+    finish: finishWithdrawal
+  });
 }
 
 async function confirmAction(values: { reason: string; password: string }) {
   const current = detail.value;
-  if (!current) return;
+  if (
+    !current ||
+    !confirmation.procurementId ||
+    current.procurement.id !== confirmation.procurementId
+  ) {
+    confirmation.visible = false;
+    showError(new Error("采购记录已切换，本次确认未执行"), "操作失败");
+    return;
+  }
   actionBusy.value = true;
   try {
-    if (confirmation.kind === "review_approve") {
-      await reviewSpotProcurement(current.procurement.id, { decision: "approve" });
-      showSuccess("采购审批已通过。");
-    } else if (confirmation.kind === "review_reject") {
-      await reviewSpotProcurement(current.procurement.id, { decision: "reject", comment: values.reason });
-      showSuccess("采购申请已驳回。");
-    } else if (confirmation.kind === "review_return") {
-      await reviewSpotProcurement(current.procurement.id, { decision: "return_to_applicant", comment: values.reason });
-      showSuccess("采购申请已退回，并已生成新的修改草稿。");
-    } else if (confirmation.kind === "withdraw") {
-      await withdrawSpotProcurement(current.procurement.id);
-      showSuccess("采购审批已撤回。");
-    } else if (confirmation.kind === "void") {
-      await voidSpotProcurement(current.procurement.id, { reason: values.reason });
+    if (confirmation.kind === "void") {
+      await voidSpotProcurementWithCapability(current.procurement.id, {
+        reason: values.reason
+      });
       showSuccess("零星采购已撤销。");
     } else {
-      await downloadApprovalForm(current.applicationPdf.businessType, current.applicationPdf.businessId, {
-        confirmationPassword: values.password,
-        downloadReason: values.reason
-      });
+      await downloadSpotProcurementApprovalFormWithCapability(
+        current.procurement.id,
+        current.applicationPdf.businessType,
+        current.applicationPdf.businessId,
+        {
+          confirmationPassword: values.password,
+          downloadReason: values.reason
+        }
+      );
       showSuccess("采购审批单已开始下载。");
     }
     confirmation.visible = false;
@@ -430,10 +1202,355 @@ async function confirmAction(values: { reason: string; password: string }) {
   }
 }
 
+async function updateSpotProcurementDraftWithCapability(
+  procurementId: string,
+  body: Parameters<typeof updateSpotProcurementDraft>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购草稿不可编辑");
+  return updateSpotProcurementDraft(procurementId, body);
+}
+
+async function createSpotProcurementVersionWithCapability(
+  procurementId: string,
+  body: Parameters<typeof createSpotProcurementVersion>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "create_version" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可创建新版本");
+  return createSpotProcurementVersion(procurementId, body);
+}
+
+async function abandonSpotProcurementDraftWithCapability(
+  procurementId: string,
+  body: Parameters<typeof abandonSpotProcurementDraft>[1]
+) {
+  return body.action === "delete_pristine_draft"
+    ? deletePristineSpotProcurementDraftWithCapability(procurementId, body)
+    : abandonSpotProcurementApplicationWithCapability(procurementId, body);
+}
+
+async function deletePristineSpotProcurementDraftWithCapability(
+  procurementId: string,
+  body: Parameters<typeof abandonSpotProcurementDraft>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "delete_pristine_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不是可删除的纯净草稿");
+  return abandonSpotProcurementDraft(procurementId, {
+    action: "delete_pristine_draft",
+    reason: body.reason
+  });
+}
+
+async function abandonSpotProcurementApplicationWithCapability(
+  procurementId: string,
+  body: Parameters<typeof abandonSpotProcurementDraft>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "abandon_application" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购申请不可放弃");
+  return abandonSpotProcurementDraft(procurementId, {
+    action: "abandon_application",
+    reason: body.reason
+  });
+}
+
+async function recreateSpotProcurementPaymentDraftWithCapability(
+  procurementId: string
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "create_payment_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可重新创建付款草稿");
+  return recreateSpotProcurementPaymentDraft(procurementId);
+}
+
+async function voidSpotProcurementWithCapability(
+  procurementId: string,
+  body: Parameters<typeof voidSpotProcurement>[1]
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "void_procurement" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购不可作废");
+  return voidSpotProcurement(procurementId, body);
+}
+
+async function downloadSpotProcurementApprovalFormWithCapability(
+  procurementId: string,
+  businessType: string,
+  businessId: string,
+  body: { confirmationPassword: string; downloadReason: string }
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "download_application_pdf" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购审批单不可下载");
+  return downloadApprovalForm(businessType, businessId, body);
+}
+
+async function uploadSpotProcurementDraftFileWithCapability(
+  procurementId: string,
+  file: File
+) {
+  const capability = await fetchSpotProcurementDetail(procurementId);
+  const matchesRequestedProcurement = capability.procurement.id === procurementId;
+  if (!matchesRequestedProcurement) {
+    throw new Error("零星采购坐标已变化，请刷新详情后重试");
+  }
+  const operationAllowed = capability.availableActions.some(
+    (action) => action.key === "edit_draft" && action.enabled
+  );
+  if (!operationAllowed) throw new Error("当前零星采购草稿不可上传附件");
+  return uploadSpotProcurementDraftFile(
+    procurementId,
+    file,
+    file.name
+  );
+}
+
+function openAbnormalTerminationRequest() {
+  const current = detail.value;
+  const action = spotProcurementCapability.value?.availableActions.find(
+    (item) => item.key === "request_abnormal_termination"
+  );
+  if (
+    !current ||
+    current.procurement.id !== spotProcurementCapability.value?.procurement.id ||
+    !action?.enabled
+  ) {
+    return;
+  }
+  abnormalTerminationRequestProcurementId.value = current.procurement.id;
+  abnormalTerminationRequestError.value = "";
+  abnormalTerminationRequestVisible.value = true;
+}
+
+function openAbnormalTerminationConfirm() {
+  const current = detail.value;
+  const action = spotProcurementCapability.value?.availableActions.find(
+    (item) => item.key === "confirm_abnormal_termination"
+  );
+  if (
+    !current ||
+    current.procurement.id !== spotProcurementCapability.value?.procurement.id ||
+    !action?.enabled
+  ) {
+    return;
+  }
+  abnormalTerminationConfirmProcurementId.value = current.procurement.id;
+  abnormalTerminationConfirmError.value = "";
+  abnormalTerminationConfirmVisible.value = true;
+}
+
+function captureAbnormalTerminationContext(
+  procurementIdValue: string
+): AbnormalTerminationActionContext {
+  return {
+    procurementId: procurementIdValue,
+    routeGeneration: detailRouteGeneration
+  };
+}
+
+function abnormalTerminationContextIsCurrent(
+  context: AbnormalTerminationActionContext,
+  selectedProcurementId: string
+) {
+  return Boolean(context.procurementId) &&
+    context.procurementId === procurementId.value &&
+    context.procurementId === selectedProcurementId &&
+    context.routeGeneration === detailRouteGeneration;
+}
+
+function requireCurrentAbnormalTerminationRequestProcurementId(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationRequestProcurementId.value
+    )
+  ) {
+    throw new Error("异常终止操作上下文已失效，请重新打开发起确认");
+  }
+  return context.procurementId;
+}
+
+function requireCurrentAbnormalTerminationConfirmProcurementId(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationConfirmProcurementId.value
+    )
+  ) {
+    throw new Error("异常终止操作上下文已失效，请重新打开终止确认");
+  }
+  return context.procurementId;
+}
+
+function completeAbnormalTerminationRequest(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationRequestProcurementId.value
+    )
+  ) {
+    return;
+  }
+  abnormalTerminationRequestVisible.value = false;
+  showSuccess("异常终止已发起，等待确认。");
+  return loadDetail();
+}
+
+function failAbnormalTerminationRequest(
+  error: unknown,
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationRequestProcurementId.value
+    )
+  ) {
+    return;
+  }
+  abnormalTerminationRequestError.value =
+    error instanceof Error ? error.message : "异常终止发起失败";
+}
+
+function completeAbnormalTerminationConfirm(
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationConfirmProcurementId.value
+    )
+  ) {
+    return;
+  }
+  abnormalTerminationConfirmVisible.value = false;
+  showSuccess("零星采购已异常终止，历史事实继续保留。");
+  return loadDetail();
+}
+
+function failAbnormalTerminationConfirm(
+  error: unknown,
+  context: AbnormalTerminationActionContext
+) {
+  if (
+    !abnormalTerminationContextIsCurrent(
+      context,
+      abnormalTerminationConfirmProcurementId.value
+    )
+  ) {
+    return;
+  }
+  abnormalTerminationConfirmError.value =
+    error instanceof Error ? error.message : "异常终止确认失败";
+}
+
+function finishAbnormalTerminationAction(
+  context: AbnormalTerminationActionContext,
+  selectedProcurementId: string
+) {
+  if (!abnormalTerminationContextIsCurrent(context, selectedProcurementId)) {
+    return;
+  }
+  actionBusy.value = false;
+}
+
+function requestAbnormalTerminationAction(values: { reason: string }) {
+  const context = captureAbnormalTerminationContext(
+    abnormalTerminationRequestProcurementId.value
+  );
+  const request = requestSpotProcurementAbnormalTermination(
+    requireCurrentAbnormalTerminationRequestProcurementId(context),
+    { reason: values.reason }
+  );
+  actionBusy.value = true;
+  abnormalTerminationRequestError.value = "";
+  return request
+    .then(() => completeAbnormalTerminationRequest(context))
+    .catch((error) => failAbnormalTerminationRequest(error, context))
+    .finally(() =>
+      finishAbnormalTerminationAction(
+        context,
+        abnormalTerminationRequestProcurementId.value
+      )
+    );
+}
+
+function confirmAbnormalTerminationAction() {
+  const context = captureAbnormalTerminationContext(
+    abnormalTerminationConfirmProcurementId.value
+  );
+  const request = confirmSpotProcurementAbnormalTermination(
+    requireCurrentAbnormalTerminationConfirmProcurementId(context)
+  );
+  actionBusy.value = true;
+  abnormalTerminationConfirmError.value = "";
+  return request
+    .then(() => completeAbnormalTerminationConfirm(context))
+    .catch((error) => failAbnormalTerminationConfirm(error, context))
+    .finally(() =>
+      finishAbnormalTerminationAction(
+        context,
+        abnormalTerminationConfirmProcurementId.value
+      )
+    );
+}
+
 function runPrimaryAction() {
   const key = primaryAction.value?.key;
   if (key === "submit_approval") void runSubmit();
   else if (key === "review_approval") openConfirmation("review_approve");
+  else if (key === "withdraw_approval") openConfirmation("withdraw");
   else if (key === "create_version") openEdit("version");
   else if (key === "create_payment_draft") void recreatePaymentDraft();
 }
@@ -471,8 +1588,42 @@ function selectedUploadFiles(files: UploadFile[]) {
   return files.flatMap((file) => (file.raw instanceof File ? [file.raw] : []));
 }
 
-watch(procurementId, () => void loadDetail());
+function clearDetailRouteContext() {
+  detailRouteGeneration += 1;
+  detailLoadRequestId += 1;
+  submitOperationId += 1;
+  detailEpoch += 1;
+  invalidateReviewDialog(true);
+  invalidateWithdrawalDialog(true);
+  reviewBusyOwnerId = 0;
+  withdrawalBusyOwnerId = 0;
+  spotProcurementCapability.value = null;
+  detail.value = null;
+  loading.value = false;
+  actionBusy.value = false;
+  loadError.value = "";
+  actionMessage.value = "";
+  confirmation.visible = false;
+  confirmation.procurementId = "";
+  confirmation.error = "";
+  abnormalTerminationRequestVisible.value = false;
+  abnormalTerminationRequestError.value = "";
+  abnormalTerminationRequestProcurementId.value = "";
+  abnormalTerminationConfirmVisible.value = false;
+  abnormalTerminationConfirmError.value = "";
+  abnormalTerminationConfirmProcurementId.value = "";
+}
+
+watch(procurementId, () => {
+  clearDetailRouteContext();
+  void loadDetail();
+});
 onMounted(() => void loadDetail());
+onBeforeUnmount(() => {
+  reviewComponentActive = false;
+  withdrawalComponentActive = false;
+  clearDetailRouteContext();
+});
 </script>
 
 <template>
@@ -644,14 +1795,14 @@ onMounted(() => void loadDetail());
             {{ actionLabel("edit_draft") }}
           </t-button>
           <t-button
-            v-if="actionEnabled('submit_approval')"
+            v-if="submitApprovalAction?.enabled"
             theme="primary"
             :loading="actionBusy"
             @click="runSubmit"
           >
-            {{ actionLabel("submit_approval") }}
+            {{ submitApprovalAction.label }}
           </t-button>
-          <template v-if="actionEnabled('review_approval')">
+          <template v-if="reviewApprovalActionEnabled('review_approval')">
             <t-button
               theme="primary"
               @click="openConfirmation('review_approve')"
@@ -673,7 +1824,7 @@ onMounted(() => void loadDetail());
             </t-button>
           </template>
           <t-button
-            v-if="actionEnabled('withdraw_approval')"
+            v-if="withdrawalApprovalEnabled && primaryAction?.key !== 'withdraw_approval'"
             variant="outline"
             @click="openConfirmation('withdraw')"
           >
@@ -700,6 +1851,21 @@ onMounted(() => void loadDetail());
             @click="openConfirmation('void')"
           >
             {{ actionLabel("void_procurement") }}
+          </t-button>
+          <t-button
+            v-if="actionEnabled('request_abnormal_termination')"
+            theme="danger"
+            variant="outline"
+            @click="openAbnormalTerminationRequest"
+          >
+            {{ actionLabel("request_abnormal_termination") }}
+          </t-button>
+          <t-button
+            v-if="actionEnabled('confirm_abnormal_termination')"
+            theme="danger"
+            @click="openAbnormalTerminationConfirm"
+          >
+            {{ actionLabel("confirm_abnormal_termination") }}
           </t-button>
         </div>
         <section><h3>采购审批历程</h3><ApprovalTimeline :items="detail.approvalTimeline" /></section>
@@ -874,6 +2040,7 @@ onMounted(() => void loadDetail());
     </t-dialog>
 
     <SensitiveActionDialog
+      v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_approve'"
       v-model="confirmation.visible"
       :title="confirmation.title"
       :description="confirmation.description"
@@ -883,7 +2050,91 @@ onMounted(() => void loadDetail());
       :require-password="confirmation.requirePassword"
       :reason-label="confirmation.reasonLabel"
       :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmReviewApprove"
+    />
+    <SensitiveActionDialog
+      v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_reject'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmReviewReject"
+    />
+    <SensitiveActionDialog
+      v-if="reviewApprovalActionEnabled('review_approval') && confirmation.kind === 'review_return'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmReviewReturn"
+    />
+    <SensitiveActionDialog
+      v-if="withdrawalApprovalActionEnabled('withdraw_approval') && confirmation.kind === 'withdraw'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
+      @confirm="confirmWithdrawal"
+    />
+    <SensitiveActionDialog
+      v-if="confirmation.kind !== 'review_approve' && confirmation.kind !== 'review_reject' && confirmation.kind !== 'review_return' && confirmation.kind !== 'withdraw'"
+      v-model="confirmation.visible"
+      :title="confirmation.title"
+      :description="confirmation.description"
+      :confirm-text="confirmation.confirmText"
+      :confirm-theme="confirmation.confirmTheme"
+      :require-reason="confirmation.requireReason"
+      :require-password="confirmation.requirePassword"
+      :reason-label="confirmation.reasonLabel"
+      :loading="actionBusy"
+      :error="confirmation.error"
       @confirm="confirmAction"
+    />
+    <SensitiveActionDialog
+      v-if="abnormalTerminationRequestAction?.enabled"
+      v-model="abnormalTerminationRequestVisible"
+      title="发起异常终止"
+      description="仅在采购已发生实际付款但无法继续履约时使用。提交后等待财务主管确认，所有付款、收货与审计事实继续保留。"
+      confirm-text="确认发起"
+      confirm-theme="danger"
+      :require-reason="true"
+      :require-password="false"
+      reason-label="异常终止原因"
+      :loading="actionBusy"
+      :error="abnormalTerminationRequestError"
+      @confirm="requestAbnormalTerminationAction"
+    />
+    <SensitiveActionDialog
+      v-if="abnormalTerminationConfirmAction?.enabled"
+      v-model="abnormalTerminationConfirmVisible"
+      title="确认异常终止"
+      :description="abnormalTerminationConfirmDescription"
+      confirm-text="确认终止"
+      confirm-theme="danger"
+      :require-reason="false"
+      :require-password="false"
+      :loading="actionBusy"
+      :error="abnormalTerminationConfirmError"
+      @confirm="confirmAbnormalTerminationAction"
     />
   </section>
 </template>

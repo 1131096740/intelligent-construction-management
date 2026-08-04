@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health}"
+LIVENESS_URL="${LIVENESS_URL:-${HEALTH_URL:-http://127.0.0.1:3000/health}}"
+READINESS_URL="${READINESS_URL:-http://127.0.0.1:3000/health/readiness}"
 SERVICE_NAME="${SERVICE_NAME:-jiangkong-api}"
 DISK_PATH="${DISK_PATH:-/}"
 DISK_MAX_USED_PERCENT="${DISK_MAX_USED_PERCENT:-85}"
@@ -9,8 +10,12 @@ LOG_SINCE="${LOG_SINCE:-15 minutes ago}"
 
 failures=()
 
-if ! curl -fsS "$HEALTH_URL" >/dev/null; then
-  failures+=("health check failed: $HEALTH_URL")
+if ! curl -fsS "$LIVENESS_URL" >/dev/null; then
+  failures+=("liveness check failed: $LIVENESS_URL")
+fi
+
+if ! curl -fsS "$READINESS_URL" >/dev/null; then
+  failures+=("readiness check failed: $READINESS_URL")
 fi
 
 if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet "$SERVICE_NAME"; then

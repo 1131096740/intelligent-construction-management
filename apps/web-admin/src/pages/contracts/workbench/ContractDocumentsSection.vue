@@ -30,15 +30,6 @@
           </button>
         </div>
       </label>
-      <label class="field">
-        <span class="field-label">下载确认密码</span>
-        <t-input
-          v-model="confirmationPassword"
-          type="password"
-          :disabled="busy"
-          placeholder="用于下载合同文档或预览文件"
-        />
-      </label>
       <t-button
         theme="primary"
         :disabled="disabled || busy || !layoutTemplateVersionId"
@@ -199,6 +190,38 @@
       @changed="onNegotiationChanged"
     />
 
+    <t-dialog
+      v-if="contractDocumentDownloadAction && contractDocumentDownloadAction.enabled"
+      v-model:visible="downloadDialogVisible"
+      header="下载合同文件"
+      :confirm-btn="downloadConfirmButtonProps"
+      cancel-btn="取消"
+      :close-on-overlay-click="false"
+      @confirm="confirmContractDocumentDownload"
+      @close="closeContractDocumentDownload"
+    >
+      <div class="download-dialog-body">
+        <label class="field">
+          <span class="field-label">当前登录密码</span>
+          <t-input
+            v-model="confirmationPassword"
+            type="password"
+            autocomplete="current-password"
+            :disabled="busy"
+            placeholder="请输入当前登录密码"
+          />
+        </label>
+        <label class="field">
+          <span class="field-label">下载原因</span>
+          <t-input
+            v-model="downloadReason"
+            :disabled="busy"
+            placeholder="请填写下载原因，便于留痕审计"
+          />
+        </label>
+      </div>
+    </t-dialog>
+
     <p
       v-if="message"
       class="message"
@@ -210,16 +233,18 @@
 
 <script setup lang="ts">
 import type { ContractWorkbenchReadModel } from "@jiangkong/shared-domain";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import {
+  fetchContractDraftOperationCapabilities,
   listContractDocuments,
   listPublishedLayoutTemplates,
   queueContractDocument,
-  retryContractDocument
+  retryContractDocument,
+  uploadContractWorkbenchPrivateFile
 } from "../../../api/contract-workbench.api";
 import {
   createPrivateFileDownloadTicket,
-  uploadPrivateFile,
+  getPrivateFileDownloadTicketCapability,
   type PrivateFileReadModel
 } from "../../../api/core-flow-read.api";
 import {
@@ -232,7 +257,61 @@ import type {
   ContractOfflineRevisionReadModel
 } from "../../../api/contract-negotiation.api";
 import ContractNegotiationSection from "./ContractNegotiationSection.vue";
-import { promptSensitiveActionReason } from "../../confirm-sensitive-action";
+
+async function queueContractDocumentWithCapability(
+  contractVersionId: string,
+  body: Parameters<typeof queueContractDocument>[1]
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同文档能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "queue_contract_document"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能生成合同文档");
+  }
+  return queueContractDocument(contractVersionId, body);
+}
+
+async function uploadContractDocumentFileWithCapability(
+  contractVersionId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同文档能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "upload_contract_workbench_private_file"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能上传合同文档附件");
+  }
+  return uploadContractWorkbenchPrivateFile(contractVersionId, file, fileName);
+}
+
+async function retryContractDocumentWithCapability(
+  contractVersionId: string,
+  documentId: string
+) {
+  const capability = await fetchContractDraftOperationCapabilities(contractVersionId);
+  const matchesRequestedVersion = capability.version.id === contractVersionId;
+  if (!matchesRequestedVersion) {
+    throw new Error("合同文档能力响应版本不一致");
+  }
+  const operationAllowed = capability.draftOperationAvailableActions.includes(
+    "retry_contract_document"
+  );
+  if (!operationAllowed) {
+    throw new Error("当前用户不能重试合同文档生成");
+  }
+  return retryContractDocument(documentId);
+}
 
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
@@ -266,11 +345,20 @@ const layoutOptions = ref<Array<{ label: string; value: string }>>([]);
 const layoutTemplateVersionId = ref("");
 const purpose = ref("draft");
 const confirmationPassword = ref("");
+const downloadReason = ref("");
+const downloadDialogVisible = ref(false);
+const downloadFileId = ref("");
+const contractDocumentDownloadAction = shallowRef<{
+  key: "create_private_file_download_ticket";
+  enabled: boolean;
+} | null>(null);
 const rawDocuments = ref<WorkbenchDocument[]>([]);
 const attachments = ref<PrivateFileReadModel[]>([]);
 const busy = ref(false);
 const message = ref("");
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let downloadCapabilityRequestId = 0;
+let downloadTicketPromise: Promise<void> | null = null;
 
 const versionId = computed(() => props.workbench?.version.id ?? "");
 const currentRevision = computed(() => props.workbench?.version.draftRevision ?? 0);
@@ -280,6 +368,15 @@ const documents = computed(() =>
 const hasActiveDocument = computed(() =>
   documents.value.some((document) => ["queued", "processing"].includes(document.status))
 );
+const downloadConfirmButtonProps = computed(() => ({
+  content: "确认下载",
+  loading: busy.value,
+  disabled:
+    !downloadFileId.value ||
+    !confirmationPassword.value.trim() ||
+    !downloadReason.value.trim() ||
+    contractDocumentDownloadAction.value?.enabled !== true
+}));
 const selectedLayout = computed(
   () =>
     layoutRecords.value.find(
@@ -382,7 +479,7 @@ async function queueDocument() {
         : props.workbench;
       if (!current) throw new Error("合同草稿未保存，本次未生成文档");
       prepared = true;
-      await queueContractDocument(current.version.id, {
+      await queueContractDocumentWithCapability(current.version.id, {
         layoutTemplateVersionId: layoutTemplateVersionId.value,
         purpose: purpose.value,
         attachmentFileIds: attachments.value.map((file) => file.id)
@@ -401,7 +498,7 @@ async function uploadAttachments(event: Event) {
   try {
     const uploaded = [];
     for (const file of files) {
-      uploaded.push(await uploadPrivateFile(file, file.name));
+      uploaded.push(await uploadContractDocumentFileWithCapability(versionId.value, file, file.name));
     }
     const byId = new Map([...attachments.value, ...uploaded].map((file) => [file.id, file]));
     attachments.value = [...byId.values()];
@@ -425,7 +522,11 @@ async function uploadIdentityAttachment(
   message.value = "";
   try {
     const label = identityAttachmentLabels[side];
-    const uploaded = await uploadPrivateFile(file, `${label} - ${file.name}`);
+    const uploaded = await uploadContractDocumentFileWithCapability(
+      versionId.value,
+      file,
+      `${label} - ${file.name}`
+    );
     const byId = new Map([...attachments.value, uploaded].map((item) => [item.id, item]));
     attachments.value = [...byId.values()];
     message.value = `${label}已加入生成输入`;
@@ -442,32 +543,72 @@ function removeAttachment(fileId: string) {
 }
 
 async function retryDocument(documentId: string) {
-  await run(() => retryContractDocument(documentId), "已重新加入队列");
+  await run(
+    () => retryContractDocumentWithCapability(versionId.value, documentId),
+    "已重新加入队列"
+  );
 }
 
 async function openFile(fileId: string) {
-  if (!confirmationPassword.value) {
-    message.value = "请输入下载确认密码";
-    return;
-  }
-  busy.value = true;
+  const capabilityRequestId = ++downloadCapabilityRequestId;
+  contractDocumentDownloadAction.value = null;
   message.value = "";
   try {
-    const downloadReason = promptSensitiveActionReason("请输入本次下载原因");
-    if (!downloadReason) {
-      message.value = "请填写下载原因";
+    const capability = await getPrivateFileDownloadTicketCapability(fileId);
+    if (capabilityRequestId !== downloadCapabilityRequestId) {
       return;
     }
-    const ticket = await createPrivateFileDownloadTicket(fileId, {
-      confirmationPassword: confirmationPassword.value,
-      downloadReason
-    });
-    window.open(ticket.downloadUrl, "_blank", "noopener,noreferrer");
+    contractDocumentDownloadAction.value = capability.action;
+    const matchesRequestedAction =
+      contractDocumentDownloadAction.value.key ===
+      "create_private_file_download_ticket";
+    if (!matchesRequestedAction) {
+      throw new Error("合同文件下载能力响应不一致");
+    }
+    if (!contractDocumentDownloadAction.value.enabled) {
+      throw new Error("当前用户不能下载该合同文件");
+    }
+    downloadFileId.value = fileId;
+    confirmationPassword.value = "";
+    downloadReason.value = "";
+    downloadDialogVisible.value = true;
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "下载票据创建失败";
-  } finally {
-    busy.value = false;
+    if (capabilityRequestId === downloadCapabilityRequestId) {
+      message.value = error instanceof Error ? error.message : "下载能力读取失败";
+    }
   }
+}
+
+function confirmContractDocumentDownload() {
+  if (downloadTicketPromise) return downloadTicketPromise;
+  busy.value = true;
+  message.value = "";
+  const request = createPrivateFileDownloadTicket(downloadFileId.value, {
+    confirmationPassword: confirmationPassword.value,
+    downloadReason: downloadReason.value
+  });
+  downloadTicketPromise = request
+    .then((ticket) => {
+      window.open(ticket.downloadUrl, "_blank", "noopener,noreferrer");
+      closeContractDocumentDownload();
+    })
+    .catch((error: unknown) => {
+      message.value = error instanceof Error ? error.message : "下载票据创建失败";
+    })
+    .finally(() => {
+      busy.value = false;
+      downloadTicketPromise = null;
+    });
+  return downloadTicketPromise;
+}
+
+function closeContractDocumentDownload() {
+  downloadCapabilityRequestId += 1;
+  downloadDialogVisible.value = false;
+  downloadFileId.value = "";
+  confirmationPassword.value = "";
+  downloadReason.value = "";
+  contractDocumentDownloadAction.value = null;
 }
 
 function purposeLabel(value: string) {
@@ -645,6 +786,11 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
   color: #767f8d;
   font-size: 12px;
   font-weight: 600;
+}
+
+.download-dialog-body {
+  display: grid;
+  gap: 12px;
 }
 
 .empty,

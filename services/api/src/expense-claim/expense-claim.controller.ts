@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { FileService } from "../file/file.service";
+import { type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
@@ -14,7 +17,10 @@ import { ExpenseClaimService } from "./expense-claim.service";
 
 @Controller("expense-claims")
 export class ExpenseClaimController {
-  constructor(private readonly claims: ExpenseClaimService) {}
+  constructor(
+    private readonly claims: ExpenseClaimService,
+    @Optional() private readonly files?: FileService
+  ) {}
 
   @Post()
   @RequireProjectRole("expense_claim.create")
@@ -36,6 +42,142 @@ export class ExpenseClaimController {
   @Get(":claimId")
   detail(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.getMine(claimId, user.id);
+  }
+
+  @Get(":claimId/capability")
+  actionCapability(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.claims.getActionCapability(claimId, user.id);
+  }
+
+  @Get(":claimId/repayments/:repaymentId/capability")
+  repaymentActionCapability(
+    @Param("claimId") claimId: string,
+    @Param("repaymentId") repaymentId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.claims.getRepaymentActionCapability(
+      claimId,
+      repaymentId,
+      user.id
+    );
+  }
+
+  @Post(":claimId/draft-attachment-file-uploads")
+  @RequireProjectRole("expense_claim.create")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadDraftAttachmentFile(
+    @Param("claimId") claimId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      claimId,
+      user.id,
+      "attach_expense_claim_attachment",
+      file,
+      idempotencyKey,
+      "费用草稿附件"
+    );
+  }
+
+  @Post(":claimId/append-attachment-file-uploads")
+  @RequireProjectRole("expense_claim.attachment.append")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadAppendAttachmentFile(
+    @Param("claimId") claimId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      claimId,
+      user.id,
+      "append_expense_claim_attachment",
+      file,
+      idempotencyKey,
+      "费用追加资料"
+    );
+  }
+
+  @Post(":claimId/payment-voucher-file-uploads")
+  @RequireProjectRole("expense_claim.payment.execute")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadPaymentVoucherFile(
+    @Param("claimId") claimId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      claimId,
+      user.id,
+      "record_expense_claim_payment",
+      file,
+      idempotencyKey,
+      "费用付款凭证"
+    );
+  }
+
+  @Post(":claimId/disbursement-voucher-file-uploads")
+  @RequireProjectRole("expense_claim.disburse")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadDisbursementVoucherFile(
+    @Param("claimId") claimId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      claimId,
+      user.id,
+      "record_expense_claim_loan_disbursement",
+      file,
+      idempotencyKey,
+      "借款放款凭证"
+    );
+  }
+
+  @Post(":claimId/repayment-voucher-file-uploads")
+  @RequireProjectRole("expense_claim.repayment.record")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
+    })
+  )
+  uploadRepaymentVoucherFile(
+    @Param("claimId") claimId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    return this.uploadPrivateFile(
+      claimId,
+      user.id,
+      "record_expense_claim_loan_repayment",
+      file,
+      idempotencyKey,
+      "员工还款凭证"
+    );
   }
 
   @Post(":claimId/payment-subject")
@@ -143,5 +285,28 @@ export class ExpenseClaimController {
   @RequireProjectRole("expense_claim.repayment.reverse")
   reverseRepayment(@Param("claimId") claimId: string, @Param("repaymentId") repaymentId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ReverseEmployeeLoanRepaymentDto) {
     return this.claims.reverseEmployeeLoanRepayment(claimId, repaymentId, user.id, body);
+  }
+
+  private async uploadPrivateFile(
+    claimId: string,
+    actorUserId: string,
+    action: string,
+    file: MemoryUploadedFile | undefined,
+    idempotencyKey: string | undefined,
+    label: string
+  ) {
+    await this.claims.assertActionAvailable(claimId, actorUserId, action);
+    if (!file) throw new BadRequestException(`请选择要上传的${label}`);
+    if (!this.files) {
+      throw new BadRequestException("费用申请文件服务暂不可用，请稍后重试");
+    }
+    return this.files.uploadPrivateFile({
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      uploadedByUserId: actorUserId,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 }

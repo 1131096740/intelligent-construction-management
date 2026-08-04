@@ -10,6 +10,7 @@ import {
 import { type FileObject, Prisma } from "@prisma/client";
 import {
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  canUseCurrentContractApprovalForm,
   type RoleKey
 } from "@jiangkong/shared-domain";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -32,6 +33,7 @@ export interface UploadPrivateFileInput {
   sizeBytes: number;
   uploadedByUserId: string;
   buffer: Buffer;
+  idempotencyKey?: string;
   approvalFormGenerationClaim?: {
     approvalInstanceId: string;
     claimToken: string;
@@ -67,6 +69,14 @@ export interface LinkFileReplacementInput {
 export interface InternalFileBuffer {
   file: FileObject;
   buffer: Buffer;
+}
+
+export interface ApprovalFormArchiveAnchorInput {
+  pdfDocumentId: string;
+  fileId: string;
+  businessType: string;
+  businessId: string;
+  approvalInstanceId: string | null;
 }
 
 type LockedFileReplacementRow = Pick<
@@ -147,6 +157,10 @@ const ALLOWED_EXTENSIONS = new Set([
   ".jpeg"
 ]);
 const INVALID_PRIVATE_FILE_PATH_MESSAGE = "私有文件路径无效，系统已阻止本次文件读取。";
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE =
+  "该文件上传请求已用于其他内容，请重新发起登记";
 
 class InvalidPrivateFilePathError extends Error {
   constructor() {
@@ -684,23 +698,95 @@ export class FileService {
       throw new Error("文件格式不支持，请上传 PDF、Word、Excel 或图片资料");
     }
 
+    const idempotencyKey = input.idempotencyKey;
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== "string" ||
+        !UUID_V4_PATTERN.test(idempotencyKey))
+    ) {
+      throw new BadRequestException("文件上传幂等键无效，请重新发起上传");
+    }
+    if (
+      idempotencyKey &&
+      (input.approvalFormGenerationClaim ||
+        input.settlementSignedDocumentGenerationClaim)
+    ) {
+      throw new BadRequestException(
+        "文件上传幂等键不能用于系统生成文件，请重新发起上传"
+      );
+    }
+
     const settlementClaimToken = input.settlementSignedDocumentGenerationClaim?.claimToken;
-    if (settlementClaimToken && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(settlementClaimToken)) {
+    if (settlementClaimToken && !UUID_V4_PATTERN.test(settlementClaimToken)) {
       throw new BadRequestException("结算签名合成任务令牌无效，请重新发起生成");
     }
+    const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
     const objectKey = settlementClaimToken
       ? `uploads/settlement-signed-generation/${settlementClaimToken}.pdf`
-      : `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
-    const fileId = randomUUID();
-    const contentSha256 = createHash("sha256").update(input.buffer).digest("hex");
-    await this.storage.write(objectKey, input.buffer);
+      : idempotencyKey
+        ? `uploads/idempotent/${idempotencyKey}/${randomUUID()}-${contentSha256}-${this.safeFileName(input.originalName)}`
+        : `uploads/${randomUUID()}-${this.safeFileName(input.originalName)}`;
+    const fileId = idempotencyKey ?? randomUUID();
+    const bucket = this.storage.bucketName();
+    const attemptOwnsObjectKey = !settlementClaimToken;
+    const matchesExpectedUploadFingerprint = (file: FileObject) =>
+      file.id === fileId &&
+      file.bucket === bucket &&
+      file.originalName === input.originalName &&
+      file.mimeType === input.mimeType &&
+      file.sizeBytes === input.sizeBytes &&
+      file.uploadedByUserId === input.uploadedByUserId &&
+      file.contentSha256 === contentSha256 &&
+      file.storageStatus === "active" &&
+      file.supersedesFileObjectId === null;
 
+    if (idempotencyKey) {
+      const existing = await this.prisma.fileObject.findUnique({
+        where: { id: fileId }
+      });
+      if (existing) {
+        if (matchesExpectedUploadFingerprint(existing)) return existing;
+        throw new ConflictException(UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE);
+      }
+    }
+
+    const cleanupWrittenObject = async (
+      sourceError: unknown,
+      sourceStage = "database_transaction"
+    ) => {
+      try {
+        await this.storage.delete(objectKey);
+      } catch (cleanupError) {
+        this.logger.error({
+          event: "private_file_registration_cleanup_failed",
+          objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
+          transactionError: safeErrorSummary(
+            sourceError,
+            sourceStage
+          ),
+          cleanupError: safeErrorSummary(cleanupError, "orphan_cleanup")
+        });
+        throw new InternalServerErrorException(
+          "文件登记失败且存储清理未完成"
+        );
+      }
+    };
+    try {
+      await this.storage.write(objectKey, input.buffer);
+    } catch (storageError) {
+      if (attemptOwnsObjectKey) {
+        await cleanupWrittenObject(storageError, "storage_write");
+      }
+      throw storageError;
+    }
+
+    let transactionCallbackCompleted = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
         const file = await tx.fileObject.create({
           data: {
             id: fileId,
-            bucket: this.storage.bucketName(),
+            bucket,
             objectKey,
             originalName: input.originalName,
             mimeType: input.mimeType,
@@ -760,18 +846,29 @@ export class FileService {
           }
         }
 
+        transactionCallbackCompleted = true;
         return file;
       });
     } catch (transactionError) {
       let committedFile: FileObject | null;
       try {
         committedFile = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
-        if (committedFile) {
-          const fileMatches =
-            committedFile.objectKey === objectKey &&
-            committedFile.contentSha256 === contentSha256 &&
-            committedFile.uploadedByUserId === input.uploadedByUserId &&
-            committedFile.storageStatus === "active";
+      } catch (verificationError) {
+        this.logger.error({
+          event: "private_file_registration_verification_failed",
+          fileId,
+          objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
+          transactionError: safeErrorSummary(transactionError, "database_transaction"),
+          verificationError: safeErrorSummary(verificationError, "commit_verification")
+        });
+        if (!transactionCallbackCompleted) {
+          await cleanupWrittenObject(transactionError);
+        }
+        throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+      }
+      if (committedFile) {
+        let claimMatches = true;
+        try {
           const [approvalClaim, settlementClaim] = await Promise.all([
             input.approvalFormGenerationClaim
               ? this.prisma.approvalFormGenerationClaim.findFirst({
@@ -794,37 +891,64 @@ export class FileService {
                 })
               : Promise.resolve({ settlementId: "not-required" })
           ]);
-          if (fileMatches && approvalClaim && settlementClaim) return committedFile;
+          claimMatches = Boolean(approvalClaim && settlementClaim);
+        } catch (verificationError) {
           this.logger.error({
-            event: "private_file_registration_commit_ambiguous",
+            event: "private_file_registration_verification_failed",
             fileId,
             objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
-            transactionError: safeErrorSummary(transactionError, "database_transaction")
+            transactionError: safeErrorSummary(transactionError, "database_transaction"),
+            verificationError: safeErrorSummary(verificationError, "commit_verification")
           });
-          throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+          throw new InternalServerErrorException(
+            "文件登记结果暂时无法确认，请稍后刷新重试"
+          );
         }
-      } catch (verificationError) {
-        if (verificationError instanceof InternalServerErrorException) throw verificationError;
+        const fingerprintMatches =
+          matchesExpectedUploadFingerprint(committedFile);
+        const physicalObjectMatches =
+          committedFile.objectKey === objectKey;
+        if (
+          fingerprintMatches &&
+          claimMatches &&
+          (idempotencyKey || physicalObjectMatches)
+        ) {
+          if (idempotencyKey && !physicalObjectMatches) {
+            await cleanupWrittenObject(transactionError);
+          }
+          return committedFile;
+        }
+        if (idempotencyKey) {
+          if (!physicalObjectMatches) {
+            await cleanupWrittenObject(transactionError);
+          }
+          throw new ConflictException(UPLOAD_IDEMPOTENCY_CONFLICT_MESSAGE);
+        }
         this.logger.error({
-          event: "private_file_registration_verification_failed",
+          event: "private_file_registration_commit_ambiguous",
           fileId,
           objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
-          transactionError: safeErrorSummary(transactionError, "database_transaction"),
-          verificationError: safeErrorSummary(verificationError, "commit_verification")
+          transactionError: safeErrorSummary(transactionError, "database_transaction")
         });
-        throw new InternalServerErrorException("文件登记结果暂时无法确认，请稍后刷新重试");
+        throw new InternalServerErrorException(
+          "文件登记结果暂时无法确认，请稍后刷新重试"
+        );
       }
-      try {
-        await this.storage.delete(objectKey);
-      } catch (cleanupError) {
+      if (transactionCallbackCompleted) {
         this.logger.error({
-          event: "private_file_registration_cleanup_failed",
+          event: "private_file_registration_commit_ambiguous",
+          fileId,
           objectKeyFingerprint: this.objectKeyFingerprint(objectKey),
-          transactionError: safeErrorSummary(transactionError, "database_transaction"),
-          cleanupError: safeErrorSummary(cleanupError, "orphan_cleanup")
+          transactionError: safeErrorSummary(
+            transactionError,
+            "database_transaction"
+          )
         });
-        throw new InternalServerErrorException("文件登记失败且存储清理未完成");
+        throw new InternalServerErrorException(
+          "文件登记结果暂时无法确认，请稍后刷新重试"
+        );
       }
+      await cleanupWrittenObject(transactionError);
       throw transactionError;
     }
   }
@@ -979,6 +1103,26 @@ export class FileService {
         )}&downloadReason=${encodeURIComponent(
           downloadReason
         )}&accessMode=${accessMode}&token=${encodeURIComponent(token)}`
+      };
+    });
+  }
+
+  async getDownloadTicketCapability(fileId: string, actorUserId: string) {
+    if (!actorUserId.trim()) {
+      throw new Error("下载人信息缺失，请重新登录后再下载资料");
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const file = await tx.fileObject.findUnique({ where: { id: fileId } });
+      if (!file) {
+        throw new Error("资料文件不存在或已被移除");
+      }
+      await this.assertCanDownloadFileObject(tx, file, actorUserId);
+      return {
+        availableActions: ["create_private_file_download_ticket" as const],
+        action: {
+          key: "create_private_file_download_ticket" as const,
+          enabled: true as const
+        }
       };
     });
   }
@@ -1386,6 +1530,62 @@ export class FileService {
     });
   }
 
+  // 专用审批单下载已先完成业务 ACL；这里仅校验无水印归档锚点的绑定与存储完整性，
+  // 不能反向复用公开 fileId 下载 ACL，否则会把专用动态水印端点一并阻断。
+  async assertApprovalFormArchiveAnchor(input: ApprovalFormArchiveAnchorInput) {
+    const isSpotProcurementApproval =
+      input.businessType === "spot_procurement_version" ||
+      input.businessType === "spot_procurement_payment";
+    const allowedTemplateKeys = isSpotProcurementApproval
+      ? ["approval_form", SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY]
+      : ["approval_form"];
+    const [document, file, claim] = await Promise.all([
+      this.prisma.pdfDocument.findUnique({
+        where: { id: input.pdfDocumentId },
+        select: {
+          id: true,
+          fileId: true,
+          templateKey: true,
+          businessType: true,
+          businessId: true,
+          approvalInstanceId: true
+        }
+      }),
+      this.prisma.fileObject.findUnique({ where: { id: input.fileId } }),
+      input.approvalInstanceId
+        ? this.prisma.approvalFormGenerationClaim.findUnique({
+            where: { approvalInstanceId: input.approvalInstanceId },
+            select: {
+              status: true,
+              uploadedFileId: true,
+              pdfDocumentId: true
+            }
+          })
+        : null
+    ]);
+    if (
+      !document ||
+      document.fileId !== input.fileId ||
+      !allowedTemplateKeys.includes(document.templateKey) ||
+      document.businessType !== input.businessType ||
+      document.businessId !== input.businessId ||
+      document.approvalInstanceId !== input.approvalInstanceId ||
+      !file ||
+      (
+        input.approvalInstanceId !== null &&
+        (
+          !claim ||
+          claim.status !== "completed" ||
+          claim.uploadedFileId !== input.fileId ||
+          claim.pdfDocumentId !== input.pdfDocumentId
+        )
+      )
+    ) {
+      throw new Error("审批单归档锚点已变化，请刷新后重新下载");
+    }
+    await this.readVerifiedFileBuffer(file);
+  }
+
   async assertCanDownloadContractApprovalForm(
     contractVersionId: string,
     actorUserId: string
@@ -1393,7 +1593,7 @@ export class FileService {
     await this.prisma.$transaction(async (tx) => {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId },
-        select: { id: true, contractId: true }
+        select: { id: true, contractId: true, status: true }
       });
       const contract = version ? await tx.contract.findUnique({
         where: { id: version.contractId },
@@ -1405,12 +1605,17 @@ export class FileService {
       const instance = await tx.approvalInstance.findFirst({
         where: {
           businessType: "contract_version",
-          businessId: version.id,
-          status: "approved"
+          businessId: version.id
         },
-        orderBy: { updatedAt: "desc" }
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
       });
-      if (!instance) throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
+      if (
+        !instance ||
+        instance.status !== "approved" ||
+        !canUseCurrentContractApprovalForm(version.status)
+      ) {
+        throw new BadRequestException("当前合同尚未完成审批，暂不能下载审批单");
+      }
       if (contract.ownerUserId === actorUserId || instance.applicantUserId === actorUserId) return;
       if (await tx.approvalActionLog.findFirst({
         where: { approvalInstanceId: instance.id, actorUserId, action: "approve" },
@@ -1581,6 +1786,57 @@ export class FileService {
     file: FileObject,
     actorUserId: string
   ) {
+    const approvalFormClients = tx as unknown as {
+      pdfDocument?: Prisma.TransactionClient["pdfDocument"];
+      approvalFormGenerationClaim?: Prisma.TransactionClient["approvalFormGenerationClaim"];
+    };
+    const [rawApprovalForm, generationClaim] = await Promise.all([
+      approvalFormClients.pdfDocument?.findFirst({
+        where: {
+          fileId: file.id,
+          OR: [
+            {
+              businessType: {
+                in: [
+                  "contract_version",
+                  "spot_procurement_version",
+                  "spot_procurement_payment"
+                ]
+              },
+              templateKey: "approval_form"
+            },
+            {
+              businessType: {
+                in: ["spot_procurement_version", "spot_procurement_payment"]
+              },
+              templateKey: SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
+            }
+          ]
+        },
+        select: { id: true, businessType: true, templateKey: true }
+      }) ?? null,
+      approvalFormClients.approvalFormGenerationClaim?.findFirst({
+        where: { uploadedFileId: file.id },
+        select: { approvalInstanceId: true }
+      }) ?? null
+    ]);
+    // 无水印审批单及其上传中间件只能作为内部归档锚点；公开 fileId 票据一律拒绝。
+    if (
+      (rawApprovalForm && (
+        (rawApprovalForm.businessType === "contract_version" &&
+          rawApprovalForm.templateKey === "approval_form") ||
+        (["spot_procurement_version", "spot_procurement_payment"].includes(
+          rawApprovalForm.businessType
+        ) && [
+          "approval_form",
+          SPOT_PROCUREMENT_APPROVAL_ORIGINAL_TEMPLATE_KEY
+        ].includes(rawApprovalForm.templateKey))
+      )) ||
+      generationClaim
+    ) {
+      throw new ForbiddenException("审批单必须通过专用下载入口下载");
+    }
+
     const governedSettlementAccess = await this.governedSettlementSignedDocumentAccess(
       tx,
       file.id,
@@ -2259,6 +2515,7 @@ export class FileService {
 
     // 审批 PDF：申请人、任一签批人，或该项目的归档可读岗位均可下载；
     // 结算审批中的 latest PDF 还允许审批链相关岗位读取，供后续审批人审阅。
+    // 合同与零采原始审批单已在本方法入口强制切到专用动态水印下载端点。
     const approvalForm = await tx.pdfDocument.findFirst({
       where: {
         fileId: file.id,
@@ -2495,21 +2752,16 @@ export class FileService {
     const clients = tx as unknown as {
       contractFormalFile?: Prisma.TransactionClient["contractFormalFile"];
       contractAuthorization?: Prisma.TransactionClient["contractAuthorization"];
-      pdfDocument?: Prisma.TransactionClient["pdfDocument"];
       contractSealTask?: Prisma.TransactionClient["contractSealTask"];
     };
     if (!clients.contractFormalFile || !clients.contractAuthorization ||
-      !clients.pdfDocument || !clients.contractSealTask) return null;
+      !clients.contractSealTask) return null;
 
-    const [formal, authorization, approvalForm] = await Promise.all([
+    const [formal, authorization] = await Promise.all([
       clients.contractFormalFile.findFirst({ where: { fileId } }),
-      clients.contractAuthorization.findFirst({ where: { fileId } }),
-      clients.pdfDocument.findFirst({
-        where: { fileId, templateKey: "approval_form", businessType: "contract_version" }
-      })
+      clients.contractAuthorization.findFirst({ where: { fileId } })
     ]);
-    const versionId = formal?.contractVersionId ??
-      authorization?.originContractVersionId ?? approvalForm?.businessId;
+    const versionId = formal?.contractVersionId ?? authorization?.originContractVersionId;
     if (!versionId) return null;
     if (formal && formal.status !== "active") return false;
     if (authorization && authorization.status !== "active") return false;
@@ -2525,12 +2777,10 @@ export class FileService {
     if (!contract || contract.voidedAt) return false;
     if (contract.ownerUserId === actorUserId) return true;
 
-    const instance = approvalForm?.approvalInstanceId
-      ? await tx.approvalInstance.findUnique({ where: { id: approvalForm.approvalInstanceId } })
-      : await tx.approvalInstance.findFirst({
-          where: { businessType: "contract_version", businessId: version!.id },
-          orderBy: { updatedAt: "desc" }
-        });
+    const instance = await tx.approvalInstance.findFirst({
+      where: { businessType: "contract_version", businessId: version!.id },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
     if (instance?.applicantUserId === actorUserId) return true;
     if (instance && await tx.approvalActionLog.findFirst({
       where: { approvalInstanceId: instance.id, actorUserId, action: "approve" }

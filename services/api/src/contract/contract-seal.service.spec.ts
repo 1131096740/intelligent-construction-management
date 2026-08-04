@@ -39,6 +39,13 @@ function harness() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockImplementation(({ data }) => ({ ...task, ...data }))
     },
+    contractFormalFile: {
+      findMany: jest.fn().mockResolvedValue([
+        { id: "approval-original-1" },
+        { id: "mutually-signed-final-1" }
+      ]),
+      updateMany: jest.fn().mockResolvedValue({ count: 2 })
+    },
     userPosition: {
       findFirst: jest.fn().mockResolvedValue({ id: "position-assignment-1" }),
       findMany: jest.fn().mockResolvedValue([{ userId: "handler-1" }])
@@ -57,15 +64,28 @@ function harness() {
     get contractVersion() { return tx.contractVersion; },
     get contractSealTask() { return tx.contractSealTask; },
     get contract() { return (tx as typeof tx & { contract?: unknown }).contract; },
-    get contractFormalFile() {
-      return (tx as typeof tx & { contractFormalFile?: unknown }).contractFormalFile;
-    },
+    get contractFormalFile() { return tx.contractFormalFile; },
     get position() { return tx.position; },
     get user() { return tx.user; },
     get userPosition() { return tx.userPosition; },
     get projectMember() { return tx.projectMember; }
   };
   return { version, task, tx, prisma };
+}
+
+function materialChangeInput(overrides: Partial<{
+  expectedRevision: number;
+  expectedSealTaskId: string;
+  expectedStatus: string;
+  reason: string;
+}> = {}) {
+  return {
+    expectedRevision: 4,
+    expectedSealTaskId: "seal-1",
+    expectedStatus: "approved_pending_seal",
+    reason: "线下核对发现合同金额发生实质变化",
+    ...overrides
+  };
 }
 
 describe("ContractSealService", () => {
@@ -116,6 +136,191 @@ describe("ContractSealService", () => {
       }
     });
     expect(tx.contractSealTask.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["approved_pending_seal", "pending_approval"],
+    ["in_seal", "in_seal"],
+    ["seal_approved_pending_archive", "completed"],
+    ["pending_archive_confirm", "completed"]
+  ])("%s 与 %s 精确配对时退回草稿并完整审计", async (versionStatus, taskStatus) => {
+    const { tx, prisma, version, task } = harness();
+    version.status = versionStatus;
+    task.status = taskStatus;
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "handler-1",
+      materialChangeInput({ expectedStatus: versionStatus })
+    )).resolves.toEqual({
+      status: "draft",
+      draftRevision: 5,
+      requiresReapproval: true
+    });
+
+    expect(tx.contractFormalFile.findMany).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1", status: "active" },
+      select: { id: true },
+      orderBy: { id: "asc" }
+    });
+    expect(tx.contractFormalFile.updateMany).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-1", status: "active" },
+      data: expect.objectContaining({
+        status: "invalidated",
+        invalidationReason: "线下核对发现合同金额发生实质变化"
+      })
+    });
+    expect(tx.contractSealTask.updateMany).toHaveBeenCalledWith({
+      where: { id: "seal-1", status: taskStatus },
+      data: expect.objectContaining({
+        status: "cancelled",
+        cancelledByUserId: "handler-1"
+      })
+    });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "version-1", status: versionStatus, draftRevision: 4 },
+      data: {
+        status: "draft",
+        draftRevision: { increment: 1 },
+        readinessSnapshot: expect.anything(),
+        taxFactStatus: "draft",
+        taxFactsFrozenAt: null
+      }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.signing.material_change",
+      metadata: {
+        reason: "线下核对发现合同金额发生实质变化",
+        sealTaskId: "seal-1",
+        fromStatus: versionStatus,
+        toStatus: "draft",
+        fromRevision: 4,
+        toRevision: 5,
+        invalidatedFormalFileIds: ["approval-original-1", "mutually-signed-final-1"],
+        invalidatedFormalFileCount: 2
+      }
+    }));
+  });
+
+  it.each([
+    ["revision", materialChangeInput({ expectedRevision: 3 })],
+    ["task", materialChangeInput({ expectedSealTaskId: "seal-stale" })],
+    ["status", materialChangeInput({ expectedStatus: "in_seal" })]
+  ])("%s 坐标漂移时在第一笔业务写前失败关闭", async (_coordinate, input) => {
+    const { tx, prisma } = harness();
+    const audit = { record: jest.fn() };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange("version-1", "handler-1", input))
+      .rejects.toThrow("合同签署状态已变化");
+    expect(tx.contractFormalFile.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractSealTask.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("版本与用章任务状态不配对时零写失败关闭", async () => {
+    const { tx, prisma, task } = harness();
+    task.status = "completed";
+    const audit = { record: jest.fn() };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "handler-1",
+      materialChangeInput()
+    )).rejects.toThrow("签署任务状态与合同阶段不一致");
+    expect(tx.contractFormalFile.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractSealTask.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("启用中的全局合同主管可以代冻结经办人申报实质变化", async () => {
+    const { prisma } = harness();
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "director-1",
+      materialChangeInput()
+    )).resolves.toMatchObject({ status: "draft", draftRevision: 5 });
+  });
+
+  it("非冻结经办人且非全局合同主管时在第一笔业务写前拒绝", async () => {
+    const { tx, prisma } = harness();
+    tx.position.findUnique.mockResolvedValue(null);
+    const audit = { record: jest.fn() };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "outsider-1",
+      materialChangeInput()
+    )).rejects.toThrow("只有冻结经办人或合同部主管");
+    expect(tx.contractFormalFile.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractSealTask.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("审计服务缺失时在权限和坐标核对后零写失败关闭", async () => {
+    const { tx, prisma } = harness();
+    const service = new ContractSealService(prisma as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "handler-1",
+      materialChangeInput()
+    )).rejects.toThrow("签署变更审计服务暂不可用");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.contractFormalFile.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("CAS 更新失去单赢家时不写审计并让事务失败", async () => {
+    const { tx, prisma } = harness();
+    tx.contractSealTask.updateMany.mockResolvedValueOnce({ count: 0 });
+    const audit = { record: jest.fn() };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "handler-1",
+      materialChangeInput()
+    )).rejects.toThrow("合同签署状态已变化");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("审计中段失败时事务向上抛错，不返回成功回执", async () => {
+    const { prisma } = harness();
+    const audit = { record: jest.fn().mockRejectedValue(new Error("audit insert failed")) };
+    const service = new ContractSealService(prisma as never, audit as never);
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "handler-1",
+      materialChangeInput()
+    )).rejects.toThrow("audit insert failed");
+  });
+
+  it.each([
+    ["Prisma P2034", { code: "P2034" }],
+    ["PostgreSQL 40001", { code: "P2010", meta: { code: "40001" } }]
+  ])("%s 序列化冲突映射为稳定的并发提示", async (_label, error) => {
+    const { prisma } = harness();
+    prisma.$transaction.mockRejectedValueOnce(error);
+    const service = new ContractSealService(
+      prisma as never,
+      { record: jest.fn() } as never
+    );
+
+    await expect(service.invalidateForMaterialChange(
+      "version-1",
+      "handler-1",
+      materialChangeInput()
+    )).rejects.toThrow("合同签署状态已并发变化，请刷新后重新申报");
   });
 
   it("综合部主管同意用章后仅进入线下用章中", async () => {

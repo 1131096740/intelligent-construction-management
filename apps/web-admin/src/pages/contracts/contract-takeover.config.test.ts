@@ -16,6 +16,8 @@ import {
   canSubmitTakeoverReview,
   centsToYuanText,
   contractTakeoverPerformanceStatus,
+  contractTakeoverRouteSelection,
+  createContractTakeoverSelectionRequestOwner,
   contractTakeoverColumns,
   historicalChangeBaselineView,
   historicalPaymentVoucherUploadDisabledReason,
@@ -57,6 +59,44 @@ import {
 } from "./contract-takeover.config";
 
 describe("contract takeover page configuration", () => {
+  it("accepts only a complete historical-takeover deep-link selection", () => {
+    expect(contractTakeoverRouteSelection({
+      projectId: " project-2 ",
+      takeoverId: " takeover-1 "
+    })).toEqual({ projectId: "project-2", takeoverId: "takeover-1" });
+    expect(contractTakeoverRouteSelection({ projectId: "project-2" })).toBeNull();
+    expect(contractTakeoverRouteSelection({
+      projectId: ["project-2"],
+      takeoverId: "takeover-1"
+    })).toBeNull();
+  });
+
+  it("lets only the latest takeover detail request apply after out-of-order responses", async () => {
+    const owner = createContractTakeoverSelectionRequestOwner();
+    let resolveA!: (value: string) => void;
+    let resolveB!: (value: string) => void;
+    const responseA = new Promise<string>((resolve) => { resolveA = resolve; });
+    const responseB = new Promise<string>((resolve) => { resolveB = resolve; });
+    let applied = "";
+    const apply = async (takeoverId: string, response: Promise<string>) => {
+      const request = owner.begin("project-1", takeoverId);
+      const detail = await response;
+      if (owner.isCurrent(request)) applied = detail;
+    };
+
+    const pendingA = apply("takeover-a", responseA);
+    const pendingB = apply("takeover-b", responseB);
+    resolveB("detail-b");
+    await pendingB;
+    resolveA("detail-a");
+    await pendingA;
+
+    expect(applied).toBe("detail-b");
+    const current = owner.begin("project-1", "takeover-c");
+    expect(owner.isCurrent(current, "project-2", "takeover-c")).toBe(false);
+    expect(owner.isCurrent(current, "project-1", "takeover-d")).toBe(false);
+  });
+
   it("maps every legacy lifecycle status into the contract-side performance vocabulary", () => {
     expect(contractTakeoverPerformanceStatus("signed_not_started")).toBe("not_started");
     expect(contractTakeoverPerformanceStatus("in_progress")).toBe("performing");

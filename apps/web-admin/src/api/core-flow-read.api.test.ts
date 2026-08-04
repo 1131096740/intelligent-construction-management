@@ -49,24 +49,27 @@ import {
   supplementProjectAffiliateBusinessEvidence,
   fetchProjectAffiliateCompanyContracts,
   recordProjectAffiliateCompanyContract,
+  createProjectAffiliateCompanyContractRecordAttemptState,
+  recordProjectAffiliateCompanyContractWithUpload,
   confirmProjectAffiliateCompanyContract,
   recordProjectProxyPayment,
   recordProjectUpstreamSettlement,
   confirmProjectUpstreamSettlement,
   requestSettlementExceptionQuota,
-  requestProjectFinancingQuota,
   reviewSettlementExceptionQuota,
-  reviewProjectFinancingQuota,
-  terminateProjectFinancingQuota,
   createProjectExpenseRequest,
-  reviewProjectExpenseApproval,
-  withdrawProjectExpenseApproval,
+  executeProjectExpenseApprovalReviewAction,
+  executeContractApprovalReviewAction,
+  executeProjectExpenseWithdrawalAction,
+  prepareProjectExpenseApprovalReviewAction,
+  prepareContractApprovalReviewAction,
+  prepareProjectExpenseWithdrawalAction,
   voidProjectExpenseRequest,
-  confirmProjectExpenseReceipt,
+  createProjectExpenseExecutionRecordAttemptState,
   recordProjectExpenseExecution,
+  recordProjectExpenseExecutionWithUpload,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
-  createContractDraft,
   createContractChangeDraft,
   createContractTakeover,
   abandonContractTakeover,
@@ -85,6 +88,7 @@ import {
   previewContractTakeoverBatchAbandonment,
   previewContractTakeoverExcelImport,
   createPrivateFileDownloadTicket,
+  getPrivateFileDownloadTicketCapability,
   createSettlementDraft,
   confirmContractTakeover,
   confirmContractTakeoverContractSide,
@@ -107,26 +111,34 @@ import {
   approveContractSeal,
   approveGovernedContractSeal,
   completeContractSeal,
+  executeContractSigningMaterialChange,
   uploadMutuallySignedContract,
   returnMutuallySignedContractForCorrection,
   confirmMutuallySignedContract,
   remindContractApproval,
   remindPaymentApproval,
   remindSettlementApproval,
-  reviewContractApproval,
   reviewSettlementApproval,
-  submitContractApproval,
   uploadContractArchiveFile,
+  uploadCanvasSignature,
+  createCanvasSignatureHandoff,
+  getCanvasSignatureCapabilities,
+  getCanvasSignatureHandoff,
+  completeCanvasSignatureHandoff,
   uploadPrivateFile,
   uploadSettlementArchiveFile,
   recordPaymentExecution,
+  createPaymentExecutionRecordAttemptState,
+  recordPaymentExecutionWithUpload,
   recordPaymentFinance,
   recordPaymentPdfArchive,
-  reviewPaymentApproval,
-  withdrawContractApproval,
+  executePaymentApprovalReviewAction,
+  preparePaymentApprovalReviewAction,
+  type PrepareProjectExpenseApprovalReviewActionInput,
+  type PrepareContractApprovalReviewActionInput,
+  type PreparePaymentApprovalReviewActionInput,
   withdrawPaymentApproval,
   abandonPaymentRequest,
-  withdrawSettlementApproval,
   transferSettlementApproval,
   delegateSettlementApproval,
   transferContractApproval,
@@ -137,7 +149,6 @@ import {
   createApprovalDelegation,
   attachContractTakeoverEvidenceFile,
   attachHistoricalPaymentVoucher,
-  recordContractTakeoverCorrection,
   reviewContractTakeoverCorrection,
   reviewContractTakeoverCompanyEntityCorrection,
   fetchApprovalDelegationUserOptions,
@@ -152,6 +163,8 @@ import {
   withdrawContractTakeoverContractSideConfirmation,
   withdrawContractTakeoverFinanceSideConfirmation
 } from "./core-flow-read.api";
+import { ContractApprovalReviewResultUnknownError } from "../lib/contract-approval-result";
+import { ContractSigningMaterialChangeResultUnknownError } from "../lib/contract-signing-material-change-result";
 
 describe("core flow read API client", () => {
   beforeEach(() => {
@@ -546,6 +559,277 @@ describe("core flow read API client", () => {
       "/api/contracts/version%2F1/formal-files/final/return",
       "/api/contracts/version%2F1/formal-files/final/confirmation"
     ]);
+  });
+
+  it("freshly verifies signing material-change coordinates before one POST", async () => {
+    const freshDetail = {
+      id: "HT-2026-001",
+      contractVersionId: "version/1",
+      draftRevision: 4,
+      sealTask: {
+        id: "seal/1",
+        status: "in_seal",
+        handlerUserId: "handler-1"
+      },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal/1",
+        expectedStatus: "in_seal"
+      },
+      availableActions: [{
+        key: "report_signing_material_change",
+        label: "申报签署内容实质变化",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true
+      }]
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => freshDetail
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "draft",
+          draftRevision: 5,
+          requiresReapproval: true
+        })
+      } as Response);
+    const stale = vi.fn();
+    const context = {
+      routeContractId: "HT-2026-001",
+      contractId: "HT-2026-001",
+      contractVersionId: "version/1",
+      expectedRevision: 4,
+      expectedSealTaskId: "seal/1",
+      expectedStatus: "in_seal" as const
+    };
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => context,
+      current: () => true,
+      stale,
+      reason: "线下核对发现合同金额发生实质变化"
+    })).resolves.toMatchObject({
+      status: "completed",
+      context,
+      response: { status: "draft", draftRevision: 5 }
+    });
+
+    expect(stale).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/HT-2026-001",
+      "/api/contracts/version%2F1/signing/material-change"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify({
+      expectedRevision: 4,
+      expectedSealTaskId: "seal/1",
+      expectedStatus: "in_seal",
+      reason: "线下核对发现合同金额发生实质变化"
+    }));
+  });
+
+  it.each([
+    ["an invalid success body", {
+      ok: true,
+      json: async () => ({ status: "draft", draftRevision: 4, requiresReapproval: true })
+    }],
+    ["a lost response", new Error("socket closed after request dispatch")]
+  ])("marks material-change %s as result unknown", async (_label, postResult) => {
+    const freshDetail = {
+      id: "HT-2026-001",
+      contractVersionId: "version-1",
+      draftRevision: 4,
+      sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      },
+      availableActions: [{ key: "report_signing_material_change", enabled: true }]
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => freshDetail
+      } as Response);
+    if (postResult instanceof Error) {
+      fetchMock.mockRejectedValueOnce(postResult);
+    } else {
+      fetchMock.mockResolvedValueOnce(postResult as Response);
+    }
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => ({
+        routeContractId: "HT-2026-001",
+        contractId: "HT-2026-001",
+        contractVersionId: "version-1",
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }),
+      current: () => true,
+      stale: vi.fn(),
+      reason: "合同金额发生实质变化"
+    })).rejects.toBeInstanceOf(
+      ContractSigningMaterialChangeResultUnknownError
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes a handled material-change unknown result through fail and finish", async () => {
+    const fail = vi.fn();
+    const finish = vi.fn();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "HT-2026-001",
+          contractVersionId: "version-1",
+          draftRevision: 4,
+          sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+          signingMaterialChangeContext: {
+            expectedRevision: 4,
+            expectedSealTaskId: "seal-1",
+            expectedStatus: "in_seal"
+          },
+          availableActions: [{ key: "report_signing_material_change", enabled: true }]
+        })
+      } as Response)
+      .mockRejectedValueOnce(new Error("socket closed after request dispatch"));
+    const context = {
+      routeContractId: "HT-2026-001",
+      contractId: "HT-2026-001",
+      contractVersionId: "version-1",
+      expectedRevision: 4,
+      expectedSealTaskId: "seal-1",
+      expectedStatus: "in_seal" as const
+    };
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => context,
+      current: () => true,
+      stale: vi.fn(),
+      fail,
+      finish,
+      reason: "合同金额发生实质变化"
+    })).resolves.toEqual({ status: "failed", context });
+
+    expect(fail).toHaveBeenCalledWith(
+      context,
+      expect.any(ContractSigningMaterialChangeResultUnknownError)
+    );
+    expect(finish).toHaveBeenCalledWith(context);
+  });
+
+  it.each([
+    ["missing capability", { availableActions: [] }],
+    ["duplicate capability", {
+      availableActions: [
+        { key: "report_signing_material_change", enabled: true },
+        { key: "report_signing_material_change", enabled: true }
+      ]
+    }],
+    ["revision drift", {
+      draftRevision: 5,
+      signingMaterialChangeContext: {
+        expectedRevision: 5,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }
+    }],
+    ["task drift", {
+      sealTask: { id: "seal-2", status: "in_seal", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-2",
+        expectedStatus: "in_seal"
+      }
+    }],
+    ["status drift", {
+      sealTask: { id: "seal-1", status: "completed", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "pending_archive_confirm"
+      }
+    }]
+  ])("does not POST material change when fresh detail has %s", async (_label, overrides) => {
+    const detail = {
+      id: "HT-2026-001",
+      contractVersionId: "version-1",
+      draftRevision: 4,
+      sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+      signingMaterialChangeContext: {
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      },
+      availableActions: [{ key: "report_signing_material_change", enabled: true }],
+      ...overrides
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => detail
+    } as Response);
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => ({
+        routeContractId: "HT-2026-001",
+        contractId: "HT-2026-001",
+        contractVersionId: "version-1",
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }),
+      current: () => true,
+      stale: vi.fn(),
+      reason: "合同金额发生实质变化"
+    })).rejects.toThrow("合同签署状态已变化");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+  });
+
+  it("stops a material-change submission after route ownership changes", async () => {
+    const stale = vi.fn();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "HT-2026-001",
+        contractVersionId: "version-1",
+        draftRevision: 4,
+        sealTask: { id: "seal-1", status: "in_seal", handlerUserId: "handler-1" },
+        signingMaterialChangeContext: {
+          expectedRevision: 4,
+          expectedSealTaskId: "seal-1",
+          expectedStatus: "in_seal"
+        },
+        availableActions: [{ key: "report_signing_material_change", enabled: true }]
+      })
+    } as Response);
+
+    await expect(executeContractSigningMaterialChange({
+      capture: () => ({
+        routeContractId: "HT-2026-001",
+        contractId: "HT-2026-001",
+        contractVersionId: "version-1",
+        expectedRevision: 4,
+        expectedSealTaskId: "seal-1",
+        expectedStatus: "in_seal"
+      }),
+      current: (_context, fresh) => fresh === undefined,
+      stale,
+      reason: "合同金额发生实质变化"
+    })).resolves.toMatchObject({ status: "stale" });
+
+    expect(stale).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("requests business contract option endpoints for settlement and payment forms", async () => {
@@ -1011,57 +1295,6 @@ describe("core flow read API client", () => {
     );
   });
 
-  it("requests, reviews and terminates project financing quotas through the backend", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "quota-1" })
-    } as Response);
-
-    await requestProjectFinancingQuota("project-1", {
-      amountCents: "5000000",
-      reason: "阶段性垫资保障项目付款",
-      attachmentFileId: "file-financing-1"
-    });
-    await reviewProjectFinancingQuota("project-1", "quota-1", {
-      decision: "approve",
-      confirmationPassword: "current-password",
-      comment: "同意",
-      selfReviewReason: "财务主管独立复核本人发起的额度"
-    });
-    await terminateProjectFinancingQuota("project-1", "quota-1", {
-      reason: "项目已具备自有资金，不再允许新占用",
-      confirmationPassword: "current-password"
-    });
-
-    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/projects/project-1/financing-quotas",
-      "/api/projects/project-1/financing-quotas/quota-1/approval",
-      "/api/projects/project-1/financing-quotas/quota-1/termination"
-    ]);
-    expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[0][1]?.body).toBe(
-      JSON.stringify({
-        amountCents: "5000000",
-        reason: "阶段性垫资保障项目付款",
-        attachmentFileId: "file-financing-1"
-      })
-    );
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        confirmationPassword: "current-password",
-        comment: "同意",
-        selfReviewReason: "财务主管独立复核本人发起的额度"
-      })
-    );
-    expect(fetchMock.mock.calls[2][1]?.body).toBe(
-      JSON.stringify({
-        reason: "项目已具备自有资金，不再允许新占用",
-        confirmationPassword: "current-password"
-      })
-    );
-  });
-
   it("posts project expense request workflow actions to the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
@@ -1083,12 +1316,6 @@ describe("core flow read API client", () => {
       handlerUserId: "handler-1",
       attachmentFileId: "file-expense-1"
     });
-    await reviewProjectExpenseApproval("project-1", "expense-1", {
-      decision: "approve",
-      approvedAmountCents: "80000",
-      comment: "同意"
-    });
-    await withdrawProjectExpenseApproval("project-1", "expense-1");
     await voidProjectExpenseRequest("project-1", "expense-1", {
       reason: "重复提交"
     });
@@ -1096,7 +1323,9 @@ describe("core flow read API client", () => {
       amountCents: "80000",
       paidAt: "2026-07-02T10:00:00.000Z",
       voucherFileId: "file-voucher-1",
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      expectedExpenseUpdatedAt: "2026-07-02T09:59:00.000Z",
+      idempotencyKey: "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572"
     });
     await recordProjectExpensePurchaseExecution("project-1", "expense-1", {
       executedAt: "2026-07-02T09:00:00.000Z",
@@ -1106,11 +1335,9 @@ describe("core flow read API client", () => {
     await recordProjectExpenseFinance("project-1", "expense-1", {
       amountCents: "80000",
       occurredAt: "2026-07-02T11:00:00.000Z",
-      confirmationPassword: "current-password"
-    });
-    await confirmProjectExpenseReceipt("project-1", "expense-1", {
       confirmationPassword: "current-password",
-      note: "数量无误"
+      expectedExpenseUpdatedAt: "2026-07-02T10:59:00.000Z",
+      idempotencyKey: "7b21c94f-4f2b-4d15-8b77-c4f145526dcb"
     });
     await downloadProjectExpenseAttachment("project-1", "expense-1", {
       confirmationPassword: "current-password",
@@ -1123,13 +1350,10 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/expense-requests",
-      "/api/projects/project-1/expense-requests/expense-1/approval",
-      "/api/projects/project-1/expense-requests/expense-1/approval-withdrawal",
       "/api/projects/project-1/expense-requests/expense-1/voiding",
       "/api/projects/project-1/expense-requests/expense-1/executions",
       "/api/projects/project-1/expense-requests/expense-1/purchase-execution",
       "/api/projects/project-1/expense-requests/expense-1/finance-records",
-      "/api/projects/project-1/expense-requests/expense-1/receipt-confirmation",
       "/api/projects/project-1/expense-requests/expense-1/attachment-download-ticket",
       "/api/projects/project-1/expense-requests/expense-1/approval-pdf-download-ticket"
     ]);
@@ -1151,49 +1375,40 @@ describe("core flow read API client", () => {
         attachmentFileId: "file-expense-1"
       })
     );
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        approvedAmountCents: "80000",
-        comment: "同意"
-      })
-    );
-    expect(fetchMock.mock.calls[3][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
-    expect(fetchMock.mock.calls[4][1]?.body).toBe(
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(JSON.stringify({ reason: "重复提交" }));
+    expect(fetchMock.mock.calls[2][1]?.body).toBe(
       JSON.stringify({
         amountCents: "80000",
         paidAt: "2026-07-02T10:00:00.000Z",
         voucherFileId: "file-voucher-1",
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        expectedExpenseUpdatedAt: "2026-07-02T09:59:00.000Z",
+        idempotencyKey: "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572"
       })
     );
-    expect(fetchMock.mock.calls[5][1]?.body).toBe(
+    expect(fetchMock.mock.calls[3][1]?.body).toBe(
       JSON.stringify({
         executedAt: "2026-07-02T09:00:00.000Z",
         note: "已采购",
         confirmationPassword: "current-password"
       })
     );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(
       JSON.stringify({
         amountCents: "80000",
         occurredAt: "2026-07-02T11:00:00.000Z",
-        confirmationPassword: "current-password"
-      })
-    );
-    expect(fetchMock.mock.calls[7][1]?.body).toBe(
-      JSON.stringify({
         confirmationPassword: "current-password",
-        note: "数量无误"
+        expectedExpenseUpdatedAt: "2026-07-02T10:59:00.000Z",
+        idempotencyKey: "7b21c94f-4f2b-4d15-8b77-c4f145526dcb"
       })
     );
-    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "报销附件复核"
       })
     );
-    expect(fetchMock.mock.calls[9][1]?.body).toBe(
+    expect(fetchMock.mock.calls[6][1]?.body).toBe(
       JSON.stringify({
         confirmationPassword: "current-password",
         downloadReason: "审批单复核"
@@ -1201,7 +1416,7 @@ describe("core flow read API client", () => {
     );
   });
 
-  it("reads project expense approval detail and preserves self-review password exactly", async () => {
+  it("reads project expense approval detail from the encoded route", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -1218,12 +1433,6 @@ describe("core flow read API client", () => {
     } as Response);
 
     const detail = await fetchProjectExpenseApprovalDetail("project-1", "expense-1");
-    await reviewProjectExpenseApproval("project-1", "expense-1", {
-      decision: "approve",
-      selfReviewReason: "业务紧急",
-      confirmationPassword: " current-password "
-    });
-
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/projects/project-1/expense-requests/expense-1/approval-detail"
     );
@@ -1233,47 +1442,286 @@ describe("core flow read API client", () => {
       kind: "danger",
       enabled: true
     });
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+  });
+
+  it.each([
+    ["missing action", projectExpenseReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      projectExpenseReviewDetail({
+        availableActions: [projectExpenseReviewAction({ enabled: false })]
+      })
+    ],
+    [
+      "duplicate action",
+      projectExpenseReviewDetail({
+        availableActions: [projectExpenseReviewAction(), projectExpenseReviewAction()]
+      })
+    ],
+    ["project drift", projectExpenseReviewDetail({ projectId: "project-b" })],
+    ["expense drift", projectExpenseReviewDetail({ expenseRequestId: "expense-b" })],
+    [
+      "expense version drift",
+      projectExpenseReviewDetail({ expectedExpenseUpdatedAt: "2026-07-31T09:00:00.000Z" })
+    ],
+    [
+      "approval instance drift",
+      projectExpenseReviewDetail({ expectedApprovalInstanceId: "approval-expense-b" })
+    ],
+    ["node drift", projectExpenseReviewDetail({ expectedNodeIndex: 2 })],
+    [
+      "approval version drift",
+      projectExpenseReviewDetail({ expectedApprovalUpdatedAt: "2026-07-31T09:05:00.000Z" })
+    ],
+    ["missing context", projectExpenseReviewDetail({ reviewApprovalContext: null })]
+  ])("refuses a %s project expense review preflight before POST", async (_label, detail) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(detail));
+
+    await expect(
+      prepareProjectExpenseApprovalReviewAction(projectExpenseReviewActionInput())
+    ).rejects.toThrow("项目支出审批资格或坐标已变化");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("freezes project expense approve fields behind a fresh GET and one encoded POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(projectExpenseReviewDetail({ requiresSelfReviewConfirmation: true }))
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "expense/a", status: "approval_pending" }));
+    const input = projectExpenseReviewActionInput({
+      decision: "approve",
+      approvedAmountCents: "80000",
+      comment: "  同意按核定金额支付  ",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "  本人发起，已独立复核  ",
+      confirmationPassword: " current-password "
+    });
+    const prepared = await prepareProjectExpenseApprovalReviewAction(input);
+    input.comment = "随后篡改";
+    input.approvedAmountCents = "1";
+
+    await expect(
+      executeProjectExpenseApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval-detail",
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
-        selfReviewReason: "业务紧急",
-        confirmationPassword: " current-password "
+        approvedAmountCents: "80000",
+        comment: "同意按核定金额支付",
+        selfReviewReason: "本人发起，已独立复核",
+        confirmationPassword: " current-password ",
+        expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-expense-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
       })
     );
   });
 
-  it("creates contract drafts through the backend", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ contract: { code: "HT-2026-002" } })
-    } as Response);
+  it("keeps project expense reject fixed, drops amount and stops stale work before POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(projectExpenseReviewDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "expense/a", status: "rejected" }));
+    const prepared = await prepareProjectExpenseApprovalReviewAction(
+      projectExpenseReviewActionInput({
+        decision: "reject",
+        approvedAmountCents: "80000",
+        comment: "  支出依据不足  "
+      })
+    );
 
-    await createContractDraft({
-      projectId: "seed-project-jgxm-001",
-      code: "HT-2026-002",
-      name: "测试合同",
-      counterparty: "测试供应商",
-      amountCents: "1000000",
-      paymentTermsOriginalText: "结算归档确认后30天内付款。",
-      paymentStages: [
-        {
-          name: "当期结算款",
-          stageType: "progress",
-          triggerAnchor: "settlement_effective",
-          basis: "current_settlement",
-          ratioBps: 8000,
-          triggerEvent: "结算归档确认生效",
-          dueDays: 30,
-          requiresInvoice: true,
-          allowsEarlyPayment: false,
-          allowsInstallments: true,
-          originalText: "结算归档确认后30天内付款80%。"
-        }
-      ]
+    await executeProjectExpenseApprovalReviewAction({
+      decision: "reject",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
     });
 
-    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/contracts"]);
-    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "reject",
+      comment: "支出依据不足",
+      expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-expense-a",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+    });
+
+    fetchMock.mockClear();
+    await expect(
+      executeProjectExpenseApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => ({ status: "stale", context: prepared.context }),
+        current: () => false,
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not complete a project expense review after its owner becomes stale during POST", async () => {
+    const post = deferred<Response>();
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(projectExpenseReviewDetail()))
+      .mockReturnValueOnce(post.promise);
+    let current = true;
+    const prepared = await prepareProjectExpenseApprovalReviewAction(
+      projectExpenseReviewActionInput({ isCurrent: () => current })
+    );
+    if (prepared.status !== "ready") {
+      throw new Error("项目支出审批预检未就绪");
+    }
+    const complete = vi.fn();
+    const request = executeProjectExpenseApprovalReviewAction({
+      decision: "approve",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => current,
+      complete,
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    await Promise.resolve();
+    current = false;
+    post.resolve(jsonResponse({ id: "expense/a" }));
+
+    await expect(request).resolves.toEqual(
+      expect.objectContaining({ status: "stale" })
+    );
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("freezes project expense withdrawal coordinates behind a fresh GET and one encoded POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(projectExpenseWithdrawalDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "expense/a", status: "withdrawn" }));
+    const input = projectExpenseWithdrawalActionInput();
+    const prepared = await prepareProjectExpenseWithdrawalAction(input);
+
+    input.expectedExpenseUpdatedAt = "2026-07-31T09:00:00.000Z";
+    input.expectedApprovalInstanceId = "forged-instance";
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executeProjectExpenseWithdrawalAction({
+        action: "withdraw",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval-detail",
+      "/api/projects/project%2Fa/expense-requests/expense%2Fa/approval-withdrawal"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({
+        expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-expense-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+      })
+    );
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing action", projectExpenseWithdrawalDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      projectExpenseWithdrawalDetail({
+        availableActions: [{
+          key: "withdraw",
+          label: "撤回项目支出申请",
+          kind: "danger",
+          enabled: false,
+          disabledReason: "当前不可撤回"
+        }]
+      })
+    ],
+    [
+      "duplicate action",
+      projectExpenseWithdrawalDetail({
+        availableActions: [
+          projectExpenseWithdrawAction(),
+          projectExpenseWithdrawAction()
+        ]
+      })
+    ],
+    ["project drift", projectExpenseWithdrawalDetail({ projectId: "project-b" })],
+    ["expense drift", projectExpenseWithdrawalDetail({ expenseRequestId: "expense-b" })],
+    [
+      "expense version drift",
+      projectExpenseWithdrawalDetail({
+        expectedExpenseUpdatedAt: "2026-07-31T09:00:00.000Z"
+      })
+    ],
+    [
+      "approval instance drift",
+      projectExpenseWithdrawalDetail({
+        expectedApprovalInstanceId: "approval-expense-b"
+      })
+    ],
+    ["node drift", projectExpenseWithdrawalDetail({ expectedNodeIndex: 2 })],
+    [
+      "approval version drift",
+      projectExpenseWithdrawalDetail({
+        expectedApprovalUpdatedAt: "2026-07-31T09:05:00.000Z"
+      })
+    ],
+    ["missing context", projectExpenseWithdrawalDetail({ withdrawalContext: null })]
+  ])("refuses a %s project expense withdrawal preflight before POST", async (_label, detail) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(detail));
+
+    await expect(
+      prepareProjectExpenseWithdrawalAction(projectExpenseWithdrawalActionInput())
+    ).rejects.toThrow("项目支出撤回资格或坐标已变化");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a stale project expense withdrawal after fresh GET and before POST", async () => {
+    let current = true;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      current = false;
+      return jsonResponse(projectExpenseWithdrawalDetail());
+    });
+
+    await expect(
+      prepareProjectExpenseWithdrawalAction(
+        projectExpenseWithdrawalActionInput({ isCurrent: () => current })
+      )
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("manages historical contract takeover workflow through the backend", async () => {
@@ -1345,12 +1793,17 @@ describe("core flow read API client", () => {
       purpose: "historical_contract_scan"
     });
     await attachHistoricalPaymentVoucher("project-1", "takeover-1", { fileId: "file-2" });
-    await recordContractTakeoverCorrection("project-1", "takeover-1", {
-      correctionType: "evidence",
+    await submitContractTakeoverCorrection("project-1", "takeover-1", {
+      correctionScope: "historical_payment",
+      correctionOperation: "correction",
+      targetRevision: 3,
+      targetHistoricalPaymentId: "historical-payment-1",
+      targetAllocationId: "allocation-1",
+      deltaCents: "0",
       reason: "补充历史付款凭证复核说明",
       responsibleUserId: "contract-director-1",
-      afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
       attachmentFileId: "file-1",
+      applicationIdempotencyKey: "55555555-5555-4555-8555-555555555555",
       currentPassword: "current-password"
     });
     await submitContractTakeoverReview("project-1", "takeover-1");
@@ -1417,11 +1870,16 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[9][1]?.body).toBe(
       JSON.stringify({
-        correctionType: "evidence",
+        correctionScope: "historical_payment",
+        correctionOperation: "correction",
+        targetRevision: 3,
+        targetHistoricalPaymentId: "historical-payment-1",
+        targetAllocationId: "allocation-1",
+        deltaCents: "0",
         reason: "补充历史付款凭证复核说明",
         responsibleUserId: "contract-director-1",
-        afterSummary: "补充历史付款凭证，确认历史已付金额不变。",
         attachmentFileId: "file-1",
+        applicationIdempotencyKey: "55555555-5555-4555-8555-555555555555",
         currentPassword: "current-password"
       })
     );
@@ -1769,12 +2227,6 @@ describe("core flow read API client", () => {
       json: async () => ({ id: "ok" })
     } as Response);
 
-    await reviewPaymentApproval("FK-2026-006", {
-      decision: "approve",
-      approvedAmountCents: "5000000",
-      selfReviewReason: "业务紧急",
-      confirmationPassword: " current-password "
-    });
     await withdrawPaymentApproval("FK-2026-006");
     await remindPaymentApproval("FK-2026-006");
     await transferPaymentApproval("FK-2026-006", {
@@ -1787,7 +2239,11 @@ describe("core flow read API client", () => {
       amountCents: "5000000",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
-      confirmationPassword: "current-password"
+      confirmationPassword: "current-password",
+      expectedPaymentUpdatedAt:
+        "2026-06-22T00:00:00.000Z",
+      idempotencyKey:
+        "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
     });
     await recordPaymentFinance("FK-2026-006", {
       amountCents: "5000000",
@@ -1800,7 +2256,6 @@ describe("core flow read API client", () => {
     await generatePaymentPdfArchive("FK-2026-006");
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/payments/FK-2026-006/approval",
       "/api/payments/FK-2026-006/approval-withdrawal",
       "/api/payments/FK-2026-006/approval-reminder",
       "/api/payments/FK-2026-006/approval-transfer",
@@ -1811,21 +2266,162 @@ describe("core flow read API client", () => {
       "/api/payments/FK-2026-006/pdf-generation"
     ]);
     expect(fetchMock.mock.calls.every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[0][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        approvedAmountCents: "5000000",
-        selfReviewReason: "业务紧急",
-        confirmationPassword: " current-password "
-      })
-    );
-    expect(fetchMock.mock.calls[6][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         amountCents: "5000000",
         occurredAt: "2026-06-22T01:00:00.000Z",
         confirmationPassword: "current-password"
       })
     );
+  });
+
+  it.each([
+    ["missing action", paymentReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      paymentReviewDetail({
+        availableActions: [
+          {
+            key: "review_approval",
+            label: "办理付款审批",
+            kind: "primary",
+            enabled: false,
+            disabledReason: "当前不可审批",
+            requiredRoles: []
+          }
+        ]
+      })
+    ],
+    ["payment drift", paymentReviewDetail({ expectedPaymentUpdatedAt: "2026-07-31T01:00:00.000Z" })],
+    ["approval drift", paymentReviewDetail({ expectedApprovalInstanceId: "approval-b" })],
+    ["node drift", paymentReviewDetail({ expectedNodeIndex: 2 })],
+    ["approval timestamp drift", paymentReviewDetail({ expectedApprovalUpdatedAt: "2026-07-31T01:00:00.000Z" })],
+    ["missing coordinates", paymentReviewDetail({ reviewApprovalContext: null })]
+  ])(
+    "refuses a %s payment review preflight before the approval POST",
+    async (_label, preflight) => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(preflight));
+
+      await expect(
+        preparePaymentApprovalReviewAction(paymentReviewActionInput())
+      ).rejects.toThrow("付款审批资格或审批坐标已变化");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/payments/payment%2Fa",
+        {}
+      );
+    }
+  );
+
+  it("freezes approve fields and performs one encoded POST after the fresh GET", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          paymentReviewDetail({
+            requiresSelfReviewConfirmation: true
+          })
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = paymentReviewActionInput({
+      decision: "approve",
+      approvedAmountCents: "5000000",
+      comment: "  同意按核定金额付款  ",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "  本人发起，已独立复核  ",
+      confirmationPassword: " current-password "
+    });
+    const prepared = await preparePaymentApprovalReviewAction(input);
+    input.comment = "随后篡改";
+    input.approvedAmountCents = "1";
+
+    const complete = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executePaymentApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/payments/payment%2Fa",
+      "/api/payments/payment%2Fa/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        approvedAmountCents: "5000000",
+        comment: "同意按核定金额付款",
+        selfReviewReason: "本人发起，已独立复核",
+        confirmationPassword: " current-password ",
+        expectedPaymentUpdatedAt: "2026-07-31T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+      })
+    );
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it("keeps reject fixed, drops approved amount and stops stale work before POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(paymentReviewDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "rejected" }));
+    const prepared = await preparePaymentApprovalReviewAction(
+      paymentReviewActionInput({
+        decision: "reject",
+        approvedAmountCents: "5000000",
+        comment: "  付款依据不足  "
+      })
+    );
+
+    await executePaymentApprovalReviewAction({
+      decision: "reject",
+      capture: () => prepared.context,
+      preflight: async () => prepared,
+      current: () => true,
+      complete: vi.fn(),
+      fail: vi.fn(),
+      finish: vi.fn()
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "reject",
+      comment: "付款依据不足",
+      expectedPaymentUpdatedAt: "2026-07-31T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-a",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z"
+    });
+
+    fetchMock.mockClear();
+    const stalePrepared = {
+      status: "stale" as const,
+      context: prepared.context
+    };
+    await expect(
+      executePaymentApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => stalePrepared,
+        current: () => false,
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("posts contract and settlement archive actions to the backend", async () => {
@@ -1998,16 +2594,6 @@ describe("core flow read API client", () => {
     } as Response);
 
     await fetchActiveContractNumberRules();
-    await submitContractApproval("contract-version-1", {
-      numberRuleId: "rule-1"
-    });
-    await reviewContractApproval("contract-version-1", {
-      decision: "approve",
-      selfReviewReason: "合同紧急",
-      confirmationPassword: " contract-password ",
-      ownerContractRiskConfirmed: true
-    });
-    await withdrawContractApproval("contract-version-1");
     await remindContractApproval("contract-version-1");
     await transferContractApproval("contract-version-1", {
       toUserId: "contract-transfer-user"
@@ -2021,7 +2607,6 @@ describe("core flow read API client", () => {
       selfReviewReason: "不会在非自审页面生成",
       confirmationPassword: " settlement-password "
     });
-    await withdrawSettlementApproval("settlement-1");
     await remindSettlementApproval("settlement-1");
     await transferSettlementApproval("settlement-1", {
       toUserId: "delegate-user-1"
@@ -2032,40 +2617,285 @@ describe("core flow read API client", () => {
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
-      "/api/contracts/contract-version-1/approval-submission",
-      "/api/contracts/contract-version-1/approval",
-      "/api/contracts/contract-version-1/approval-withdrawal",
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
       "/api/contracts/contract-version-1/approval-delegation",
       "/api/contracts/contract-version-1/seal-approval",
       "/api/settlements/settlement-1/approval",
-      "/api/settlements/settlement-1/approval-withdrawal",
       "/api/settlements/settlement-1/approval-reminder",
       "/api/settlements/settlement-1/approval-transfer",
       "/api/settlements/settlement-1/approval-delegation"
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[1][1]?.body).toBe(
-      JSON.stringify({
-        numberRuleId: "rule-1"
-      })
-    );
-    expect(fetchMock.mock.calls[2][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        selfReviewReason: "合同紧急",
-        confirmationPassword: " contract-password ",
-        ownerContractRiskConfirmed: true
-      })
-    );
-    expect(fetchMock.mock.calls[8][1]?.body).toBe(
+    expect(fetchMock.mock.calls[5][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
         selfReviewReason: "不会在非自审页面生成",
         confirmationPassword: " settlement-password "
       })
+    );
+  });
+
+  it.each([
+    ["missing action", contractReviewDetail({ availableActions: [] })],
+    [
+      "disabled action",
+      contractReviewDetail({
+        availableActions: [contractReviewAction({ enabled: false })]
+      })
+    ],
+    [
+      "duplicate enabled action",
+      contractReviewDetail({
+        availableActions: [contractReviewAction(), contractReviewAction()]
+      })
+    ],
+    ["contract drift", contractReviewDetail({ contractId: "contract/b" })],
+    ["version drift", contractReviewDetail({ contractVersionId: "version/b" })],
+    [
+      "contract timestamp drift",
+      contractReviewDetail({ expectedContractUpdatedAt: "2026-08-01T01:00:00.000Z" })
+    ],
+    ["approval drift", contractReviewDetail({ expectedApprovalInstanceId: "approval-b" })],
+    ["node drift", contractReviewDetail({ expectedNodeIndex: 2 })],
+    [
+      "approval timestamp drift",
+      contractReviewDetail({ expectedApprovalUpdatedAt: "2026-08-01T01:05:00.000Z" })
+    ],
+    ["missing coordinates", contractReviewDetail({ reviewApprovalContext: null })],
+    [
+      "self review drift",
+      contractReviewDetail({ requiresSelfReviewConfirmation: true })
+    ],
+    [
+      "owner risk drift",
+      contractReviewDetail({
+        ownerContractRisk: contractOwnerRisk({ excessAmountCents: "2" })
+      })
+    ]
+  ])(
+    "refuses a %s contract review preflight before the approval POST",
+    async (_label, preflight) => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        jsonResponse(preflight)
+      );
+
+      await expect(
+        prepareContractApprovalReviewAction(contractReviewActionInput())
+      ).rejects.toThrow("合同审批资格、风险或审批坐标已变化");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/contracts/route%2Fa",
+        {}
+      );
+    }
+  );
+
+  it("freezes the contract review facts and performs one POST after the fresh GET", async () => {
+    const risk = contractOwnerRisk();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(contractReviewDetail({
+          requiresSelfReviewConfirmation: true,
+          ownerContractRisk: risk
+        }))
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const input = contractReviewActionInput({
+      decision: "approve",
+      comment: "  同意进入用章  ",
+      requiresSelfReviewConfirmation: true,
+      selfReviewReason: "  本人发起，已独立复核  ",
+      confirmationPassword: " current-password ",
+      ownerContractRisk: risk,
+      ownerContractRiskConfirmed: true
+    });
+    const prepared = await prepareContractApprovalReviewAction(input);
+    input.comment = "随后篡改";
+    risk.message = "随后篡改风险文案";
+
+    expect(Object.isFrozen(prepared.context)).toBe(true);
+    expect(Object.isFrozen(prepared.context.ownerContractRisk)).toBe(true);
+    const complete = vi.fn();
+    const stale = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        stale,
+        complete,
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/route%2Fa",
+      "/api/contracts/version%2Fa/approval"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(
+      JSON.stringify({
+        decision: "approve",
+        comment: "同意进入用章",
+        selfReviewReason: "本人发起，已独立复核",
+        confirmationPassword: " current-password ",
+        ownerContractRiskConfirmed: true,
+        expectedOwnerContractRisk: {
+          status: "missing_owner_contract",
+          ownerContractAmountCents: "0",
+          downstreamContractAmountCents: "18000000",
+          excessAmountCents: "18000000",
+          message: "项目尚未登记生效业主主合同",
+          requiresExplicitConfirmation: true
+        },
+        expectedContractUpdatedAt: "2026-08-01T00:00:00.000Z",
+        expectedApprovalInstanceId: "approval-a",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "2026-08-01T00:05:00.000Z"
+      })
+    );
+    expect(stale).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it("does not send the owner-risk confirmation or snapshot when rejecting", async () => {
+    const risk = contractOwnerRisk();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail({
+        ownerContractRisk: risk
+      })))
+      .mockResolvedValueOnce(jsonResponse({ id: "rejected" }));
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput({
+        decision: "reject",
+        comment: "  合同价格依据不足  ",
+        ownerContractRisk: risk,
+        ownerContractRiskConfirmed: false
+      })
+    );
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "completed" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      decision: "reject",
+      comment: "合同价格依据不足",
+      expectedContractUpdatedAt: "2026-08-01T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-a",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-01T00:05:00.000Z"
+    });
+  });
+
+  it("keeps reject fixed and invokes stale without posting", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse(contractReviewDetail())
+    );
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput({
+        decision: "reject",
+        comment: "  合同价格依据不足  "
+      })
+    );
+    fetchMock.mockClear();
+    const stale = vi.fn();
+    const fail = vi.fn();
+    const finish = vi.fn();
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "reject",
+        capture: () => prepared.context,
+        preflight: async () => ({ status: "stale", context: prepared.context }),
+        current: () => false,
+        stale,
+        complete: vi.fn(),
+        fail,
+        finish
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(stale).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
+    expect(finish).toHaveBeenCalledOnce();
+  });
+
+  it("does not complete stale work after the single contract review POST", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail()))
+      .mockResolvedValueOnce(jsonResponse({ id: "approved" }));
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput()
+    );
+    const stale = vi.fn();
+    const complete = vi.fn();
+    let currentChecks = 0;
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => ++currentChecks === 1,
+        stale,
+        complete,
+        fail: vi.fn(),
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "stale" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(stale).toHaveBeenCalledOnce();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("wraps an indeterminate contract review POST without retrying it", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(contractReviewDetail()))
+      .mockRejectedValueOnce(new TypeError("socket closed after write"));
+    const prepared = await prepareContractApprovalReviewAction(
+      contractReviewActionInput()
+    );
+    const fail = vi.fn();
+
+    await expect(
+      executeContractApprovalReviewAction({
+        decision: "approve",
+        capture: () => prepared.context,
+        preflight: async () => prepared,
+        current: () => true,
+        stale: vi.fn(),
+        complete: vi.fn(),
+        fail,
+        finish: vi.fn()
+      })
+    ).resolves.toEqual(expect.objectContaining({ status: "failed" }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fail).toHaveBeenCalledWith(
+      prepared.context,
+      expect.any(ContractApprovalReviewResultUnknownError)
     );
   });
 
@@ -2080,6 +2910,1116 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(["/api/files"]);
     expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
     expect(fetchMock.mock.calls[0][1]?.body).toBeInstanceOf(FormData);
+  });
+
+  it("reuses the same private-upload idempotency key after an ambiguous response", async () => {
+    const uploadIdempotencyKey =
+      "a43073f9-9731-4d71-9498-b9727344dbd4";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new TypeError("upload response lost"))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: uploadIdempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "affiliate-contract-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1"
+      },
+      idempotencyKey: uploadIdempotencyKey,
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        input,
+        state
+      )
+    ).rejects.toThrow("网络请求失败");
+    await recordProjectAffiliateCompanyContractWithUpload(
+      "project-1",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
+      "/api/projects/project-1/affiliate-company-contracts"
+    ]);
+    const firstUpload = fetchMock.mock.calls[0]?.[1]?.body;
+    const secondUpload = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(firstUpload).toBeInstanceOf(FormData);
+    expect(secondUpload).toBeInstanceOf(FormData);
+    expect((firstUpload as FormData).get("idempotencyKey")).toBe(
+      uploadIdempotencyKey
+    );
+    expect((secondUpload as FormData).get("idempotencyKey")).toBe(
+      uploadIdempotencyKey
+    );
+  });
+
+  it("rejects an affiliate-company upload response that does not echo its idempotency key", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "legacy-random-file-id" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        {
+          form: {
+            contractReference: "GL-2026-001",
+            contractName: "项目挂靠管理协议",
+            signedAt: "2026-07-20",
+            rightsObligationsSummary: "双方权利义务摘要",
+            companyEntityId: "company-1"
+          },
+          idempotencyKey:
+            "a43073f9-9731-4d71-9498-b9727344dbd4",
+          files: [
+            {
+              raw: Object.assign(new Blob(["signed"]), {
+                name: "signed.pdf"
+              })
+            }
+          ],
+          context: "project-1",
+          isCurrent: () => true
+        },
+        state
+      )
+    ).rejects.toThrow("文件上传幂等响应不一致");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads"
+    ]);
+    expect(state.uploadedFileId).toBeNull();
+  });
+
+  it("reuses one uploaded affiliate-company contract file and frozen payload after a record retry", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "登记响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "affiliate-contract-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: " GL-2026-001 ",
+        contractName: " 项目挂靠管理协议 ",
+        signedAt: " 2026-07-20 ",
+        rightsObligationsSummary: " 双方权利义务摘要 ",
+        companyEntityId: " company-1 "
+      },
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project/1",
+        input,
+        state
+      )
+    ).rejects.toThrow("登记响应超时");
+    input.form.contractName = "不得进入重试请求的改名";
+    await recordProjectAffiliateCompanyContractWithUpload(
+      "project/1",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project%2F1/affiliate-company-contracts/file-uploads",
+      "/api/projects/project%2F1/affiliate-company-contracts",
+      "/api/projects/project%2F1/affiliate-company-contracts"
+    ]);
+    const firstRecordBody = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(firstRecordBody);
+    expect(JSON.parse(String(firstRecordBody))).toEqual({
+      contractReference: "GL-2026-001",
+      contractName: "项目挂靠管理协议",
+      signedAt: "2026-07-20",
+      rightsObligationsSummary: "双方权利义务摘要",
+      companyEntityId: "company-1",
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      fileId: "a43073f9-9731-4d71-9498-b9727344dbd4"
+    });
+  });
+
+  it("preflights, uploads and records one frozen payment execution with the same idempotency key", async () => {
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment/1",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = {
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      confirmationPassword: " current-password ",
+      expectedPaymentUpdatedAt:
+        "2026-07-31T08:00:00.000Z",
+      idempotencyKey: idempotencyKey.toUpperCase(),
+      file: Object.assign(new Blob(["voucher"]), {
+        name: "付款凭证.pdf"
+      }),
+      fileName: "付款凭证.pdf",
+      context: "payment/1",
+      isCurrent: () => true
+    };
+
+    const request = recordPaymentExecutionWithUpload(
+      "payment/1",
+      input,
+      state
+    );
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "changed-password";
+    await request;
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment%2F1",
+      "/api/payments/payment%2F1/execution-voucher-file-uploads",
+      "/api/payments/payment%2F1/executions"
+    ]);
+    const uploadBody = fetchMock.mock.calls[1]?.[1]?.body;
+    expect(uploadBody).toBeInstanceOf(FormData);
+    expect((uploadBody as FormData).get("idempotencyKey")).toBe(
+      idempotencyKey
+    );
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(
+      JSON.stringify({
+        amountCents: "5000000",
+        paidAt: "2026-07-31T08:30:00.000Z",
+        voucherFileId: idempotencyKey,
+        confirmationPassword: " current-password ",
+        expectedPaymentUpdatedAt:
+          "2026-07-31T08:00:00.000Z",
+        idempotencyKey
+      })
+    );
+  });
+
+  it("coalesces rapid payment execution confirms before preflight into one GET, upload and POST", async () => {
+    const preflight = deferred<Response>();
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(preflight.promise)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = paymentExecutionInput(idempotencyKey);
+
+    const first = recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+    const second = recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    preflight.resolve(
+      new Response(
+        JSON.stringify(
+          paymentExecutionDetail(
+            "payment-a",
+            "2026-07-31T08:00:00.000Z"
+          )
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    await Promise.all([first, second]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a/execution-voucher-file-uploads",
+      "/api/payments/payment-a/executions"
+    ]);
+  });
+
+  it("stops a payment execution before upload when the fresh server capability is stale", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify(
+          paymentExecutionDetail(
+            "payment-a",
+            "2026-07-31T08:01:00.000Z"
+          )
+        ),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        paymentExecutionInput(
+          "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
+        ),
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("付款执行资格或版本已变化");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a"
+    ]);
+  });
+
+  it("checks page ownership again after preflight and before uploading", async () => {
+    let current = true;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        current = false;
+        return paymentExecutionDetail(
+          "payment-a",
+          "2026-07-31T08:00:00.000Z"
+        );
+      }
+    } as Response);
+    const input = paymentExecutionInput(
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
+    );
+    input.isCurrent = () => current;
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        input,
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("实际付款上下文已失效");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a"
+    ]);
+  });
+
+  it("checks page ownership again after voucher upload and before recording payment", async () => {
+    let current = true;
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => {
+          current = false;
+          return { id: idempotencyKey };
+        }
+      } as Response);
+    const input = paymentExecutionInput(idempotencyKey);
+    input.isCurrent = () => current;
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        input,
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("实际付款上下文已失效");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a/execution-voucher-file-uploads"
+    ]);
+  });
+
+  it("rejects a payment voucher upload response that does not echo the idempotency key", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: "unexpected-file-id" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+
+    await expect(
+      recordPaymentExecutionWithUpload(
+        "payment-a",
+        paymentExecutionInput(
+          "f26e8632-5a5d-47a8-9f91-4f60591cbfa1"
+        ),
+        createPaymentExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("付款凭证上传幂等响应不一致");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a/execution-voucher-file-uploads"
+    ]);
+  });
+
+  it("rejects missing or duplicate enabled execution capabilities before upload", async () => {
+    const missing = paymentExecutionDetail(
+      "payment-a",
+      "2026-07-31T08:00:00.000Z"
+    );
+    missing.availableActions = [];
+    const duplicate = paymentExecutionDetail(
+      "payment-a",
+      "2026-07-31T08:00:00.000Z"
+    );
+    duplicate.availableActions.push({
+      ...duplicate.availableActions[0]!
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(missing), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(duplicate), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+
+    for (const idempotencyKey of [
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1",
+      "1acdf14c-742f-4f8b-894d-0e098bf12040"
+    ]) {
+      await expect(
+        recordPaymentExecutionWithUpload(
+          "payment-a",
+          paymentExecutionInput(idempotencyKey),
+          createPaymentExecutionRecordAttemptState()
+        )
+      ).rejects.toThrow("付款执行资格或版本已变化");
+    }
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a"
+    ]);
+  });
+
+  it("reuses the uploaded voucher, idempotency key and frozen body after an ambiguous execution response", async () => {
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "提交响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = paymentExecutionInput(idempotencyKey);
+
+    await expect(
+      recordPaymentExecutionWithUpload("payment-a", input, state)
+    ).rejects.toThrow("提交响应超时");
+    input.amountCents = "1";
+    input.confirmationPassword = "changed-password";
+    await recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a/execution-voucher-file-uploads",
+      "/api/payments/payment-a/executions",
+      "/api/payments/payment-a/executions"
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(
+      fetchMock.mock.calls[2]?.[1]?.body
+    );
+  });
+
+  it("allows correcting only the confirmation password after a deterministic password rejection", async () => {
+    const idempotencyKey =
+      "f26e8632-5a5d-47a8-9f91-4f60591cbfa1";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            paymentExecutionDetail(
+              "payment-a",
+              "2026-07-31T08:00:00.000Z"
+            )
+          ),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: idempotencyKey }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            message: "当前密码不正确，请重新输入"
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "execution-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state = createPaymentExecutionRecordAttemptState();
+    const input = paymentExecutionInput(idempotencyKey);
+    input.confirmationPassword = "wrong-password";
+
+    await expect(
+      recordPaymentExecutionWithUpload("payment-a", input, state)
+    ).rejects.toThrow("当前密码不正确");
+    input.amountCents = "1";
+    input.confirmationPassword = "correct-password";
+    await recordPaymentExecutionWithUpload(
+      "payment-a",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/payments/payment-a",
+      "/api/payments/payment-a/execution-voucher-file-uploads",
+      "/api/payments/payment-a/executions",
+      "/api/payments/payment-a/executions"
+    ]);
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      confirmationPassword: "wrong-password",
+      idempotencyKey,
+      voucherFileId: idempotencyKey
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      confirmationPassword: "correct-password",
+      idempotencyKey,
+      voucherFileId: idempotencyKey
+    });
+  });
+
+  it("preflights, uploads and records one frozen project expense execution", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const expectedExpenseUpdatedAt =
+      "2026-07-31T08:00:00.000Z";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          projectExpenseExecutionDetail(
+            "project/1",
+            "expense/1",
+            expectedExpenseUpdatedAt
+          )
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: idempotencyKey })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(
+      idempotencyKey.toUpperCase()
+    );
+
+    const request = recordProjectExpenseExecutionWithUpload(
+      "project/1",
+      "expense/1",
+      input,
+      state
+    );
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "changed-password";
+    const result = await request;
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project%2F1/expense-requests/expense%2F1/approval-detail",
+      "/api/projects/project%2F1/expense-requests/expense%2F1/execution-voucher-file-uploads",
+      "/api/projects/project%2F1/expense-requests/expense%2F1/executions"
+    ]);
+    expect(
+      (fetchMock.mock.calls[1]?.[1]?.body as FormData).get(
+        "idempotencyKey"
+      )
+    ).toBe(idempotencyKey);
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))
+    ).toEqual({
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      voucherFileId: idempotencyKey,
+      confirmationPassword: " current-password ",
+      expectedExpenseUpdatedAt,
+      idempotencyKey
+    });
+    expect(result).toEqual({ id: "expense-execution-1" });
+  });
+
+  it("keeps a fulfilled project expense attempt without a second upload or POST", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const expectedExpenseUpdatedAt =
+      "2026-07-31T08:00:00.000Z";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          projectExpenseExecutionDetail(
+            "project-a",
+            "expense-a",
+            expectedExpenseUpdatedAt
+          )
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: idempotencyKey }))
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(idempotencyKey);
+
+    const first = await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+    input.amountCents = "1";
+    input.confirmationPassword = "changed-password";
+    const replay = await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+
+    expect(replay).toBe(first);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-a/expense-requests/expense-a/approval-detail",
+      "/api/projects/project-a/expense-requests/expense-a/execution-voucher-file-uploads",
+      "/api/projects/project-a/expense-requests/expense-a/executions"
+    ]);
+  });
+
+  it("stops project expense execution before upload when the fresh capability or CAS is stale", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(
+        projectExpenseExecutionDetail(
+          "project-a",
+          "expense-a",
+          "2026-07-31T08:01:00.000Z"
+        )
+      )
+    );
+
+    await expect(
+      recordProjectExpenseExecutionWithUpload(
+        "project-a",
+        "expense-a",
+        projectExpenseExecutionInput(
+          "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572"
+        ),
+        createProjectExpenseExecutionRecordAttemptState()
+      )
+    ).rejects.toThrow("项目支出执行资格或版本已变化");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-a/expense-requests/expense-a/approval-detail"
+    ]);
+  });
+
+  it("coalesces rapid project expense confirms and reuses the upload, UUID and frozen body after an ambiguous response", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const preflight = deferred<Response>();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(preflight.promise)
+      .mockResolvedValueOnce(jsonResponse({ id: idempotencyKey }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "提交响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(idempotencyKey);
+
+    const first = recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+    const duplicate = recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    preflight.resolve(
+      jsonResponse(
+        projectExpenseExecutionDetail(
+          "project-a",
+          "expense-a",
+          "2026-07-31T08:00:00.000Z"
+        )
+      )
+    );
+    await expect(first).rejects.toThrow("提交响应超时");
+    await expect(duplicate).rejects.toThrow("提交响应超时");
+
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "changed-password";
+    await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-a/expense-requests/expense-a/approval-detail",
+      "/api/projects/project-a/expense-requests/expense-a/execution-voucher-file-uploads",
+      "/api/projects/project-a/expense-requests/expense-a/executions",
+      "/api/projects/project-a/expense-requests/expense-a/executions"
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]?.body).toBe(
+      fetchMock.mock.calls[2]?.[1]?.body
+    );
+  });
+
+  it("allows replacing only the project expense confirmation password after deterministic rejection", async () => {
+    const idempotencyKey =
+      "2d74bb60-3c32-4c6a-93c9-a9baf7fe4572";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse(
+          projectExpenseExecutionDetail(
+            "project-a",
+            "expense-a",
+            "2026-07-31T08:00:00.000Z"
+          )
+        )
+      )
+      .mockResolvedValueOnce(jsonResponse({ id: idempotencyKey }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ message: "当前密码不正确，请重新输入" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "expense-execution-1" })
+      );
+    const state =
+      createProjectExpenseExecutionRecordAttemptState();
+    const input = projectExpenseExecutionInput(idempotencyKey);
+    input.confirmationPassword = "wrong-password";
+
+    await expect(
+      recordProjectExpenseExecutionWithUpload(
+        "project-a",
+        "expense-a",
+        input,
+        state
+      )
+    ).rejects.toThrow("当前密码不正确");
+    input.amountCents = "1";
+    input.paidAt = "2099-01-01T00:00:00.000Z";
+    input.confirmationPassword = "correct-password";
+    await recordProjectExpenseExecutionWithUpload(
+      "project-a",
+      "expense-a",
+      input,
+      state
+    );
+
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      confirmationPassword: "wrong-password"
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))
+    ).toMatchObject({
+      amountCents: "5000000",
+      paidAt: "2026-07-31T08:30:00.000Z",
+      confirmationPassword: "correct-password"
+    });
+  });
+
+  it("rejects reuse of an affiliate-company contract record attempt for another project", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "登记响应超时" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1"
+      },
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        input,
+        state
+      )
+    ).rejects.toThrow("登记响应超时");
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-2",
+        input,
+        state
+      )
+    ).rejects.toThrow("登记重试项目已变化");
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
+      "/api/projects/project-1/affiliate-company-contracts"
+    ]);
+  });
+
+  it("coalesces concurrent affiliate-company contract submissions into one upload and record", async () => {
+    let releaseUpload!: (response: Response) => void;
+    const uploadResponse = new Promise<Response>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(uploadResponse)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "affiliate-contract-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      );
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+    const input = {
+      form: {
+        contractReference: "GL-2026-001",
+        contractName: "项目挂靠管理协议",
+        signedAt: "2026-07-20",
+        rightsObligationsSummary: "双方权利义务摘要",
+        companyEntityId: "company-1"
+      },
+      idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+      files: [
+        {
+          raw: Object.assign(new Blob(["signed"]), {
+            name: "signed.pdf"
+          })
+        }
+      ],
+      context: "project-1",
+      isCurrent: () => true
+    };
+
+    const first = recordProjectAffiliateCompanyContractWithUpload(
+      "project-1",
+      input,
+      state
+    );
+    const second = recordProjectAffiliateCompanyContractWithUpload(
+      "project-1",
+      input,
+      state
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    releaseUpload(
+      new Response(
+        JSON.stringify({
+          id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    await Promise.all([first, second]);
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads",
+      "/api/projects/project-1/affiliate-company-contracts"
+    ]);
+  });
+
+  it("stops an affiliate-company contract record after upload when its page context expires", async () => {
+    let current = true;
+    const isCurrent = vi.fn(() => current);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => {
+        current = false;
+        return {
+          id: "a43073f9-9731-4d71-9498-b9727344dbd4"
+        };
+      }
+    } as Response);
+    const state =
+      createProjectAffiliateCompanyContractRecordAttemptState();
+
+    await expect(
+      recordProjectAffiliateCompanyContractWithUpload(
+        "project-1",
+        {
+          form: {
+            contractReference: "GL-2026-001",
+            contractName: "项目挂靠管理协议",
+            signedAt: "2026-07-20",
+            rightsObligationsSummary: "双方权利义务摘要",
+            companyEntityId: "company-1"
+          },
+          idempotencyKey: "a43073f9-9731-4d71-9498-b9727344dbd4",
+          files: [
+            {
+              raw: Object.assign(new Blob(["signed"]), {
+                name: "signed.pdf"
+              })
+            }
+          ],
+          context: "project-1",
+          isCurrent
+        },
+        state
+      )
+    ).rejects.toThrow("线下合同登记上下文已失效");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/projects/project-1/affiliate-company-contracts/file-uploads"
+    ]);
   });
 
   it("requests private file download tickets through the backend", async () => {
@@ -2100,6 +4040,46 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0][1]?.body).toBe(
       JSON.stringify({ confirmationPassword: "current-password", downloadReason: "合同归档复核" })
     );
+  });
+
+  it("reads private file download capability from the authenticated backend", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        action: {
+          key: "create_private_file_download_ticket",
+          enabled: true
+        }
+      })
+    } as Response);
+
+    await getPrivateFileDownloadTicketCapability("file/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/files/file%2F1/download-ticket-capability"
+    ]);
+  });
+
+  it("uses authenticated backend capabilities for every canvas signature mutation", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ availableActions: [] })
+    } as Response);
+    const file = new Blob(["signature"], { type: "image/png" });
+
+    await getCanvasSignatureCapabilities();
+    await createCanvasSignatureHandoff();
+    await getCanvasSignatureHandoff("opaque/token");
+    await uploadCanvasSignature(file);
+    await completeCanvasSignatureHandoff("opaque/token", file);
+
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method ?? "GET"])).toEqual([
+      ["/api/me/signature/canvas-capabilities", "GET"],
+      ["/api/me/signature/canvas-handoffs", "POST"],
+      ["/api/me/signature/canvas-handoffs/opaque%2Ftoken", "GET"],
+      ["/api/me/signature/canvas", "POST"],
+      ["/api/me/signature/canvas-handoffs/opaque%2Ftoken/complete", "POST"]
+    ]);
   });
 
   it("downloads settlement attachment templates through the backend", async () => {
@@ -2184,3 +4164,439 @@ describe("core flow read API client", () => {
     );
   });
 });
+
+function projectExpenseWithdrawAction() {
+  return {
+    key: "withdraw",
+    label: "撤回项目支出申请",
+    kind: "danger",
+    enabled: true,
+    disabledReason: null
+  };
+}
+
+function projectExpenseWithdrawalDetail(
+  overrides: {
+    projectId?: string;
+    expenseRequestId?: string;
+    expectedExpenseUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    withdrawalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+  } = {}
+) {
+  const expectedExpenseUpdatedAt =
+    overrides.expectedExpenseUpdatedAt ?? "2026-07-31T00:00:00.000Z";
+  return {
+    id: overrides.expenseRequestId ?? "expense/a",
+    projectId: overrides.projectId ?? "project/a",
+    lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+    withdrawalContext:
+      overrides.withdrawalContext === null
+        ? null
+        : {
+            expectedExpenseUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ??
+              "approval-expense-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-07-31T00:05:00.000Z"
+          },
+    availableActions:
+      overrides.availableActions ?? [projectExpenseWithdrawAction()]
+  };
+}
+
+function projectExpenseWithdrawalActionInput(
+  overrides: Partial<{
+    action: "withdraw";
+    ownerScope: string;
+    routeGeneration: number;
+    detailEpoch: number;
+    dialogGeneration: number;
+    operationId: number;
+    projectId: string;
+    expenseRequestId: string;
+    expectedExpenseUpdatedAt: string;
+    expectedApprovalInstanceId: string;
+    expectedNodeIndex: number;
+    expectedApprovalUpdatedAt: string;
+    isCurrent: (context: unknown) => boolean;
+  }> = {}
+) {
+  return {
+    action: "withdraw" as const,
+    ownerScope: "project-expense-withdraw-owner",
+    routeGeneration: 1,
+    detailEpoch: 2,
+    dialogGeneration: 3,
+    operationId: 4,
+    projectId: "project/a",
+    expenseRequestId: "expense/a",
+    expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function projectExpenseReviewAction(
+  overrides: { enabled?: boolean; requiresSelfReviewConfirmation?: boolean } = {}
+) {
+  return {
+    key: "review_approval",
+    label: "办理项目支出审批",
+    kind: "primary",
+    enabled: overrides.enabled ?? true,
+    disabledReason: overrides.enabled === false ? "当前不可审批" : null,
+    requiredRoles: [],
+    requiresSelfReviewConfirmation:
+      overrides.requiresSelfReviewConfirmation ?? false
+  };
+}
+
+function projectExpenseReviewDetail(
+  overrides: {
+    projectId?: string;
+    expenseRequestId?: string;
+    expectedExpenseUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+    requiresSelfReviewConfirmation?: boolean;
+  } = {}
+) {
+  const expectedExpenseUpdatedAt =
+    overrides.expectedExpenseUpdatedAt ?? "2026-07-31T00:00:00.000Z";
+  return {
+    id: overrides.expenseRequestId ?? "expense/a",
+    projectId: overrides.projectId ?? "project/a",
+    lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedExpenseUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-expense-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-07-31T00:05:00.000Z"
+          },
+    availableActions:
+      overrides.availableActions ??
+      [
+        projectExpenseReviewAction({
+          requiresSelfReviewConfirmation:
+            overrides.requiresSelfReviewConfirmation
+        })
+      ]
+  };
+}
+
+function projectExpenseReviewActionInput(
+  overrides: Partial<PrepareProjectExpenseApprovalReviewActionInput> = {}
+): PrepareProjectExpenseApprovalReviewActionInput {
+  return {
+    ownerScope: "project-expense-review-owner",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    projectId: "project/a",
+    expenseRequestId: "expense/a",
+    expectedExpenseUpdatedAt: "2026-07-31T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-expense-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    decision: "approve",
+    requiresSelfReviewConfirmation: false,
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function paymentReviewDetail(
+  overrides: {
+    paymentId?: string;
+    expectedPaymentUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+    requiresSelfReviewConfirmation?: boolean;
+  } = {}
+) {
+  const expectedPaymentUpdatedAt =
+    overrides.expectedPaymentUpdatedAt ?? "2026-07-31T00:00:00.000Z";
+  return {
+    id: overrides.paymentId ?? "payment/a",
+    lifecycleUpdatedAt: expectedPaymentUpdatedAt,
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedPaymentUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-07-31T00:05:00.000Z"
+          },
+    availableActions:
+      overrides.availableActions ??
+      [
+        {
+          key: "review_approval",
+          label: "办理付款审批",
+          kind: "primary",
+          enabled: true,
+          disabledReason: null,
+          requiredRoles: [],
+          requiresSelfReviewConfirmation:
+            overrides.requiresSelfReviewConfirmation ?? false
+        }
+      ]
+  };
+}
+
+function contractOwnerRisk(
+  overrides: Partial<{
+    status: "clear" | "missing_owner_contract" | "exceeds_owner_contract";
+    ownerContractAmountCents: string;
+    downstreamContractAmountCents: string;
+    excessAmountCents: string;
+    message: string;
+    requiresExplicitConfirmation: boolean;
+  }> = {}
+) {
+  return {
+    status: "missing_owner_contract" as const,
+    ownerContractAmountCents: "0",
+    downstreamContractAmountCents: "18000000",
+    excessAmountCents: "18000000",
+    message: "项目尚未登记生效业主主合同",
+    requiresExplicitConfirmation: true,
+    ...overrides
+  };
+}
+
+function contractReviewAction(
+  overrides: Partial<{
+    enabled: boolean;
+    requiresSelfReviewConfirmation: boolean;
+  }> = {}
+) {
+  return {
+    key: "review_approval",
+    label: "办理合同审批",
+    kind: "primary",
+    enabled: overrides.enabled ?? true,
+    disabledReason: overrides.enabled === false ? "当前不可审批" : null,
+    requiresSelfReviewConfirmation:
+      overrides.requiresSelfReviewConfirmation ?? false
+  };
+}
+
+function contractReviewDetail(
+  overrides: {
+    contractId?: string;
+    contractVersionId?: string;
+    expectedContractUpdatedAt?: string;
+    expectedApprovalInstanceId?: string;
+    expectedNodeIndex?: number;
+    expectedApprovalUpdatedAt?: string;
+    reviewApprovalContext?: null;
+    availableActions?: Array<Record<string, unknown>>;
+    requiresSelfReviewConfirmation?: boolean;
+    ownerContractRisk?: ReturnType<typeof contractOwnerRisk>;
+  } = {}
+) {
+  const expectedContractUpdatedAt =
+    overrides.expectedContractUpdatedAt ?? "2026-08-01T00:00:00.000Z";
+  return {
+    id: overrides.contractId ?? "contract/a",
+    contractVersionId: overrides.contractVersionId ?? "version/a",
+    lifecycleUpdatedAt: expectedContractUpdatedAt,
+    reviewApprovalContext:
+      overrides.reviewApprovalContext === null
+        ? null
+        : {
+            expectedContractUpdatedAt,
+            expectedApprovalInstanceId:
+              overrides.expectedApprovalInstanceId ?? "approval-a",
+            expectedNodeIndex: overrides.expectedNodeIndex ?? 1,
+            expectedApprovalUpdatedAt:
+              overrides.expectedApprovalUpdatedAt ??
+              "2026-08-01T00:05:00.000Z"
+          },
+    ownerContractRisk: overrides.ownerContractRisk ?? contractOwnerRisk(),
+    availableActions:
+      overrides.availableActions ??
+      [
+        contractReviewAction({
+          requiresSelfReviewConfirmation:
+            overrides.requiresSelfReviewConfirmation
+        })
+      ]
+  };
+}
+
+function contractReviewActionInput(
+  overrides: Partial<PrepareContractApprovalReviewActionInput> = {}
+): PrepareContractApprovalReviewActionInput {
+  return {
+    ownerScope: "contract-page-a",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    routeContractId: "route/a",
+    contractId: "contract/a",
+    contractVersionId: "version/a",
+    expectedContractUpdatedAt: "2026-08-01T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-08-01T00:05:00.000Z",
+    decision: "approve",
+    requiresSelfReviewConfirmation: false,
+    ownerContractRisk: contractOwnerRisk(),
+    ownerContractRiskConfirmed: true,
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function paymentReviewActionInput(
+  overrides: Partial<PreparePaymentApprovalReviewActionInput> = {}
+): PreparePaymentApprovalReviewActionInput {
+  return {
+    ownerScope: "payment-page-a",
+    routeGeneration: 2,
+    detailEpoch: 3,
+    dialogGeneration: 4,
+    operationId: 5,
+    paymentId: "payment/a",
+    expectedPaymentUpdatedAt: "2026-07-31T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-a",
+    expectedNodeIndex: 1,
+    expectedApprovalUpdatedAt: "2026-07-31T00:05:00.000Z",
+    decision: "approve" as const,
+    requiresSelfReviewConfirmation: false,
+    isCurrent: () => true,
+    ...overrides
+  };
+}
+
+function paymentExecutionDetail(
+  paymentId: string,
+  expectedPaymentUpdatedAt: string
+) {
+  return {
+    id: paymentId,
+    lifecycleUpdatedAt: expectedPaymentUpdatedAt,
+    executionContext: { expectedPaymentUpdatedAt },
+    availableActions: [
+      {
+        key: "record_execution",
+        label: "登记实际付款",
+        kind: "primary",
+        enabled: true,
+        disabledReason: null,
+        requiredRoles: ["finance_staff"]
+      }
+    ]
+  };
+}
+
+function paymentExecutionInput(idempotencyKey: string) {
+  return {
+    amountCents: "5000000",
+    paidAt: "2026-07-31T08:30:00.000Z",
+    confirmationPassword: " current-password ",
+    expectedPaymentUpdatedAt:
+      "2026-07-31T08:00:00.000Z",
+    idempotencyKey,
+    file: Object.assign(new Blob(["voucher"]), {
+      name: "付款凭证.pdf"
+    }),
+    fileName: "付款凭证.pdf",
+    context: "payment-a",
+    isCurrent: () => true
+  };
+}
+
+function projectExpenseExecutionDetail(
+  projectId: string,
+  expenseRequestId: string,
+  expectedExpenseUpdatedAt: string,
+  actionEnabled = true
+) {
+  return {
+    id: expenseRequestId,
+    projectId,
+    lifecycleUpdatedAt: expectedExpenseUpdatedAt,
+    executionContext: actionEnabled
+      ? { expectedExpenseUpdatedAt }
+      : null,
+    availableActions: actionEnabled
+      ? [
+          {
+            key: "record_execution",
+            label: "登记项目支出实付",
+            kind: "primary",
+            enabled: true,
+            disabledReason: null,
+            requiredRoles: ["finance_staff"]
+          }
+        ]
+      : []
+  };
+}
+
+function projectExpenseExecutionInput(
+  idempotencyKey: string
+) {
+  return {
+    amountCents: "5000000",
+    paidAt: "2026-07-31T08:30:00.000Z",
+    confirmationPassword: " current-password ",
+    expectedExpenseUpdatedAt:
+      "2026-07-31T08:00:00.000Z",
+    idempotencyKey,
+    file: Object.assign(new Blob(["voucher"]), {
+      name: "项目支出实付凭证.pdf"
+    }),
+    fileName: "项目支出实付凭证.pdf",
+    context: "expense-a",
+    isCurrent: () => true
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((accept, decline) => {
+    resolve = accept;
+    reject = decline;
+  });
+  return { promise, reject, resolve };
+}
+
+function jsonResponse(body: unknown): Response {
+  return {
+    ok: true,
+    json: async () => body
+  } as Response;
+}

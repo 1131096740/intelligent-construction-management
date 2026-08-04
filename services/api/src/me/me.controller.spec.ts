@@ -28,4 +28,13 @@ describe("MeController", () => {
     controller.canvasSignatureHandoff("opaque-token", { id: "user-1" } as never);
     expect(service.getCanvasSignatureHandoff).toHaveBeenCalledWith("user-1", "opaque-token");
   });
+
+  it("derives canvas signature capabilities from the authenticated account", () => {
+    const service = { getCanvasSignatureCapabilities: jest.fn() };
+    const controller = new MeController(service as never);
+
+    controller.canvasSignatureCapabilities({ id: "user-1" } as never);
+
+    expect(service.getCanvasSignatureCapabilities).toHaveBeenCalledWith("user-1");
+  });
 });

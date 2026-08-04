@@ -15,6 +15,7 @@ import {
 import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-access";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
+import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -1555,6 +1556,20 @@ export class SpotProcurementPaymentService {
             );
           }
         }
+        const nextNodes =
+          input.decision === "approve"
+            ? this.approveCurrentNode(
+                approval.frozenNodes,
+                approval.currentNodeIndex,
+                approvedRoleKey
+              )
+            : [];
+        const signature =
+          input.decision === "approve"
+            ? await snapshotApprovalSignature(tx, actorUserId, {
+                required: true
+              })
+            : null;
         const recordApprovalAction = () =>
           tx.approvalActionLog.create({
             data: {
@@ -1562,6 +1577,15 @@ export class SpotProcurementPaymentService {
               action: input.decision,
               actorUserId,
               comment,
+              approvedRoleKey,
+              representedUserId: actorUserId,
+              ...(signature
+                ? {
+                    signatureFileIdSnapshot: signature.fileId,
+                    signatureSha256Snapshot: signature.sha256,
+                    signatureVersionIdSnapshot: signature.versionId
+                  }
+                : {}),
               metadata: {
                 reviewRoleKey: approvedRoleKey,
                 ...(adjustedBalanceText !== undefined
@@ -1772,11 +1796,6 @@ export class SpotProcurementPaymentService {
         }
 
         await recordApprovalAction();
-        const nextNodes = this.approveCurrentNode(
-          approval.frozenNodes,
-          approval.currentNodeIndex,
-          approvedRoleKey
-        );
         const isFinal =
           approval.currentNodeIndex >= nextNodes.length - 1;
         if (!isFinal) {

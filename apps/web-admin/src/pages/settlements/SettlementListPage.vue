@@ -258,6 +258,7 @@ import {
   type SettlementLifecycleLedgerRow,
   downloadSettlementLedgerExport
 } from "../../api/core-flow-read.api";
+import { fetchSettlementProjectCapability } from "../../api/settlement-drafts.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -398,7 +399,7 @@ async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycl
   if (!row.copyAvailable || !row.lifecycleUpdatedAt) return;
   copyingId.value = row.id;
   try {
-    const created = await copyAbandonedSettlementDraft(row.projectId, row.id, row.lifecycleUpdatedAt);
+    const created = await copySettlementDraftWithCapability(row);
     await MessagePlugin.success("已复制为新的结算草稿，旧记录保持只读历史。");
     await router.push({ path: "/结算工作台/新建", query: { project: row.projectId, draftId: created.id } });
   } catch (error) {
@@ -406,6 +407,25 @@ async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycl
   } finally {
     copyingId.value = "";
   }
+}
+
+async function copySettlementDraftWithCapability(
+  row: SettlementLedgerRow & SettlementLifecycleLedgerRow
+) {
+  const capability = await fetchSettlementProjectCapability(row.projectId);
+  const matchesRequestedProject = capability.projectId === row.projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新台账后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "copy_abandoned_draft"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能复制该结算草稿");
+  const lifecycleUpdatedAt = row.lifecycleUpdatedAt;
+  if (!lifecycleUpdatedAt) throw new Error("结算草稿修订时间缺失，请刷新台账后重试");
+  return copyAbandonedSettlementDraft(
+    row.projectId,
+    row.id,
+    lifecycleUpdatedAt
+  );
 }
 
 function resetSettlementFilters() {

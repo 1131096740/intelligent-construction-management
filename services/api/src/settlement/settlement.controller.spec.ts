@@ -2,7 +2,10 @@ import "reflect-metadata";
 import { BadRequestException } from "@nestjs/common";
 import { CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
-import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import {
+  ANY_PROJECT_POSITION_SCOPE_KEY,
+  REQUIRED_POSITIONS_KEY
+} from "../auth/decorators/require-positions.decorator";
 import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -14,6 +17,7 @@ type RuntimeDto = new () => object;
 const settlementBodyRoutes = [
   ["create", 0],
   ["reviewApproval", 2],
+  ["withdrawApproval", 2],
   ["transferApproval", 2],
   ["delegateApproval", 2],
   ["uploadArchiveFile", 2],
@@ -40,6 +44,16 @@ const validSettlementCreate = {
 const validSettlementBodies = [
   ["create", 0, validSettlementCreate],
   ["reviewApproval", 2, { decision: "approve" }],
+  [
+    "withdrawApproval",
+    2,
+    {
+      expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z"
+    }
+  ],
   ["transferApproval", 2, { toUserId: "user-2" }],
   ["delegateApproval", 2, { toUserId: "user-2" }],
   ["uploadArchiveFile", 2, { fileId: "file-1" }],
@@ -156,6 +170,35 @@ describe("SettlementController authorization wiring", () => {
     expect(response.errors).toEqual(["internalSecret 不是允许提交的字段"]);
     expect(JSON.stringify(response)).not.toContain("current-password");
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
+
+  it.each([
+    [
+      { expectedSettlementUpdatedAt: "not-a-date" },
+      "预期结算版本格式不正确"
+    ],
+    [
+      { expectedApprovalInstanceId: "   " },
+      "预期审批实例不能为空白"
+    ],
+    [
+      { expectedNodeIndex: -1 },
+      "预期审批节点不能小于 0"
+    ],
+    [
+      { expectedApprovalUpdatedAt: "not-a-date" },
+      "预期审批版本格式不正确"
+    ]
+  ])("拒绝结算撤回非法四坐标：%p", async (patch, message) => {
+    const response = await getSettlementValidationResponse("withdrawApproval", 2, {
+      expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z",
+      ...patch
+    });
+
+    expect(response.errors).toContain(message);
   });
   it.each(settlementBodyRoutes)("exposes a runtime DTO for %s", (method, bodyIndex) => {
     const metatype = settlementBodyMetatype(method, bodyIndex);
@@ -425,6 +468,7 @@ describe("SettlementController authorization wiring", () => {
     ["uploadArchiveFile", "settlement.archive.upload"],
     ["confirmArchiveFile", "settlement.archive.confirm"],
     ["generatePdfArchive", "settlement.archive.upload"],
+    ["uploadArchivePrivateFile", "settlement.archive.upload"],
     ["downloadDraftExcel", "settlement.archive.upload"],
     ["downloadAttachmentTemplate", "settlement.archive.upload"]
   ])("guards %s with the %s action", (method, action) => {
@@ -442,13 +486,141 @@ describe("SettlementController authorization wiring", () => {
     }
   );
 
-  it("guards settlement list and detail with the shared ledger read policy", () => {
+  it("guards settlement list, detail and approval withdrawal with the shared ledger read policy", () => {
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.list)).toEqual(
       LEDGER_READ_POSITION_KEYS
     );
     expect(Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.detail)).toEqual(
       LEDGER_READ_POSITION_KEYS
     );
+    expect(
+      Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype.withdrawApproval)
+    ).toEqual(LEDGER_READ_POSITION_KEYS);
+    expect(
+      Reflect.getMetadata(
+        ANY_PROJECT_POSITION_SCOPE_KEY,
+        SettlementController.prototype.withdrawApproval
+      )
+    ).toBe(true);
+    expect(
+      Reflect.getMetadata(ANY_PROJECT_POSITION_SCOPE_KEY, SettlementController.prototype.detail)
+    ).toBeUndefined();
+  });
+
+  it("limits settlement recovery writes and evidence uploads to finance staff", () => {
+    for (const method of ["recordRecovery", "reverseRecovery", "uploadRecoveryFile"] as const) {
+      expect(
+        Reflect.getMetadata(REQUIRED_POSITIONS_KEY, SettlementController.prototype[method])
+      ).toEqual(["finance_staff"]);
+    }
+  });
+
+  it("uploads archive and recovery evidence through the settlement-scoped file service", async () => {
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }) };
+    const settlementRead = {
+      getDetail: jest
+        .fn()
+        .mockResolvedValueOnce({
+          settlementId: "settlement-1",
+          availableActionKeys: ["upload_archive"]
+        })
+        .mockResolvedValueOnce({
+          settlementId: "settlement-1",
+          availableActionKeys: ["record_recovery", "reverse_recovery"]
+        })
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never,
+      undefined,
+      undefined,
+      files as never
+    );
+    const file = {
+      originalname: "结算依据.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("settlement")
+    };
+
+    await expect(
+      controller.uploadArchivePrivateFile(
+        "settlement-1",
+        file,
+        { id: "contract-1" } as never,
+        "upload-1"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+    await expect(
+      controller.uploadRecoveryFile(
+        "settlement-1",
+        file,
+        { id: "finance-1" } as never,
+        "upload-2"
+      )
+    ).resolves.toEqual({ id: "file-1" });
+
+    expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ uploadedByUserId: "contract-1", idempotencyKey: "upload-1" })
+    );
+    expect(files.uploadPrivateFile).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ uploadedByUserId: "finance-1", idempotencyKey: "upload-2" })
+    );
+    expect(projectVisibility.visibleProjectIds).toHaveBeenNthCalledWith(1, "contract-1");
+    expect(projectVisibility.visibleProjectIds).toHaveBeenNthCalledWith(2, "finance-1");
+  });
+
+  it("rejects settlement evidence uploads before storage when the action is unavailable", async () => {
+    const files = { uploadPrivateFile: jest.fn() };
+    const settlementRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        settlementId: "settlement-1",
+        availableActionKeys: []
+      })
+    };
+    const projectVisibility = {
+      visibleProjectIds: jest.fn().mockResolvedValue(["project-1"])
+    };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never,
+      undefined,
+      undefined,
+      files as never
+    );
+    const file = {
+      originalname: "结算依据.pdf",
+      mimetype: "application/pdf",
+      size: 12,
+      buffer: Buffer.from("settlement")
+    };
+
+    await expect(
+      controller.uploadArchivePrivateFile(
+        "settlement-1",
+        file,
+        { id: "contract-1" } as never
+      )
+    ).rejects.toThrow("当前结算状态或操作权限不允许上传归档资料");
+    await expect(
+      controller.uploadRecoveryFile(
+        "settlement-1",
+        file,
+        { id: "finance-1" } as never
+      )
+    ).rejects.toThrow("当前结算状态或操作权限不允许上传回收凭证");
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
   it("limits settlement ledger export to the approved contract, finance and comprehensive positions", () => {
@@ -502,6 +674,77 @@ describe("SettlementController authorization wiring", () => {
     expect(settlementRead.getDetail).toHaveBeenCalledWith("JS-2026-031", ["project-1"], "user-1");
   });
 
+  it("returns settlement action capability for any authenticated visible-project user", async () => {
+    const settlementRead = {
+      getDetail: jest.fn().mockResolvedValue({
+        settlementId: "settlement-1",
+        availableActionKeys: ["review_approval"]
+      })
+    };
+    const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
+    const controller = new SettlementController(
+      settlementRead as never,
+      {} as never,
+      {} as never,
+      projectVisibility as never,
+      {} as never
+    );
+
+    await expect(
+      controller.capability("JS-2026-031", { id: "user-1" } as never)
+    ).resolves.toEqual({
+      settlementId: "settlement-1",
+      availableActions: ["review_approval"]
+    });
+    expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
+    expect(settlementRead.getDetail).toHaveBeenCalledWith(
+      "JS-2026-031",
+      ["project-1"],
+      "user-1"
+    );
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_PROJECT_ACTION_KEY,
+        SettlementController.prototype.capability
+      )
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(
+        REQUIRED_POSITIONS_KEY,
+        SettlementController.prototype.capability
+      )
+    ).toBeUndefined();
+  });
+
+  it("forwards all four withdrawal coordinates to the settlement service", async () => {
+    const settlements = { withdrawApproval: jest.fn().mockResolvedValue({ status: "withdrawn" }) };
+    const body = {
+      expectedSettlementUpdatedAt: "2026-08-02T04:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt: "2026-08-02T04:00:01.000Z"
+    };
+    const controller = new SettlementController(
+      {} as never,
+      {} as never,
+      settlements as never,
+      {} as never,
+      {} as never
+    );
+
+    await controller.withdrawApproval(
+      "settlement-1",
+      { id: "applicant-1" } as never,
+      body
+    );
+
+    expect(settlements.withdrawApproval).toHaveBeenCalledWith(
+      "settlement-1",
+      "applicant-1",
+      body
+    );
+  });
+
   it("keeps POST /settlements compatible while delegating to the single submission service", async () => {
     const legacy = { create: jest.fn() };
     const submissions = {
@@ -525,7 +768,7 @@ describe("SettlementController authorization wiring", () => {
     expect(legacy.create).not.toHaveBeenCalled();
   });
 
-  it.each(["create", "list", "detail", "update", "abandon", "submit", "linkCounterpartySignedDocument"] as const)(
+  it.each(["capability", "uploadPrivateFile", "create", "list", "detail", "update", "abandon", "submit", "linkCounterpartySignedDocument"] as const)(
     "protects settlement draft %s with settlement.create",
     (method) => {
       expect(
@@ -536,6 +779,44 @@ describe("SettlementController authorization wiring", () => {
       ).toBe("settlement.create");
     }
   );
+
+  it("returns settlement project actions and uploads draft evidence through the scoped controller", async () => {
+    const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-2" }) };
+    const controller = new SettlementDraftController(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      files as never
+    );
+    const file = {
+      originalname: "结算明细附件.pdf",
+      mimetype: "application/pdf",
+      size: 18,
+      buffer: Buffer.from("draft-evidence")
+    };
+
+    expect(controller.capability("project-1")).toEqual(
+      expect.objectContaining({
+        projectId: "project-1",
+        availableActions: expect.arrayContaining([
+          "save_draft",
+          "preview_import",
+          "attach_line_file"
+        ])
+      })
+    );
+    await expect(
+      controller.uploadPrivateFile(file, { id: "contract-1" } as never, "draft-upload-1")
+    ).resolves.toEqual({ id: "file-2" });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uploadedByUserId: "contract-1",
+        idempotencyKey: "draft-upload-1"
+      })
+    );
+  });
 
   it("uses a validated DTO for settlement draft abandonment", async () => {
     const paramTypes = Reflect.getMetadata(

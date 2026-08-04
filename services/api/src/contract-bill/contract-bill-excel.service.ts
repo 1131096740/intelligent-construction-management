@@ -422,6 +422,32 @@ export class ContractBillExcelService {
         throw new BadRequestException("合同清单导入预检存在错误，请先修正后重新预检");
       }
 
+      const removedRows = existingRows.filter((row) => plan.removeKeys.includes(row.rowKey));
+      if (removedRows.length) {
+        await this.lineage.assertRowsDeletable(
+          tx,
+          removedRows.map((row) => row.id),
+          { id: version.id, baseVersionId: version.baseVersionId }
+        );
+      }
+      if (plan.updates.some((updatedRow) =>
+        existingRows.find((row) => row.rowKey === updatedRow.rowKey)?.remainderDisposition === "cancelled"
+      )) {
+        throw new BadRequestException("已取消未实施余量的清单行不能通过普通编辑修改");
+      }
+      if (plan.updates.length) {
+        const existingByKey = new Map(existingRows.map((row) => [row.rowKey, row]));
+        await this.lineage.assertRowsOrdinarilyMutable(
+          tx,
+          { id: version.id, baseVersionId: version.baseVersionId },
+          plan.updates.map((row) => ({
+            row: existingByKey.get(row.rowKey)!,
+            nextUnit: row.unit,
+            nextQuantity: row.quantity
+          }))
+        );
+      }
+
       const newRevision = await this.lockBillRevision(
         tx,
         bill,
@@ -430,8 +456,6 @@ export class ContractBillExcelService {
       );
 
       for (const rowKey of plan.removeKeys) {
-        const existing = existingRows.find((row) => row.rowKey === rowKey);
-        if (existing) await this.lineage.assertRowsDeletable(tx, [existing.id]);
         await tx.contractBillRow.deleteMany({
           where: { contractBillId: bill.id, rowKey }
         });
@@ -1192,6 +1216,7 @@ export class ContractBillExcelService {
       version: {
         id: version.id,
         contractId: version.contractId,
+        baseVersionId: version.baseVersionId,
         amountSource: version.amountSource,
         pricingNature: version.pricingNature,
         amountLimitType: version.amountLimitType,

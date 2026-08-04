@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   Optional
 } from "@nestjs/common";
@@ -121,11 +122,31 @@ interface PaymentExecutionLockRow {
   paymentTermsStageId?: string | null;
   settlementId: string | null;
   sourceType?: string;
+  updatedAt: Date;
+  paymentSubjectType: string;
   signingSubjectType: string;
+  companyEntityIdSnapshot: string | null;
+  companyEntityNameSnapshot: string | null;
+  companyEntityCreditCodeSnapshot: string | null;
   status: string;
   requestedAmountCents: bigint;
   approvedAmountCents: bigint | null;
   paidAmountCents: bigint;
+}
+
+interface PaymentExecutionFactRow {
+  id: string;
+  idempotencyKey: string;
+  paymentRequestId: string;
+  settlementId: string | null;
+  paymentSubjectType: string;
+  companyEntityIdSnapshot: string | null;
+  companyEntityNameSnapshot: string | null;
+  companyEntityCreditCodeSnapshot: string | null;
+  amountCents: bigint;
+  paidAt: Date;
+  executedByUserId: string;
+  voucherFileId: string;
 }
 
 type NormalizedCreatePaymentRequest = Omit<CreatePaymentRequestDto, "requestedAmountCents"> & {
@@ -1582,11 +1603,16 @@ export class PaymentRequestService {
         payment."paymentTermsStageId",
         payment."settlementId",
         payment."sourceType",
+        payment."updatedAt",
+        payment."paymentSubjectType",
         payment."status",
         payment."requestedAmountCents",
         payment."approvedAmountCents",
         payment."paidAmountCents",
-        version."signingSubjectType"
+        version."signingSubjectType",
+        version."companyEntityIdSnapshot",
+        version."companyEntityNameSnapshot",
+        version."companyEntityCreditCodeSnapshot"
       FROM "PaymentRequest" payment
       INNER JOIN "ContractVersion" version
         ON version."id" = payment."contractVersionId"
@@ -1595,6 +1621,44 @@ export class PaymentRequestService {
       FOR UPDATE OF payment, version
     `);
     return rows[0] ?? null;
+  }
+
+  private async assertCurrentProjectFinanceStaff(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    projectId: string
+  ): Promise<void> {
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) {
+      throw new ForbiddenException("当前付款登记账号不存在或已停用");
+    }
+
+    const [projectPositions, projectMembers] = await Promise.all([
+      tx.userPosition.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionId: true }
+      }),
+      tx.projectMember.findMany({
+        where: { userId: actorUserId, projectId },
+        select: { positionKey: true }
+      })
+    ]);
+    const positionIds = [...new Set(projectPositions.map((row) => row.positionId))];
+    const positions = positionIds.length
+      ? await tx.position.findMany({
+          where: { id: { in: positionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    const hasProjectFinanceRole =
+      projectMembers.some((row) => row.positionKey === "finance_staff") ||
+      positions.some((row) => row.key === "finance_staff");
+    if (!hasProjectFinanceRole) {
+      throw new ForbiddenException("只有当前项目财务人员可以登记实际付款");
+    }
   }
 
   private async lockSettlementForPaymentExecution(
@@ -1955,10 +2019,20 @@ export class PaymentRequestService {
       throw new Error("不支持的付款审批处理方式");
     }
     requireApprovalCommentForReturn(input.decision, input.comment);
+    const expectedPaymentUpdatedAt = new Date(input.expectedPaymentUpdatedAt);
+    const expectedApprovalUpdatedAt = new Date(input.expectedApprovalUpdatedAt);
+    if (Number.isNaN(expectedPaymentUpdatedAt.getTime())) {
+      throw new BadRequestException("预期付款申请版本格式不正确");
+    }
+    if (Number.isNaN(expectedApprovalUpdatedAt.getTime())) {
+      throw new BadRequestException("预期审批版本格式不正确");
+    }
 
     let completedInstanceId: string | undefined;
     const result = await this.prisma.$transaction(async (tx) => {
-      if (supportsApprovalReviewLock(tx)) await this.lockPaymentRequestForUpdate(tx, paymentId);
+      const lockedPayment = supportsApprovalReviewLock(tx)
+        ? await this.lockPaymentRequestForUpdate(tx, paymentId)
+        : null;
       const payment = await tx.paymentRequest.findFirst({
         where: { OR: [{ id: paymentId }, { code: paymentId }] }
       });
@@ -1968,7 +2042,7 @@ export class PaymentRequestService {
       }
 
       if (payment.status !== "approval_pending") {
-        throw new Error("当前付款申请已离开审批中，不能处理审批");
+        throw new ConflictException("当前付款申请已离开审批中，不能处理审批");
       }
 
       await lockApprovalReviewRow(tx, Prisma.sql`
@@ -1980,18 +2054,32 @@ export class PaymentRequestService {
         FOR UPDATE
       `);
 
-      const instance = await tx.approvalInstance.findFirst({
-        where: {
-          businessType: "payment_request",
-          businessId: payment.id,
-          flowType: "payment.approve",
-          status: "in_progress"
-        }
-      });
+      const approvalWhere = {
+        businessType: "payment_request",
+        businessId: payment.id,
+        flowType: "payment.approve",
+        status: "in_progress"
+      } as const;
+      const approvalClient = tx.approvalInstance as typeof tx.approvalInstance & {
+        findMany?: typeof tx.approvalInstance.findMany;
+      };
+      const instances = approvalClient.findMany
+        ? await approvalClient.findMany({
+            where: approvalWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 2
+          })
+        : [await tx.approvalInstance.findFirst({ where: approvalWhere })].filter(
+            (item): item is NonNullable<typeof item> => item !== null
+          );
 
-      if (!instance) {
-        throw new Error("未找到进行中的付款审批，请刷新后重试");
+      if (instances.length === 0) {
+        throw new ConflictException("未找到进行中的付款审批，请刷新后重试");
       }
+      if (instances.length !== 1) {
+        throw new ConflictException("付款审批实例异常，请刷新页面后重试");
+      }
+      const instance = instances[0];
 
       const nodes = instance.frozenNodes as unknown as PaymentApprovalNode[];
       const currentNode = nodes[instance.currentNodeIndex];
@@ -2023,9 +2111,6 @@ export class PaymentRequestService {
         throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”付款审批节点`);
       }
       const approvedRoleKey = identity.approvedRoleKey;
-      const signature = await snapshotApprovalSignature(tx, actorUserId, {
-        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
-      });
 
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId,
@@ -2042,6 +2127,21 @@ export class PaymentRequestService {
         confirmPassword: this.auth
           ? (password) => this.auth!.confirmPassword(actorUserId, password)
           : undefined
+      });
+
+      if (
+        !(payment.updatedAt instanceof Date) ||
+        payment.updatedAt.getTime() !== expectedPaymentUpdatedAt.getTime() ||
+        input.expectedApprovalInstanceId !== instance.id ||
+        input.expectedNodeIndex !== instance.currentNodeIndex ||
+        !(instance.updatedAt instanceof Date) ||
+        instance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
+      ) {
+        throw new ConflictException("付款审批坐标已变化，请刷新页面后重试");
+      }
+
+      const signature = await snapshotApprovalSignature(tx, actorUserId, {
+        required: input.decision === "approve" && isGovernedFrozenApprovalNode(currentNode)
       });
 
       if (input.decision === "reject_previous") {
@@ -2228,6 +2328,27 @@ export class PaymentRequestService {
 
       if (!flowCompleted && input.approvedAmountCents !== undefined) {
         throw new Error("只有最后一个付款审批节点才能调整批准金额");
+      }
+      const payerFacts = lockedPayment ??
+        (payment as typeof payment & {
+          signingSubjectType?: string;
+          companyEntityIdSnapshot?: string | null;
+          companyEntityNameSnapshot?: string | null;
+          companyEntityCreditCodeSnapshot?: string | null;
+        });
+      if (
+        flowCompleted &&
+        (
+          payerFacts.paymentSubjectType !== "our_company" ||
+          payerFacts.signingSubjectType !== "our_company" ||
+          !payerFacts.companyEntityIdSnapshot?.trim() ||
+          !payerFacts.companyEntityNameSnapshot?.trim() ||
+          !payerFacts.companyEntityCreditCodeSnapshot?.trim()
+        )
+      ) {
+        throw new BadRequestException(
+          "付款合同不是完整的我方付款主体，不能完成付款审批"
+        );
       }
 
       const approved = await tx.paymentRequest.update({
@@ -2732,10 +2853,27 @@ export class PaymentRequestService {
     if (!this.prisma) {
       throw new Error("付款实付登记服务暂不可用，请稍后重试或联系管理员");
     }
+    if (!this.files || !this.projectFunding) {
+      throw new Error("付款实付登记依赖服务暂不可用，请稍后重试或联系管理员");
+    }
 
     const amountCents = positiveMoneyCents(input.amountCents, "实付金额必须大于 0");
+    const idempotencyKey = input.idempotencyKey?.trim().toLowerCase();
+    if (
+      !idempotencyKey ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        idempotencyKey
+      )
+    ) {
+      throw new BadRequestException("付款实付登记幂等键必须是 UUID");
+    }
+    const expectedPaymentUpdatedAt = new Date(input.expectedPaymentUpdatedAt);
+    if (Number.isNaN(expectedPaymentUpdatedAt.getTime())) {
+      throw new BadRequestException("预期付款申请版本格式不正确");
+    }
 
-    if (!input.voucherFileId?.trim()) {
+    const voucherFileId = input.voucherFileId?.trim();
+    if (!voucherFileId) {
       throw new Error("登记实付必须上传付款凭证");
     }
 
@@ -2756,189 +2894,234 @@ export class PaymentRequestService {
     }
 
     await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
+    const files = this.files;
+    const projectFunding = this.projectFunding;
 
-    const execution = await this.prisma.$transaction(async (tx) => {
-      const fundingScope = this.projectFunding
-        ? await tx.paymentRequest.findFirst({
-            where: {
-              OR: [{ id: paymentId }, { code: paymentId }]
-            },
-            select: {
-              id: true,
-              projectId: true
-            }
-          })
-        : null;
-      if (this.projectFunding && !fundingScope) {
-        throw new Error("未找到付款申请，请刷新付款台账后重试");
-      }
-      if (this.projectFunding && fundingScope) {
-        await this.projectFunding.lockFundingContext(tx, fundingScope.projectId);
-      }
+    try {
+      const execution = await this.prisma.$transaction(async (tx) => {
+        const fundingScope = await tx.paymentRequest.findFirst({
+          where: {
+            OR: [{ id: paymentId }, { code: paymentId }]
+          },
+          select: {
+            id: true,
+            projectId: true
+          }
+        });
+        if (!fundingScope) {
+          throw new Error("未找到付款申请，请刷新付款台账后重试");
+        }
+        await projectFunding.lockFundingContext(tx, fundingScope.projectId);
 
-      const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
+        const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
 
-      if (!payment) {
-        throw new Error("未找到付款申请，请刷新付款台账后重试");
-      }
-      if (
-        fundingScope &&
-        (fundingScope.id !== payment.id || fundingScope.projectId !== payment.projectId)
-      ) {
-        throw new ConflictException("付款申请的项目资金范围已变化，请刷新后重试");
-      }
-      // Persisted rows are non-null and database-constrained. `undefined` is
-      // retained only for pre-migration unit doubles that do not project the
-      // newly added column.
-      if (payment.signingSubjectType === "affiliate") {
-        throw new BadRequestException(
-          "该合同冻结为挂靠企业签约，不能创建或登记我方付款"
-        );
-      }
-
-      const existingExecution = this.projectFunding
-        ? await tx.paymentExecution.findFirst({
-            where: { voucherFileId: input.voucherFileId }
-          })
-        : null;
-      if (existingExecution) {
-        if (this.files) {
-          await this.files.assertCanDownloadFile(tx, input.voucherFileId, actorUserId);
+        if (!payment) {
+          throw new Error("未找到付款申请，请刷新付款台账后重试");
         }
         if (
-          existingExecution.paymentRequestId !== payment.id ||
-          existingExecution.amountCents !== amountCents ||
-          existingExecution.paidAt.getTime() !== paidAt.getTime() ||
-          existingExecution.executedByUserId !== actorUserId
+          fundingScope.id !== payment.id ||
+          fundingScope.projectId !== payment.projectId
         ) {
-          throw new ConflictException("该付款凭证已绑定不同的实付事实");
+          throw new ConflictException("付款申请的项目资金范围已变化，请刷新后重试");
         }
-        await this.projectFunding!.allocateExecution(tx, {
-          projectId: payment.projectId,
-          executionType: "payment_execution",
-          executionId: existingExecution.id,
-          businessType: "payment_request",
-          businessId: payment.id,
-          amountCents,
-          occurredAt: paidAt,
-          actorUserId
-        });
-        return existingExecution;
-      }
-
-      if (!["approved_pending_payment", "partially_paid"].includes(payment.status)) {
-        throw new Error(this.paymentExecutionBlockedMessage(payment.status));
-      }
-
-      if (payment.sourceType === "contract_due" && !payment.settlementId) {
-        await this.lockContractPaymentCapacityRows(tx, payment.contractId);
-        await this.assertHistoricalTakeoverPaymentReady(tx, {
-          contractId: payment.contractId,
-          contractVersionId: payment.contractVersionId,
-          sourceType: "contract_due",
+        await this.assertCurrentProjectFinanceStaff(
+          tx,
           actorUserId,
-          actionLabel: "登记实付"
-        });
-      } else if (payment.sourceType === "contract_advance") {
-        await this.lockContractAdvancePaymentRows(tx, payment.contractId);
-        await this.assertHistoricalTakeoverPaymentReady(tx, {
-          contractId: payment.contractId,
-          contractVersionId: payment.contractVersionId,
-          sourceType: "contract_advance",
-          actorUserId,
-          actionLabel: "登记实付"
-        });
-      }
-
-      const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
-      const remainingAmountCents = approvedAmountCents - payment.paidAmountCents;
-      if (amountCents > remainingAmountCents) {
-        throw new Error(
-          `实付金额超过付款申请剩余可实付金额，当前最多可实付 ${this.formatYuan(
-            remainingAmountCents > 0n ? remainingAmountCents : 0n
-          )} 元`
+          payment.projectId
         );
-      }
-      if (this.files) {
-        await this.files.assertCanDownloadFile(tx, input.voucherFileId, actorUserId);
-      }
-
-      const newPaymentPaidAmountCents = payment.paidAmountCents + amountCents;
-      const newPaymentStatus =
-        newPaymentPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
-      let settlement:
-        | {
-            id: string;
-            contractId: string;
-            contractVersionId: string;
-            status: string;
-            payableAmountCents: bigint;
-            paidAmountCents: bigint;
-          }
-        | null = null;
-      let newSettlementPaidAmountCents: bigint | null = null;
-      let newSettlementStatus: "paid" | "partially_paid" | null = null;
-
-      if (payment.settlementId) {
-        await this.lockSettlementForPaymentExecution(tx, payment.settlementId);
-        settlement = await tx.settlement.findUnique({
-          where: { id: payment.settlementId }
-        });
-
-        if (!settlement) {
-          throw new Error("未找到关联结算，请先核对结算归档记录");
-        }
-        if (!canCreatePaymentFromSettlementStatus(settlement.status as SettlementStatus)) {
-          throw new Error(
-            "当前结算不是已归档可付款状态，不能登记实付；请先核对结算归档或更正记录"
+        if (payment.signingSubjectType === "affiliate") {
+          throw new BadRequestException(
+            "该合同冻结为挂靠企业签约，不能创建或登记我方付款"
           );
         }
-        await this.assertHistoricalTakeoverPaymentReady(tx, {
-          contractId: settlement.contractId,
-          contractVersionId: settlement.contractVersionId,
-          sourceType: "settlement",
-          actorUserId,
-          actionLabel: "登记实付"
-        });
+        if (
+          payment.paymentSubjectType !== "our_company" ||
+          payment.signingSubjectType !== "our_company"
+        ) {
+          throw new BadRequestException(
+            "付款申请或合同版本不是我方付款主体，不能登记实际付款"
+          );
+        }
+        const companyEntityIdSnapshot = payment.companyEntityIdSnapshot?.trim();
+        const companyEntityNameSnapshot = payment.companyEntityNameSnapshot?.trim();
+        const companyEntityCreditCodeSnapshot =
+          payment.companyEntityCreditCodeSnapshot?.trim();
+        if (
+          !companyEntityIdSnapshot ||
+          !companyEntityNameSnapshot ||
+          !companyEntityCreditCodeSnapshot
+        ) {
+          throw new ConflictException(
+            "付款合同缺少完整的我方付款主体快照，请先补齐合同主体后重试"
+          );
+        }
 
-        const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
-        const contractDueAllocatedCents = await this.sumContractDueAllocatedCentsForSettlement(
-          tx,
-          settlement.id
-        );
-        const settlementExecutionRemainingCents =
-          settlement.payableAmountCents -
-          settlement.paidAmountCents -
-          proxyPaidCents -
-          contractDueAllocatedCents;
-        if (amountCents > settlementExecutionRemainingCents) {
+        const paymentExecutionClient = tx.paymentExecution as unknown as {
+          findUnique(args: {
+            where: { idempotencyKey: string };
+          }): Promise<PaymentExecutionFactRow | null>;
+          create(args: {
+            data: Record<string, unknown>;
+          }): Promise<PaymentExecutionFactRow>;
+        };
+        const existingExecution = await paymentExecutionClient.findUnique({
+          where: { idempotencyKey }
+        });
+        if (existingExecution) {
+          this.assertSamePaymentExecutionFacts(existingExecution, {
+            idempotencyKey,
+            paymentRequestId: payment.id,
+            settlementId: payment.settlementId,
+            amountCents,
+            paidAt,
+            actorUserId,
+            voucherFileId,
+            companyEntityIdSnapshot,
+            companyEntityNameSnapshot,
+            companyEntityCreditCodeSnapshot
+          });
+          await projectFunding.allocateExecution(tx, {
+            projectId: payment.projectId,
+            executionType: "payment_execution",
+            executionId: existingExecution.id,
+            businessType: "payment_request",
+            businessId: payment.id,
+            amountCents,
+            occurredAt: paidAt,
+            actorUserId
+          });
+          return existingExecution;
+        }
+
+        if (payment.updatedAt.getTime() !== expectedPaymentUpdatedAt.getTime()) {
+          throw new ConflictException("付款申请已变化，请刷新后重试");
+        }
+
+        if (!["approved_pending_payment", "partially_paid"].includes(payment.status)) {
+          throw new Error(this.paymentExecutionBlockedMessage(payment.status));
+        }
+
+        if (payment.sourceType === "contract_due" && !payment.settlementId) {
+          await this.lockContractPaymentCapacityRows(tx, payment.contractId);
+          await this.assertHistoricalTakeoverPaymentReady(tx, {
+            contractId: payment.contractId,
+            contractVersionId: payment.contractVersionId,
+            sourceType: "contract_due",
+            actorUserId,
+            actionLabel: "登记实付"
+          });
+        } else if (payment.sourceType === "contract_advance") {
+          await this.lockContractAdvancePaymentRows(tx, payment.contractId);
+          await this.assertHistoricalTakeoverPaymentReady(tx, {
+            contractId: payment.contractId,
+            contractVersionId: payment.contractVersionId,
+            sourceType: "contract_advance",
+            actorUserId,
+            actionLabel: "登记实付"
+          });
+        }
+
+        const approvedAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
+        const remainingAmountCents = approvedAmountCents - payment.paidAmountCents;
+        if (amountCents > remainingAmountCents) {
           throw new Error(
-            `实付金额超过结算剩余可付金额，当前最多可实付 ${this.formatYuan(
-              settlementExecutionRemainingCents > 0n ? settlementExecutionRemainingCents : 0n
+            `实付金额超过付款申请剩余可实付金额，当前最多可实付 ${this.formatYuan(
+              remainingAmountCents > 0n ? remainingAmountCents : 0n
             )} 元`
           );
         }
 
-        newSettlementPaidAmountCents = settlement.paidAmountCents + amountCents;
-        newSettlementStatus =
-          newSettlementPaidAmountCents >= settlement.payableAmountCents
-            ? "paid"
-            : "partially_paid";
-      }
+        const newPaymentPaidAmountCents = payment.paidAmountCents + amountCents;
+        const newPaymentStatus =
+          newPaymentPaidAmountCents >= approvedAmountCents ? "paid" : "partially_paid";
+        let settlement:
+          | {
+              id: string;
+              contractId: string;
+              contractVersionId: string;
+              status: string;
+              payableAmountCents: bigint;
+              paidAmountCents: bigint;
+            }
+          | null = null;
+        let newSettlementPaidAmountCents: bigint | null = null;
+        let newSettlementStatus: "paid" | "partially_paid" | null = null;
 
-      const execution = await tx.paymentExecution.create({
-        data: {
-          paymentRequestId: payment.id,
-          settlementId: payment.settlementId,
-          paymentSubjectType: "our_company",
-          amountCents,
-          paidAt,
-          executedByUserId: actorUserId,
-          voucherFileId: input.voucherFileId
+        if (payment.settlementId) {
+          await this.lockSettlementForPaymentExecution(tx, payment.settlementId);
+          settlement = await tx.settlement.findUnique({
+            where: { id: payment.settlementId }
+          });
+
+          if (!settlement) {
+            throw new Error("未找到关联结算，请先核对结算归档记录");
+          }
+          if (!canCreatePaymentFromSettlementStatus(settlement.status as SettlementStatus)) {
+            throw new Error(
+              "当前结算不是已归档可付款状态，不能登记实付；请先核对结算归档或更正记录"
+            );
+          }
+          await this.assertHistoricalTakeoverPaymentReady(tx, {
+            contractId: settlement.contractId,
+            contractVersionId: settlement.contractVersionId,
+            sourceType: "settlement",
+            actorUserId,
+            actionLabel: "登记实付"
+          });
+
+          const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+          const contractDueAllocatedCents =
+            await this.sumContractDueAllocatedCentsForSettlement(tx, settlement.id);
+          const settlementExecutionRemainingCents =
+            settlement.payableAmountCents -
+            settlement.paidAmountCents -
+            proxyPaidCents -
+            contractDueAllocatedCents;
+          if (amountCents > settlementExecutionRemainingCents) {
+            throw new Error(
+              `实付金额超过结算剩余可付金额，当前最多可实付 ${this.formatYuan(
+                settlementExecutionRemainingCents > 0n
+                  ? settlementExecutionRemainingCents
+                  : 0n
+              )} 元`
+            );
+          }
+
+          newSettlementPaidAmountCents = settlement.paidAmountCents + amountCents;
+          newSettlementStatus =
+            newSettlementPaidAmountCents >= settlement.payableAmountCents
+              ? "paid"
+              : "partially_paid";
         }
-      });
-      if (this.projectFunding) {
-        await this.projectFunding.allocateExecution(tx, {
+
+        // Keep the shared FileObject advisory lock last in the business-lock
+        // order. Other payment writers lock contract/settlement rows before
+        // their file-binding trigger runs, so taking the file lock earlier can
+        // deadlock with those workflows.
+        const lockedVoucher = await files.assertFileHasNoBusinessBinding(
+          tx,
+          voucherFileId
+        );
+        if (lockedVoucher.uploadedByUserId !== actorUserId) {
+          throw new ForbiddenException("付款凭证必须由当前登记人上传");
+        }
+
+        const execution = await paymentExecutionClient.create({
+          data: {
+            idempotencyKey,
+            paymentRequestId: payment.id,
+            settlementId: payment.settlementId,
+            paymentSubjectType: "our_company",
+            companyEntityIdSnapshot,
+            companyEntityNameSnapshot,
+            companyEntityCreditCodeSnapshot,
+            amountCents,
+            paidAt,
+            executedByUserId: actorUserId,
+            voucherFileId
+          }
+        });
+        const fundingAllocation = await projectFunding.allocateExecution(tx, {
           projectId: payment.projectId,
           executionType: "payment_execution",
           executionId: execution.id,
@@ -2948,67 +3131,214 @@ export class PaymentRequestService {
           occurredAt: paidAt,
           actorUserId
         });
-      }
 
-      if (payment.sourceType === "contract_due" && !payment.settlementId) {
-        try {
-          await this.createContractDuePaymentExecutionAllocations(
-            tx,
-            payment,
-            execution.id,
-            amountCents,
-            paidAt,
-            actorUserId
-          );
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "";
-          if (
-            message === "未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算" ||
-            message.startsWith("登记实付金额超过当前可分摊的到期应付款")
-          ) {
-            throw new BadRequestException(message);
+        if (payment.sourceType === "contract_due" && !payment.settlementId) {
+          try {
+            await this.createContractDuePaymentExecutionAllocations(
+              tx,
+              payment,
+              execution.id,
+              amountCents,
+              paidAt,
+              actorUserId
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "";
+            if (
+              message === "未找到可分摊的有效结算来源，请先核对合同结算和历史期初结算" ||
+              message.startsWith("登记实付金额超过当前可分摊的到期应付款")
+            ) {
+              throw new BadRequestException(message);
+            }
+            throw error;
           }
-          throw error;
         }
-      }
 
-      await tx.paymentRequest.update({
-        where: { id: payment.id },
-        data: {
-          paidAmountCents: newPaymentPaidAmountCents,
-          status: newPaymentStatus
-        }
-      });
-
-      if (settlement && newSettlementPaidAmountCents !== null && newSettlementStatus) {
-        await tx.settlement.update({
-          where: { id: settlement.id },
+        await tx.paymentRequest.update({
+          where: { id: payment.id },
           data: {
-            paidAmountCents: newSettlementPaidAmountCents,
-            status: newSettlementStatus
+            paidAmountCents: newPaymentPaidAmountCents,
+            status: newPaymentStatus
           }
         });
-      }
 
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "payment.execution.record",
-        businessType: "payment_request",
-        businessId: payment.id,
-        metadata: {
-          code: payment.code,
-          executionId: execution.id,
-          amountCents: moneyCentsToApi(amountCents),
-          voucherFileId: input.voucherFileId,
-          fromStatus: payment.status,
-          toStatus: newPaymentStatus
+        if (settlement && newSettlementPaidAmountCents !== null && newSettlementStatus) {
+          await tx.settlement.update({
+            where: { id: settlement.id },
+            data: {
+              paidAmountCents: newSettlementPaidAmountCents,
+              status: newSettlementStatus
+            }
+          });
         }
+
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "payment.execution.record",
+          businessType: "payment_request",
+          businessId: payment.id,
+          metadata: {
+            code: payment.code,
+            projectId: payment.projectId,
+            executionId: execution.id,
+            amountCents: moneyCentsToApi(amountCents),
+            paidAt: paidAt.toISOString(),
+            voucherFileId,
+            idempotencyKey,
+            payer: {
+              paymentSubjectType: "our_company",
+              companyEntityIdSnapshot,
+              companyEntityNameSnapshot,
+              companyEntityCreditCodeSnapshot
+            },
+            funding: {
+              kind: fundingAllocation.kind,
+              projectCashAmountCents: moneyCentsToApi(
+                fundingAllocation.projectCashAmountCents
+              ),
+              financingQuotaAmountCents: moneyCentsToApi(
+                fundingAllocation.financingQuotaAmountCents
+              ),
+              allocations: fundingAllocation.allocations.map((allocation) => ({
+                sourceType: allocation.sourceType,
+                sourceId: allocation.sourceId,
+                amountCents: moneyCentsToApi(allocation.amountCents)
+              }))
+            },
+            fromStatus: payment.status,
+            toStatus: newPaymentStatus
+          }
+        });
+
+        return execution;
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
 
-      return execution;
-    });
+      return paymentPostResponseToApi(execution);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = paymentPrismaErrorCode(error);
+      if (code === "P2002" || code === "P2034") {
+        const concurrentExecution = await this.resolveConcurrentPaymentExecution({
+          paymentId,
+          actorUserId,
+          idempotencyKey,
+          amountCents,
+          paidAt,
+          voucherFileId
+        });
+        if (concurrentExecution) {
+          return paymentPostResponseToApi(concurrentExecution);
+        }
+        throw new ConflictException(
+          code === "P2034"
+            ? "实际付款并发冲突，请刷新后重试"
+            : "实际付款唯一事实已变化，请刷新后重试"
+        );
+      }
+      throw error;
+    }
+  }
 
-    return paymentPostResponseToApi(execution);
+  private assertSamePaymentExecutionFacts(
+    existing: PaymentExecutionFactRow,
+    expected: {
+      idempotencyKey: string;
+      paymentRequestId: string;
+      settlementId: string | null;
+      amountCents: bigint;
+      paidAt: Date;
+      actorUserId: string;
+      voucherFileId: string;
+      companyEntityIdSnapshot: string;
+      companyEntityNameSnapshot: string;
+      companyEntityCreditCodeSnapshot: string;
+    }
+  ): void {
+    if (
+      existing.idempotencyKey !== expected.idempotencyKey ||
+      existing.paymentRequestId !== expected.paymentRequestId ||
+      existing.settlementId !== expected.settlementId ||
+      existing.paymentSubjectType !== "our_company" ||
+      existing.companyEntityIdSnapshot !== expected.companyEntityIdSnapshot ||
+      existing.companyEntityNameSnapshot !== expected.companyEntityNameSnapshot ||
+      existing.companyEntityCreditCodeSnapshot !==
+        expected.companyEntityCreditCodeSnapshot ||
+      existing.amountCents !== expected.amountCents ||
+      existing.paidAt.getTime() !== expected.paidAt.getTime() ||
+      existing.executedByUserId !== expected.actorUserId ||
+      existing.voucherFileId !== expected.voucherFileId
+    ) {
+      throw new ConflictException("该付款实付登记幂等键已绑定不同的持久事实");
+    }
+  }
+
+  private async resolveConcurrentPaymentExecution(input: {
+    paymentId: string;
+    actorUserId: string;
+    idempotencyKey: string;
+    amountCents: bigint;
+    paidAt: Date;
+    voucherFileId: string;
+  }): Promise<PaymentExecutionFactRow | null> {
+    if (!this.prisma) return null;
+    const executionClient = this.prisma.paymentExecution as unknown as {
+      findUnique(args: {
+        where: { idempotencyKey: string };
+      }): Promise<PaymentExecutionFactRow | null>;
+    };
+    const existing = await executionClient.findUnique({
+      where: { idempotencyKey: input.idempotencyKey }
+    });
+    if (!existing) return null;
+
+    const payment = await this.prisma.paymentRequest.findFirst({
+      where: {
+        OR: [{ id: input.paymentId }, { code: input.paymentId }]
+      },
+      select: {
+        id: true,
+        settlementId: true,
+        contractVersionId: true,
+        paymentSubjectType: true
+      }
+    });
+    if (!payment || payment.paymentSubjectType !== "our_company") return null;
+    const version = await this.prisma.contractVersion.findUnique({
+      where: { id: payment.contractVersionId },
+      select: {
+        signingSubjectType: true,
+        companyEntityIdSnapshot: true,
+        companyEntityNameSnapshot: true,
+        companyEntityCreditCodeSnapshot: true
+      }
+    });
+    const companyEntityIdSnapshot = version?.companyEntityIdSnapshot?.trim();
+    const companyEntityNameSnapshot = version?.companyEntityNameSnapshot?.trim();
+    const companyEntityCreditCodeSnapshot =
+      version?.companyEntityCreditCodeSnapshot?.trim();
+    if (
+      version?.signingSubjectType !== "our_company" ||
+      !companyEntityIdSnapshot ||
+      !companyEntityNameSnapshot ||
+      !companyEntityCreditCodeSnapshot
+    ) {
+      return null;
+    }
+    this.assertSamePaymentExecutionFacts(existing, {
+      idempotencyKey: input.idempotencyKey,
+      paymentRequestId: payment.id,
+      settlementId: payment.settlementId,
+      amountCents: input.amountCents,
+      paidAt: input.paidAt,
+      actorUserId: input.actorUserId,
+      voucherFileId: input.voucherFileId,
+      companyEntityIdSnapshot,
+      companyEntityNameSnapshot,
+      companyEntityCreditCodeSnapshot
+    });
+    return existing;
   }
 
   private paymentExecutionBlockedMessage(status: string) {
@@ -3426,6 +3756,22 @@ export class PaymentRequestService {
       return updated;
     });
   }
+}
+
+function paymentPrismaErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  if (code === "P2010") {
+    const meta = (error as { meta?: unknown }).meta;
+    if (meta && typeof meta === "object") {
+      const postgresCode = (meta as { code?: unknown }).code;
+      if (["40001", "40P01"].includes(String(postgresCode))) {
+        return "P2034";
+      }
+    }
+  }
+  if (code === "40P01") return "P2034";
+  return typeof code === "string" ? code : undefined;
 }
 
 function requireApprovalCommentForReturn(decision: ReviewPaymentApprovalDto["decision"], comment?: string) {

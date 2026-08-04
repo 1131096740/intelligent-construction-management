@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type {
   ApplyContractTypeChangeDto,
   ConfirmContractSettlementModeDto,
@@ -53,6 +54,7 @@ export class ContractWorkbenchController {
   }
 
   @Post(":contractVersionId/settlement-mode/confirm")
+  @RequireProjectRole("contract.create")
   confirmSettlementMode(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -80,6 +82,7 @@ export class ContractWorkbenchController {
   }
 
   @Post(":contractVersionId/type-change-preview")
+  @RequireProjectRole("contract.create")
   previewTypeChange(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -89,6 +92,7 @@ export class ContractWorkbenchController {
   }
 
   @Post(":contractVersionId/type-change")
+  @RequireProjectRole("contract.create")
   applyTypeChange(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -97,7 +101,17 @@ export class ContractWorkbenchController {
     return this.workbench.applyTypeChange(contractVersionId, user.id, body);
   }
 
+  @Get(":contractId/transfer-capability")
+  @RequireProjectRole("contract.create")
+  transferCapability(
+    @Param("contractId") contractId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.workbench.getTransferCapability(contractId, user.id);
+  }
+
   @Post(":contractId/transfer")
+  @RequireProjectRole("contract.create")
   transfer(
     @Param("contractId") contractId: string,
     @CurrentUser() user: AuthenticatedUser,

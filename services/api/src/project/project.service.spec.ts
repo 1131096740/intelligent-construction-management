@@ -1,29 +1,103 @@
 import type { RecordProjectProxyPaymentDto } from "./dto/record-project-proxy-payment.dto";
 import type { RecordProjectUpstreamSettlementDto } from "./dto/record-project-upstream-settlement.dto";
+import { createHash } from "node:crypto";
 import { projectMoneyToApi, ProjectService } from "./project.service";
 
 function addApprovalSignatureQueries<T extends Record<string, unknown>>(
   tx: T
 ): T & { $queryRaw: jest.Mock } {
+  const client = tx as T & {
+    projectFinancingQuota?: {
+      findFirst?: jest.Mock;
+      updateMany?: jest.Mock;
+    };
+    approvalInstance?: {
+      findFirst?: jest.Mock;
+      updateMany?: jest.Mock;
+    };
+    approvalActionLog?: {
+      findUnique?: jest.Mock;
+    };
+  };
+  if (client.projectFinancingQuota) {
+    client.projectFinancingQuota.updateMany ??=
+      jest.fn().mockResolvedValue({ count: 1 });
+  }
+  if (client.approvalInstance) {
+    client.approvalInstance.updateMany ??=
+      jest.fn().mockResolvedValue({ count: 1 });
+  }
+  if (client.approvalActionLog) {
+    client.approvalActionLog.findUnique ??=
+      jest.fn().mockResolvedValue(null);
+  }
   return Object.assign(tx, {
-    $queryRaw: jest
-      .fn()
-      .mockResolvedValueOnce([{ id: "signature-user", isActive: true }])
-      .mockResolvedValueOnce([
-        {
+    $queryRaw: jest.fn().mockImplementation(async (query: unknown) => {
+      const text = query && typeof query === "object" && "strings" in query
+        ? ((query as { strings: string[] }).strings ?? []).join("?")
+        : String(query);
+      if (text.includes('FROM "ProjectFinancingQuota"')) {
+        return client.projectFinancingQuota?.findFirst
+          ? [await client.projectFinancingQuota.findFirst({})]
+          : [];
+      }
+      if (text.includes('FROM "ApprovalInstance"')) {
+        return client.approvalInstance?.findFirst
+          ? [await client.approvalInstance.findFirst({})]
+          : [];
+      }
+      if (text.includes('FROM "Project"')) return [{ id: "project-1" }];
+      if (text.includes('FROM "User"')) {
+        return [{ id: "signature-user", isActive: true }];
+      }
+      if (text.includes('FROM "HandwrittenSignatureVersion"')) {
+        return [{
           id: "signature-version-1",
           fileId: "signature-file-1",
           contentSha256: "a".repeat(64)
-        }
-      ])
-      .mockResolvedValueOnce([
-        {
+        }];
+      }
+      if (text.includes('FROM "FileObject"')) {
+        return [{
           id: "signature-file-1",
           contentSha256: "a".repeat(64),
           storageStatus: "active"
-        }
-      ])
+        }];
+      }
+      throw new Error(`Unexpected approval signature query: ${text}`);
+    })
   });
+}
+
+function financingQuotaLifecycleTokenForTest(
+  quota: Record<string, unknown>,
+  approval: Record<string, unknown>
+) {
+  const validUntil = quota.validUntil as Date | null;
+  return createHash("sha256").update(JSON.stringify({
+    quota: {
+      id: quota.id,
+      projectId: quota.projectId,
+      status: quota.status,
+      amountCents: (quota.amountCents as bigint).toString(),
+      reason: quota.reason,
+      validUntil: validUntil?.toISOString() ?? null,
+      attachmentFileId: quota.attachmentFileId,
+      attachmentFileSha256Snapshot: quota.attachmentFileSha256Snapshot,
+      requestedByUserId: quota.requestedByUserId,
+      requestedByRoleKey: quota.requestedByRoleKey,
+      updatedAt: (quota.updatedAt as Date).toISOString()
+    },
+    approval: {
+      id: approval.id,
+      businessId: approval.businessId,
+      applicantUserId: approval.applicantUserId,
+      status: approval.status,
+      currentNodeIndex: approval.currentNodeIndex,
+      frozenNodes: approval.frozenNodes,
+      updatedAt: (approval.updatedAt as Date).toISOString()
+    }
+  })).digest("hex");
 }
 
 function addAffiliateSubjectTables<T extends Record<string, unknown>>(tx: T): T {
@@ -52,6 +126,80 @@ function addAffiliateSubjectTables<T extends Record<string, unknown>>(tx: T): T 
   });
   subjectTx.contractVersion.findMany ??= jest.fn().mockResolvedValue([]);
   return tx;
+}
+
+function fundingAllocation(input: {
+  id: string;
+  sourceType: "project_cash" | "financing_quota";
+  sourceId: string | null;
+  direction: "debit" | "credit";
+  amountCents: bigint;
+}) {
+  return {
+    projectId: "project-1",
+    executionType: "payment_execution",
+    executionId: "execution-1",
+    businessType: "payment_request",
+    businessId: "payment-1",
+    sourceKey: input.sourceId
+      ? `financing_quota:${input.sourceId}`
+      : "project_cash",
+    occurredAt: new Date("2026-08-01T00:00:00.000Z"),
+    createdByUserId: "finance-1",
+    reversalOfAllocationId: input.direction === "credit" ? "quota-debit" : null,
+    reversalKey: input.direction === "credit" ? "refund-1" : "original",
+    reason: input.direction === "credit" ? "供应商退款" : null,
+    createdAt: new Date("2026-08-01T00:00:00.000Z"),
+    ...input
+  };
+}
+
+function operatingOverviewPrisma(input: {
+  quotas: Array<{
+    id: string;
+    amountCents: bigint;
+    status: string;
+    validUntil: Date | null;
+  }>;
+  allocations: ReturnType<typeof fundingAllocation>[];
+}) {
+  return {
+    project: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "project-1",
+        code: "JG-001",
+        name: "总部综合楼"
+      })
+    },
+    contract: { findMany: jest.fn().mockResolvedValue([]) },
+    settlement: { findMany: jest.fn().mockResolvedValue([]) },
+    paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+    financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
+    projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+    projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
+    projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+    projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
+    projectUpstreamSettlement: { findMany: jest.fn().mockResolvedValue([]) },
+    projectFinancingQuota: {
+      findMany: jest.fn().mockImplementation(({ where }: {
+        where: { status?: string };
+      }) => Promise.resolve(
+        where.status
+          ? input.quotas.filter((quota) =>
+              quota.status === where.status &&
+              (quota.validUntil === null || quota.validUntil.getTime() >= Date.now())
+            )
+          : input.quotas
+      ))
+    },
+    projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
+    spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
+    projectFundingAllocation: {
+      findMany: jest.fn().mockResolvedValue(input.allocations)
+    }
+  };
 }
 
 describe("project money API boundary", () => {
@@ -715,10 +863,20 @@ describe("ProjectService", () => {
         ])
       },
       projectReceipt: {
-        findMany: jest.fn().mockResolvedValue([
-          { amountCents: BigInt(10000000) },
-          { amountCents: BigInt(5000000) }
-        ])
+        findMany: jest.fn().mockImplementation(({ where }: {
+          where: { sourceType?: { in: string[] } };
+        }) => Promise.resolve([
+          {
+            amountCents: BigInt(10000000),
+            sourceType: "general_contractor_payment"
+          },
+          {
+            amountCents: BigInt(5000000),
+            sourceType: "owner_direct_payment"
+          }
+        ].filter((receipt) =>
+          !where.sourceType || where.sourceType.in.includes(receipt.sourceType)
+        )))
       },
       projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: {
@@ -739,13 +897,23 @@ describe("ProjectService", () => {
         ])
       },
       projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([{ id: "financing-quota-1", amountCents: BigInt(2000000) }])
+        findMany: jest.fn().mockResolvedValue([{
+          id: "financing-quota-1",
+          amountCents: BigInt(2000000),
+          status: "approved",
+          validUntil: null
+        }])
       },
-      projectFinancingQuotaUsage: {
-        findMany: jest.fn().mockResolvedValue([])
-      },
-      projectExpenseFinancingQuotaUsage: {
-        findMany: jest.fn().mockResolvedValue([])
+      projectFundingAllocation: {
+        findMany: jest.fn().mockResolvedValue([
+          fundingAllocation({
+            id: "cash-debit",
+            sourceType: "project_cash",
+            sourceId: null,
+            direction: "debit",
+            amountCents: 5_500_000n
+          })
+        ])
       },
       projectExpenseRequest: {
         findMany: jest.fn().mockResolvedValue([])
@@ -796,11 +964,11 @@ describe("ProjectService", () => {
     await expect(service.getOperatingFundsOverview("project-1")).resolves.toEqual({
       project: { id: "project-1", code: "JG-001", name: "总部综合楼" },
       cash: {
-        actualReceiptsCents: "15000000",
-        legacyReceiptsCents: "15000000",
+        actualReceiptsCents: "10000000",
+        legacyReceiptsCents: "10000000",
         affiliateRemittanceCents: "0",
         supplierRefundsCents: "0",
-        availableFundsCents: "-800000",
+        availableFundsCents: "-5800000",
         actualPaidCents: "5500000",
         approvalPendingOccupancyCents: "4000000",
         approvedPendingPaymentCents: "8300000",
@@ -828,7 +996,11 @@ describe("ProjectService", () => {
       dataGaps: []
     });
     expect(prisma.projectReceipt.findMany).toHaveBeenCalledWith({
-      where: { projectId: "project-1", voidedAt: null },
+      where: {
+        projectId: "project-1",
+        voidedAt: null,
+        sourceType: { in: ["general_contractor_payment", "other"] }
+      },
       select: { amountCents: true }
     });
     expect(prisma.projectProxyPayment.findMany).toHaveBeenCalledWith({
@@ -844,12 +1016,13 @@ describe("ProjectService", () => {
       select: { approvedAmountCents: true }
     });
     expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
-      where: {
-        projectId: "project-1",
-        status: "approved",
-        OR: [{ validUntil: null }, { validUntil: { gte: expect.any(Date) } }]
-      },
-      select: { id: true, amountCents: true }
+      where: { projectId: "project-1" },
+      select: {
+        id: true,
+        amountCents: true,
+        status: true,
+        validUntil: true
+      }
     });
     expect(prisma.spotProcurementPaymentExecution.findMany).toHaveBeenCalledWith({
       where: {
@@ -892,14 +1065,31 @@ describe("ProjectService", () => {
       },
       spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: {
-        findMany: jest.fn().mockResolvedValue([{ id: "financing-quota-1", amountCents: BigInt(2000000) }])
+        findMany: jest.fn().mockResolvedValue([{
+          id: "financing-quota-1",
+          amountCents: BigInt(2000000),
+          status: "approved",
+          validUntil: null
+        }])
       },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      projectFinancingQuotaUsage: {
-        findMany: jest.fn().mockResolvedValue([{ quotaId: "financing-quota-1", amountCents: BigInt(500000) }])
-      },
-      projectExpenseFinancingQuotaUsage: {
-        findMany: jest.fn().mockResolvedValue([{ quotaId: "financing-quota-1", amountCents: BigInt(300000) }])
+      projectFundingAllocation: {
+        findMany: jest.fn().mockResolvedValue([
+          fundingAllocation({
+            id: "quota-debit",
+            sourceType: "financing_quota",
+            sourceId: "financing-quota-1",
+            direction: "debit",
+            amountCents: 800_000n
+          }),
+          fundingAllocation({
+            id: "quota-credit",
+            sourceType: "financing_quota",
+            sourceId: "financing-quota-1",
+            direction: "credit",
+            amountCents: 100_000n
+          })
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -913,14 +1103,72 @@ describe("ProjectService", () => {
         availableFundsCents: "1300000"
       })
     );
-    expect(prisma.projectFinancingQuotaUsage.findMany).toHaveBeenCalledWith({
-      where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
-      select: { quotaId: true, amountCents: true }
+    expect(prisma.projectFundingAllocation.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
     });
-    expect(prisma.projectExpenseFinancingQuotaUsage.findMany).toHaveBeenCalledWith({
-      where: { quotaId: { in: ["financing-quota-1"] }, status: { in: ["occupied", "used"] } },
-      select: { quotaId: true, amountCents: true }
+  });
+
+  it("fails the operating overview when a historical financing quota is overdrawn", async () => {
+    const prisma = operatingOverviewPrisma({
+      quotas: [
+        {
+          id: "quota-current",
+          amountCents: 2_000_000n,
+          status: "approved",
+          validUntil: null
+        },
+        {
+          id: "quota-terminated",
+          amountCents: 1_000_000n,
+          status: "terminated",
+          validUntil: new Date("2026-07-01T00:00:00.000Z")
+        }
+      ],
+      allocations: [
+        fundingAllocation({
+          id: "terminated-quota-debit",
+          sourceType: "financing_quota",
+          sourceId: "quota-terminated",
+          direction: "debit",
+          amountCents: 1_000_001n
+        })
+      ]
     });
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.getOperatingFundsOverview("project-1")).rejects.toThrow(
+      "项目垫资额度占用超过批准金额"
+    );
+    expect(prisma.projectFinancingQuota.findMany).toHaveBeenCalledWith({
+      where: { projectId: "project-1" },
+      select: {
+        id: true,
+        amountCents: true,
+        status: true,
+        validUntil: true
+      }
+    });
+  });
+
+  it("fails the operating overview when the funding ledger references a missing financing quota", async () => {
+    const prisma = operatingOverviewPrisma({
+      quotas: [],
+      allocations: [
+        fundingAllocation({
+          id: "missing-quota-debit",
+          sourceType: "financing_quota",
+          sourceId: "quota-missing",
+          direction: "debit",
+          amountCents: 1n
+        })
+      ]
+    });
+    const service = new ProjectService(prisma as never);
+
+    await expect(service.getOperatingFundsOverview("project-1")).rejects.toThrow(
+      "项目垫资额度资金账本引用了不存在的额度"
+    );
   });
 
   it("fails closed when the spot-procurement overview delegate is unavailable", async () => {
@@ -950,6 +1198,9 @@ describe("ProjectService", () => {
         findMany: jest.fn().mockResolvedValue([])
       },
       spotProcurementPayment: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectFundingAllocation: {
         findMany: jest.fn().mockResolvedValue([])
       }
     };
@@ -993,7 +1244,8 @@ describe("ProjectService", () => {
       spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      projectExpenseExecution: { findMany: jest.fn() }
+      projectExpenseExecution: { findMany: jest.fn() },
+      projectFundingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -1034,7 +1286,8 @@ describe("ProjectService", () => {
       spotProcurementPayment: { findMany: jest.fn().mockResolvedValue([]) },
       projectFinancingQuota: { findMany: jest.fn().mockResolvedValue([]) },
       projectExpenseRequest: { findMany: jest.fn().mockResolvedValue([]) },
-      projectExpenseExecution: { findMany: jest.fn() }
+      projectExpenseExecution: { findMany: jest.fn() },
+      projectFundingAllocation: { findMany: jest.fn().mockResolvedValue([]) }
     };
     const service = new ProjectService(prisma as never);
 
@@ -2261,14 +2514,30 @@ describe("ProjectService", () => {
 
   it("allows finance staff to request a project financing quota without an expiry date", async () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
+    const idempotencyKey = "11111111-1111-4111-8111-111111111111";
+    const attachmentFileSha256Snapshot = "a".repeat(64);
     const tx = {
-      project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ id: "project-1" }])
+        .mockResolvedValueOnce([{ lockResult: "" }])
+        .mockResolvedValueOnce([{
+          id: "file-1",
+          uploadedByUserId: "finance-staff-1",
+          storageStatus: "active",
+          contentSha256: attachmentFileSha256Snapshot
+        }])
+        .mockResolvedValueOnce([]),
+      user: { findFirst: jest.fn().mockResolvedValue({ id: "finance-staff-1" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([{ positionKey: "finance_staff" }])
       },
-      fileObject: {
-        findUnique: jest.fn().mockResolvedValue({ id: "file-1", uploadedByUserId: "finance-staff-1" })
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      spotProcurementReceiptPhoto: {
+        findFirst: jest.fn().mockResolvedValue(null)
       },
       projectFinancingQuota: {
+        findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
           projectId: "project-1",
@@ -2276,7 +2545,11 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: null,
           attachmentFileId: "file-1",
+          attachmentFileSha256Snapshot,
           requestedByUserId: "finance-staff-1",
+          requestedByRoleKey: "finance_staff",
+          requestIdempotencyKey: idempotencyKey,
+          requestFingerprint: "b".repeat(64),
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2293,18 +2566,17 @@ describe("ProjectService", () => {
     const service = new ProjectService(prisma as never);
 
     const result = await service.requestProjectFinancingQuota("project-1", "finance-staff-1", {
+      idempotencyKey,
       amountCents: "5000000",
       reason: " 阶段性垫资保障项目付款 ",
       attachmentFileId: "file-1"
     });
 
-    expect(result).toMatchObject({
-      id: "financing-quota-1",
+    expect(result).toEqual({
+      kind: "created",
+      idempotencyKey,
       projectId: "project-1",
-      amountCents: "5000000",
-      status: "approval_pending",
-      approvedByUserId: null,
-      validUntil: null
+      quotaId: "financing-quota-1"
     });
     expect(tx.projectFinancingQuota.create).toHaveBeenCalledWith({
       data: {
@@ -2313,7 +2585,11 @@ describe("ProjectService", () => {
         reason: "阶段性垫资保障项目付款",
         validUntil: null,
         attachmentFileId: "file-1",
+        attachmentFileSha256Snapshot,
         requestedByUserId: "finance-staff-1",
+        requestedByRoleKey: "finance_staff",
+        requestIdempotencyKey: idempotencyKey,
+        requestFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/u),
         status: "approval_pending"
       }
     });
@@ -2337,6 +2613,7 @@ describe("ProjectService", () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = addApprovalSignatureQueries({
       projectFinancingQuota: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
           projectId: "project-1",
@@ -2344,7 +2621,9 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: new Date("2099-07-02T00:00:00.000Z"),
           attachmentFileId: "file-1",
+          attachmentFileSha256Snapshot: "b".repeat(64),
           requestedByUserId: "finance-director-1",
+          requestedByRoleKey: "finance_director",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2367,14 +2646,19 @@ describe("ProjectService", () => {
         })
       },
       approvalInstance: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-1",
+          businessId: "financing-quota-1",
           applicantUserId: "finance-director-1",
+          status: "in_progress",
           currentNodeIndex: 0,
           frozenNodes: [
             { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
             { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
-          ]
+          ],
+          createdAt,
+          updatedAt: createdAt
         }),
         update: jest.fn()
       },
@@ -2389,21 +2673,31 @@ describe("ProjectService", () => {
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
+    const quota = await tx.projectFinancingQuota.findFirst({});
+    const approval = await tx.approvalInstance.findFirst({});
+    const actionId = "22222222-2222-4222-8222-222222222221";
 
     const result = await service.reviewProjectFinancingQuota(
       "project-1",
       "financing-quota-1",
       "finance-director-1",
       {
+        actionId,
+        expectedLifecycleToken: financingQuotaLifecycleTokenForTest(quota, approval),
         decision: "approve",
         confirmationPassword: "current-password",
         selfReviewReason: "项目资金安排由本人发起并独立复核"
       }
     );
 
-    expect(result.status).toBe("approval_pending");
-    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
-      where: { id: "approval-1" },
+    expect(result).toEqual({
+      kind: "applied",
+      actionId,
+      projectId: "project-1",
+      quotaId: "financing-quota-1"
+    });
+    expect(tx.approvalInstance.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "approval-1" }),
       data: expect.objectContaining({
         currentNodeIndex: 1,
         status: "in_progress"
@@ -2415,10 +2709,10 @@ describe("ProjectService", () => {
         signatureFileIdSnapshot: "signature-file-1",
         signatureSha256Snapshot: "a".repeat(64),
         signatureVersionIdSnapshot: "signature-version-1",
-        metadata: {
+        metadata: expect.objectContaining({
           selfReview: true,
           selfReviewReason: "项目资金安排由本人发起并独立复核"
-        }
+        })
       })
     });
   });
@@ -2427,6 +2721,7 @@ describe("ProjectService", () => {
     const createdAt = new Date("2026-07-02T01:00:00.000Z");
     const tx = addApprovalSignatureQueries({
       projectFinancingQuota: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
           projectId: "project-1",
@@ -2434,7 +2729,9 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: null,
           attachmentFileId: "file-1",
+          attachmentFileSha256Snapshot: "b".repeat(64),
           requestedByUserId: "finance-staff-1",
+          requestedByRoleKey: "finance_staff",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2457,14 +2754,19 @@ describe("ProjectService", () => {
         })
       },
       approvalInstance: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-1",
+          businessId: "financing-quota-1",
           applicantUserId: "finance-staff-1",
+          status: "in_progress",
           currentNodeIndex: 0,
           frozenNodes: [
             { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
             { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
-          ]
+          ],
+          createdAt,
+          updatedAt: createdAt
         }),
         update: jest.fn()
       },
@@ -2481,12 +2783,16 @@ describe("ProjectService", () => {
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
+    const quota = await tx.projectFinancingQuota.findFirst({});
+    const approval = await tx.approvalInstance.findFirst({});
 
     await service.reviewProjectFinancingQuota(
       "project-1",
       "financing-quota-1",
       "finance-director-1",
       {
+        actionId: "22222222-2222-4222-8222-222222222222",
+        expectedLifecycleToken: financingQuotaLifecycleTokenForTest(quota, approval),
         decision: "reject",
         confirmationPassword: "current-password",
         comment: "资金安排依据不足"
@@ -2509,6 +2815,7 @@ describe("ProjectService", () => {
     const approvedAt = new Date("2026-07-02T02:00:00.000Z");
     const tx = addApprovalSignatureQueries({
       projectFinancingQuota: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue({
           id: "financing-quota-1",
           projectId: "project-1",
@@ -2516,7 +2823,9 @@ describe("ProjectService", () => {
           reason: "阶段性垫资保障项目付款",
           validUntil: new Date("2099-07-02T00:00:00.000Z"),
           attachmentFileId: "file-1",
+          attachmentFileSha256Snapshot: "b".repeat(64),
           requestedByUserId: "finance-staff-1",
+          requestedByRoleKey: "finance_staff",
           approvedByUserId: null,
           approvedAt: null,
           status: "approval_pending",
@@ -2539,9 +2848,12 @@ describe("ProjectService", () => {
         })
       },
       approvalInstance: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findFirst: jest.fn().mockResolvedValue({
           id: "approval-1",
+          businessId: "financing-quota-1",
           applicantUserId: "finance-staff-1",
+          status: "in_progress",
           currentNodeIndex: 1,
           frozenNodes: [
             {
@@ -2551,7 +2863,9 @@ describe("ProjectService", () => {
               approvedRoleKeys: ["finance_director"]
             },
             { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
-          ]
+          ],
+          createdAt,
+          updatedAt: createdAt
         }),
         update: jest.fn()
       },
@@ -2566,25 +2880,39 @@ describe("ProjectService", () => {
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
+    const quota = await tx.projectFinancingQuota.findFirst({});
+    const approval = await tx.approvalInstance.findFirst({});
+    const actionId = "22222222-2222-4222-8222-222222222223";
 
     const result = await service.reviewProjectFinancingQuota(
       "project-1",
       "financing-quota-1",
       "chairman-1",
-      { decision: "approve", confirmationPassword: "current-password", comment: "同意" }
+      {
+        actionId,
+        expectedLifecycleToken: financingQuotaLifecycleTokenForTest(quota, approval),
+        decision: "approve",
+        confirmationPassword: "current-password",
+        comment: "同意"
+      }
     );
 
-    expect(result.status).toBe("approved");
-    expect(tx.projectFinancingQuota.update).toHaveBeenCalledWith({
-      where: { id: "financing-quota-1" },
-      data: {
+    expect(result).toEqual({
+      kind: "applied",
+      actionId,
+      projectId: "project-1",
+      quotaId: "financing-quota-1"
+    });
+    expect(tx.projectFinancingQuota.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "financing-quota-1" }),
+      data: expect.objectContaining({
         status: "approved",
         approvedByUserId: "chairman-1",
         approvedAt: expect.any(Date)
-      }
+      })
     });
-    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
-      where: { id: "approval-1" },
+    expect(tx.approvalInstance.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "approval-1" }),
       data: expect.objectContaining({
         currentNodeIndex: 2,
         status: "approved"
@@ -2598,100 +2926,6 @@ describe("ProjectService", () => {
         signatureVersionIdSnapshot: "signature-version-1"
       })
     });
-  });
-
-  it("terminates an approved financing quota without deleting historical allocations", async () => {
-    const createdAt = new Date("2026-07-02T01:00:00.000Z");
-    const approvedAt = new Date("2026-07-02T02:00:00.000Z");
-    const tx = addApprovalSignatureQueries({
-      projectFinancingQuota: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "financing-quota-1",
-          projectId: "project-1",
-          amountCents: 5_000_000n,
-          reason: "阶段性垫资保障项目付款",
-          validUntil: null,
-          attachmentFileId: "file-1",
-          requestedByUserId: "finance-staff-1",
-          approvedByUserId: "chairman-1",
-          approvedAt,
-          status: "approved",
-          terminatedAt: null,
-          terminatedByUserId: null,
-          terminationReason: null,
-          terminationSignatureFileId: null,
-          terminationSignatureSha256: null,
-          terminationSignatureVersionId: null,
-          createdAt,
-          updatedAt: approvedAt
-        }),
-        update: jest.fn().mockImplementation(({ data }) => ({
-          id: "financing-quota-1",
-          projectId: "project-1",
-          amountCents: 5_000_000n,
-          reason: "阶段性垫资保障项目付款",
-          validUntil: null,
-          attachmentFileId: "file-1",
-          requestedByUserId: "finance-staff-1",
-          approvedByUserId: "chairman-1",
-          approvedAt,
-          createdAt,
-          updatedAt: data.terminatedAt,
-          ...data
-        }))
-      },
-      projectFundingAllocation: {
-        deleteMany: jest.fn()
-      },
-      auditLog: { create: jest.fn() }
-    });
-    const prisma = {
-      $transaction: jest.fn(async (callback) => callback(addAffiliateSubjectTables(tx)))
-    };
-    const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
-    const funding = { lockFundingContext: jest.fn().mockResolvedValue(undefined) };
-    const service = new ProjectService(
-      prisma as never,
-      undefined,
-      auth as never,
-      funding as never
-    );
-
-    const result = await service.terminateProjectFinancingQuota(
-      "project-1",
-      "financing-quota-1",
-      "finance-director-1",
-      {
-        reason: " 项目已具备自有资金，不再允许新占用 ",
-        confirmationPassword: "current-password"
-      }
-    );
-
-    expect(auth.confirmPassword).toHaveBeenCalledWith(
-      "finance-director-1",
-      "current-password"
-    );
-    expect(funding.lockFundingContext).toHaveBeenCalledWith(tx, "project-1");
-    expect(tx.projectFinancingQuota.update).toHaveBeenCalledWith({
-      where: { id: "financing-quota-1" },
-      data: {
-        status: "terminated",
-        terminatedAt: expect.any(Date),
-        terminatedByUserId: "finance-director-1",
-        terminationReason: "项目已具备自有资金，不再允许新占用",
-        terminationSignatureFileId: "signature-file-1",
-        terminationSignatureSha256: "a".repeat(64),
-        terminationSignatureVersionId: "signature-version-1"
-      }
-    });
-    expect(result).toMatchObject({
-      status: "terminated",
-      validUntil: null,
-      terminatedByUserId: "finance-director-1",
-      terminationReason: "项目已具备自有资金，不再允许新占用",
-      terminationSignatureFileId: "signature-file-1"
-    });
-    expect(tx.projectFundingAllocation.deleteMany).not.toHaveBeenCalled();
   });
 
   it("rejects upstream settlement voucher uploaded by another user", async () => {

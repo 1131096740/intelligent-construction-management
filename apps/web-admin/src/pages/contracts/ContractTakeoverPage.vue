@@ -1814,7 +1814,7 @@
 <script setup lang="ts">
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   abandonContractTakeover,
   applyContractTakeoverBatchAbandonment,
@@ -1832,7 +1832,9 @@ import {
   downloadContractTakeoverImportTemplate,
   downloadContractTakeoverLedgerExport,
   fetchApprovalDelegationUserOptions,
+  fetchContractTakeoverProjectCapability,
   fetchProjects,
+  getPrivateFileDownloadTicketCapability,
   getContractTakeover,
   listContractTakeoverImportBatches,
   listHistoricalCompanyEntityCandidates,
@@ -1850,7 +1852,7 @@ import {
   submitContractTakeoverReview,
   submitContractTakeoverCompanyEntityCorrection,
   updateContractTakeover,
-  uploadPrivateFile,
+  uploadContractTakeoverPrivateFile,
   withdrawContractTakeoverContractSideConfirmation,
   withdrawContractTakeoverFinanceSideConfirmation,
   type ContractInvoiceType,
@@ -1901,6 +1903,8 @@ import {
   buildImportPrecheckMessage,
   buildTakeoverConfirmationSummary,
   buildTakeoverPostConfirmationChecklist,
+  contractTakeoverRouteSelection,
+  createContractTakeoverSelectionRequestOwner,
   canConfirmHistoricalChangeBaseline,
   canConfirmTakeover,
   canReturnTakeoverForSupplement,
@@ -1962,6 +1966,381 @@ import {
   replaceTakeoverSideModel,
   type TakeoverSideSaveState
 } from "./contract-takeover-side-save.state";
+
+async function createContractTakeoverWithCapability(
+  projectId: string,
+  body: Parameters<typeof createContractTakeover>[1]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("create_takeover");
+  if (!operationAllowed) throw new Error("当前用户不能新建历史合同接管");
+  return createContractTakeover(projectId, body);
+}
+
+async function precheckContractTakeoverImportWithCapability(
+  projectId: string,
+  body: Parameters<typeof precheckContractTakeoverImport>[1]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("precheck_import");
+  if (!operationAllowed) throw new Error("当前用户不能预检历史合同导入");
+  return precheckContractTakeoverImport(projectId, body);
+}
+
+async function createContractTakeoverDraftsFromImportWithCapability(
+  projectId: string,
+  body: Parameters<typeof createContractTakeoverDraftsFromImport>[1]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("create_import_drafts");
+  if (!operationAllowed) throw new Error("当前用户不能生成历史合同接管草稿");
+  return createContractTakeoverDraftsFromImport(projectId, body);
+}
+
+async function previewContractTakeoverExcelImportWithCapability(
+  projectId: string,
+  fileId: string
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("preview_excel_import");
+  if (!operationAllowed) throw new Error("当前用户不能预览历史合同导入");
+  return previewContractTakeoverExcelImport(projectId, fileId);
+}
+
+async function applyContractTakeoverExcelImportWithCapability(
+  projectId: string,
+  body: Parameters<typeof applyContractTakeoverExcelImport>[1]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("apply_excel_import");
+  if (!operationAllowed) throw new Error("当前用户不能应用历史合同导入");
+  return applyContractTakeoverExcelImport(projectId, body);
+}
+
+async function reviewContractTakeoverImportBatchWithCapability(
+  projectId: string,
+  batchId: string,
+  body: Parameters<typeof reviewContractTakeoverImportBatch>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("review_import_batch");
+  if (!operationAllowed) throw new Error("当前用户不能复核历史合同导入批次");
+  return reviewContractTakeoverImportBatch(projectId, batchId, body);
+}
+
+async function previewContractTakeoverBatchAbandonmentWithCapability(
+  projectId: string,
+  batchId: string
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "preview_batch_abandonment"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能预览接管批次清理");
+  return previewContractTakeoverBatchAbandonment(projectId, batchId);
+}
+
+async function applyContractTakeoverBatchAbandonmentWithCapability(
+  projectId: string,
+  batchId: string,
+  body: Parameters<typeof applyContractTakeoverBatchAbandonment>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "apply_batch_abandonment"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能清理接管批次");
+  return applyContractTakeoverBatchAbandonment(projectId, batchId, body);
+}
+
+async function uploadContractTakeoverPrivateFileWithCapability(
+  projectId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("upload_takeover_file");
+  if (!operationAllowed) throw new Error("当前用户不能上传历史合同接管文件");
+  return uploadContractTakeoverPrivateFile(projectId, file, fileName);
+}
+
+async function updateContractTakeoverWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof updateContractTakeover>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("update_takeover");
+  if (!operationAllowed) throw new Error("当前用户不能修改历史合同接管草稿");
+  return updateContractTakeover(projectId, takeoverId, body);
+}
+
+async function abandonContractTakeoverWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof abandonContractTakeover>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("abandon_takeover");
+  if (!operationAllowed) throw new Error("当前用户不能放弃历史合同接管草稿");
+  return abandonContractTakeover(projectId, takeoverId, body);
+}
+
+async function submitContractTakeoverReviewWithCapability(
+  projectId: string,
+  takeoverId: string
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("submit_review");
+  if (!operationAllowed) throw new Error("当前用户不能提交历史合同接管复核");
+  return submitContractTakeoverReview(projectId, takeoverId);
+}
+
+async function confirmContractTakeoverWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof confirmContractTakeover>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_takeover");
+  if (!operationAllowed) throw new Error("当前用户不能确认历史合同接管");
+  return confirmContractTakeover(projectId, takeoverId, body);
+}
+
+async function returnContractTakeoverForSupplementWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof returnContractTakeoverForSupplement>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("return_for_supplement");
+  if (!operationAllowed) throw new Error("当前用户不能退回历史合同接管补充");
+  return returnContractTakeoverForSupplement(projectId, takeoverId, body);
+}
+
+async function confirmContractTakeoverChangeBaselineWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof confirmContractTakeoverChangeBaseline>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_change_baseline");
+  if (!operationAllowed) throw new Error("当前用户不能确认历史变更基线");
+  return confirmContractTakeoverChangeBaseline(projectId, takeoverId, body);
+}
+
+async function attachContractTakeoverEvidenceFileWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof attachContractTakeoverEvidenceFile>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("attach_contract_evidence");
+  if (!operationAllowed) throw new Error("当前用户不能绑定合同侧接管资料");
+  return attachContractTakeoverEvidenceFile(projectId, takeoverId, body);
+}
+
+async function attachHistoricalPaymentVoucherWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof attachHistoricalPaymentVoucher>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("attach_payment_voucher");
+  if (!operationAllowed) throw new Error("当前用户不能绑定历史付款凭证");
+  return attachHistoricalPaymentVoucher(projectId, takeoverId, body);
+}
+
+async function saveContractTakeoverContractSideWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof saveContractTakeoverContractSide>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("save_contract_side");
+  if (!operationAllowed) throw new Error("当前用户不能保存合同侧接管事实");
+  return saveContractTakeoverContractSide(projectId, takeoverId, body);
+}
+
+async function saveContractTakeoverFinanceSideWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof saveContractTakeoverFinanceSide>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("save_finance_side");
+  if (!operationAllowed) throw new Error("当前用户不能保存财务侧接管事实");
+  return saveContractTakeoverFinanceSide(projectId, takeoverId, body);
+}
+
+async function confirmContractTakeoverContractSideWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof confirmContractTakeoverContractSide>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_contract_side");
+  if (!operationAllowed) throw new Error("当前用户不能确认合同侧接管事实");
+  return confirmContractTakeoverContractSide(projectId, takeoverId, body);
+}
+
+async function confirmContractTakeoverFinanceSideWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof confirmContractTakeoverFinanceSide>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_finance_side");
+  if (!operationAllowed) throw new Error("当前用户不能确认财务侧接管事实");
+  return confirmContractTakeoverFinanceSide(projectId, takeoverId, body);
+}
+
+async function withdrawContractTakeoverContractSideConfirmationWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof withdrawContractTakeoverContractSideConfirmation>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "withdraw_contract_side_confirmation"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能撤回合同侧确认");
+  return withdrawContractTakeoverContractSideConfirmation(projectId, takeoverId, body);
+}
+
+async function withdrawContractTakeoverFinanceSideConfirmationWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof withdrawContractTakeoverFinanceSideConfirmation>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "withdraw_finance_side_confirmation"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能撤回财务侧确认");
+  return withdrawContractTakeoverFinanceSideConfirmation(projectId, takeoverId, body);
+}
+
+async function submitContractTakeoverCorrectionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof submitContractTakeoverCorrection>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("submit_correction");
+  if (!operationAllowed) throw new Error("当前用户不能提交接管更正");
+  return submitContractTakeoverCorrection(projectId, takeoverId, body);
+}
+
+async function reviewContractTakeoverCorrectionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  correctionId: string,
+  body: Parameters<typeof reviewContractTakeoverCorrection>[3]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("review_correction");
+  if (!operationAllowed) throw new Error("当前用户不能复核接管更正");
+  return reviewContractTakeoverCorrection(projectId, takeoverId, correctionId, body);
+}
+
+async function submitContractTakeoverCompanyEntityCorrectionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof submitContractTakeoverCompanyEntityCorrection>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "submit_company_entity_correction"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能提交历史主体匹配更正");
+  return submitContractTakeoverCompanyEntityCorrection(projectId, takeoverId, body);
+}
+
+async function reviewContractTakeoverCompanyEntityCorrectionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  correctionId: string,
+  body: Parameters<typeof reviewContractTakeoverCompanyEntityCorrection>[3]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "review_company_entity_correction"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能复核历史主体匹配更正");
+  return reviewContractTakeoverCompanyEntityCorrection(
+    projectId,
+    takeoverId,
+    correctionId,
+    body
+  );
+}
+
+async function createContractTakeoverFileDownloadTicketWithCapability(
+  fileId: string,
+  body: Parameters<typeof createPrivateFileDownloadTicket>[1]
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能下载该历史合同接管文件");
+  return createPrivateFileDownloadTicket(fileId, body);
+}
 
 type MoneyFieldKey =
   | "historicalSettledYuan"
@@ -2055,6 +2434,8 @@ const moneyFields: Array<{ key: MoneyFieldKey; label: string }> = [
 ];
 
 const router = useRouter();
+const route = useRoute();
+const takeoverSelectionRequestOwner = createContractTakeoverSelectionRequestOwner();
 const auth = useAuthStore();
 const roleKeys = computed(() => auth.user?.roleKeys ?? []);
 const canManageTakeovers = computed(() =>
@@ -2453,7 +2834,7 @@ async function saveContractSide(
   const attempt = beginTakeoverSideSave(state, () => crypto.randomUUID());
   contractSideStatus.value = "合同侧保存中…";
   try {
-    const result = await saveContractTakeoverContractSide(projectId, takeoverId, {
+    const result = await saveContractTakeoverContractSideWithCapability(projectId, takeoverId, {
       idempotencyKey: attempt.idempotencyKey,
       expectedRevision: attempt.expectedRevision,
       ...attempt.model
@@ -2488,7 +2869,7 @@ async function saveFinanceSide(
   const attempt = beginTakeoverSideSave(state, () => crypto.randomUUID());
   financeSideStatus.value = "财务侧保存中…";
   try {
-    const result = await saveContractTakeoverFinanceSide(projectId, takeoverId, {
+    const result = await saveContractTakeoverFinanceSideWithCapability(projectId, takeoverId, {
       idempotencyKey: attempt.idempotencyKey,
       expectedRevision: attempt.expectedRevision,
       ...attempt.model,
@@ -2540,10 +2921,15 @@ async function flushEditableDepartmentSides(
 }
 
 async function uploadContractSideEvidence(file: File) {
+  const projectId = selectedProjectId.value;
   const state = contractSideState.value;
-  if (!state || !departmentAccess.value.canEditContract) return;
+  if (!projectId || !state || !departmentAccess.value.canEditContract) return;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      file,
+      file.name
+    );
     updateContractSideModel({
       ...state.model,
       settlementEvidenceFileIds: [
@@ -2557,10 +2943,15 @@ async function uploadContractSideEvidence(file: File) {
 }
 
 async function uploadFinancePaymentVoucher(payload: { rowKey: string; file: File }) {
+  const projectId = selectedProjectId.value;
   const state = financeSideState.value;
-  if (!state || !departmentAccess.value.canEditFinance) return;
+  if (!projectId || !state || !departmentAccess.value.canEditFinance) return;
   try {
-    const uploaded = await uploadPrivateFile(payload.file, payload.file.name);
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      payload.file,
+      payload.file.name
+    );
     updateFinanceSideModel({
       ...state.model,
       payments: state.model.payments.map((payment) =>
@@ -2579,10 +2970,15 @@ async function uploadFinancePaymentVoucher(payload: { rowKey: string; file: File
 }
 
 async function uploadFinanceExcessEvidence(file: File) {
+  const projectId = selectedProjectId.value;
   const state = financeSideState.value;
-  if (!state || !departmentAccess.value.canEditFinance) return;
+  if (!projectId || !state || !departmentAccess.value.canEditFinance) return;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      file,
+      file.name
+    );
     updateFinanceSideModel({
       ...state.model,
       excessEvidenceFileIds: [
@@ -3142,17 +3538,55 @@ onMounted(async () => {
   ]);
 });
 
-onBeforeUnmount(clearDepartmentSaveTimers);
+onBeforeUnmount(() => {
+  takeoverSelectionRequestOwner.invalidate();
+  takeoverListRequestGeneration += 1;
+  projectChangeGeneration += 1;
+  clearDepartmentSaveTimers();
+});
+
+let takeoverListRequestGeneration = 0;
+let projectChangeGeneration = 0;
 
 async function loadProjects() {
   loadingProjects.value = true;
   message.value = "";
   try {
     projects.value = await fetchProjects();
-    selectedProjectId.value = projects.value[0]?.id ?? "";
+    const requestedSelection = contractTakeoverRouteSelection(route.query);
+    const requestedProject = requestedSelection
+      ? projects.value.find((project) => project.id === requestedSelection.projectId)
+      : null;
+    if (requestedSelection && !requestedProject) {
+      takeoverSelectionRequestOwner.invalidate();
+      takeoverListRequestGeneration += 1;
+      projectChangeGeneration += 1;
+      loadingTakeovers.value = false;
+      loadingCompanyEntityCandidates.value = false;
+      selectedProjectId.value = "";
+      lastValidProjectId.value = "";
+      takeovers.value = [];
+      importBatches.value = [];
+      selectedTakeoverId.value = "";
+      resetDepartmentStates();
+      resetEvidenceDownloadForm(null);
+      setMessage("指定的历史接管项目不在当前账号可见范围内", "danger");
+      return;
+    }
+    selectedProjectId.value = requestedProject?.id ?? projects.value[0]?.id ?? "";
     lastValidProjectId.value = selectedProjectId.value;
     if (selectedProjectId.value) {
       await loadTakeovers();
+      if (requestedSelection) {
+        const requestedTakeover = takeovers.value.find(
+          (takeover) => takeover.id === requestedSelection.takeoverId
+        );
+        if (requestedTakeover) {
+          await selectTakeover(requestedTakeover);
+        } else {
+          setMessage("指定的历史接管记录不存在或当前账号无权查看", "danger");
+        }
+      }
     } else {
       setMessage("暂无可用项目", "default");
     }
@@ -3164,22 +3598,30 @@ async function loadProjects() {
 }
 
 async function changeProject() {
+  const changeGeneration = ++projectChangeGeneration;
   const nextProjectId = selectedProjectId.value;
   const previousProjectId = lastValidProjectId.value;
+  const changeCurrent = () =>
+    changeGeneration === projectChangeGeneration &&
+    selectedProjectId.value === nextProjectId;
   if (
     !(await flushEditableDepartmentSides(
       previousProjectId,
       selectedTakeoverId.value
     ))
   ) {
+    if (!changeCurrent()) return;
     selectedProjectId.value = previousProjectId;
     setMessage("部门侧自动保存未完成，已保留当前项目和本地输入", "danger");
     return;
   }
+  if (!changeCurrent()) return;
   if (!(await takeoverLeaveGuard.requestClose())) {
+    if (!changeCurrent()) return;
     selectedProjectId.value = lastValidProjectId.value;
     return;
   }
+  if (!changeCurrent()) return;
   closeCreateForm();
   taxFactDirty.value = false;
   resetDepartmentStates();
@@ -3198,9 +3640,16 @@ async function loadResponsibleUsers() {
 }
 
 async function loadTakeovers() {
+  takeoverSelectionRequestOwner.invalidate();
   invalidateChangeBaselineContext(true);
   const projectId = selectedProjectId.value;
+  const requestGeneration = ++takeoverListRequestGeneration;
+  const requestCurrent = () =>
+    requestGeneration === takeoverListRequestGeneration &&
+    selectedProjectId.value === projectId;
   if (!projectId) {
+    loadingTakeovers.value = false;
+    loadingCompanyEntityCandidates.value = false;
     takeovers.value = [];
     companyEntityCandidates.value = [];
     importBatches.value = [];
@@ -3211,58 +3660,51 @@ async function loadTakeovers() {
   }
 
   loadingTakeovers.value = true;
+  loadingCompanyEntityCandidates.value = canManageTakeovers.value;
   message.value = "";
   try {
-    const [nextTakeovers, nextImportBatches, candidateError] = await Promise.all([
+    const [nextTakeovers, nextImportBatches, candidateResult] = await Promise.all([
       listContractTakeovers(projectId),
       canManageTakeovers.value
         ? listContractTakeoverImportBatches(projectId)
         : Promise.resolve([]),
-      loadCompanyEntityCandidates()
-        .then(() => null)
-        .catch((error: unknown) => error)
+      canManageTakeovers.value
+        ? listHistoricalCompanyEntityCandidates(projectId)
+            .then((value) => ({ value, error: null as unknown }))
+            .catch((error: unknown) => ({ value: [], error }))
+        : Promise.resolve({ value: [], error: null as unknown })
     ]);
+    if (!requestCurrent()) return;
     takeovers.value = nextTakeovers;
     importBatches.value = nextImportBatches;
+    companyEntityCandidates.value = candidateResult.value;
     if (!nextTakeovers.some((takeover) => takeover.id === selectedTakeoverId.value)) {
       selectedTakeoverId.value = "";
       resetDepartmentStates();
       resetEvidenceDownloadForm(null);
     }
-    if (candidateError) {
+    if (candidateResult.error) {
       setMessage(
-        candidateError instanceof Error
-          ? `${candidateError.message}。历史接管台账已加载，但暂不能选择系统匹配主体。`
+        candidateResult.error instanceof Error
+          ? `${candidateResult.error.message}。历史接管台账已加载，但暂不能选择系统匹配主体。`
           : "历史接管台账已加载，但暂不能选择系统匹配主体，请稍后重试。",
         "danger"
       );
     }
   } catch (error) {
+    if (!requestCurrent()) return;
     takeovers.value = [];
+    companyEntityCandidates.value = [];
     importBatches.value = [];
     selectedTakeoverId.value = "";
     resetDepartmentStates();
     resetEvidenceDownloadForm(null);
     setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
   } finally {
-    loadingTakeovers.value = false;
-  }
-}
-
-async function loadCompanyEntityCandidates() {
-  const projectId = selectedProjectId.value;
-  if (!projectId || !canManageTakeovers.value) {
-    companyEntityCandidates.value = [];
-    return;
-  }
-  loadingCompanyEntityCandidates.value = true;
-  try {
-    companyEntityCandidates.value = await listHistoricalCompanyEntityCandidates(projectId);
-  } catch (error) {
-    companyEntityCandidates.value = [];
-    throw error;
-  } finally {
-    loadingCompanyEntityCandidates.value = false;
+    if (requestCurrent()) {
+      loadingTakeovers.value = false;
+      loadingCompanyEntityCandidates.value = false;
+    }
   }
 }
 
@@ -3368,8 +3810,15 @@ async function previewExcelImport() {
   excelPreviewing.value = true;
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    excelPreviewResult.value = await previewContractTakeoverExcelImport(projectId, uploaded.id);
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      file,
+      file.name
+    );
+    excelPreviewResult.value = await previewContractTakeoverExcelImportWithCapability(
+      projectId,
+      uploaded.id
+    );
     importPrecheckResult.value = null;
     const precheckMessage = buildImportPrecheckMessage(excelPreviewResult.value);
     setMessage(precheckMessage.message, precheckMessage.tone);
@@ -3404,7 +3853,7 @@ async function applyExcelImport() {
   excelApplying.value = true;
   message.value = "";
   try {
-    const result = await applyContractTakeoverExcelImport(projectId, {
+    const result = await applyContractTakeoverExcelImportWithCapability(projectId, {
       fileId: preview.fileId,
       fileSha256: preview.fileSha256,
       importFingerprint: preview.importFingerprint,
@@ -3450,7 +3899,10 @@ async function submitImportPrecheck() {
   message.value = "";
   try {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
-    importPrecheckResult.value = await precheckContractTakeoverImport(projectId, { rows });
+    importPrecheckResult.value = await precheckContractTakeoverImportWithCapability(
+      projectId,
+      { rows }
+    );
     excelPreviewResult.value = null;
     const result = importPrecheckResult.value;
     const precheckMessage = buildImportPrecheckMessage(result);
@@ -3482,7 +3934,7 @@ async function generateImportDrafts() {
   message.value = "";
   try {
     const rows = parseContractTakeoverImportPrecheckRows(importPrecheckText.value);
-    const result = await createContractTakeoverDraftsFromImport(projectId, {
+    const result = await createContractTakeoverDraftsFromImportWithCapability(projectId, {
       rows,
       takeoverCutoffDate: requiredText(importBatchForm.takeoverCutoffDate, "接管截止日"),
       responsibleUserId: requiredText(importBatchForm.responsibleUserId, "接管责任人"),
@@ -3547,11 +3999,15 @@ async function confirmImportBatchReview() {
 
   reviewingImportBatchAction.value = `${batch.id}:${status}`;
   try {
-    const updated = await reviewContractTakeoverImportBatch(projectId, batch.id, {
-      status,
-      reviewComment: requiredText(batch.reviewComment, "批次复核意见"),
-      acceptanceConclusion: requiredText(batch.acceptanceConclusion, "批次验收结论")
-    });
+    const updated = await reviewContractTakeoverImportBatchWithCapability(
+      projectId,
+      batch.id,
+      {
+        status,
+        reviewComment: requiredText(batch.reviewComment, "批次复核意见"),
+        acceptanceConclusion: requiredText(batch.acceptanceConclusion, "批次验收结论")
+      }
+    );
     importBatches.value = importBatches.value.map((item) =>
       item.id === updated.id ? updated : item
     );
@@ -3576,7 +4032,10 @@ async function openBatchAbandonment(batch: ContractTakeoverImportBatchReadModel)
   batchAbandonPreviewing.value = true;
   batchAbandonError.value = "";
   try {
-    const preview = await previewContractTakeoverBatchAbandonment(projectId, batch.id);
+    const preview = await previewContractTakeoverBatchAbandonmentWithCapability(
+      projectId,
+      batch.id
+    );
     batchAbandonTargetId.value = batch.id;
     batchAbandonPreview.value = preview;
     batchAbandonError.value = takeoverBatchAbandonmentDisabledReason(preview);
@@ -3611,10 +4070,14 @@ async function applyBatchAbandonment(values: { reason: string; password: string 
   batchAbandonApplying.value = true;
   batchAbandonError.value = "";
   try {
-    const result = await applyContractTakeoverBatchAbandonment(projectId, batchId, {
-      previewHash: preview.previewHash,
-      reason: values.reason.trim()
-    });
+    const result = await applyContractTakeoverBatchAbandonmentWithCapability(
+      projectId,
+      batchId,
+      {
+        previewHash: preview.previewHash,
+        reason: values.reason.trim()
+      }
+    );
     batchAbandonApplying.value = false;
     resetBatchAbandonment();
     setMessage(`已清理 ${result.abandonedCount} 条接管草稿或申请`, "success");
@@ -3644,7 +4107,7 @@ async function abandonSelectedTakeover(request: BusinessDraftActionRequest) {
     throw new Error("当前操作与接管记录状态不匹配，请刷新后重试");
   }
 
-  await abandonContractTakeover(projectId, takeover.id, {
+  await abandonContractTakeoverWithCapability(projectId, takeover.id, {
     expectedUpdatedAt: takeover.updatedAt,
     action: request.action,
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
@@ -3664,16 +4127,26 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
     setMessage("请先选择项目", "danger");
     return;
   }
+  const selectionRequest = takeoverSelectionRequestOwner.begin(projectId, takeover.id);
+  const selectionRequestCurrent = (requireSelected = false) =>
+    takeoverSelectionRequestOwner.isCurrent(
+      selectionRequest,
+      selectedProjectId.value,
+      requireSelected ? selectedTakeoverId.value : selectionRequest.takeoverId
+    );
 
   const previousId = selectedTakeoverId.value;
   if (
     previousId !== takeover.id &&
     !(await flushEditableDepartmentSides(selectedProjectId.value, previousId))
   ) {
+    if (!selectionRequestCurrent()) return;
     setMessage("部门侧自动保存未完成，已保留当前记录和本地输入", "danger");
     return;
   }
+  if (!selectionRequestCurrent()) return;
   if (previousId !== takeover.id && !(await takeoverLeaveGuard.requestClose())) return;
+  if (!selectionRequestCurrent()) return;
   if (previousId !== takeover.id) {
     closeCreateForm();
     taxFactDirty.value = false;
@@ -3687,10 +4160,16 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
   }
   try {
     const detail = await getContractTakeover(projectId, takeover.id);
+    if (!selectionRequestCurrent(true)) return;
+    if (detail.id !== selectionRequest.takeoverId) {
+      setMessage("接管详情响应与当前选择不一致，已停止应用该响应", "danger");
+      return;
+    }
     takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
     initializeDepartmentStates(detail);
     resetEvidenceDownloadForm(detail);
   } catch (error) {
+    if (!selectionRequestCurrent(true)) return;
     setMessage(error instanceof Error ? error.message : "加载接管详情失败", "danger");
   }
 }
@@ -3794,8 +4273,8 @@ async function submitCreate() {
     };
     const editingId = editingTakeoverId.value;
     const saved = editingId
-      ? await updateContractTakeover(projectId, editingId, payload)
-      : await createContractTakeover(projectId, payload);
+      ? await updateContractTakeoverWithCapability(projectId, editingId, payload)
+      : await createContractTakeoverWithCapability(projectId, payload);
     resetCreateForm();
     syncCreateFormBaseline();
     showCreateForm.value = false;
@@ -3865,7 +4344,7 @@ async function submitReview(takeover: ContractTakeoverReadModel) {
   }
 
   try {
-    const updated = await submitContractTakeoverReview(projectId, takeover.id);
+    const updated = await submitContractTakeoverReviewWithCapability(projectId, takeover.id);
     takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
     selectedTakeoverId.value = updated.id;
     setMessage("已提交业务复核", "success");
@@ -3904,8 +4383,12 @@ async function submitEvidenceFile() {
   evidenceUploading.value = true;
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    const updated = await attachContractTakeoverEvidenceFile(projectId, takeover.id, {
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      file,
+      file.name
+    );
+    const updated = await attachContractTakeoverEvidenceFileWithCapability(projectId, takeover.id, {
       fileId: uploaded.id,
       purpose: evidencePurpose.value
     });
@@ -3945,8 +4428,12 @@ async function submitHistoricalPaymentVoucher() {
   historicalPaymentVoucherUploading.value = true;
   message.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    const updated = await attachHistoricalPaymentVoucher(projectId, takeover.id, {
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      file,
+      file.name
+    );
+    const updated = await attachHistoricalPaymentVoucherWithCapability(projectId, takeover.id, {
       fileId: uploaded.id
     });
     takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
@@ -3978,10 +4465,13 @@ async function submitEvidenceFileDownload() {
   evidenceDownloading.value = true;
   evidenceDownloadConfirmError.value = "";
   try {
-    const ticket = await createPrivateFileDownloadTicket(evidenceDownloadFileId.value, {
+    const ticket = await createContractTakeoverFileDownloadTicketWithCapability(
+      evidenceDownloadFileId.value,
+      {
       confirmationPassword: requiredText(evidenceDownloadPassword.value, "当前登录密码"),
       downloadReason: requiredText(evidenceDownloadReason.value, "下载原因")
-    });
+      }
+    );
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
     evidenceDownloadPassword.value = "";
     evidenceDownloadReason.value = "";
@@ -4054,14 +4544,14 @@ async function submitDepartmentAction(values: {
     const idempotencyKey = crypto.randomUUID();
     if (action.action === "confirm") {
       if (action.side === "contract") {
-        await confirmContractTakeoverContractSide(projectId, takeover.id, {
+        await confirmContractTakeoverContractSideWithCapability(projectId, takeover.id, {
           idempotencyKey,
           expectedRevision: state.revision,
           currentPassword: values.password
         });
       } else {
         const financeModel = state.model as FinanceSideFormModel;
-        await confirmContractTakeoverFinanceSide(projectId, takeover.id, {
+        await confirmContractTakeoverFinanceSideWithCapability(projectId, takeover.id, {
           idempotencyKey,
           expectedRevision: state.revision,
           currentPassword: values.password,
@@ -4070,14 +4560,14 @@ async function submitDepartmentAction(values: {
         });
       }
     } else if (action.side === "contract") {
-      await withdrawContractTakeoverContractSideConfirmation(projectId, takeover.id, {
+      await withdrawContractTakeoverContractSideConfirmationWithCapability(projectId, takeover.id, {
         idempotencyKey,
         expectedRevision: state.revision,
         currentPassword: values.password,
         reason: values.reason
       });
     } else {
-      await withdrawContractTakeoverFinanceSideConfirmation(projectId, takeover.id, {
+      await withdrawContractTakeoverFinanceSideConfirmationWithCapability(projectId, takeover.id, {
         idempotencyKey,
         expectedRevision: state.revision,
         currentPassword: values.password,
@@ -4126,8 +4616,12 @@ async function submitAppliedCorrection(payload: {
   }
   appliedCorrectionSubmitting.value = true;
   try {
-    const uploaded = await uploadPrivateFile(payload.file, payload.file.name);
-    await submitContractTakeoverCorrection(projectId, takeover.id, {
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      payload.file,
+      payload.file.name
+    );
+    await submitContractTakeoverCorrectionWithCapability(projectId, takeover.id, {
       correctionScope: payload.correctionScope,
       correctionOperation: payload.correctionOperation,
       targetRevision: payload.targetRevision,
@@ -4196,7 +4690,7 @@ async function confirmCorrectionReview(values: {
   appliedCorrectionReviewing.value = true;
   correctionReviewError.value = "";
   try {
-    await reviewContractTakeoverCorrection(
+    await reviewContractTakeoverCorrectionWithCapability(
       projectId,
       takeover.id,
       pending.correctionId,
@@ -4250,7 +4744,7 @@ async function submitCorrectionAttachmentDownload(values: {
   correctionAttachmentDownloading.value = true;
   correctionAttachmentDownloadError.value = "";
   try {
-    const ticket = await createPrivateFileDownloadTicket(fileId, {
+    const ticket = await createContractTakeoverFileDownloadTicketWithCapability(fileId, {
       confirmationPassword: values.password,
       downloadReason: values.reason
     });
@@ -4281,8 +4775,12 @@ async function submitCompanyEntityCorrection() {
   }
   companyEntityCorrectionSubmitting.value = true;
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    const result = await submitContractTakeoverCompanyEntityCorrection(projectId, takeover.id, {
+    const uploaded = await uploadContractTakeoverPrivateFileWithCapability(
+      projectId,
+      file,
+      file.name
+    );
+    const result = await submitContractTakeoverCompanyEntityCorrectionWithCapability(projectId, takeover.id, {
       targetCompanyEntityId: companyEntityCorrectionForm.targetCompanyEntityId,
       reason: requiredText(companyEntityCorrectionForm.reason, "更正原因"),
       responsibleUserId: requiredText(
@@ -4338,7 +4836,7 @@ async function confirmCompanyEntityCorrectionReview(values: {
   companyEntityCorrectionReviewingId.value = correctionId;
   companyEntityCorrectionReviewError.value = "";
   try {
-    const result = await reviewContractTakeoverCompanyEntityCorrection(
+    const result = await reviewContractTakeoverCompanyEntityCorrectionWithCapability(
       projectId,
       takeover.id,
       correctionId,
@@ -4439,7 +4937,7 @@ async function submitHistoricalChangeBaseline(values: { password: string }) {
   changeBaselineSubmitting.value = true;
   changeBaselineError.value = "";
   try {
-    const result = await confirmContractTakeoverChangeBaseline(projectId, takeoverId, {
+    const result = await confirmContractTakeoverChangeBaselineWithCapability(projectId, takeoverId, {
       originalSignedAmountCents,
       preTakeoverPositiveIncreaseCents,
       currentPassword: values.password
@@ -4533,7 +5031,7 @@ async function returnSelectedTakeoverForSupplement(values: { reason: string; pas
   supplementReturning.value = true;
   supplementReturnError.value = "";
   try {
-    const updated = await returnContractTakeoverForSupplement(projectId, target.id, {
+    const updated = await returnContractTakeoverForSupplementWithCapability(projectId, target.id, {
       reason: requiredText(values.reason, "退回补充原因")
     });
     takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
@@ -4570,7 +5068,7 @@ async function confirmSelectedTakeover() {
   confirming.value = true;
   confirmError.value = "";
   try {
-    const updated = await confirmContractTakeover(projectId, target.id, {
+    const updated = await confirmContractTakeoverWithCapability(projectId, target.id, {
       confirmationPassword: requiredText(confirmationPassword.value, "当前登录密码")
     });
     takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));

@@ -5,6 +5,8 @@ describe("ContractReadinessService", () => {
   const version = {
     id: "version-1",
     contractId: "contract-1",
+    status: "draft",
+    changeType: "original",
     draftRevision: 4,
     amountCents: 1_000n,
     amountLimitType: "capped",
@@ -351,8 +353,41 @@ describe("ContractReadinessService", () => {
     }));
   });
 
+  function readinessBoundaryQuery(
+    hardFormal: Partial<Record<
+      | "hasSignedFormalFile"
+      | "hasActiveSealTask"
+      | "hasArchiveFile"
+      | "hasSettlement"
+      | "hasPaymentRequest",
+      boolean
+    >> = {}
+  ) {
+    return jest.fn().mockImplementation(async (query: { strings?: string[] }) => {
+      const sql = query.strings?.join(" ") ?? "";
+      if (sql.includes('FROM "ContractFormalFile"')) {
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false,
+          ...hardFormal
+        }];
+      }
+      if (sql.includes("FOR UPDATE OF c")) {
+        return [{ id: "contract-1", contractId: "contract-1" }];
+      }
+      if (sql.includes("FOR UPDATE OF cv")) {
+        return [{ id: "version-1", contractId: "contract-1" }];
+      }
+      return [];
+    });
+  }
+
   function prismaForCheckAndStore(overrides: Record<string, unknown> = {}) {
     const transactionClient = {
+      $queryRaw: readinessBoundaryQuery(),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ ...version, contractId: "contract-1" }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -372,6 +407,68 @@ describe("ContractReadinessService", () => {
       $transaction: jest.fn(async (callback) => callback(transactionClient))
     };
   }
+
+  it.each([
+    "hasSignedFormalFile",
+    "hasActiveSealTask",
+    "hasArchiveFile",
+    "hasSettlement",
+    "hasPaymentRequest"
+  ] as const)(
+    "does not store readiness when %s proves a formal business record",
+    async (formalFlag) => {
+      const snapshotWrite = jest.fn();
+      const readinessRead = jest.fn();
+      const prisma = prismaForCheckAndStore({
+        $queryRaw: readinessBoundaryQuery({ [formalFlag]: true }),
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue(version),
+          updateMany: snapshotWrite
+        },
+        contractBill: { findMany: readinessRead }
+      });
+
+      await expect(
+        new ContractReadinessService(prisma as never).checkAndStore(
+          "version-1",
+          "owner-1"
+        )
+      ).rejects.toThrow(
+        "合同已存在正式业务事实，不能继续检查资料"
+      );
+
+      expect(readinessRead).not.toHaveBeenCalled();
+      expect(snapshotWrite).not.toHaveBeenCalled();
+    }
+  );
+
+  it("does not store readiness for a historical takeover draft", async () => {
+    const snapshotWrite = jest.fn();
+    const readinessRead = jest.fn();
+    const prisma = prismaForCheckAndStore({
+      $queryRaw: readinessBoundaryQuery(),
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...version,
+          changeType: "historical_takeover"
+        }),
+        updateMany: snapshotWrite
+      },
+      contractBill: { findMany: readinessRead }
+    });
+
+    await expect(
+      new ContractReadinessService(prisma as never).checkAndStore(
+        "version-1",
+        "owner-1"
+      )
+    ).rejects.toThrow(
+      "历史接管草稿必须在历史接管工作台办理"
+    );
+
+    expect(readinessRead).not.toHaveBeenCalled();
+    expect(snapshotWrite).not.toHaveBeenCalled();
+  });
 
   it("uses Chinese business errors when readiness preconditions fail", async () => {
     await expect(

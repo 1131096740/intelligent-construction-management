@@ -415,6 +415,13 @@ describe("ContractService change draft version lineage", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([version])
+        .mockResolvedValueOnce([{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }])
         .mockResolvedValueOnce([base, version]),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
@@ -479,7 +486,36 @@ describe("ContractService change draft version lineage", () => {
     await expect(service.changeEligibility("v1")).resolves.toEqual(
       expect.objectContaining({
         eligible: false,
+        availableActions: [],
         reason: expect.stringContaining("历史接管合同缺少已确认的甲方名称")
+      })
+    );
+  });
+
+  it("publishes the change-draft action only for the current eligible effective version", async () => {
+    const prisma = makeChangeTx();
+    prisma.contractVersion.findFirst = jest.fn()
+      .mockResolvedValueOnce(latestEffective)
+      .mockResolvedValueOnce(null);
+    Object.assign(prisma, {
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          source: "system",
+          contractTypeKey: "material_purchase",
+          companyEntityName: "甲方公司",
+          counterparty: "乙方公司",
+          voidedAt: null
+        })
+      }
+    });
+    const service = new ContractService(prisma as never, { record: jest.fn() } as never);
+
+    await expect(service.changeEligibility("v1")).resolves.toEqual(
+      expect.objectContaining({
+        eligible: true,
+        availableActions: ["create_contract_change_draft"],
+        reason: null
       })
     );
   });
@@ -565,6 +601,13 @@ describe("ContractService change draft version lineage", () => {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([candidate])
+        .mockResolvedValueOnce([{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }])
         .mockResolvedValueOnce([root, previous, candidate]),
       contract: { findUnique: jest.fn().mockResolvedValue({
         id: "contract-1", projectId: "project-1", ownerUserId: "owner-1", voidedAt: null

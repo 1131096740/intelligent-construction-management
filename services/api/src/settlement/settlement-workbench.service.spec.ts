@@ -327,7 +327,13 @@ describe("SettlementWorkbenchService", () => {
         settlementId: { in: ["settlement-1", "settlement-2"] },
         contractBillRowId: { in: ["row-a", "row-b"] }
       },
-      select: { contractBillRowId: true, quantity: true, amountCents: true }
+      select: {
+        id: true,
+        settlementId: true,
+        contractBillRowId: true,
+        quantity: true,
+        amountCents: true
+      }
     });
     expect(prisma.settlement.create).not.toHaveBeenCalled();
     expect(prisma.settlementLine.create).not.toHaveBeenCalled();
@@ -398,6 +404,55 @@ describe("SettlementWorkbenchService", () => {
         priorSettledAmountCents: true
       })
     });
+  });
+
+  it("keeps the full contract quantity available when activation froze an exact zero carry", async () => {
+    const prisma = buildPrisma();
+    prisma.contractBillRow.findMany.mockResolvedValue([{
+      id: "row-new",
+      contractBillId: "bill-a",
+      rowKey: "row-new",
+      sortOrder: 1,
+      itemCode: "CL-NEW",
+      itemName: "新增清单项",
+      specification: null,
+      unit: "项",
+      quantity: new Decimal("100"),
+      unitPrice: new Decimal("100"),
+      taxRate: new Decimal("3"),
+      taxInclusiveAmountCents: 1_000_000n,
+      pricingFactStatus: "confirmed",
+      isProvisional: false,
+      settlementBasis: null,
+      lineageId: "lineage-new"
+    }]);
+    prisma.settlement.findMany.mockResolvedValue([]);
+    prisma.settlementLine.findMany.mockResolvedValue([]);
+    Object.assign(prisma, {
+      contractBillRowCarryForward: {
+        findMany: jest.fn().mockResolvedValue([{
+          contractBillRowId: "row-new",
+          lineageId: "lineage-new",
+          priorSettledQuantity: new Decimal(0),
+          priorSettledAmountCents: 0n,
+          sourceSnapshotHash: "a".repeat(64),
+          updatedAt: new Date("2026-07-27T00:00:00.000Z")
+        }])
+      }
+    });
+    const service = new SettlementWorkbenchService(prisma as never);
+
+    const result = await service.sourceLines("version-1");
+
+    expect(result.rows).toEqual([expect.objectContaining({
+      id: "row-new",
+      settledQuantity: "0",
+      previousSettledQuantity: "0",
+      remainingQuantity: "100",
+      calculationAvailable: true,
+      submissionBlocker: null,
+      exception: null
+    })]);
   });
 
   it("blocks a current contract row whose inherited settled quantity already exceeds its new quantity", async () => {

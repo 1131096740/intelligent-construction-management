@@ -8,6 +8,7 @@ import { ProjectExpenseController } from "./project-expense.controller";
 type ExpenseBodyMethod =
   | "create"
   | "reviewApproval"
+  | "withdrawApproval"
   | "createAttachmentDownloadTicket"
   | "createApprovalPdfDownloadTicket"
   | "voidRequest"
@@ -60,6 +61,29 @@ const validExpenseCreateBody = {
   paymentMethod: "bank_transfer"
 };
 
+const validExpenseReviewCoordinates = {
+  expectedExpenseUpdatedAt: "2026-07-31T01:00:00.000Z",
+  expectedApprovalInstanceId: "approval-instance-1",
+  expectedNodeIndex: 1,
+  expectedApprovalUpdatedAt: "2026-07-31T01:00:01.000Z"
+};
+
+const validExpenseExecutionBody = {
+  expectedExpenseUpdatedAt: "2026-07-31T02:00:00.000Z",
+  idempotencyKey: "a1111111-1111-4111-8111-111111111111",
+  amountCents: "30000",
+  paidAt: "2026-07-31T02:00:01.000Z",
+  voucherFileId: "file-1",
+  confirmationPassword: "current-password"
+};
+
+const validExpenseReceiptBody = {
+  expectedExpenseUpdatedAt: "2026-07-31T03:00:00.000Z",
+  idempotencyKey: "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+  confirmationPassword: "current-password",
+  note: "数量无误"
+};
+
 describe("ProjectExpenseController authorization wiring", () => {
   it("审批详情 GET 原样转发路径参数和登录用户且不使用粗粒度岗位装饰器", async () => {
     const expenses = { getApprovalDetail: jest.fn().mockResolvedValue({ id: "expense-1" }) };
@@ -86,6 +110,7 @@ describe("ProjectExpenseController authorization wiring", () => {
   it("保留项目支出领导自审原因和当前密码", async () => {
     const value = {
       decision: "approve",
+      ...validExpenseReviewCoordinates,
       selfReviewReason: "项目紧急且由本人发起",
       confirmationPassword: "current-password"
     };
@@ -93,11 +118,151 @@ describe("ProjectExpenseController authorization wiring", () => {
     await expect(validateExpenseBody("reviewApproval", value)).resolves.toEqual(value);
   });
 
+  it("项目支出撤回强制保留业务单和审批实例四坐标", async () => {
+    const value = {
+      expectedExpenseUpdatedAt:
+        "2026-07-31T01:00:00.000Z",
+      expectedApprovalInstanceId: "approval-instance-1",
+      expectedNodeIndex: 1,
+      expectedApprovalUpdatedAt:
+        "2026-07-31T01:00:01.000Z"
+    };
+
+    await expect(
+      validateExpenseBody("withdrawApproval", value)
+    ).resolves.toEqual(value);
+  });
+
+  it("项目支出实付强制接收父记录 CAS 和稳定 UUIDv4 幂等键", async () => {
+    await expect(
+      validateExpenseBody("recordExecution", validExpenseExecutionBody)
+    ).resolves.toEqual(validExpenseExecutionBody);
+
+    for (const invalid of [
+      { ...validExpenseExecutionBody, expectedExpenseUpdatedAt: undefined },
+      { ...validExpenseExecutionBody, expectedExpenseUpdatedAt: "not-a-date" },
+      { ...validExpenseExecutionBody, idempotencyKey: undefined },
+      { ...validExpenseExecutionBody, idempotencyKey: "not-a-uuid" },
+      {
+        ...validExpenseExecutionBody,
+        idempotencyKey: "a1111111-1111-3111-8111-111111111111"
+      }
+    ]) {
+      const response = await getExpenseValidationResponse(
+        "recordExecution",
+        invalid
+      );
+      expect(response.errors).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+    }
+  });
+
+  it("项目支出实付控制器只转发一份已经校验的完整事实", async () => {
+    const expenses = {
+      recordExecution: jest.fn().mockResolvedValue({ id: "execution-1" })
+    };
+    const controller = new ProjectExpenseController(expenses as never);
+    const body = await validateExpenseBody(
+      "recordExecution",
+      validExpenseExecutionBody
+    );
+
+    await controller.recordExecution(
+      "project-1",
+      "expense-1",
+      { id: "cashier-1" } as never,
+      body as never
+    );
+
+    expect(expenses.recordExecution).toHaveBeenCalledTimes(1);
+    expect(expenses.recordExecution).toHaveBeenCalledWith(
+      "project-1",
+      "expense-1",
+      "cashier-1",
+      body
+    );
+  });
+
+  it("历史零星采购收货确认强制接收父记录 CAS 和稳定 UUIDv4 幂等键", async () => {
+    await expect(
+      validateExpenseBody(
+        "confirmPurchaseReceipt",
+        validExpenseReceiptBody
+      )
+    ).resolves.toEqual(validExpenseReceiptBody);
+
+    for (const invalid of [
+      { ...validExpenseReceiptBody, expectedExpenseUpdatedAt: undefined },
+      { ...validExpenseReceiptBody, expectedExpenseUpdatedAt: "not-a-date" },
+      { ...validExpenseReceiptBody, idempotencyKey: undefined },
+      { ...validExpenseReceiptBody, idempotencyKey: "not-a-uuid" },
+      {
+        ...validExpenseReceiptBody,
+        idempotencyKey: "7b5e5a60-4f7c-36b7-8f57-6ebd71573af4"
+      }
+    ]) {
+      const response = await getExpenseValidationResponse(
+        "confirmPurchaseReceipt",
+        invalid
+      );
+      expect(response.errors).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+    }
+  });
+
+  it.each([
+    [
+      "missing expense version",
+      {
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt:
+          "2026-07-31T01:00:01.000Z"
+      }
+    ],
+    [
+      "invalid approval node",
+      {
+        expectedExpenseUpdatedAt:
+          "2026-07-31T01:00:00.000Z",
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: -1,
+        expectedApprovalUpdatedAt:
+          "2026-07-31T01:00:01.000Z"
+      }
+    ],
+    [
+      "invalid approval version",
+      {
+        expectedExpenseUpdatedAt:
+          "2026-07-31T01:00:00.000Z",
+        expectedApprovalInstanceId: "approval-instance-1",
+        expectedNodeIndex: 1,
+        expectedApprovalUpdatedAt: "not-a-date"
+      }
+    ]
+  ])(
+    "rejects withdrawal body with %s",
+    async (_name, value) => {
+      const response = await getExpenseValidationResponse(
+        "withdrawApproval",
+        value
+      );
+
+      expect(response.errors).toEqual(
+        expect.arrayContaining([expect.any(String)])
+      );
+    }
+  );
+
   it("按 Unicode code point 校验项目支出自审字段边界", async () => {
     const boundary = "❤️".repeat(250);
     await expect(
       validateExpenseBody("reviewApproval", {
         decision: "approve",
+        ...validExpenseReviewCoordinates,
         selfReviewReason: boundary,
         confirmationPassword: "❤️".repeat(128)
       })
@@ -105,12 +270,14 @@ describe("ProjectExpenseController authorization wiring", () => {
 
     const reasonResponse = await getExpenseValidationResponse("reviewApproval", {
       decision: "approve",
+      ...validExpenseReviewCoordinates,
       selfReviewReason: `${boundary}原`
     });
     expect(reasonResponse.errors).toContain("自审原因不能超过 500 个字符");
 
     const passwordResponse = await getExpenseValidationResponse("reviewApproval", {
       decision: "approve",
+      ...validExpenseReviewCoordinates,
       confirmationPassword: `${"❤️".repeat(128)}密`
     });
     expect(passwordResponse.errors).toContain("当前密码格式不正确");
@@ -130,6 +297,7 @@ describe("ProjectExpenseController authorization wiring", () => {
   ] as const)("拒绝项目支出自审字段 %s 的非法值", async (field, value, message) => {
     const response = await getExpenseValidationResponse("reviewApproval", {
       decision: "approve",
+      ...validExpenseReviewCoordinates,
       [field]: value
     });
 
@@ -139,6 +307,7 @@ describe("ProjectExpenseController authorization wiring", () => {
   it("拒绝项目支出审批未知字段且不回显当前密码", async () => {
     const response = await getExpenseValidationResponse("reviewApproval", {
       decision: "approve",
+      ...validExpenseReviewCoordinates,
       selfReviewReason: "业务紧急",
       confirmationPassword: "current-password",
       internalSecret: "TOP-SECRET"
@@ -147,6 +316,30 @@ describe("ProjectExpenseController authorization wiring", () => {
     expect(response.errors).toEqual(["internalSecret 不是允许提交的字段"]);
     expect(JSON.stringify(response)).not.toContain("current-password");
     expect(JSON.stringify(response)).not.toContain("TOP-SECRET");
+  });
+
+  it("项目支出审批强制保留业务单和审批实例四坐标", async () => {
+    const value = {
+      decision: "approve",
+      ...validExpenseReviewCoordinates,
+      comment: "同意"
+    };
+
+    await expect(validateExpenseBody("reviewApproval", value)).resolves.toEqual(value);
+  });
+
+  it.each([
+    ["missing expense version", { ...validExpenseReviewCoordinates, expectedExpenseUpdatedAt: undefined }],
+    ["blank approval instance", { ...validExpenseReviewCoordinates, expectedApprovalInstanceId: "   " }],
+    ["invalid approval node", { ...validExpenseReviewCoordinates, expectedNodeIndex: -1 }],
+    ["invalid approval version", { ...validExpenseReviewCoordinates, expectedApprovalUpdatedAt: "not-a-date" }]
+  ])("rejects review approval body with %s", async (_name, coordinates) => {
+    const response = await getExpenseValidationResponse("reviewApproval", {
+      decision: "approve",
+      ...coordinates
+    });
+
+    expect(response.errors).toEqual(expect.arrayContaining([expect.any(String)]));
   });
   const fundsOverviewPositions = [
     "chairman",
@@ -205,7 +398,15 @@ describe("ProjectExpenseController authorization wiring", () => {
   );
 
   it.each([
-    ["reviewApproval", { decision: "approve", approvedAmountCents: "0", comment: "同意" }],
+    [
+      "reviewApproval",
+      {
+        decision: "approve",
+        ...validExpenseReviewCoordinates,
+        approvedAmountCents: "0",
+        comment: "同意"
+      }
+    ],
     [
       "createAttachmentDownloadTicket",
       { confirmationPassword: "current-password", downloadReason: "附件复核" }
@@ -217,12 +418,7 @@ describe("ProjectExpenseController authorization wiring", () => {
     ["voidRequest", { reason: "重复申请" }],
     [
       "recordExecution",
-      {
-        amountCents: "10000",
-        paidAt: "2026-07-11",
-        voucherFileId: "file-1",
-        confirmationPassword: "current-password"
-      }
+      validExpenseExecutionBody
     ],
     [
       "recordPurchaseExecution",
@@ -230,9 +426,17 @@ describe("ProjectExpenseController authorization wiring", () => {
     ],
     [
       "recordFinance",
-      { amountCents: "10000", occurredAt: "2026-07-11", confirmationPassword: "current-password" }
+      {
+        expectedExpenseUpdatedAt:
+          "2026-07-11T09:59:59.000Z",
+        idempotencyKey:
+          "6e8fab4b-9e90-4fba-a59d-320cd24cc427",
+        amountCents: "10000",
+        occurredAt: "2026-07-11",
+        confirmationPassword: "current-password"
+      }
     ],
-    ["confirmPurchaseReceipt", { confirmationPassword: "current-password", note: "数量无误" }]
+    ["confirmPurchaseReceipt", validExpenseReceiptBody]
   ] as const)("accepts a valid %s body through its runtime DTO", async (method, value) => {
     const result = await validateExpenseBody(method, value);
 
@@ -341,7 +545,14 @@ describe("ProjectExpenseController authorization wiring", () => {
     ["recordExecution", { amountCents: "100", paidAt: "bad", voucherFileId: "", confirmationPassword: "" }],
     ["recordPurchaseExecution", { executedAt: "bad", confirmationPassword: "" }],
     ["recordFinance", { amountCents: "100", occurredAt: "bad", confirmationPassword: "" }],
-    ["confirmPurchaseReceipt", { confirmationPassword: "" }],
+    [
+      "confirmPurchaseReceipt",
+      {
+        expectedExpenseUpdatedAt: "bad",
+        idempotencyKey: "not-a-uuid",
+        confirmationPassword: ""
+      }
+    ],
     ["voidRequest", { reason: "" }]
   ] as const)("rejects invalid required fields for %s", async (method, value) => {
     const response = await getExpenseValidationResponse(method, value);
@@ -373,9 +584,12 @@ describe("ProjectExpenseController authorization wiring", () => {
 
   it.each([
     ["create", { ...validExpenseCreateBody, counterpartyName: null }],
-    ["reviewApproval", { decision: "approve", comment: null }],
+    [
+      "reviewApproval",
+      { decision: "approve", ...validExpenseReviewCoordinates, comment: null }
+    ],
     ["recordPurchaseExecution", { executedAt: "2026-07-11", confirmationPassword: "pwd", note: null }],
-    ["confirmPurchaseReceipt", { confirmationPassword: "pwd", note: null }]
+    ["confirmPurchaseReceipt", { ...validExpenseReceiptBody, note: null }]
   ] as const)("rejects explicit null for optional text in %s", async (method, value) => {
     const response = await getExpenseValidationResponse(method, value);
 
@@ -547,7 +761,7 @@ describe("ProjectExpenseController authorization wiring", () => {
   it("forwards receipt confirmation requests with the authenticated user id", async () => {
     const expenses = { confirmPurchaseReceipt: jest.fn() };
     const controller = new ProjectExpenseController(expenses as never);
-    const body = { confirmationPassword: "current-password", note: "数量无误" };
+    const body = validExpenseReceiptBody;
 
     await controller.confirmPurchaseReceipt(
       "project-1",

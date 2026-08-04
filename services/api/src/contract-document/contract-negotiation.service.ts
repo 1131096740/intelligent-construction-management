@@ -7,6 +7,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { contractDocumentCandidateMatchesLedger } from "./contract-document-ledger-candidate";
@@ -57,8 +58,11 @@ export class ContractNegotiationService {
   ) {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const { version } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
-        this.assertEditable(version.status);
+        const { version } = await this.loadOwnedEditableVersionForUpdate(
+          tx,
+          contractVersionId,
+          actorUserId
+        );
         const open = await tx.contractNegotiationRound.findFirst({
           where: { contractVersionId: version.id, status: "open" }
         });
@@ -127,8 +131,11 @@ export class ContractNegotiationService {
   ) {
     const input = this.parseUploadInput(rawInput);
     return this.prisma.$transaction(async (tx) => {
-      const { version } = await this.loadOwnedVersion(tx, contractVersionId, actorUserId);
-      this.assertEditable(version.status);
+      const { version } = await this.loadOwnedEditableVersionForUpdate(
+        tx,
+        contractVersionId,
+        actorUserId
+      );
       const round = await tx.contractNegotiationRound.findFirst({
         where: { contractVersionId: version.id, status: "open" },
         orderBy: [{ roundNo: "desc" }, { id: "desc" }]
@@ -377,18 +384,21 @@ export class ContractNegotiationService {
       if (!comparison || comparison.status !== "succeeded") {
         throw new BadRequestException("合同文档比较尚未完成，暂不能处理差异");
       }
-      const round = await tx.contractNegotiationRound.findUnique({
+      const roundSnapshot = await tx.contractNegotiationRound.findUnique({
         where: { id: comparison.negotiationRoundId }
       });
+      if (!roundSnapshot || roundSnapshot.status !== "open") {
+        throw new BadRequestException("磋商轮次已关闭，不能修改差异处置结果");
+      }
+      const { version } = await this.loadOwnedEditableVersionForUpdate(
+        tx,
+        roundSnapshot.contractVersionId,
+        actorUserId
+      );
+      const round = await this.lockRound(tx, roundSnapshot.id);
       if (!round || round.status !== "open") {
         throw new BadRequestException("磋商轮次已关闭，不能修改差异处置结果");
       }
-      const { version } = await this.loadOwnedVersion(
-        tx,
-        round.contractVersionId,
-        actorUserId
-      );
-      this.assertEditable(version.status);
       if (difference.disposition !== "pending") {
         throw new BadRequestException("该差异已处理，请刷新后查看结果");
       }
@@ -437,10 +447,19 @@ export class ContractNegotiationService {
 
   async closeRound(roundId: string, actorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
+      const roundSnapshot = await tx.contractNegotiationRound.findUnique({
+        where: { id: roundId }
+      });
+      if (!roundSnapshot) {
+        throw new NotFoundException("未找到合同磋商轮次，请刷新后重试");
+      }
+      const { version } = await this.loadOwnedEditableVersionForUpdate(
+        tx,
+        roundSnapshot.contractVersionId,
+        actorUserId
+      );
       const round = await this.lockRound(tx, roundId);
       if (!round) throw new NotFoundException("未找到合同磋商轮次，请刷新后重试");
-      const { version } = await this.loadOwnedVersion(tx, round.contractVersionId, actorUserId);
-      this.assertEditable(version.status);
       if (round.status !== "open") throw new BadRequestException("该磋商轮次已经关闭");
       const revisions = await tx.contractOfflineRevision.findMany({
         where: { negotiationRoundId: round.id }
@@ -509,14 +528,18 @@ export class ContractNegotiationService {
       if (revision.status !== "failed") {
         throw new BadRequestException("只有处理失败的线下修订稿可以重试");
       }
-      const round = revision.negotiationRoundId
-        ? await this.lockRound(tx, revision.negotiationRoundId)
-        : null;
+      if (!revision.negotiationRoundId) {
+        throw new BadRequestException("磋商轮次已关闭，不能重试线下修订稿");
+      }
+      await this.loadOwnedEditableVersionForUpdate(
+        tx,
+        revision.contractVersionId,
+        actorUserId
+      );
+      const round = await this.lockRound(tx, revision.negotiationRoundId);
       if (!round || round.status !== "open") {
         throw new BadRequestException("磋商轮次已关闭，不能重试线下修订稿");
       }
-      const { version } = await this.loadOwnedVersion(tx, revision.contractVersionId, actorUserId);
-      this.assertEditable(version.status);
       const comparison = await tx.contractDocumentComparison.findUnique({
         where: { offlineRevisionId: revision.id }
       });
@@ -580,6 +603,46 @@ export class ContractNegotiationService {
       throw new ForbiddenException("只有合同经办人可以管理合同磋商和文档差异");
     }
     if (contract.voidedAt) throw new BadRequestException("合同草稿已作废，不能继续磋商");
+    return { version, contract };
+  }
+
+  private async loadOwnedEditableVersionForUpdate(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    actorUserId: string
+  ) {
+    const mutationBoundary =
+      await lockContractDraftMutationBoundary<
+        NonNullable<
+          Awaited<ReturnType<typeof tx.contractVersion.findUnique>>
+        >,
+        NonNullable<
+          Awaited<ReturnType<typeof tx.contract.findUnique>>
+        >
+      >(tx, contractVersionId);
+    if (!mutationBoundary) {
+      throw new NotFoundException(
+        "未找到合同草稿版本，请刷新合同工作台后重试"
+      );
+    }
+    const { version, contract } = mutationBoundary;
+    if (contract.ownerUserId !== actorUserId) {
+      throw new ForbiddenException(
+        "只有合同经办人可以管理合同磋商和文档差异"
+      );
+    }
+    if (contract.voidedAt) {
+      throw new BadRequestException("合同草稿已作废，不能继续磋商");
+    }
+    this.assertEditable(version.status);
+    if (version.changeType === "historical_takeover") {
+      throw new BadRequestException("历史接管草稿必须在历史接管工作台办理");
+    }
+    if (mutationBoundary.formalBlockers.length > 0) {
+      throw new BadRequestException(
+        "合同已存在正式业务事实，不能管理草稿磋商"
+      );
+    }
     return { version, contract };
   }
 

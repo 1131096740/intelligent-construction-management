@@ -8,13 +8,22 @@ import {
   Inject,
   Param,
   Post,
-  Put
+  Put,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import {
+  type MemoryUploadedFile,
+  normalizeUploadedOriginalName
+} from "../file/uploaded-file";
+import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
 import {
@@ -36,6 +45,7 @@ export class ContractDraftController {
   ) {}
 
   @Get(":contractVersionId/workbench")
+  @RequireProjectRole("contract.create")
   workbench(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -44,6 +54,7 @@ export class ContractDraftController {
   }
 
   @Put(":contractVersionId")
+  @RequireProjectRole("contract.create")
   saveDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string,
@@ -59,6 +70,7 @@ export class ContractDraftController {
   }
 
   @Delete(":contractVersionId")
+  @RequireProjectRole("contract.create")
   deleteDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: DeleteContractDraftDto,
@@ -70,7 +82,36 @@ export class ContractDraftController {
     });
   }
 
+  @Post(":contractVersionId/files")
+  @RequireProjectRole("contract.create")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      limits: {
+        fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)
+      }
+    })
+  )
+  uploadPrivateFile(
+    @Param("contractVersionId") contractVersionId: string,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UploadPrivateFileDto = new UploadPrivateFileDto()
+  ) {
+    if (!file) {
+      throw new Error("请选择要上传的资料文件");
+    }
+
+    return this.aggregate.uploadPrivateFile(contractVersionId, user.id, {
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      buffer: file.buffer,
+      ...(body.idempotencyKey === undefined ? {} : { idempotencyKey: body.idempotencyKey })
+    });
+  }
+
   @Post(":contractVersionId/preview-generation")
+  @RequireProjectRole("contract.create")
   generatePreview(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: GenerateContractDraftPreviewDto,
@@ -80,6 +121,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/submission")
+  @RequireProjectRole("contract.submit")
   submitDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string,
@@ -95,6 +137,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/edit-lease")
+  @RequireProjectRole("contract.create")
   acquireEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser
@@ -103,6 +146,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/edit-lease/heartbeat")
+  @RequireProjectRole("contract.create")
   heartbeatEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string
@@ -111,6 +155,7 @@ export class ContractDraftController {
   }
 
   @Post(":contractVersionId/edit-lease/takeover")
+  @RequireProjectRole("contract.create")
   takeOverEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -120,6 +165,7 @@ export class ContractDraftController {
   }
 
   @Delete(":contractVersionId/edit-lease")
+  @RequireProjectRole("contract.create")
   releaseEditLease(
     @Param("contractVersionId") contractVersionId: string,
     @Headers("x-contract-draft-lease") leaseToken: string

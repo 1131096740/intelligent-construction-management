@@ -121,6 +121,18 @@ export interface ContractSealTaskReadModel {
   completedAt: string | null;
 }
 
+export type ContractSigningMaterialChangeStatus =
+  | "approved_pending_seal"
+  | "in_seal"
+  | "seal_approved_pending_archive"
+  | "pending_archive_confirm";
+
+export interface ContractSigningMaterialChangeContextReadModel {
+  expectedRevision: number;
+  expectedSealTaskId: string;
+  expectedStatus: ContractSigningMaterialChangeStatus;
+}
+
 export interface EvidenceFileReadModel {
   recordId: string;
   fileId: string;
@@ -196,10 +208,27 @@ export interface ProjectExpenseApprovalDetailReadModel {
   reason: string;
   requestedAmountCents: MoneyCents;
   approvedAmountCents: MoneyCents | null;
+  paidAmountCents: MoneyCents;
+  remainingAmountCents: MoneyCents;
+  financeRecordedAmountCents: MoneyCents;
+  financeRemainingAmountCents: MoneyCents;
+  receiptConfirmedAt: string | null;
+  receiptConfirmedByUserId: string | null;
+  receiptConfirmationIdempotencyKey: string | null;
+  receiptConfirmationNote: string | null;
   currentNodeName: string | null;
   canSetApprovedAmount: boolean;
   reviewAction: DetailActionReadModel;
   approvalTimeline: ApprovalTimelineItemReadModel[];
+  executionContext: {
+    expectedExpenseUpdatedAt: string;
+  } | null;
+  financeContext: {
+    expectedExpenseUpdatedAt: string;
+  } | null;
+  receiptContext: {
+    expectedExpenseUpdatedAt: string;
+  } | null;
 }
 
 export interface ContractDetailReadModel {
@@ -223,8 +252,12 @@ export interface ContractDetailReadModel {
     requiresExplicitConfirmation: boolean;
   };
   sealTask?: ContractSealTaskReadModel | null;
+  signingMaterialChangeContext?: ContractSigningMaterialChangeContextReadModel | null;
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  availableActionKeys: string[];
+  reviewApprovalContext: ContractApprovalReviewContextReadModel | null;
+  withdrawApprovalContext: ContractApprovalWithdrawalContextReadModel | null;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;
@@ -252,6 +285,20 @@ export interface ContractDetailReadModel {
   }>;
 }
 
+export interface ContractApprovalReviewContextReadModel {
+  expectedContractUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
+export interface ContractApprovalWithdrawalContextReadModel {
+  expectedContractUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
+}
+
 export interface SettlementPaymentRuleReadModel {
   id: string;
   stage: string;
@@ -266,6 +313,13 @@ export interface SettlementPayableCalculationItemReadModel {
   label: string;
   value: string;
   tone?: CoreFlowTone;
+}
+
+export interface SettlementApprovalWithdrawalContextReadModel {
+  expectedSettlementUpdatedAt: string;
+  expectedApprovalInstanceId: string;
+  expectedNodeIndex: number;
+  expectedApprovalUpdatedAt: string;
 }
 
 export interface SettlementPayableCalculationReadModel {
@@ -312,6 +366,9 @@ export interface SettlementDetailReadModel {
   archiveFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  availableActionKeys: string[];
+  lifecycleUpdatedAt: string;
+  withdrawApprovalContext: SettlementApprovalWithdrawalContextReadModel | null;
   primaryAction: string | null;
   disabledReasons: string[];
   chainLinks: BusinessChainLink[];
@@ -345,6 +402,7 @@ export interface PaymentDetailReadModel {
   evidenceFiles: EvidenceFileReadModel[];
   approvalTimeline: ApprovalTimelineItemReadModel[];
   availableActions: DetailActionReadModel[];
+  availableActionKeys: string[];
   primaryAction: string | null;
   disabledReasons: string[];
   traceRules: string[];

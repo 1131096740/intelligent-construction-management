@@ -326,6 +326,7 @@ describe("ContractTakeoverController", () => {
 
   it.each([
     ["list"],
+    ["capability"],
     ["detail"],
     ["listTaxFactRevisions"],
     ["exportLedger"],
@@ -338,6 +339,109 @@ describe("ContractTakeoverController", () => {
       )
     ).toEqual(HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS);
   });
+
+  it.each([
+    [
+      ["contract_staff"],
+      [
+        "create_takeover",
+        "precheck_import",
+        "create_import_drafts",
+        "preview_excel_import",
+        "apply_excel_import",
+        "preview_batch_abandonment",
+        "apply_batch_abandonment",
+        "upload_takeover_file",
+        "update_takeover",
+        "abandon_takeover",
+        "submit_review",
+        "attach_contract_evidence",
+        "save_contract_side",
+        "submit_correction",
+        "submit_company_entity_correction",
+        "create_tax_fact_revision",
+        "update_tax_fact_revision",
+        "submit_tax_fact_finance_review",
+        "abandon_tax_fact_revision"
+      ]
+    ],
+    [
+      ["contract_director"],
+      [
+        "create_takeover",
+        "precheck_import",
+        "create_import_drafts",
+        "preview_excel_import",
+        "apply_excel_import",
+        "preview_batch_abandonment",
+        "apply_batch_abandonment",
+        "review_import_batch",
+        "upload_takeover_file",
+        "update_takeover",
+        "abandon_takeover",
+        "submit_review",
+        "confirm_takeover",
+        "return_for_supplement",
+        "confirm_change_baseline",
+        "attach_contract_evidence",
+        "save_contract_side",
+        "confirm_contract_side",
+        "withdraw_contract_side_confirmation",
+        "withdraw_finance_side_confirmation",
+        "submit_correction",
+        "review_correction",
+        "submit_company_entity_correction",
+        "review_company_entity_correction",
+        "confirm_tax_fact_by_contract"
+      ]
+    ],
+    [
+      ["finance_staff"],
+      [
+        "upload_takeover_file",
+        "attach_payment_voucher",
+        "save_finance_side",
+        "submit_correction"
+      ]
+    ],
+    [
+      ["finance_director"],
+      [
+        "upload_takeover_file",
+        "attach_payment_voucher",
+        "save_finance_side",
+        "confirm_finance_side",
+        "withdraw_contract_side_confirmation",
+        "withdraw_finance_side_confirmation",
+        "submit_correction",
+        "review_correction",
+        "review_tax_fact_by_finance"
+      ]
+    ],
+    [["comprehensive_director"], []]
+  ] as const)(
+    "derives project capability actions from effective roles %j",
+    async (roleKeys, expectedActions) => {
+      const effectiveRoleKeys = jest.fn().mockResolvedValue([...roleKeys]);
+      const controller = Object.assign(
+        Object.create(ContractTakeoverController.prototype),
+        { projectVisibility: { effectiveRoleKeys } }
+      ) as ContractTakeoverController & {
+        capability: (
+          projectId: string,
+          user: { id: string }
+        ) => Promise<{ projectId: string; availableActions: string[] }>;
+      };
+
+      await expect(
+        controller.capability("project-1", { id: "user-1" })
+      ).resolves.toEqual({
+        projectId: "project-1",
+        availableActions: expectedActions
+      });
+      expect(effectiveRoleKeys).toHaveBeenCalledWith("user-1", "project-1");
+    }
+  );
 
   it.each([
     ["createTaxFactRevision", "contract.tax_fact.supplement"],
@@ -356,12 +460,16 @@ describe("ContractTakeoverController", () => {
 
   it("protects side-specific evidence attachments with their department actions", () => {
     expectProjectAction(
+      ContractTakeoverController.prototype.uploadPrivateFile,
+      "contract.takeover.file.upload"
+    );
+    expectProjectAction(
       ContractTakeoverController.prototype.attachEvidence,
       "contract.takeover.contract_facts.edit"
     );
     expectProjectAction(
       ContractTakeoverController.prototype.attachHistoricalPaymentVoucher,
-      "contract.takeover.finance_facts.edit"
+      "contract.takeover.payment_evidence.upload"
     );
   });
 
@@ -637,6 +745,7 @@ describe("ContractTakeoverController", () => {
       "withdrawFinanceSideConfirmation",
       "previewExcelImport",
       "applyExcelImport",
+      "uploadPrivateFile",
       "attachEvidence",
       "recordCorrection",
       "reviewCorrection",

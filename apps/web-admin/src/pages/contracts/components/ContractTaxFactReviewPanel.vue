@@ -19,7 +19,10 @@ import {
   type ContractTaxFactRevisionListReadModel,
   type ContractTaxFactRevisionReadModel
 } from "../../../api/contract-tax-facts.api";
-import { uploadPrivateFile } from "../../../api/core-flow-read.api";
+import {
+  fetchContractTakeoverProjectCapability,
+  uploadContractTakeoverPrivateFile
+} from "../../../api/core-flow-read.api";
 import BusinessDraftAction, {
   type BusinessDraftActionRequest
 } from "../../../components/BusinessDraftAction.vue";
@@ -52,6 +55,103 @@ const emit = defineEmits<{
   "dirty-change": [dirty: boolean];
   "go-contract-change": [contractId: string];
 }>();
+
+async function createContractTaxFactRevisionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  body: Parameters<typeof createContractTaxFactRevision>[2]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("create_tax_fact_revision");
+  if (!operationAllowed) throw new Error("当前用户不能新建税务事实修订");
+  return createContractTaxFactRevision(projectId, takeoverId, body);
+}
+
+async function updateContractTaxFactRevisionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  revisionId: string,
+  body: Parameters<typeof updateContractTaxFactRevision>[3]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("update_tax_fact_revision");
+  if (!operationAllowed) throw new Error("当前用户不能修改税务事实修订");
+  return updateContractTaxFactRevision(projectId, takeoverId, revisionId, body);
+}
+
+async function submitContractTaxFactRevisionForFinanceReviewWithCapability(
+  projectId: string,
+  takeoverId: string,
+  revisionId: string
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "submit_tax_fact_finance_review"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能提交税务事实财务复核");
+  return submitContractTaxFactRevisionForFinanceReview(projectId, takeoverId, revisionId);
+}
+
+async function reviewContractTaxFactRevisionByFinanceWithCapability(
+  projectId: string,
+  takeoverId: string,
+  revisionId: string,
+  body: Parameters<typeof reviewContractTaxFactRevisionByFinance>[3]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("review_tax_fact_by_finance");
+  if (!operationAllowed) throw new Error("当前用户不能复核税务事实");
+  return reviewContractTaxFactRevisionByFinance(projectId, takeoverId, revisionId, body);
+}
+
+async function confirmContractTaxFactRevisionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  revisionId: string,
+  body: Parameters<typeof confirmContractTaxFactRevision>[3]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("confirm_tax_fact_by_contract");
+  if (!operationAllowed) throw new Error("当前用户不能确认税务事实");
+  return confirmContractTaxFactRevision(projectId, takeoverId, revisionId, body);
+}
+
+async function abandonContractTaxFactRevisionWithCapability(
+  projectId: string,
+  takeoverId: string,
+  revisionId: string,
+  body: Parameters<typeof abandonContractTaxFactRevision>[3]
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("abandon_tax_fact_revision");
+  if (!operationAllowed) throw new Error("当前用户不能放弃税务事实修订");
+  return abandonContractTaxFactRevision(projectId, takeoverId, revisionId, body);
+}
+
+async function uploadContractTaxFactEvidenceFileWithCapability(
+  projectId: string,
+  file: Blob,
+  fileName: string
+) {
+  const capability = await fetchContractTakeoverProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("upload_takeover_file");
+  if (!operationAllowed) throw new Error("当前用户不能上传税务事实依据附件");
+  return uploadContractTakeoverPrivateFile(projectId, file, fileName);
+}
 
 const data = ref<ContractTaxFactRevisionListReadModel | null>(null);
 const loading = ref(false);
@@ -224,13 +324,17 @@ async function saveDraft() {
     const active = activeRevision.value;
     const saved =
       active?.status === "draft"
-        ? await updateContractTaxFactRevision(
+        ? await updateContractTaxFactRevisionWithCapability(
             props.projectId,
             props.takeoverId,
             active.id,
             payload
           )
-        : await createContractTaxFactRevision(props.projectId, props.takeoverId, payload);
+        : await createContractTaxFactRevisionWithCapability(
+            props.projectId,
+            props.takeoverId,
+            payload
+          );
     await reloadAfterAction("税务事实修订草稿已保存");
     return saved;
   });
@@ -247,7 +351,7 @@ async function submitFinanceReview() {
   }
   await runAction("submit", async () => {
     const saved = await saveDraftWithoutMessage();
-    await submitContractTaxFactRevisionForFinanceReview(
+    await submitContractTaxFactRevisionForFinanceReviewWithCapability(
       props.projectId,
       props.takeoverId,
       saved.id
@@ -284,14 +388,14 @@ async function submitReviewDecision() {
       comment: reviewComment.value.trim() || undefined
     };
     if (reviewStage.value === "finance") {
-      await reviewContractTaxFactRevisionByFinance(
+      await reviewContractTaxFactRevisionByFinanceWithCapability(
         props.projectId,
         props.takeoverId,
         active.id,
         body
       );
     } else {
-      await confirmContractTaxFactRevision(
+      await confirmContractTaxFactRevisionWithCapability(
         props.projectId,
         props.takeoverId,
         active.id,
@@ -315,7 +419,7 @@ async function abandonRevision(request: BusinessDraftActionRequest) {
   if (request.action !== "delete_pristine_draft" && request.action !== "abandon_application") {
     throw new Error("当前操作与税务事实修订状态不匹配，请刷新后重试");
   }
-  await abandonContractTaxFactRevision(props.projectId, props.takeoverId, active.id, {
+  await abandonContractTaxFactRevisionWithCapability(props.projectId, props.takeoverId, active.id, {
     expectedUpdatedAt: active.updatedAt,
     action: request.action,
     ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
@@ -331,19 +435,23 @@ async function saveDraftWithoutMessage(): Promise<ContractTaxFactRevisionReadMod
   const payload = await prepareDraftPayload();
   const active = activeRevision.value;
   return active?.status === "draft"
-    ? updateContractTaxFactRevision(
+    ? updateContractTaxFactRevisionWithCapability(
         props.projectId,
         props.takeoverId,
         active.id,
         payload
       )
-    : createContractTaxFactRevision(props.projectId, props.takeoverId, payload);
+    : createContractTaxFactRevisionWithCapability(props.projectId, props.takeoverId, payload);
 }
 
 async function prepareDraftPayload() {
   const file = selectedEvidenceFile.value;
   if (file) {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadContractTaxFactEvidenceFileWithCapability(
+      props.projectId,
+      file,
+      file.name
+    );
     draft.evidenceFileId = uploaded.id;
   }
   return normalizeContractTaxFactDraft(draft);

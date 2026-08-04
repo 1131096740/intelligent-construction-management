@@ -77,7 +77,7 @@
         placeholder="请选择项目"
         :options="projectOptions"
         :loading="loadingProjects"
-        :disabled="Boolean(draftSubmissionBlockingReason)"
+        :disabled="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"
         @change="loadContracts"
       />
       <t-select
@@ -86,20 +86,20 @@
         placeholder="请选择已生效合同"
         :options="contractOptions"
         :loading="loadingContracts"
-        :disabled="Boolean(draftSubmissionBlockingReason)"
+        :disabled="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"
         @change="loadSourceLines"
       />
       <t-input
         v-model="form.code"
         label="结算编号"
         placeholder="JS-2026-019"
-        :readonly="Boolean(draftSubmissionBlockingReason)"
+        :readonly="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"
       />
       <t-input
         v-model="form.periodLabel"
         label="结算期间"
         placeholder="2026-07"
-        :readonly="Boolean(draftSubmissionBlockingReason)"
+        :readonly="Boolean(draftSubmissionBlockingReason) || settlementDraftLifecycleActionBusy"
       />
       <label class="final-switch">
         <span>结算类型</span>
@@ -181,13 +181,44 @@
       </template>
     </t-alert>
 
-    <BusinessDraftAction
-      v-if="activeDraft"
-      :actions="settlementDraftActions"
-      :blocked-reasons="activeDraft.lifecycleBlockers ?? activeDraft.blockedReasons ?? []"
-      :subject="settlementDraftActionSubject"
-      :execute="executeSettlementDraftAction"
-    />
+    <section
+      v-if="activeDraft && (settlementDraftAvailableActions?.length || activeDraft.lifecycleBlockers?.length)"
+      class="settlement-draft-lifecycle"
+      aria-label="结算草稿结束操作"
+    >
+      <div class="settlement-draft-lifecycle__head">
+        <div>
+          <strong>草稿结束操作</strong>
+          <span>操作前会重新读取当前草稿，并以修订号和服务端能力复核。</span>
+        </div>
+        <t-space>
+          <t-button
+            v-if="settlementDraftActionEnabled('delete_pristine_draft')"
+            theme="danger"
+            variant="outline"
+            :disabled="settlementDraftLifecycleActionBusy"
+            @click="openDeletePristineDraft"
+          >
+            {{ deletePristineDraftConfig.label }}
+          </t-button>
+          <t-button
+            v-if="settlementDraftActionEnabled('abandon_application')"
+            theme="danger"
+            variant="outline"
+            :disabled="settlementDraftLifecycleActionBusy"
+            @click="openAbandonApplication"
+          >
+            {{ abandonApplicationConfig.label }}
+          </t-button>
+        </t-space>
+      </div>
+      <t-alert
+        v-for="reason in activeDraft.lifecycleBlockers ?? []"
+        :key="reason"
+        theme="warning"
+        :message="reason"
+      />
+    </section>
 
     <section
       v-if="draftSubmissionBlockingReason"
@@ -249,7 +280,7 @@
             :auto-upload="false"
             :max="1"
             :loading="importBusy"
-            :disabled="!templateReady || sourceLoading"
+            :disabled="!templateReady || sourceLoading || settlementDraftLifecycleActionBusy"
             placeholder="选择 XLSX 并预检"
             @change="selectImportFile"
           />
@@ -675,7 +706,11 @@
       :draft-id="activeDraft.id"
       :revision="activeDraft.revision"
       :lines="attachmentTargets"
-      :disabled-reason="isDirty ? '请先保存当前清单修改，再关联结算明细附件。' : ''"
+      :disabled-reason="settlementDraftLifecycleActionBusy
+        ? '结算草稿正在执行结束操作，请等待处理完成。'
+        : isDirty
+          ? '请先保存当前清单修改，再关联结算明细附件。'
+          : ''"
       @updated="onLineAttachmentUpdated"
     />
 
@@ -723,7 +758,7 @@
         :evidence-epoch="counterpartyEvidenceEpoch"
         :linked="Boolean(linkedOriginalDocumentId)"
         :linked-declaration="linkedOriginalDeclaration"
-        :disabled="!activeDraft || !form.fieldReviewerUserId || isDirty"
+        :disabled="!activeDraft || !form.fieldReviewerUserId || isDirty || settlementDraftLifecycleActionBusy"
         :generate-busy="frozenDocumentBusy"
         :upload-busy="counterpartyUploadBusy"
         :link-busy="counterpartyLinkBusy"
@@ -809,6 +844,68 @@
       @cancel="cancelLeave"
     />
     <SensitiveActionDialog
+      v-if="settlementDraftActionEnabled('delete_pristine_draft')"
+      v-model="deletePristineDraftVisible"
+      :title="deletePristineDraftConfig.label"
+      :description="deletePristineDraftConfig.description"
+      :confirm-text="deletePristineDraftConfig.confirmText"
+      confirm-theme="danger"
+      :require-reason="settlementDraftActionRequiresComment('delete_pristine_draft')"
+      :loading="settlementDraftLifecycleActionBusy"
+      :error="deletePristineDraftError"
+      @confirm="confirmDeletePristineDraft"
+    >
+      <dl class="settlement-draft-lifecycle__subject">
+        <div>
+          <dt>业务编号</dt>
+          <dd>{{ settlementDraftActionSubject.businessCode }}</dd>
+        </div>
+        <div>
+          <dt>业务名称</dt>
+          <dd>{{ settlementDraftActionSubject.name }}</dd>
+        </div>
+        <div>
+          <dt>最后保存时间</dt>
+          <dd>{{ settlementDraftActionSubject.lastSavedAt }}</dd>
+        </div>
+        <div>
+          <dt>影响范围</dt>
+          <dd>{{ settlementDraftActionSubject.impactScope }}</dd>
+        </div>
+      </dl>
+    </SensitiveActionDialog>
+    <SensitiveActionDialog
+      v-if="settlementDraftActionEnabled('abandon_application')"
+      v-model="abandonApplicationVisible"
+      :title="abandonApplicationConfig.label"
+      :description="abandonApplicationConfig.description"
+      :confirm-text="abandonApplicationConfig.confirmText"
+      confirm-theme="danger"
+      :require-reason="settlementDraftActionRequiresComment('abandon_application')"
+      :loading="settlementDraftLifecycleActionBusy"
+      :error="abandonApplicationError"
+      @confirm="confirmAbandonApplication"
+    >
+      <dl class="settlement-draft-lifecycle__subject">
+        <div>
+          <dt>业务编号</dt>
+          <dd>{{ settlementDraftActionSubject.businessCode }}</dd>
+        </div>
+        <div>
+          <dt>业务名称</dt>
+          <dd>{{ settlementDraftActionSubject.name }}</dd>
+        </div>
+        <div>
+          <dt>最后保存时间</dt>
+          <dd>{{ settlementDraftActionSubject.lastSavedAt }}</dd>
+        </div>
+        <div>
+          <dt>影响范围</dt>
+          <dd>{{ settlementDraftActionSubject.impactScope }}</dd>
+        </div>
+      </dl>
+    </SensitiveActionDialog>
+    <SensitiveActionDialog
       v-model="frozenDownloadDialogVisible"
       title="下载当前修订版冻结结算单"
       description="冻结版包含结算业务事实和签名占位。下载行为会记录审计，请确认用于本次乙方线下签章。"
@@ -857,27 +954,41 @@ import type {
   SettlementSourceLinesReadModel
 } from "@jiangkong/shared-domain";
 import type { PrimaryTableCol, UploadChangeContext, UploadFile } from "tdesign-vue-next";
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "../../auth/auth.store";
 import {
   createPrivateFileDownloadTicket,
   fetchProjects,
   fetchSettlementContractOptions,
-  uploadPrivateFile,
+  getPrivateFileDownloadTicketCapability,
   type ProjectOptionReadModel
 } from "../../api/core-flow-read.api";
 import {
   createSettlementDraftRecord,
-  abandonSettlementDraftRecord,
+  executeSettlementDraftLifecycleAction,
   fetchSettlementDraftRecord,
   fetchSettlementFinalPreparation,
+  fetchSettlementProjectCapability,
   generateSettlementFrozenDocument,
   linkSettlementCounterpartySignedDocument,
   listSettlementDraftRecords,
   submitSettlementDraftRecord,
   updateSettlementDraftRecord,
+  uploadSettlementDraftPrivateFile,
+  type ExecuteSettlementDraftLifecycleActionResult,
   type SaveSettlementDraftPayload,
+  type SettlementDraftLifecycleAction,
+  type SettlementDraftLifecycleOperationContext,
   type SettlementDraftReadModel,
   type SettlementFinalPreparationReadModel,
   type SettlementSignedDocumentRecordReadModel
@@ -926,9 +1037,7 @@ import {
 } from "./settlement-workbench.state";
 import { canApplySettlementSourceResponse } from "./settlement-source-lines.state";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
-import BusinessDraftAction, {
-  type BusinessDraftActionRequest
-} from "../../components/BusinessDraftAction.vue";
+import { businessDraftActionConfig } from "../../components/business-draft-action.config";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import SettlementApprovalParticipantSelect, {
   type SettlementApprovalParticipantOption
@@ -989,6 +1098,14 @@ interface SettlementWorkbenchRecoverySnapshot {
   importFileName: string;
   importPreview: SettlementImportPreviewReadModel | null;
   partialImportId: string;
+}
+
+interface SettlementDraftRouteLoadOwner {
+  requestId: number;
+  requestedProject: string;
+  draftId: string;
+  projectId: string;
+  revision: number;
 }
 
 const router = useRouter();
@@ -1081,6 +1198,19 @@ const pasteStartRowId = ref("");
 const pasteText = ref("");
 const anomalyDrawerVisible = ref(false);
 const activeDraft = ref<SettlementDraftReadModel | null>(null);
+const settlementDraftAvailableActions =
+  shallowRef<DetailActionReadModel[] | null>(null);
+const deletePristineDraftConfig =
+  businessDraftActionConfig.delete_pristine_draft;
+const abandonApplicationConfig =
+  businessDraftActionConfig.abandon_application;
+const deletePristineDraftVisible = ref(false);
+const abandonApplicationVisible = ref(false);
+const deletePristineDraftError = ref("");
+const abandonApplicationError = ref("");
+const settlementDraftLifecycleActionBusy = ref(false);
+const settlementDraftRouteLoadBusy = ref(false);
+const settlementDraftLifecycleOwnerScope = globalThis.crypto.randomUUID();
 const baselineDraftSnapshot = ref("");
 const pendingLocalRecovery = ref<SettlementWorkbenchLocalRecovery<SettlementWorkbenchRecoverySnapshot> | null>(null);
 const localRecoveryState = ref<"clean" | "dirty" | "local_backed_up" | "failed">("clean");
@@ -1094,7 +1224,190 @@ let previewRequestId = 0;
 let importRequestId = 0;
 let importApplyRequestId = 0;
 let templateRequestId = 0;
+let settlementDraftRouteLoadRequestId = 0;
+let settlementContractOptionsRequestId = 0;
+let settlementFinalPreparationRequestId = 0;
+let settlementDraftLifecycleGeneration = 0;
+let settlementDraftLifecycleOperationId = 0;
+const settlementDraftLifecyclePendingOperations = new Set<number>();
+let settlementWorkbenchComponentAlive = true;
 let previewTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function saveSettlementDraftWithCapability(
+  projectId: string,
+  payload: SaveSettlementDraftPayload
+) {
+  const projectSelected = projectId !== "";
+  if (!projectSelected) throw new Error("请先选择结算项目");
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("save_draft");
+  if (!operationAllowed) throw new Error("当前用户不能新建结算草稿");
+  return createSettlementDraftRecord(projectId, payload);
+}
+
+async function updateSettlementDraftWithCapability(
+  projectId: string,
+  payload: SaveSettlementDraftPayload,
+  draft: SettlementDraftReadModel
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const matchesDraftProject = draft.projectId === projectId;
+  if (!matchesDraftProject) throw new Error("结算草稿已变化，请刷新工作台后重试");
+  const draftEditable = draft.status === "draft";
+  if (!draftEditable) throw new Error("该结算草稿当前不可编辑，请刷新工作台后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("save_draft");
+  if (!operationAllowed) throw new Error("当前用户不能修改结算草稿");
+  return updateSettlementDraftRecord(projectId, draft.id, {
+    ...payload,
+    expectedRevision: draft.revision
+  });
+}
+
+async function previewSettlementImportWithCapability(
+  projectId: string,
+  contractVersionId: string,
+  file: File,
+  settlementTemplateVersionId: string
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("preview_import");
+  if (!operationAllowed) throw new Error("当前用户不能导入结算明细");
+  const uploaded = await uploadSettlementDraftPrivateFile(
+    projectId,
+    file,
+    file.name
+  );
+  return previewSettlementImport(contractVersionId, {
+    fileId: uploaded.id,
+    settlementTemplateVersionId
+  });
+}
+
+async function previewSettlementLinesWithCapability(
+  projectId: string,
+  contractVersionId: string,
+  body: Parameters<typeof previewSettlementLines>[1]
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("preview_lines");
+  if (!operationAllowed) throw new Error("当前用户不能预览结算明细");
+  return previewSettlementLines(contractVersionId, body);
+}
+
+async function applySettlementImportWithCapability(
+  projectId: string,
+  importId: string
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("apply_import");
+  if (!operationAllowed) throw new Error("当前用户不能应用结算导入结果");
+  return applySettlementImport(projectId, importId);
+}
+
+async function submitSettlementDraftWithCapability(
+  draft: SettlementDraftReadModel
+) {
+  const projectId = draft.projectId;
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes("submit_draft");
+  if (!operationAllowed) throw new Error("当前用户不能提交结算草稿");
+  return submitSettlementDraftRecord(projectId, draft.id, draft.revision);
+}
+
+async function generateSettlementFrozenDocumentWithCapability(
+  draft: SettlementDraftReadModel
+) {
+  const projectId = draft.projectId;
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "generate_frozen_document"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能生成结算冻结文件");
+  return generateSettlementFrozenDocument(
+    projectId,
+    draft.id,
+    draft.revision
+  );
+}
+
+async function uploadSettlementSignedDocumentWithCapability(
+  projectId: string,
+  file: File
+) {
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "link_counterparty_signed_document"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能上传对方签章结算单");
+  return uploadSettlementDraftPrivateFile(projectId, file, file.name);
+}
+
+async function linkSettlementSignedDocumentWithCapability(
+  draft: SettlementDraftReadModel,
+  frozen: SettlementFrozenDocumentSummary,
+  declaration: SettlementCounterpartyDeclaration
+) {
+  const projectId = draft.projectId;
+  const matchesCurrentProject = projectId === form.projectId;
+  if (!matchesCurrentProject) throw new Error("当前结算项目已变化，请重新选择项目后重试");
+  const capability = await fetchSettlementProjectCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新工作台后重试");
+  const operationAllowed = capability.availableActions.includes(
+    "link_counterparty_signed_document"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能关联对方签章结算单");
+  return linkSettlementCounterpartySignedDocument(projectId, draft.id, {
+    expectedRevision: draft.revision,
+    frozenDocumentId: frozen.id,
+    uploadedFileId: stagedUploadedFileId.value,
+    declaration
+  });
+}
+
+async function downloadSettlementDraftFileWithCapability(
+  fileId: string,
+  body: Parameters<typeof createPrivateFileDownloadTicket>[1]
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("文件下载权限已变化，请刷新工作台后重试");
+  return createPrivateFileDownloadTicket(fileId, body);
+}
 
 const adjustmentColumns: PrimaryTableCol<ManualAdjustmentDraft>[] = [
   { colKey: "adjustmentKind", title: "调整类型", width: 150 },
@@ -1138,9 +1451,6 @@ const projectOptions = computed(() =>
 const draftSubmissionBlockingReason = computed(
   () => activeDraft.value?.submissionBlockingReason?.trim() ?? ""
 );
-const settlementDraftActions = computed<DetailActionReadModel[]>(
-  () => activeDraft.value?.availableActions ?? []
-);
 const settlementDraftActionSubject = computed(() => ({
   businessCode: activeDraft.value?.code || "未生成编号",
   name: activeDraft.value?.periodLabel
@@ -1149,6 +1459,31 @@ const settlementDraftActionSubject = computed(() => ({
   lastSavedAt: activeDraft.value?.updatedAt || "—",
   impactScope: "仅终止当前结算草稿或申请，不改变合同额度、正式结算及付款事实。"
 }));
+const deletePristineDraftRequiresComment = computed(
+  () => settlementDraftAvailableActions.value?.some(
+    (action) =>
+      action.key === "delete_pristine_draft" &&
+      action.enabled &&
+      action.requiresComment
+  ) === true
+);
+const abandonApplicationRequiresComment = computed(
+  () => settlementDraftAvailableActions.value?.some(
+    (action) =>
+      action.key === "abandon_application" &&
+      action.enabled &&
+      action.requiresComment
+  ) === true
+);
+const settlementDraftLifecycleProjectId = computed(
+  () => activeDraft.value?.projectId ?? ""
+);
+const settlementDraftLifecycleDraftId = computed(
+  () => activeDraft.value?.id ?? ""
+);
+const settlementDraftLifecycleRevision = computed(
+  () => activeDraft.value?.revision ?? 0
+);
 const contractOptions = computed(() => {
   const options = toContractSelectOptions(contracts.value, "settlement").map((option) => ({
     label: option.label,
@@ -1326,6 +1661,12 @@ const importStatusTheme = computed<"success" | "danger" | "warning">(() => {
   return "warning";
 });
 const importApplyDisabledReason = computed(() => {
+  if (settlementDraftLifecycleActionBusy.value) {
+    return "结算草稿正在执行结束操作，请等待处理完成。";
+  }
+  if (settlementDraftRouteLoadBusy.value) {
+    return "正在读取目标结算草稿，请稍候。";
+  }
   if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (templateBlockedReason.value) return templateBlockedReason.value;
   if (!importPreview.value) return "请先选择 XLSX 文件并完成预检。";
@@ -1335,6 +1676,12 @@ const importApplyDisabledReason = computed(() => {
   return "";
 });
 const partialImportDisabledReason = computed(() => {
+  if (settlementDraftLifecycleActionBusy.value) {
+    return "结算草稿正在执行结束操作，请等待处理完成。";
+  }
+  if (settlementDraftRouteLoadBusy.value) {
+    return "正在读取目标结算草稿，请稍候。";
+  }
   if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (templateBlockedReason.value) return templateBlockedReason.value;
   if (!importPreview.value) return "请先选择 XLSX 文件并完成预检。";
@@ -1349,6 +1696,12 @@ const importErrorRows = computed<ImportErrorRow[]>(() =>
   }))
 );
 const createDisabledReason = computed(() => {
+  if (settlementDraftLifecycleActionBusy.value) {
+    return "结算草稿正在执行结束操作，请等待处理完成。";
+  }
+  if (settlementDraftRouteLoadBusy.value) {
+    return "正在读取目标结算草稿，请稍候。";
+  }
   if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (templateBlockedReason.value) return templateBlockedReason.value;
   if (importPreview.value?.errors.length) {
@@ -1381,6 +1734,12 @@ const createDisabledReason = computed(() => {
   return "";
 });
 const saveDisabledReason = computed(() => {
+  if (settlementDraftLifecycleActionBusy.value) {
+    return "结算草稿正在执行结束操作，请等待处理完成。";
+  }
+  if (settlementDraftRouteLoadBusy.value) {
+    return "正在读取目标结算草稿，请稍候。";
+  }
   if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (!form.projectId) return "请选择项目。";
   if (!selectedContractVersionId.value) return "请选择已生效合同。";
@@ -1452,9 +1811,20 @@ const pdfReviewStorageKey = computed(() => [
   stagedUploadedFileId.value || linkedOriginalDocumentId.value || "none"
 ].join(":"));
 const primaryActionBusy = computed(() =>
-  saveBusy.value || createBusy.value || frozenDocumentBusy.value || counterpartyLinkBusy.value
+  saveBusy.value ||
+  createBusy.value ||
+  frozenDocumentBusy.value ||
+  counterpartyLinkBusy.value ||
+  settlementDraftLifecycleActionBusy.value ||
+  settlementDraftRouteLoadBusy.value
 );
 const primaryActionDisabledReason = computed(() => {
+  if (settlementDraftLifecycleActionBusy.value) {
+    return "结算草稿正在执行结束操作，请等待处理完成。";
+  }
+  if (settlementDraftRouteLoadBusy.value) {
+    return "正在读取目标结算草稿，请稍候。";
+  }
   if (draftSubmissionBlockingReason.value) return draftSubmissionBlockingReason.value;
   if (workflowNextAction.value.step === 1) return saveDisabledReason.value;
   if (workflowNextAction.value.step === 2) {
@@ -1520,7 +1890,11 @@ async function downloadImportTemplate() {
 }
 
 async function selectImportFile(files: UploadFile[], context: UploadChangeContext) {
-  if (draftSubmissionBlockingReason.value) return;
+  if (
+    draftSubmissionBlockingReason.value ||
+    settlementDraftLifecycleActionBusy.value ||
+    settlementDraftRouteLoadBusy.value
+  ) return;
   if (context.trigger !== "add") return;
   const file = context.file?.raw ?? files.at(-1)?.raw;
   if (!file) return;
@@ -1544,17 +1918,12 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
   partialImportId.value = "";
   pageMessage.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
-    if (
-      requestId !== importRequestId ||
-      contractVersionId !== selectedContractVersionId.value
-    ) {
-      return;
-    }
-    const result = await previewSettlementImport(contractVersionId, {
-      fileId: uploaded.id,
+    const result = await previewSettlementImportWithCapability(
+      form.projectId,
+      contractVersionId,
+      file,
       settlementTemplateVersionId
-    });
+    );
     if (
       requestId === importRequestId &&
       contractVersionId === selectedContractVersionId.value &&
@@ -1605,7 +1974,11 @@ function applyPartialImport() {
 }
 
 async function confirmApplyImport() {
-  if (draftSubmissionBlockingReason.value) return;
+  if (
+    draftSubmissionBlockingReason.value ||
+    settlementDraftLifecycleActionBusy.value ||
+    settlementDraftRouteLoadBusy.value
+  ) return;
   const currentImport = importPreview.value;
   const contractVersionId = selectedContractVersionId.value;
   const projectId = form.projectId;
@@ -1622,7 +1995,7 @@ async function confirmApplyImport() {
   importApplyBusy.value = true;
   pageMessage.value = "";
   try {
-    const applied = await applySettlementImport(projectId, importId);
+    const applied = await applySettlementImportWithCapability(projectId, importId);
     if (
       !canApplySettlementImportResponse(
         requestId,
@@ -1844,10 +2217,14 @@ async function requestCanonicalPreview() {
   previewBusy.value = true;
   pageMessage.value = "";
   try {
-    const result = await previewSettlementLines(contractVersionId, {
+    const result = await previewSettlementLinesWithCapability(
+      form.projectId,
+      contractVersionId,
+      {
       isFinal: form.isFinal,
       settlementLines: payload
-    });
+      }
+    );
     if (
       canApplySettlementPreviewResponse(
         requestId,
@@ -1942,18 +2319,41 @@ async function loadProjects() {
 }
 
 async function loadContracts() {
+  await loadContractsForProject(form.projectId);
+}
+
+async function loadContractsForProject(
+  projectId: string,
+  routeOwner?: SettlementDraftRouteLoadOwner
+) {
+  const requestId = ++settlementContractOptionsRequestId;
+  const current = () =>
+    requestId === settlementContractOptionsRequestId &&
+    (
+      routeOwner
+        ? settlementDraftRouteLoadOwnerCurrent(routeOwner)
+        : form.projectId === projectId
+    );
+  if (!current()) return;
   contracts.value = [];
   form.contractOptionValue = "";
   resetSourceState();
-  if (!form.projectId) return;
+  if (!projectId) {
+    loadingContracts.value = false;
+    return;
+  }
   loadingContracts.value = true;
   try {
-    contracts.value = await fetchSettlementContractOptions(form.projectId);
+    const result = await fetchSettlementContractOptions(projectId);
+    if (current()) contracts.value = result;
   } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : "加载有效合同失败。";
-    pageMessageTone.value = "error";
+    if (current()) {
+      pageMessage.value =
+        error instanceof Error ? error.message : "加载有效合同失败。";
+      pageMessageTone.value = "error";
+    }
   } finally {
-    loadingContracts.value = false;
+    if (current()) loadingContracts.value = false;
   }
 }
 
@@ -2103,20 +2503,15 @@ async function persistDraft(showSuccessMessage: boolean) {
   pageMessage.value = "";
   try {
     const payload = settlementDraftPayload();
-    const saved =
-      activeDraft.value &&
-      activeDraft.value.projectId === form.projectId &&
-      activeDraft.value.status === "draft"
-        ? await updateSettlementDraftRecord(
-            form.projectId,
-            activeDraft.value.id,
-            {
-              ...payload,
-              expectedRevision: activeDraft.value.revision
-            }
-          )
-        : await createSettlementDraftRecord(form.projectId, payload);
+    const saved = activeDraft.value
+      ? await updateSettlementDraftWithCapability(
+          form.projectId,
+          payload,
+          activeDraft.value
+        )
+      : await saveSettlementDraftWithCapability(form.projectId, payload);
     const previousRevision = activeDraft.value?.revision ?? 0;
+    invalidateSettlementDraftLifecycleCapability();
     activeDraft.value = saved;
     await refreshFinalPreparation();
     if (previousRevision !== saved.revision) {
@@ -2149,6 +2544,7 @@ async function persistDraft(showSuccessMessage: boolean) {
         project: saved.projectId
       }
     });
+    await refreshSettlementDraftLifecycleCapability(saved).catch(() => undefined);
     if (showSuccessMessage) {
       pageMessage.value = "结算草稿已保存；尚未占用合同额度，也未发起审批。";
       pageMessageTone.value = "success";
@@ -2169,34 +2565,176 @@ async function saveDraft() {
   await persistDraft(true);
 }
 
-async function executeSettlementDraftAction(request: BusinessDraftActionRequest) {
-  if (
-    request.action !== "delete_pristine_draft" &&
-    request.action !== "abandon_application"
-  ) {
-    throw new Error("当前结算草稿不支持该操作，请刷新后重试。");
-  }
-  const current = activeDraft.value;
-  const advertised = current?.availableActions?.find(
-    (action) => action.key === request.action && action.enabled
+function settlementDraftActionEnabled(key: SettlementDraftLifecycleAction) {
+  return Boolean(
+    settlementDraftAvailableActions.value?.some(
+      (action) => action.key === key && action.enabled
+    )
   );
-  if (!current || !advertised) {
-    throw new Error("该操作已不可用，请刷新草稿后重新确认。");
-  }
+}
 
-  await abandonSettlementDraftRecord(current.projectId, current.id, {
-    expectedRevision: current.revision,
-    action: request.action,
-    ...(request.reason.trim() ? { reason: request.reason.trim() } : {})
-  });
+function settlementDraftActionRequiresComment(
+  key: SettlementDraftLifecycleAction
+) {
+  return Boolean(
+    settlementDraftAvailableActions.value?.some(
+      (action) =>
+        action.key === key &&
+        action.enabled &&
+        action.requiresComment
+    )
+  );
+}
+
+function openDeletePristineDraft() {
+  deletePristineDraftError.value = "";
+  deletePristineDraftVisible.value = true;
+}
+
+function openAbandonApplication() {
+  abandonApplicationError.value = "";
+  abandonApplicationVisible.value = true;
+}
+
+function routeQueryText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function routeProjectMatches(projectId: string) {
+  const requestedProject = routeQueryText(route.query.project);
+  if (!requestedProject) return true;
+  const project = projects.value.find((item) => item.id === projectId);
+  return Boolean(
+    project &&
+    [project.id, project.code, project.name].includes(requestedProject)
+  );
+}
+
+function settlementDraftLifecycleContextCurrent(
+  context: SettlementDraftLifecycleOperationContext
+) {
+  return settlementWorkbenchComponentAlive &&
+    context.ownerScope === settlementDraftLifecycleOwnerScope &&
+    context.generation === settlementDraftLifecycleGeneration &&
+    routeQueryText(route.query.draftId) === context.draftId &&
+    routeProjectMatches(context.projectId) &&
+    activeDraft.value?.projectId === context.projectId &&
+    activeDraft.value.id === context.draftId &&
+    activeDraft.value.revision === context.expectedRevision &&
+    activeDraft.value.status === "draft";
+}
+
+function settlementDraftLifecycleWriteAvailable() {
+  return !settlementDraftRouteLoadBusy.value &&
+    !saveBusy.value &&
+    !createBusy.value &&
+    !importBusy.value &&
+    !importApplyBusy.value &&
+    !frozenDocumentBusy.value &&
+    !counterpartyUploadBusy.value &&
+    !counterpartyLinkBusy.value;
+}
+
+async function finishSettlementDraftLifecycleAction(
+  result: ExecuteSettlementDraftLifecycleActionResult
+) {
+  if (result.status === "stale") return;
+  if (!settlementDraftLifecycleContextCurrent(result.context)) return;
   clearCurrentLocalRecovery();
   localRecoveryState.value = "clean";
   allowNavigation.value = true;
-  pageMessage.value = request.action === "delete_pristine_draft"
+  pageMessage.value = result.context.action === "delete_pristine_draft"
     ? "草稿已删除，历史审计记录仍保留。"
     : "申请已放弃，已转入已结束记录。";
   pageMessageTone.value = "success";
   await router.push({ path: "/结算管理", query: { view: "ended" } });
+}
+
+function hideInvalidSettlementDraftLifecycleCapability(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+  if (
+    code === "SETTLEMENT_DRAFT_LIFECYCLE_INVALID_CONTEXT" ||
+    code === "SETTLEMENT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
+    code === "SETTLEMENT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+  ) {
+    settlementDraftAvailableActions.value = null;
+    deletePristineDraftVisible.value = false;
+    abandonApplicationVisible.value = false;
+  }
+}
+
+function setDeletePristineDraftError(error: unknown) {
+  deletePristineDraftError.value =
+    error instanceof Error ? error.message : "删除结算草稿失败，请刷新后重试。";
+}
+
+function setAbandonApplicationError(error: unknown) {
+  abandonApplicationError.value =
+    error instanceof Error ? error.message : "放弃结算申请失败，请刷新后重试。";
+}
+
+function beginSettlementDraftLifecycleAction() {
+  const operationId = ++settlementDraftLifecycleOperationId;
+  settlementDraftLifecyclePendingOperations.add(operationId);
+  settlementDraftLifecycleActionBusy.value = true;
+  return () => {
+    settlementDraftLifecyclePendingOperations.delete(operationId);
+    settlementDraftLifecycleActionBusy.value =
+      settlementDraftLifecyclePendingOperations.size > 0;
+  };
+}
+
+async function confirmDeletePristineDraft(request: {
+  reason: string;
+  password: string;
+}) {
+  const settle = beginSettlementDraftLifecycleAction();
+  deletePristineDraftError.value = "";
+  await executeSettlementDraftLifecycleAction({
+    ownerScope: settlementDraftLifecycleOwnerScope,
+    generation: settlementDraftLifecycleGeneration,
+    projectId: settlementDraftLifecycleProjectId.value,
+    draftId: settlementDraftLifecycleDraftId.value,
+    expectedRevision: settlementDraftLifecycleRevision.value,
+    action: "delete_pristine_draft",
+    reason: request.reason,
+    expectedRequiresComment: deletePristineDraftRequiresComment.value,
+    isCurrent: settlementDraftLifecycleContextCurrent,
+    beforeWrite: settlementDraftLifecycleWriteAvailable,
+    onResult: finishSettlementDraftLifecycleAction,
+    onCapabilityFailure: hideInvalidSettlementDraftLifecycleCapability,
+    onOperationFailure: setDeletePristineDraftError,
+    onOperationSettled: settle,
+    swallowOperationFailure: true
+  });
+}
+
+async function confirmAbandonApplication(request: {
+  reason: string;
+  password: string;
+}) {
+  const settle = beginSettlementDraftLifecycleAction();
+  abandonApplicationError.value = "";
+  await executeSettlementDraftLifecycleAction({
+    ownerScope: settlementDraftLifecycleOwnerScope,
+    generation: settlementDraftLifecycleGeneration,
+    projectId: settlementDraftLifecycleProjectId.value,
+    draftId: settlementDraftLifecycleDraftId.value,
+    expectedRevision: settlementDraftLifecycleRevision.value,
+    action: "abandon_application",
+    reason: request.reason,
+    expectedRequiresComment: abandonApplicationRequiresComment.value,
+    isCurrent: settlementDraftLifecycleContextCurrent,
+    beforeWrite: settlementDraftLifecycleWriteAvailable,
+    onResult: finishSettlementDraftLifecycleAction,
+    onCapabilityFailure: hideInvalidSettlementDraftLifecycleCapability,
+    onOperationFailure: setAbandonApplicationError,
+    onOperationSettled: settle,
+    swallowOperationFailure: true
+  });
 }
 
 function onParticipantChange(option: SettlementApprovalParticipantOption | null) {
@@ -2243,11 +2781,7 @@ async function generateFrozenDocument() {
   frozenDocumentBusy.value = true;
   pageMessage.value = "";
   try {
-    const result = await generateSettlementFrozenDocument(
-      draft.projectId,
-      draft.id,
-      draft.revision
-    );
+    const result = await generateSettlementFrozenDocumentWithCapability(draft);
     const sameFrozenDocument = frozenDocument.value?.id === result.id;
     frozenDocument.value = toFrozenDocumentSummary(result);
     if (!sameFrozenDocument) {
@@ -2270,7 +2804,11 @@ async function generateFrozenDocument() {
 }
 
 async function uploadCounterpartySignedPdf(file: File) {
-  if (!frozenDocument.value) return;
+  if (
+    !frozenDocument.value ||
+    settlementDraftLifecycleActionBusy.value ||
+    settlementDraftRouteLoadBusy.value
+  ) return;
   if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
     pageMessage.value = "乙方签章原件只支持完整 PDF 文件，请重新选择。";
     pageMessageTone.value = "warning";
@@ -2279,7 +2817,10 @@ async function uploadCounterpartySignedPdf(file: File) {
   counterpartyUploadBusy.value = true;
   pageMessage.value = "";
   try {
-    const uploaded = await uploadPrivateFile(file, file.name);
+    const uploaded = await uploadSettlementSignedDocumentWithCapability(
+      activeDraft.value?.projectId ?? form.projectId,
+      file
+    );
     stagedUploadedFileId.value = uploaded.id;
     stagedUploadedFileName.value = file.name;
     linkedOriginalDocumentId.value = "";
@@ -2299,6 +2840,10 @@ async function uploadCounterpartySignedPdf(file: File) {
 }
 
 function clearStagedCounterpartyFile() {
+  if (
+    settlementDraftLifecycleActionBusy.value ||
+    settlementDraftRouteLoadBusy.value
+  ) return;
   stagedUploadedFileId.value = "";
   stagedUploadedFileName.value = "";
   linkedOriginalDocumentId.value = "";
@@ -2309,19 +2854,21 @@ function clearStagedCounterpartyFile() {
 async function linkCounterpartySignedPdf(declaration: SettlementCounterpartyDeclaration) {
   const draft = activeDraft.value;
   const frozen = frozenDocument.value;
-  if (!draft || !frozen || !stagedUploadedFileId.value || isDirty.value) return;
+  if (
+    !draft ||
+    !frozen ||
+    !stagedUploadedFileId.value ||
+    isDirty.value ||
+    settlementDraftLifecycleActionBusy.value ||
+    settlementDraftRouteLoadBusy.value
+  ) return;
   counterpartyLinkBusy.value = true;
   pageMessage.value = "";
   try {
-    const linked = await linkSettlementCounterpartySignedDocument(
-      draft.projectId,
-      draft.id,
-      {
-        expectedRevision: draft.revision,
-        frozenDocumentId: frozen.id,
-        uploadedFileId: stagedUploadedFileId.value,
-        declaration
-      }
+    const linked = await linkSettlementSignedDocumentWithCapability(
+      draft,
+      frozen,
+      declaration
     );
     linkedOriginalDocumentId.value = linked.id;
     linkedOriginalDeclaration.value = { ...declaration };
@@ -2357,12 +2904,12 @@ async function preparePdfReview(values: { reason: string; password: string }) {
   pdfReviewTicketError.value = "";
   try {
     const [frozenTicket, originalTicket] = await Promise.all([
-      createPrivateFileDownloadTicket(frozen.fileId, {
+      downloadSettlementDraftFileWithCapability(frozen.fileId, {
         confirmationPassword: values.password,
         downloadReason: values.reason,
         accessMode: "preview"
       }),
-      createPrivateFileDownloadTicket(originalFileId, {
+      downloadSettlementDraftFileWithCapability(originalFileId, {
         confirmationPassword: values.password,
         downloadReason: values.reason,
         accessMode: "preview"
@@ -2385,7 +2932,7 @@ async function downloadFrozenDocument(values: { reason: string; password: string
   frozenDownloadBusy.value = true;
   frozenDownloadError.value = "";
   try {
-    const ticket = await createPrivateFileDownloadTicket(document.fileId, {
+    const ticket = await downloadSettlementDraftFileWithCapability(document.fileId, {
       confirmationPassword: values.password,
       downloadReason: values.reason
     });
@@ -2436,11 +2983,7 @@ async function submitSettlement() {
       pageMessageTone.value = "warning";
       return;
     }
-    const settlement = await submitSettlementDraftRecord(
-      saved.projectId,
-      saved.id,
-      saved.revision
-    );
+    const settlement = await submitSettlementDraftWithCapability(saved);
     clearCurrentLocalRecovery();
     localRecoveryState.value = "clean";
     allowNavigation.value = true;
@@ -2608,19 +3151,61 @@ function cancelLeave() {
   resolveLeaveConfirmation = null;
 }
 
-async function findRequestedDraft(draftId: string) {
-  const requestedProject =
-    typeof route.query.project === "string" ? route.query.project.trim() : "";
-  const orderedProjects = [...projects.value].sort((left, right) => {
-    const leftPreferred = [left.id, left.code, left.name].includes(requestedProject);
-    const rightPreferred = [right.id, right.code, right.name].includes(requestedProject);
-    return Number(rightPreferred) - Number(leftPreferred);
-  });
-  for (const project of orderedProjects) {
+function invalidateSettlementDraftLifecycleCapability() {
+  settlementDraftLifecycleGeneration += 1;
+  settlementDraftAvailableActions.value = null;
+  deletePristineDraftVisible.value = false;
+  abandonApplicationVisible.value = false;
+  deletePristineDraftError.value = "";
+  abandonApplicationError.value = "";
+}
+
+function settlementDraftRouteLoadCurrent(
+  requestId: number,
+  requestedProject: string,
+  draftId: string
+) {
+  return settlementWorkbenchComponentAlive &&
+    requestId === settlementDraftRouteLoadRequestId &&
+    routeQueryText(route.query.project) === requestedProject &&
+    routeQueryText(route.query.draftId) === draftId;
+}
+
+function settlementDraftRouteLoadOwnerCurrent(
+  owner: SettlementDraftRouteLoadOwner
+) {
+  return settlementDraftRouteLoadCurrent(
+    owner.requestId,
+    owner.requestedProject,
+    owner.draftId
+  ) &&
+    form.projectId === owner.projectId &&
+    activeDraft.value?.projectId === owner.projectId &&
+    activeDraft.value.id === owner.draftId &&
+    activeDraft.value.revision === owner.revision;
+}
+
+async function findRequestedDraft(
+  draftId: string,
+  requestedProject: string
+) {
+  const matchingProjects = requestedProject
+    ? projects.value.filter((project) =>
+        [project.id, project.code, project.name].includes(requestedProject)
+      )
+    : projects.value;
+  if (requestedProject && matchingProjects.length !== 1) {
+    throw new Error("结算草稿的项目坐标无效，请从结算台账重新进入。");
+  }
+  for (const project of matchingProjects) {
     try {
       const listed = await listSettlementDraftRecords(project.id);
       if (listed.some((draft) => draft.id === draftId)) {
-        return fetchSettlementDraftRecord(project.id, draftId);
+        const detail = await fetchSettlementDraftRecord(project.id, draftId);
+        if (detail.id !== draftId || detail.projectId !== project.id) {
+          throw new Error("结算草稿读取坐标不一致，请从结算台账重新进入。");
+        }
+        return detail;
       }
     } catch {
       // 当前账号可能只在部分项目具有结算创建权限，继续检查其余可见项目。
@@ -2629,10 +3214,63 @@ async function findRequestedDraft(draftId: string) {
   throw new Error("未找到本人可继续填写的结算草稿，请从结算台账重新进入。");
 }
 
-async function restoreDraft(draft: SettlementDraftReadModel) {
+function resetWorkbenchForRouteChange() {
+  settlementContractOptionsRequestId += 1;
+  settlementFinalPreparationRequestId += 1;
+  loadingContracts.value = false;
+  activeDraft.value = null;
+  finalPreparation.value = null;
+  contracts.value = [];
+  sourceRows.value = [];
+  drafts.value = {};
+  adjustments.value = [];
+  visaChanges.value = [];
+  preview.value = null;
+  importFiles.value = [];
+  importFileName.value = "";
+  importPreview.value = null;
+  partialImportId.value = "";
+  frozenImport.value = null;
+  frozenDocument.value = null;
+  stagedUploadedFileId.value = "";
+  stagedUploadedFileName.value = "";
+  linkedOriginalDocumentId.value = "";
+  linkedOriginalDeclaration.value = null;
+  participantOptions.value = { route: "", options: [] };
+  participantLoadError.value = "";
+  form.projectId = "";
+  form.contractOptionValue = "";
+  form.code = `JS-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+  form.periodLabel =
+    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  form.isFinal = false;
+  form.finalDeclarationAccepted = false;
+  form.fieldReviewerUserId = "";
+  form.fieldReviewerRoleKey = "";
+  baselineDraftSnapshot.value = "";
+  pendingLocalRecovery.value = null;
+}
+
+async function restoreDraft(
+  draft: SettlementDraftReadModel,
+  requestId: number,
+  requestedProject: string
+) {
+  if (!settlementDraftRouteLoadCurrent(requestId, requestedProject, draft.id)) {
+    return false;
+  }
+  const routeOwner: SettlementDraftRouteLoadOwner = {
+    requestId,
+    requestedProject,
+    draftId: draft.id,
+    projectId: draft.projectId,
+    revision: draft.revision
+  };
   activeDraft.value = draft;
   form.projectId = draft.projectId;
-  await loadContracts();
+  const current = () => settlementDraftRouteLoadOwnerCurrent(routeOwner);
+  await loadContractsForProject(draft.projectId, routeOwner);
+  if (!current()) return false;
   const contract = contracts.value.find(
     (item) => item.contractVersionId === draft.contractVersionId
   );
@@ -2646,14 +3284,16 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   form.periodLabel = draft.periodLabel;
   form.isFinal = draft.isFinal;
   form.finalDeclarationAccepted = draft.finalDeclarationSnapshot?.accepted === true;
-  await refreshFinalPreparation();
+  await refreshFinalPreparation(draft, routeOwner);
+  if (!current()) return false;
   if (draftSubmissionBlockingReason.value) {
     baselineDraftSnapshot.value = workbenchSnapshot();
     pageMessage.value = "";
     pageMessageTone.value = "warning";
-    return;
+    return true;
   }
   await loadSourceLines();
+  if (!current()) return false;
   form.fieldReviewerUserId = draft.fieldReviewerUserId ?? "";
   form.fieldReviewerRoleKey = draft.fieldReviewerRoleKey ?? "";
   if (
@@ -2703,41 +3343,130 @@ async function restoreDraft(draft: SettlementDraftReadModel) {
   pageMessage.value = "已恢复结算草稿；保存草稿不会发起审批，提交前仍需通过后台核算。";
   pageMessageTone.value = "info";
   schedulePreview();
+  return true;
 }
 
-async function refreshFinalPreparation() {
-  const draft = activeDraft.value;
-  if (!draft?.isFinal) {
+async function refreshSettlementDraftLifecycleCapability(
+  expected: Pick<SettlementDraftReadModel, "projectId" | "id" | "revision">
+) {
+  const generation = ++settlementDraftLifecycleGeneration;
+  settlementDraftAvailableActions.value = null;
+  deletePristineDraftVisible.value = false;
+  abandonApplicationVisible.value = false;
+  const current = () =>
+    settlementWorkbenchComponentAlive &&
+    generation === settlementDraftLifecycleGeneration &&
+    activeDraft.value?.projectId === expected.projectId &&
+    activeDraft.value.id === expected.id &&
+    activeDraft.value.revision === expected.revision &&
+    routeQueryText(route.query.draftId) === expected.id &&
+    routeProjectMatches(expected.projectId);
+  let fresh: SettlementDraftReadModel;
+  try {
+    fresh = await fetchSettlementDraftRecord(expected.projectId, expected.id);
+  } catch (error) {
+    if (!current()) return false;
+    throw error;
+  }
+  if (
+    !current() ||
+    fresh.projectId !== expected.projectId ||
+    fresh.id !== expected.id ||
+    fresh.revision !== expected.revision ||
+    fresh.status !== "draft"
+  ) {
+    return false;
+  }
+  const currentDraft = activeDraft.value;
+  if (!currentDraft) return false;
+  settlementDraftAvailableActions.value = fresh.availableActions!;
+  activeDraft.value = {
+    ...currentDraft,
+    lifecycleKind: fresh.lifecycleKind,
+    lifecycleBlockers: fresh.lifecycleBlockers
+  };
+  return true;
+}
+
+async function loadRequestedDraftFromRoute() {
+  const requestedProject = routeQueryText(route.query.project);
+  const draftId = routeQueryText(route.query.draftId);
+  const requestId = ++settlementDraftRouteLoadRequestId;
+  invalidateSettlementDraftLifecycleCapability();
+  localRecoveryEnabled = false;
+  settlementDraftRouteLoadBusy.value = true;
+  resetWorkbenchForRouteChange();
+  try {
+    if (draftId) {
+      const draft = await findRequestedDraft(draftId, requestedProject);
+      if (!settlementDraftRouteLoadCurrent(requestId, requestedProject, draftId)) {
+        return;
+      }
+      const restored = await restoreDraft(draft, requestId, requestedProject);
+      if (restored) {
+        await refreshSettlementDraftLifecycleCapability(draft);
+      }
+    }
+    if (
+      settlementDraftRouteLoadCurrent(requestId, requestedProject, draftId) &&
+      !baselineDraftSnapshot.value
+    ) {
+      baselineDraftSnapshot.value = workbenchSnapshot();
+    }
+  } catch (error) {
+    if (settlementDraftRouteLoadCurrent(requestId, requestedProject, draftId)) {
+      pageMessage.value =
+        error instanceof Error ? error.message : "恢复结算草稿失败。";
+      pageMessageTone.value = "error";
+    }
+  } finally {
+    if (settlementDraftRouteLoadCurrent(requestId, requestedProject, draftId)) {
+      settlementDraftRouteLoadBusy.value = false;
+      localRecoveryEnabled = true;
+      inspectLocalRecovery();
+    }
+  }
+}
+
+async function refreshFinalPreparation(
+  expectedDraft: SettlementDraftReadModel | null = activeDraft.value,
+  routeOwner?: SettlementDraftRouteLoadOwner
+) {
+  const requestId = ++settlementFinalPreparationRequestId;
+  if (!expectedDraft) {
     finalPreparation.value = null;
     return;
   }
+  const current = () =>
+    settlementWorkbenchComponentAlive &&
+    requestId === settlementFinalPreparationRequestId &&
+    activeDraft.value?.projectId === expectedDraft.projectId &&
+    activeDraft.value.id === expectedDraft.id &&
+    activeDraft.value.revision === expectedDraft.revision &&
+    (!routeOwner || settlementDraftRouteLoadOwnerCurrent(routeOwner));
+  if (!expectedDraft.isFinal) {
+    if (current()) finalPreparation.value = null;
+    return;
+  }
   try {
-    finalPreparation.value = await fetchSettlementFinalPreparation(draft.projectId, draft.id);
+    const result = await fetchSettlementFinalPreparation(
+      expectedDraft.projectId,
+      expectedDraft.id
+    );
+    if (current()) finalPreparation.value = result;
   } catch (error) {
-    finalPreparation.value = null;
-    pageMessage.value = error instanceof Error ? error.message : "读取最终结算准备情况失败。";
-    pageMessageTone.value = "warning";
+    if (current()) {
+      finalPreparation.value = null;
+      pageMessage.value =
+        error instanceof Error ? error.message : "读取最终结算准备情况失败。";
+      pageMessageTone.value = "warning";
+    }
   }
 }
 
 async function initializeWorkbench() {
   await loadProjects();
-  const draftId = typeof route.query.draftId === "string"
-    ? route.query.draftId.trim()
-    : "";
-  if (draftId) {
-    try {
-      await restoreDraft(await findRequestedDraft(draftId));
-    } catch (error) {
-      pageMessage.value = error instanceof Error ? error.message : "恢复结算草稿失败。";
-      pageMessageTone.value = "error";
-    }
-  }
-  if (!baselineDraftSnapshot.value) {
-    baselineDraftSnapshot.value = workbenchSnapshot();
-  }
-  localRecoveryEnabled = true;
-  inspectLocalRecovery();
+  await loadRequestedDraftFromRoute();
 }
 
 watch(
@@ -2755,10 +3484,41 @@ watch(
   }
 );
 
+watch(
+  () => [
+    routeQueryText(route.query.project),
+    routeQueryText(route.query.draftId)
+  ],
+  () => {
+    const draftId = routeQueryText(route.query.draftId);
+    const current = activeDraft.value;
+    if (
+      draftId &&
+      current?.id === draftId &&
+      routeProjectMatches(current.projectId)
+    ) {
+      void refreshSettlementDraftLifecycleCapability(current).catch(
+        () => undefined
+      );
+      return;
+    }
+    void loadRequestedDraftFromRoute();
+  }
+);
+
 onMounted(() => {
   void initializeWorkbench();
 });
 onBeforeUnmount(() => {
+  settlementWorkbenchComponentAlive = false;
+  settlementDraftRouteLoadRequestId += 1;
+  settlementContractOptionsRequestId += 1;
+  settlementFinalPreparationRequestId += 1;
+  invalidateSettlementDraftLifecycleCapability();
+  settlementDraftLifecyclePendingOperations.clear();
+  settlementDraftLifecycleActionBusy.value = false;
+  settlementDraftRouteLoadBusy.value = false;
+  loadingContracts.value = false;
   saveLocalRecovery();
   if (previewTimer) clearTimeout(previewTimer);
   sourceRequestId += 1;
@@ -2813,6 +3573,51 @@ onBeforeUnmount(() => {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--jg-space-sm);
+}
+
+.settlement-draft-lifecycle {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin-bottom: var(--jg-space-lg);
+  padding: var(--jg-space-md);
+  border: var(--jg-border-width-base) solid var(--jg-border);
+  border-radius: var(--jg-radius-lg);
+  background: var(--jg-bg-panel);
+}
+
+.settlement-draft-lifecycle__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--jg-space-md);
+}
+
+.settlement-draft-lifecycle__head > div {
+  display: grid;
+  gap: var(--jg-space-xs);
+}
+
+.settlement-draft-lifecycle__head span,
+.settlement-draft-lifecycle__subject dt {
+  color: var(--jg-text-muted);
+  font-size: var(--jg-font-meta);
+}
+
+.settlement-draft-lifecycle__subject {
+  display: grid;
+  gap: var(--jg-space-sm);
+  margin: 0;
+}
+
+.settlement-draft-lifecycle__subject div {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.25fr) minmax(0, 1fr);
+  gap: var(--jg-space-sm);
+}
+
+.settlement-draft-lifecycle__subject dt,
+.settlement-draft-lifecycle__subject dd {
+  margin: 0;
 }
 
 .workflow-steps {

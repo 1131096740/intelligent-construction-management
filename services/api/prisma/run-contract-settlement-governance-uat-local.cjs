@@ -67,7 +67,11 @@ async function waitForApi(apiBaseUrl, apiProcess, apiOutput) {
 async function main() {
   const evidencePath = process.env.TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH;
   assert(evidencePath, "必须设置 TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH 以保留隔离 UAT 证据");
-  const [databasePort, apiPort] = await Promise.all([freePort(), freePort()]);
+  const [databasePort, apiPort, freezeApiPort] = await Promise.all([
+    freePort(),
+    freePort(),
+    freePort()
+  ]);
   const suffix = `${Date.now()}-${process.pid}`;
   const runId = process.env.TRIAL_RUN_ID || `governance-${suffix}`;
   const containerName = `jiangkong-governance-uat-${suffix}`;
@@ -77,6 +81,7 @@ async function main() {
   const trialPassword = `Trial@1-${randomUUID()}`;
   const databaseUrl = `postgresql://jiangkong:${databasePassword}@127.0.0.1:${databasePort}/jiangkong_governance_uat`;
   const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
+  const freezeApiBaseUrl = `http://127.0.0.1:${freezeApiPort}`;
   const shaResult = await command("git", ["rev-parse", "HEAD"]);
   const candidateSha = shaResult.stdout.trim();
   assert(/^[0-9a-f]{40}$/.test(candidateSha), "无法读取当前 40 位候选 SHA");
@@ -164,6 +169,24 @@ async function main() {
       });
     }
     await waitForApi(apiBaseUrl, apiProcess, apiOutput);
+    const freezeApiOutput = [];
+    const freezeApiProcess = commandRuntime.track(spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
+      cwd: root,
+      env: {
+        ...runtimeEnv,
+        PORT: String(freezeApiPort),
+        API_BASE_URL: freezeApiBaseUrl,
+        OPERATIONAL_WRITE_FREEZE_MODE: "all"
+      },
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+    for (const stream of [freezeApiProcess.stdout, freezeApiProcess.stderr]) {
+      stream.on("data", (chunk) => {
+        freezeApiOutput.push(String(chunk));
+        if (freezeApiOutput.length > 200) freezeApiOutput.shift();
+      });
+    }
+    await waitForApi(freezeApiBaseUrl, freezeApiProcess, freezeApiOutput);
     try {
       await command(process.execPath, [path.join(__dirname, "run-contract-settlement-governance-uat.cjs")], {
         cwd: root,
@@ -180,6 +203,27 @@ async function main() {
         forwardOutput: true,
         timeoutMs: 15 * 60 * 1000
       });
+      if (process.env.TRIAL_RUN_BROWSER_SCRIPT) {
+        assert(
+          process.env.REAL_BROWSER_EVIDENCE_PATH &&
+            path.isAbsolute(process.env.REAL_BROWSER_EVIDENCE_PATH) &&
+            process.env.REAL_BROWSER_EVIDENCE_PATH.endsWith(".json"),
+          "设置 TRIAL_RUN_BROWSER_SCRIPT 时必须显式提供绝对 REAL_BROWSER_EVIDENCE_PATH"
+        );
+        await command(process.execPath, [path.resolve(process.env.TRIAL_RUN_BROWSER_SCRIPT)], {
+          cwd: root,
+          env: {
+            ...runtimeEnv,
+            REAL_API_BASE_URL: apiBaseUrl,
+            REAL_FREEZE_API_BASE_URL: freezeApiBaseUrl,
+            REAL_ROLE_PASSWORD: trialPassword,
+            REAL_BROWSER_CANDIDATE_SHA: candidateSha,
+            REAL_BROWSER_EVIDENCE_PATH: path.resolve(process.env.REAL_BROWSER_EVIDENCE_PATH)
+          },
+          forwardOutput: true,
+          timeoutMs: 30 * 60 * 1000
+        });
+      }
     } catch (error) {
       throw new Error(`${error.message}\n本地 API 尾部日志：\n${apiOutput.slice(-80).join("")}`);
     }

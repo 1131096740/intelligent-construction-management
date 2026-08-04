@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import {
   ContractBillExcelService,
@@ -49,6 +50,7 @@ export class ContractDraftBillExcelController {
   }
 
   @Post("contract-drafts/:contractVersionId/bills/:billKey/import-preview")
+  @RequireProjectRole("contract.create")
   previewImport(
     @Param("contractVersionId") contractVersionId: string,
     @Param("billKey") billKey: string,

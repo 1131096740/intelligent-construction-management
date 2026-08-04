@@ -5301,7 +5301,14 @@ describe("ContractTakeoverService", () => {
     expect(auth.confirmPassword).toHaveBeenCalledWith("director-1", "current-password");
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
       where: { id: "contract-version-1" },
-      data: { status: "effective", effectiveAt: expect.any(Date) }
+      data: {
+        status: "effective",
+        effectiveAt: expect.any(Date),
+        settlementMode: "direct_payment",
+        settlementModeSource: "backfill",
+        settlementModeConfirmedByUserId: "director-1",
+        settlementModeConfirmedAt: expect.any(Date)
+      }
     });
     expect(tx.paymentTermsVersion.update).toHaveBeenCalledWith({
       where: { id: "terms-version-1" },

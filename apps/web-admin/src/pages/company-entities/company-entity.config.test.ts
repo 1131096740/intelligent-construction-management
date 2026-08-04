@@ -65,15 +65,16 @@ describe("company entity ledger configuration", () => {
     expect(pageSource).toContain("<BusinessTableToolbar");
     expect(pageSource).toContain('appearance="plain"');
     expect(pageSource).toContain("<BusinessFeedback");
-    expect(pageSource).toContain("<SensitiveActionDialog");
+    expect(pageSource).toContain("上线准备期间暂为只读");
+    expect(pageSource).not.toContain("<SensitiveActionDialog");
+    expect(pageSource).not.toContain("<CompanyEntityFormDrawer");
     expect(pageSource).not.toMatch(/overflow-x\s*:|100vw|min-width\s*:\s*[89]\d{2}px|min-width\s*:\s*\d{4,}px/);
   });
 
-  it("keeps one primary create action, at most three row actions, and a privacy-safe history", () => {
-    expect(pageSource).toContain("新增主体");
-    expect(pageSource).toContain("修改");
+  it("keeps only read and history actions during the stage D isolation", () => {
     expect(pageSource).toContain("查看历史");
-    expect(pageSource).toContain("停用");
+    expect(pageSource).not.toMatch(/openCreate|openEdit|openStatus|confirmStatus/);
+    expect(pageSource).not.toMatch(/\bcreateCompanyEntity\(|updateCompanyEntityStatus/);
     expect(pageSource).not.toContain("<t-link");
     expect(historySource).toContain("item.actorName");
     expect(historySource).toContain('title="暂无历史版本"');

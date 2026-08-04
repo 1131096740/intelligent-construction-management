@@ -5,7 +5,6 @@ import ApprovalSelfReviewFields from "../../../components/ApprovalSelfReviewFiel
 export type A5ApprovalResult = "approve" | "return_to_applicant";
 
 export interface A5ApprovalSubmitPayload {
-  result: A5ApprovalResult;
   comment: string;
   selfReviewReason: string;
   confirmationPassword: string;
@@ -25,7 +24,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  submit: [payload: A5ApprovalSubmitPayload];
+  approve: [payload: A5ApprovalSubmitPayload];
+  "return-to-applicant": [payload: A5ApprovalSubmitPayload];
 }>();
 
 const result = ref<A5ApprovalResult>("approve");
@@ -86,12 +86,16 @@ function beginConfirmation() {
 }
 
 function submit() {
-  emit("submit", {
-    result: result.value,
+  const payload = {
     comment: form.comment.trim(),
     selfReviewReason: form.selfReviewReason.trim(),
     confirmationPassword: form.confirmationPassword
-  });
+  };
+  if (result.value === "approve") {
+    emit("approve", payload);
+    return;
+  }
+  emit("return-to-applicant", payload);
 }
 
 function clearTitleFocusAttempt() {

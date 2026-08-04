@@ -298,6 +298,8 @@ export class ContractScenarioService {
           }
         });
         return this.mappingView(mapping);
+      }, {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
       });
     } catch (error) {
       if (this.isUniqueConflict(error)) throw new ConflictException("该业务场景已存在相同模板映射");
@@ -374,6 +376,8 @@ export class ContractScenarioService {
       });
       const mapping = await tx.contractScenarioTemplateMapping.findUnique({ where: { id: mappingId } });
       return mapping ? this.mappingView(mapping) : null;
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted
     });
   }
 

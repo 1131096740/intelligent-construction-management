@@ -52,7 +52,24 @@ describe("settlement contract cap database concurrency", () => {
         "id" TEXT PRIMARY KEY
       )`);
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ApprovalInstance" (
-        "id" TEXT PRIMARY KEY
+        "id" TEXT PRIMARY KEY, "businessType" TEXT, "businessId" TEXT
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "SettlementSignedDocument" (
+        "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT, "purpose" TEXT NOT NULL,
+        "status" TEXT NOT NULL
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ContractSettlementProcess" (
+        "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT, "settlementId" TEXT
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "SettlementDraftLine" (
+        "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT NOT NULL, "lineKey" TEXT NOT NULL,
+        "sourceType" TEXT NOT NULL, "adjustmentKind" TEXT, "contractBillRowId" TEXT,
+        "contractBillRowLineageId" TEXT, "relatedSettlementLineId" TEXT, "sourceItemType" TEXT,
+        "occurredOn" DATE, "name" TEXT NOT NULL, "description" TEXT, "unit" TEXT,
+        "quantity" NUMERIC, "unitPriceCents" BIGINT, "directAmountCents" BIGINT,
+        "calculationMode" TEXT NOT NULL, "status" TEXT NOT NULL, "pricingBasis" TEXT,
+        "overageReason" TEXT, "reason" TEXT, "remark" TEXT, "sortOrder" INTEGER NOT NULL,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(), "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`);
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "Project" ("id" TEXT PRIMARY KEY)`);
       await clients[0]!.$executeRaw`INSERT INTO "Project" VALUES ('project-1')`;
@@ -85,6 +102,7 @@ describe("settlement contract cap database concurrency", () => {
               paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms-1" }) },
               paymentTermsStage: { findFirst: jest.fn().mockResolvedValue({ ratioBps: 10_000 }) },
               settlement: {
+                findUnique: jest.fn().mockResolvedValue(null),
                 findFirst: jest.fn().mockResolvedValue(null),
                 findMany: jest.fn().mockResolvedValue([]),
                 create: jest.fn().mockImplementation(async ({ data }: { data: { projectId: string; contractId: string; amountCents: bigint } }) => {

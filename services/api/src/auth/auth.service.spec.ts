@@ -701,6 +701,27 @@ describe("AuthService", () => {
     });
   });
 
+  it("can confirm a sensitive action password through the caller transaction", async () => {
+    const transactionUser = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "user-1",
+        passwordHash: await bcrypt.hash("current-password", 10),
+        isActive: true
+      })
+    };
+
+    await expect(service.confirmPassword(
+      "user-1",
+      "current-password",
+      { user: transactionUser } as never
+    )).resolves.toEqual({ ok: true });
+
+    expect(transactionUser.findUnique).toHaveBeenCalledWith({
+      where: { id: "user-1" }
+    });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
   it("rejects an invalid sensitive action confirmation password", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "user-1",
