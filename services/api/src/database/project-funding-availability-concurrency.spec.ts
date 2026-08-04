@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ProjectService } from "../project/project.service";
 
@@ -459,31 +459,42 @@ describe("project funding PostgreSQL evidence", () => {
             actorId
           );
         const terminationActionId = randomUUID();
-        const [terminationResult, concurrentQuotaPayment] = await Promise.allSettled([
-          projectService.terminateProjectFinancingQuota(
-            terminationProjectId,
-            terminationQuotaId,
-            actorId,
-            {
-              actionId: terminationActionId,
-              expectedLifecycleToken: terminationCapability.lifecycleToken,
-              reason: "实库并发终止门禁",
-              confirmationPassword: "local-test-password"
-            }
-          ),
-          clients[1]!.$transaction((tx) =>
-            service.allocateExecution(tx, {
-              ...retryInput,
-              projectId: terminationProjectId,
-              executionId: terminationExecutionId,
-              businessId: businessId("terminated-quota-race"),
-              amountCents: 500n
-            })
-          )
-        ]);
+        const [terminationResult, concurrentQuotaPayment] =
+          await runBehindProjectRowLock({
+            blockerClient: clients[2]!,
+            observerClient: clients[3]!,
+            projectId: terminationProjectId,
+            start: () => [
+              projectService.terminateProjectFinancingQuota(
+                terminationProjectId,
+                terminationQuotaId,
+                actorId,
+                {
+                  actionId: terminationActionId,
+                  expectedLifecycleToken: terminationCapability.lifecycleToken,
+                  reason: "实库并发终止门禁",
+                  confirmationPassword: "local-test-password"
+                }
+              ),
+              clients[1]!.$transaction((tx) =>
+                service.allocateExecution(tx, {
+                  ...retryInput,
+                  projectId: terminationProjectId,
+                  executionId: terminationExecutionId,
+                  businessId: businessId("terminated-quota-race"),
+                  amountCents: 500n
+                })
+              )
+            ]
+          });
         expect(
           [terminationResult, concurrentQuotaPayment].filter(
             (result) => result.status === "fulfilled"
+          )
+        ).toHaveLength(1);
+        expect(
+          [terminationResult, concurrentQuotaPayment].filter(
+            (result) => result.status === "rejected"
           )
         ).toHaveLength(1);
         if (terminationResult.status === "rejected") {
@@ -736,4 +747,59 @@ async function seedProjectCash(
       recordedByUserId: actorUserId
     }
   });
+}
+
+async function runBehindProjectRowLock<T>({
+  blockerClient,
+  observerClient,
+  projectId,
+  start
+}: {
+  blockerClient: PrismaClient;
+  observerClient: PrismaClient;
+  projectId: string;
+  start: () => Array<Promise<T>>;
+}): Promise<Array<PromiseSettledResult<T>>> {
+  let operations: Array<Promise<T>> = [];
+  await blockerClient.$transaction(
+    async (tx) => {
+      const [backend] = await tx.$queryRaw<Array<{ pid: number }>>(
+        Prisma.sql`SELECT pg_backend_pid()::int AS pid`
+      );
+      if (!backend) throw new Error("无法识别项目资金竞态 blocker backend");
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`
+          SELECT "id"
+          FROM "Project"
+          WHERE "id" = ${projectId}
+          FOR UPDATE
+        `
+      );
+      if (locked.length !== 1) throw new Error("项目资金竞态未锁定项目行");
+      operations = start();
+      for (const operation of operations) void operation.catch(() => undefined);
+      if (operations.length !== 2) throw new Error("项目资金竞态必须启动两个 backend");
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        const blocked = await observerClient.$queryRaw<Array<{ pid: number }>>(
+          Prisma.sql`
+            SELECT activity.pid::int AS pid
+            FROM pg_stat_activity AS activity
+            WHERE activity.datname = current_database()
+              AND activity.pid <> pg_backend_pid()
+              AND activity.wait_event_type = 'Lock'
+              AND ${backend.pid} = ANY(pg_blocking_pids(activity.pid))
+              AND position('FROM "Project"' IN activity.query) > 0
+              AND position('FOR UPDATE' IN activity.query) > 0
+            ORDER BY activity.pid
+          `
+        );
+        if (new Set(blocked.map((row) => row.pid)).size >= operations.length) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error("等待项目资金竞态 backend 锁等待超时");
+    },
+    { maxWait: 5_000, timeout: 15_000 }
+  );
+  return Promise.allSettled(operations);
 }
