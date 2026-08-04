@@ -2278,7 +2278,20 @@ export class SettlementService {
         identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
       }
       if (!identity) {
-        throw new Error(`当前账号不能处理“${currentNode.name}”节点，请确认是否为该节点审批人`);
+        const previousApproval = typeof tx.approvalActionLog.findFirst === "function"
+          ? await tx.approvalActionLog.findFirst({
+              where: {
+                approvalInstanceId: instance.id,
+                actorUserId,
+                action: "approve"
+              },
+              select: { id: true }
+            })
+          : null;
+        if (previousApproval) throw settlementApprovalReviewConflict();
+        throw new ForbiddenException(
+          `当前账号不能处理“${currentNode.name}”节点，请确认是否为该节点审批人`
+        );
       }
       const approvedRoleKey = identity.approvedRoleKey;
       const signature = await snapshotApprovalSignature(tx, actorUserId, {

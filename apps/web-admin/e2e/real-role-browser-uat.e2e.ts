@@ -50,6 +50,13 @@ const settlementRaceAccount: RoleCase = {
   routes: []
 };
 
+const settlementLaborRaceAccount: RoleCase = {
+  key: "engineering_foreman",
+  phone: "13800001011",
+  name: "工程工长",
+  routes: []
+};
+
 type RequestLedgerEntry = {
   role: string;
   method: string;
@@ -181,7 +188,9 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
 
     const trialRunId = process.env.TRIAL_RUN_ID;
     expect(trialRunId, "隔离治理 UAT 必须注入 TRIAL_RUN_ID").toBeTruthy();
-    const settlementCode = `JS-UAT-${trialRunId}-settlement_material_route`;
+    const useLaborRace = testInfo.project.name.includes("webkit");
+    const raceAccount = useLaborRace ? settlementLaborRaceAccount : settlementRaceAccount;
+    const settlementCode = `JS-UAT-${trialRunId}-${useLaborRace ? "settlement_labor_route" : "settlement_material_route"}`;
     const existingSettlement = await rawRequest(
       page,
       "contract_staff",
@@ -195,11 +204,11 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
 
     const reviewerContext = await browser.newContext({ viewport });
     const reviewerPage = await reviewerContext.newPage();
-    await captureApiResponses(reviewerPage, settlementRaceAccount.key);
-    await login(reviewerPage, settlementRaceAccount);
+    await captureApiResponses(reviewerPage, raceAccount.key);
+    await login(reviewerPage, raceAccount);
     const [firstApproval, duplicateApproval] = await Promise.all([
-      rawRequest(reviewerPage, settlementRaceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
-      rawRequest(reviewerPage, settlementRaceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
+      rawRequest(reviewerPage, raceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" }),
+      rawRequest(reviewerPage, raceAccount.key, "POST", `/settlements/${encodeURIComponent(String(settlementId))}/approval`, { decision: "approve" })
     ]);
     const approvalStatuses = [firstApproval.status(), duplicateApproval.status()];
     expect(approvalStatuses).toContain(409);

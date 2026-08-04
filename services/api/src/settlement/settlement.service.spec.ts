@@ -1,5 +1,5 @@
 import * as ExcelJS from "exceljs";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import {
@@ -4530,6 +4530,49 @@ describe("SettlementService", () => {
     await expect(
       settlementService.reviewApproval("settlement-1", "intruder-1", { decision: "approve" })
     ).rejects.toThrow("当前账号不能处理“物资主管”节点，请确认是否为该节点审批人");
+    expect(tx.settlement.update).not.toHaveBeenCalled();
+  });
+
+  it("maps a duplicate concurrent approval from the same actor to a conflict", async () => {
+    const tx = {
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          status: "approval_pending"
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "approval-instance-1",
+          currentNodeIndex: 1,
+          frozenNodes: [
+            { name: "物资员", mode: "any", roleKeys: ["material_staff"] },
+            { name: "物资主管", mode: "any", roleKeys: ["material_director"] }
+          ]
+        }]),
+        update: jest.fn()
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue({ id: "approval-action-1" }),
+        create: jest.fn()
+      },
+      ...approvalRoleTables("employee")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback) => callback(tx))
+    };
+    const settlementService = new SettlementService(
+      prisma as never,
+      audit as never,
+      auth as never,
+      { activeDelegatorIds: jest.fn().mockResolvedValue([]) } as never
+    );
+
+    await expect(
+      settlementService.reviewApproval("settlement-1", "employee-1", { decision: "approve" })
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
