@@ -12,6 +12,8 @@
 
 ## 快速结论（更新至 2026-08-04）
 
+- [~] 2026-08-04 PR #1 NO-GO 修复范围已按审查起点 `497ee06e939f8cf3c447bc59f72d035669d96d7e` 固化：`docs/agents/go-live-remediation-spec-2026-08-04.md`；依赖票据与 blocking edges 已建立：`docs/agents/go-live-remediation-tickets-2026-08-04.md`。当前静态治理基线仍为 99 blocker、3 个重复 mutation route；RC-09、阶段 F 及其前置修复尚未宣称通过。本轮未连接生产、未 push、未合并或部署。
+
 - [x] 2026-08-04 候选 `b46729919ed3d68f628fc64d8494e4d95fdc6975` 已完成最终 SHA 绑定的数据库与真实岗位浏览器门：PostgreSQL 16 动态总门完整 118 迁移、54/54 测试、28/28 文件、9 组全部通过（PG16 镜像 `sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20`，耗时 395 秒）；合同结算治理矩阵 20/20、P0-5B 接管→结算→付款→实付闭环通过；Chromium `1366×768` 与 WebKit `390×844` 真实 API-backed 浏览器 4/4 通过，合同经办、合同主管、项目经理、财务经办、董事长均可登录并访问核心工作台，负向路径稳定得到 400/403/409，浏览器错误、失败请求和 404/5xx 均为 0。证据：`/tmp/contract-settlement-governance-20260804-b4672991.json`、`/tmp/rc06-real-browser-20260804-b4672991-rc06-real-chromium-1366x768.json`、`/tmp/rc06-real-browser-20260804-b4672991-rc06-real-webkit-390x844.json`。本轮仍未连接生产、未推送、未合并或部署；下一步为 RC-09 运维安全/备份隔离恢复与阶段 F 生产等价演练。
 
 - [x] 2026-08-04 最终候选 `0d097fc919b12540e8901a2400e2731b330b7678` 已通过真实岗位 API-backed 浏览器门禁：Chromium `1366×768` 与 WebKit `390×844` 各 2/2 用例通过，合同经办、合同主管、项目经理、财务经办、董事长可登录并访问各自核心工作台；负向路径稳定得到 400/403/409，两个浏览器证据均无浏览器错误、失败请求、404/5xx。门禁复用治理 UAT 已合法生成的材料/劳务 `approval_pending` 结算，并验证物资员/工程工长双提交仅一方 201、另一方 409。为修复并发暴露的 500，结算审批服务将同一审批人在并发推进后再次提交映射为 `ConflictException` 409；无权岗位仍为 `ForbiddenException` 403，并新增单测。治理矩阵 20/20、P0-5B 真实合同接管→结算→付款→实付闭环同 SHA 通过；隔离 API、PG16、本地文件存储已清理。证据：`/tmp/rc06-real-browser-20260804-0d097fc9-rc06-real-chromium-1366x768.json`、`/tmp/rc06-real-browser-20260804-0d097fc9-rc06-real-webkit-390x844.json`、`/tmp/contract-settlement-governance-20260804-0d097fc9.json`。本轮未连接生产、未推送、未合并或部署；数据库动态总门仍需以该最终 SHA 重跑。
