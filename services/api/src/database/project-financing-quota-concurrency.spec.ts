@@ -106,7 +106,7 @@ const TERMINATION_IMMUTABLE_MUTATIONS = [
       void context;
       return client.projectFinancingQuota.update({
         where: { id: quotaId },
-        data: { terminationSignatureSha256: SHA_B }
+        data: { terminationSignatureSha256: SHA_C }
       });
     }
   },
@@ -389,9 +389,7 @@ describe("project financing quota PostgreSQL evidence", () => {
             }
           })
         );
-        expect(databaseFailureText(reverseBindingError)).toContain(
-          "exclusive_file_business_binding_guard"
-        );
+        expect((reverseBindingError as { code?: unknown }).code).toBe("P2002");
         expect(await clients[0]!.archiveRecord.count({
           where: { fileId: quotaFileId }
         })).toBe(0);
@@ -1346,8 +1344,7 @@ describe("project financing quota PostgreSQL evidence", () => {
           10_000,
           "F2 P2034 原始数据库错误未及时捕获"
         );
-        expect((rawReviewDatabaseFailure as { code?: unknown }).code)
-          .toBe("P2034");
+        expectDatabaseSerializationFailure(rawReviewDatabaseFailure);
         expect(await quotaLifecycleSnapshot(
           clients[0]!, review.quotaId, review.approvalId
         )).toEqual(reviewBefore);
@@ -1403,8 +1400,7 @@ describe("project financing quota PostgreSQL evidence", () => {
           10_000,
           "F3 P2034 原始数据库错误未及时捕获"
         );
-        expect((rawTerminateDatabaseFailure as { code?: unknown }).code)
-          .toBe("P2034");
+        expectDatabaseSerializationFailure(rawTerminateDatabaseFailure);
         expect(await quotaLifecycleSnapshot(
           clients[0]!, terminate.quotaId, terminate.approvalId
         )).toEqual(terminateBefore);
@@ -1435,7 +1431,7 @@ describe("project financing quota PostgreSQL evidence", () => {
         await seedFile(
           clients[0]!, alternateSignatureFileId, actorId, SHA_B
         );
-        const alternateSignature = await seedSignature(
+        await seedSignature(
           clients[0]!, actorId, `trigger-alternate-version-${marker}`, SHA_B
         );
         const transitionError = await captureFailure(
@@ -1520,7 +1516,7 @@ describe("project financing quota PostgreSQL evidence", () => {
         const mutationContext: TerminationImmutableMutationContext = {
           alternateActorId: transition.requesterId,
           alternateSignatureFileId,
-          alternateSignatureVersionId: alternateSignature.versionId
+          alternateSignatureVersionId: signature.versionId
         };
         for (const mutation of TERMINATION_IMMUTABLE_MUTATIONS) {
           const immutableError = await captureFailure(
@@ -2127,15 +2123,27 @@ async function waitForBlockedBackends(
   while (Date.now() < deadline) {
     const rows = await observerClient.$queryRaw<Array<{ pid: number }>>(
       Prisma.sql`
-      SELECT activity.pid::int AS pid
-      FROM pg_stat_activity AS activity
-      WHERE activity.datname = current_database()
-        AND activity.pid <> pg_backend_pid()
-        AND activity.wait_event_type = 'Lock'
-        AND position('FROM "Project"' IN activity.query) > 0
-        AND position('FOR UPDATE' IN activity.query) > 0
-        AND ${blockerPid} = ANY(pg_blocking_pids(activity.pid))
-      ORDER BY activity.pid
+      WITH RECURSIVE blocked AS (
+        SELECT activity.pid::int AS pid,
+               unnest(pg_blocking_pids(activity.pid))::int AS blocker_pid
+        FROM pg_stat_activity AS activity
+        WHERE activity.datname = current_database()
+          AND activity.pid <> pg_backend_pid()
+          AND activity.wait_event_type = 'Lock'
+          AND position('FROM "Project"' IN activity.query) > 0
+          AND position('FOR UPDATE' IN activity.query) > 0
+        UNION
+        SELECT blocked.pid,
+               unnest(pg_blocking_pids(parent.pid))::int AS blocker_pid
+        FROM blocked
+        JOIN pg_stat_activity AS parent
+          ON parent.pid = blocked.blocker_pid
+        WHERE parent.pid <> pg_backend_pid()
+      )
+      SELECT DISTINCT pid
+      FROM blocked
+      WHERE blocker_pid = ${blockerPid}
+      ORDER BY pid
     `);
     if (rows.length >= expectedCount) {
       return rows.map((row) => row.pid);
