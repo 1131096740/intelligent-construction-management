@@ -497,6 +497,21 @@ async function uploadPrivateBuffer(fileName, mimeType, buffer, token) {
   return response.json();
 }
 
+async function uploadCanvasSignature(fileName, buffer, token) {
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: "image/png" }), fileName);
+  const response = await fetch(`${baseUrl}/me/signature/canvas`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`上传手写签名失败：HTTP ${response.status} ${body}`);
+  }
+  return response.json();
+}
+
 async function uploadPrivateFile(fileName, token) {
   return uploadPrivateBuffer(
     fileName,
@@ -536,13 +551,15 @@ async function prepareSettlementSignatures(tokens) {
     "projectManager", "financeDirector"
   ]) {
     const userId = await userIdByPhone(role);
-    const signature = await uploadPrivateBuffer(
+    const signature = await uploadCanvasSignature(
       `UAT-${RUN_ID}-${role}-signature.png`,
-      "image/png",
       signaturePng,
       tokens[role]
     );
-    await prisma.user.update({ where: { id: userId }, data: { signatureFileId: signature.id } });
+    await prisma.user.update({
+      where: { id: userId },
+      data: { signatureFileId: signature.signatureFileId }
+    });
   }
 }
 
