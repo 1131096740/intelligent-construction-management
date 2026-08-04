@@ -54,6 +54,13 @@ describe("settlement contract cap database concurrency", () => {
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ApprovalInstance" (
         "id" TEXT PRIMARY KEY
       )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "SettlementSignedDocument" (
+        "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT, "purpose" TEXT NOT NULL,
+        "status" TEXT NOT NULL
+      )`);
+      await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ContractSettlementProcess" (
+        "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT, "settlementId" TEXT
+      )`);
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "Project" ("id" TEXT PRIMARY KEY)`);
       await clients[0]!.$executeRaw`INSERT INTO "Project" VALUES ('project-1')`;
       await clients[0]!.$executeRaw`INSERT INTO "Contract" VALUES ('contract-1','project-1','material_purchase')`;

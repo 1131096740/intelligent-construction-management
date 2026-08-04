@@ -63,6 +63,9 @@ describe("contract change limit transaction evidence", () => {
         ('candidate','contract-1',5,'draft','change','prior-down',NULL,1000001,100001,50000,'fixed_total','capped','e','ev','company','credit')
       `);
       await client.$executeRaw`UPDATE "ContractVersion" SET
+        "originalBaseAmountCents" = 1000000
+        WHERE "id" = 'root'`;
+      await client.$executeRaw`UPDATE "ContractVersion" SET
         "originalBaseAmountCents" = 1000000,
         "changeDirection" = 'increase', "changeAmountCents" = 50000
         WHERE "id" = 'prior-up'`;
