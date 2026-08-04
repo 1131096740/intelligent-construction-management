@@ -120,6 +120,7 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
     {
       PATH: "/usr/bin",
       HOME: "/tmp/local-home",
+      XDG_CACHE_HOME: "/tmp/local-cache",
       DATABASE_URL: "postgresql://must-not-leak",
       CONTRACT_DATABASE_URL: "postgresql://must-not-leak",
       NODE_OPTIONS: "--require must-not-leak",
@@ -136,8 +137,33 @@ test("child runner environment is allowlisted and cannot inherit secrets or DB U
     TMPDIR: "/tmp/dynamic-gate",
     NODE_ENV: "test",
     CI: "true",
-    DOCKER_HOST: "unix:///var/run/docker.sock"
+    DOCKER_HOST: "unix:///var/run/docker.sock",
+    COREPACK_HOME: "/tmp/local-cache/node/corepack"
   });
+});
+
+test("preserves an explicitly configured Corepack cache location", () => {
+  const child = createChildEnvironment(
+    {
+      PATH: "/usr/bin",
+      HOME: "/tmp/local-home",
+      COREPACK_HOME: "/opt/corepack-cache"
+    },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+
+  assert.equal(child.COREPACK_HOME, "/opt/corepack-cache");
+});
+
+test("derives the Corepack cache from the child HOME when XDG is absent", () => {
+  const child = createChildEnvironment(
+    { PATH: "/usr/bin", HOME: "/tmp/local-home" },
+    "/tmp/dynamic-gate",
+    "unix:///var/run/docker.sock"
+  );
+
+  assert.equal(child.COREPACK_HOME, "/tmp/local-home/.cache/node/corepack");
 });
 
 test("default and list modes stay read-only even with no executable PATH", () => {

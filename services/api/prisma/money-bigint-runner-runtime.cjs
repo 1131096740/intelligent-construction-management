@@ -1,7 +1,19 @@
 const { spawn } = require("node:child_process");
+const path = require("node:path");
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_TERMINATION_GRACE_MS = 5 * 1000;
+
+function resolveCorepackHome(sourceEnv, fallbackHome) {
+  const configured = sourceEnv.COREPACK_HOME?.trim();
+  if (configured) return configured;
+
+  const baseHome = sourceEnv.HOME ?? fallbackHome;
+  const cacheRoot =
+    sourceEnv.XDG_CACHE_HOME?.trim() ||
+    (baseHome ? path.join(baseHome, ".cache") : undefined);
+  return cacheRoot ? path.join(cacheRoot, "node", "corepack") : undefined;
+}
 
 function createCommandRuntime(options = {}) {
   const spawnCommand = options.spawnCommand ?? spawn;
@@ -197,5 +209,6 @@ module.exports = {
   DEFAULT_TERMINATION_GRACE_MS,
   createCommandRuntime,
   createRunnerCleanup,
+  resolveCorepackHome,
   runInterruption
 };

@@ -17,6 +17,7 @@ const path = require("node:path");
 const {
   createCommandRuntime,
   createRunnerCleanup,
+  resolveCorepackHome,
   runInterruption
 } = require("./money-bigint-runner-runtime.cjs");
 
@@ -1067,6 +1068,7 @@ async function main() {
     PATH: process.env.PATH ?? "",
     HOME: temporaryRoot,
     TMPDIR: temporaryRoot,
+    COREPACK_HOME: resolveCorepackHome(process.env, temporaryRoot),
     NODE_ENV: "test",
     DATABASE_URL: databaseUrl,
     RUN_PROJECT_FINANCING_QUOTA_DATABASE: "1",

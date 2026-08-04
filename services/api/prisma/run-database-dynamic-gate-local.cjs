@@ -11,6 +11,7 @@ const {
 const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const { resolveCorepackHome } = require("./money-bigint-runner-runtime.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const manifestPath = path.join(
@@ -348,13 +349,15 @@ function createProbeEnvironment(sourceEnv, temporaryRoot) {
 }
 
 function createChildEnvironment(sourceEnv, temporaryRoot, dockerEndpoint) {
+  const corepackHome = resolveCorepackHome(sourceEnv, temporaryRoot);
   return {
     PATH: sourceEnv.PATH ?? "",
     HOME: sourceEnv.HOME ?? temporaryRoot,
     TMPDIR: temporaryRoot,
     NODE_ENV: "test",
     CI: "true",
-    DOCKER_HOST: dockerEndpoint
+    DOCKER_HOST: dockerEndpoint,
+    ...(corepackHome ? { COREPACK_HOME: corepackHome } : {})
   };
 }
 

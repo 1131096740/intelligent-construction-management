@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 type RoleCase = {
@@ -9,6 +11,7 @@ type RoleCase = {
 
 const initialPassword = process.env.REAL_ROLE_PASSWORD;
 const evidencePath = process.env.REAL_BROWSER_EVIDENCE_PATH;
+const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL;
 
 const roleCases: RoleCase[] = [
   {
@@ -72,6 +75,9 @@ const testFailures: string[] = [];
 function assertRuntimeConfiguration() {
   expect(initialPassword, "REAL_ROLE_PASSWORD 必须由隔离 UAT runner 注入").toBeTruthy();
   expect(evidencePath, "REAL_BROWSER_EVIDENCE_PATH 必须由隔离 UAT runner 注入").toBeTruthy();
+  expect(freezeApiBaseUrl, "REAL_FREEZE_API_BASE_URL 必须由隔离 UAT runner 注入").toMatch(
+    /^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u
+  );
 }
 
 function normalizedPath(url: string) {
@@ -129,6 +135,18 @@ async function rawRequest(page: Page, role: string, method: string, path: string
     data: body
   });
   ledger.push({ role, method, path: `/api${path}`, status: response.status() });
+  return response;
+}
+
+async function freezeRequest(page: Page, role: string, method: string, path: string, body?: unknown) {
+  const response = await page.request.fetch(`${freezeApiBaseUrl}${path}`, {
+    method,
+    headers: {
+      ...(body === undefined ? {} : { "Content-Type": "application/json" })
+    },
+    data: body
+  });
+  ledger.push({ role, method, path: `${freezeApiBaseUrl}${path}`, status: response.status() });
   return response;
 }
 
@@ -215,6 +233,109 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     expect(approvalStatuses.filter((status) => status === 200 || status === 201)).toHaveLength(1);
 
     await reviewerContext.close();
+    await context.close();
+  });
+
+  test("records stable 503 write-freeze behavior and browser file idempotency/download", async ({ browser }, testInfo) => {
+    const viewport = testInfo.project.name.includes("webkit")
+      ? { width: 390, height: 844 }
+      : { width: 1366, height: 768 };
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    await captureApiResponses(page, "rc06-file");
+
+    const freezeLogin = await freezeRequest(page, "rc06-freeze", "POST", "/auth/login", {
+      phone: roleCases[0].phone,
+      password: initialPassword
+    });
+    expect(freezeLogin.ok()).toBeTruthy();
+    const freezeLoginData = (await freezeLogin.json()) as { tokens?: { accessToken?: string } };
+    expect(freezeLoginData.tokens?.accessToken).toBeTruthy();
+    const frozenWrite = await page.request.fetch(`${freezeApiBaseUrl}/organization/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${freezeLoginData.tokens!.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      data: {}
+    });
+    ledger.push({
+      role: "rc06-freeze",
+      method: "POST",
+      path: `${freezeApiBaseUrl}/organization/users`,
+      status: frozenWrite.status()
+    });
+    expect(frozenWrite.status()).toBe(503);
+    expect((await frozenWrite.json()) as { code?: string }).toMatchObject({
+      code: "OPERATIONAL_WRITE_FREEZE_ACTIVE"
+    });
+
+    await login(page, roleCases[0]);
+    const fileBuffer = Buffer.from("%PDF-1.4\nRC-06 browser file evidence\n", "utf8");
+    const idempotencyKey = randomUUID();
+    const auth = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("jiangkong-web-admin-auth");
+      return raw ? (JSON.parse(raw) as { accessToken?: string }) : {};
+    });
+    expect(auth.accessToken).toBeTruthy();
+    const upload = () => page.request.fetch("/api/files", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+      multipart: {
+        file: {
+          name: "rc06-mobile-evidence.pdf",
+          mimeType: "application/pdf",
+          buffer: fileBuffer
+        },
+        idempotencyKey
+      }
+    });
+    const [firstUpload, duplicateUpload] = await Promise.all([upload(), upload()]);
+    ledger.push(
+      {
+        role: "contract_staff",
+        method: "POST",
+        path: "/api/files",
+        status: firstUpload.status()
+      },
+      {
+        role: "contract_staff",
+        method: "POST",
+        path: "/api/files",
+        status: duplicateUpload.status()
+      }
+    );
+    expect(firstUpload.ok()).toBeTruthy();
+    expect(duplicateUpload.ok()).toBeTruthy();
+    const firstUploadData = (await firstUpload.json()) as { id?: string };
+    const duplicateUploadData = (await duplicateUpload.json()) as { id?: string };
+    expect(firstUploadData.id).toBeTruthy();
+    expect(duplicateUploadData.id).toBe(firstUploadData.id);
+
+    const ticket = await rawRequest(
+      page,
+      "contract_staff",
+      "POST",
+      `/files/${encodeURIComponent(firstUploadData.id!)}/download-ticket`,
+      {
+        confirmationPassword: initialPassword,
+        downloadReason: "RC-06 浏览器移动端文件链路验收",
+        accessMode: "download"
+      }
+    );
+    expect(ticket.ok()).toBeTruthy();
+    const ticketData = (await ticket.json()) as { downloadUrl?: string };
+    expect(ticketData.downloadUrl).toMatch(/^\/files\/[^/]+\/download\?/u);
+    const downloaded = await page.request.fetch(`/api${ticketData.downloadUrl}`);
+    ledger.push({
+      role: "contract_staff",
+      method: "GET",
+      path: `/api${ticketData.downloadUrl}`,
+      status: downloaded.status()
+    });
+    expect(downloaded.status()).toBe(200);
+    expect(Buffer.from(await downloaded.body())).toEqual(fileBuffer);
+
     await context.close();
   });
 

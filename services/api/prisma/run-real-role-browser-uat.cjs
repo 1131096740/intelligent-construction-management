@@ -20,12 +20,15 @@ async function main() {
   assert(/^[0-9a-f]{40}$/.test(candidateSha), "真实岗位浏览器 UAT 缺少 40 位候选 SHA");
   assert(path.isAbsolute(evidencePath), "真实岗位浏览器 UAT 证据路径必须是绝对路径");
   assert(evidencePath.endsWith(".json"), "真实岗位浏览器 UAT 证据路径必须以 .json 结尾");
+  const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL || "";
+  assert(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(freezeApiBaseUrl), "真实岗位浏览器 UAT 缺少本机写冻结 API");
 
   await command(pnpm, ["--filter", "@jiangkong/web-admin", "test:e2e:rc06:real"], {
     cwd: root,
     env: {
       ...process.env,
       REAL_API_BASE_URL: apiBaseUrl,
+      REAL_FREEZE_API_BASE_URL: freezeApiBaseUrl,
       REAL_ROLE_PASSWORD: password,
       REAL_BROWSER_CANDIDATE_SHA: candidateSha,
       REAL_BROWSER_EVIDENCE_PATH: path.resolve(evidencePath),
@@ -43,7 +46,7 @@ async function main() {
     const evidence = JSON.parse(fs.readFileSync(file, "utf8"));
     assert(evidence.status === "passed", `真实岗位浏览器证据未通过：${file}`);
     assert(evidence.candidateSha === candidateSha, `真实岗位浏览器证据 SHA 不一致：${file}`);
-    for (const status of ["400", "403", "409"]) {
+    for (const status of ["400", "403", "409", "503"]) {
       assert(Number(evidence.requestStatusCounts?.[status] ?? 0) > 0, `真实岗位浏览器证据缺少 HTTP ${status}：${file}`);
     }
     fs.chmodSync(file, 0o600);
