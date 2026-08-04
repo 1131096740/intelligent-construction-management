@@ -483,6 +483,9 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       temporaryRoot,
       dockerReceipt.endpoint
     );
+    childEnvironment.LOCAL_PG16_DYNAMIC_GATE =
+      manifest.executionPolicy.confirmation;
+    childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
     await runPreflight(childEnvironment);
 
     for (const group of manifest.coveredGroups) {

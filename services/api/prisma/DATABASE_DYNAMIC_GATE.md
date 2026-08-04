@@ -1,7 +1,7 @@
 # 本机 PostgreSQL 16 动态门
 
-本入口把当前 54 条受 `RUN_*` 控制的数据库测试拆成两部分：已有一次性本机 PostgreSQL 16 runner 可编排的 24 条，以及尚缺安全编排的 30 条。清单以
-`database-dynamic-gate-manifest.json` 为机器真相；这不代表 54 条已经全部通过。
+本入口把当前 54 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
+`database-dynamic-gate-manifest.json` 为机器真相；可编排不等于已经通过，必须以执行收据为准。
 
 当前迁移基线是 118 个目录，终点为
 `20260804031000_contract_takeover_allocation_zero_index`。
@@ -39,8 +39,10 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
   --confirm LOCAL_PG16_DYNAMIC_GATE
 ```
 
-入口先生成 Prisma Client 并构建 API，然后按清单串行调用 8 组既有 runner。每个 runner 自建仅绑定
-`127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、8 组结果、覆盖 24 条及剩余 30 条。
+入口先生成 Prisma Client 并构建 API，然后按清单串行调用 9 组 runner。已有 8 组保持独立收据；第 9 组由
+`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 8 个子组，覆盖原先缺少编排的 30 条。
+每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
+最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、9 组结果及 54 条测试覆盖。
 
 严禁把生产库、自然生产库、生产备份恢复库或远程 Docker endpoint 用作本入口目标。本入口也不会触发生产自然备份。
 
@@ -58,7 +60,7 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 | settlement draft lifecycle | 1 | 1 |
 | 合计 | 24 | 9 |
 
-## 尚缺编排的 30 条
+## 新增编排的 30 条
 
 | 测试文件 | pending tests | RUN 开关 |
 | --- | ---: | --- |
@@ -83,4 +85,4 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 | project-affiliate-subject-db.spec.ts | 2 | `RUN_PROJECT_AFFILIATE_DB_TESTS` |
 | 合计 | 30 | 19 个文件 |
 
-这 30 条必须先补齐同等级的一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据，再加入 `coveredGroups`。在此之前，动态数据库总门仍然是发布阻塞项。
+这 30 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。

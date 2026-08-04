@@ -42,6 +42,7 @@
     "execute:contract-draft-retention": "node scripts/execute-contract-draft-retention.cjs --apply",
     "transition:contract-draft-aggregate": "node prisma/transition-contract-draft-aggregate.cjs",
     "verify:contract-draft-aggregate:local": "node prisma/run-contract-draft-aggregate-local.cjs",
+    "verify:database-dynamic-remaining:local": "node prisma/run-database-dynamic-remaining-local.cjs",
     "precheck:contract-settlement-v2": "node prisma/precheck-contract-settlement-v2.cjs",
     "verify:contract-settlement-v2:local": "node prisma/run-contract-settlement-v2-local.cjs",
     "backfill:contract-settlement-v2": "node prisma/backfill-contract-settlement-v2.cjs",

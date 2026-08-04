@@ -29,10 +29,10 @@
     "fullyPendingSuites": 19,
     "partiallyPendingSuites": 9,
     "pendingTests": 54,
-    "coveredFiles": 9,
-    "coveredTests": 24,
-    "remainingFiles": 19,
-    "remainingTests": 30
+    "coveredFiles": 28,
+    "coveredTests": 54,
+    "remainingFiles": 0,
+    "remainingTests": 0
   },
   "coveredGroups": [
     {
@@ -171,160 +171,114 @@
         "path": "services/api/prisma/run-settlement-draft-lifecycle-concurrency-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "remaining_dynamic_postgresql16",
+      "pendingTests": 30,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-funding-availability-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-draft-retention-script.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-takeover-balance-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-takeover-activation-postgres.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/settlement-contract-cap-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-takeover-correction-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-change-limit-transaction.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/direct-payment-capacity-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-affiliate-business-fact-db.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/approval-review-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/spot-material-classification-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-change-baseline-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-upstream-fund-fact-db.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-governance-file-concurrency.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-external-upstream-db.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-affiliate-subject-db.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "apiScript",
+        "script": "verify:database-dynamic-remaining:local",
+        "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs"
+      },
+      "state": "executable_local_runner"
     }
   ],
-  "remainingFiles": [
-    {
-      "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-      "pendingTests": 4,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE",
-      "databaseEnv": ["CONTRACT_DRAFT_AGGREGATE_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/project-funding-availability-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_PROJECT_FUNDING_DATABASE",
-      "databaseEnv": ["PROJECT_FUNDING_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-draft-retention-script.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE",
-      "databaseEnv": ["CONTRACT_DRAFT_AGGREGATE_DATABASE_URL", "DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_CONTRACT_TAKEOVER_CONFIRMATION_CONCURRENCY",
-      "databaseEnv": ["CONTRACT_TAKEOVER_CONFIRMATION_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
-      "pendingTests": 4,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_PROJECT_AFFILIATE_COMPANY_CONTRACT_DB_TESTS",
-      "databaseEnv": ["PROJECT_AFFILIATE_COMPANY_CONTRACT_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-takeover-balance-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_CONTRACT_TAKEOVER_BALANCE_CONCURRENCY",
-      "databaseEnv": ["CONTRACT_TAKEOVER_BALANCE_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-takeover-activation-postgres.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_CONTRACT_TAKEOVER_ACTIVATION_POSTGRES",
-      "databaseEnv": ["CONTRACT_TAKEOVER_ACTIVATION_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/settlement-contract-cap-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_SETTLEMENT_CONTRACT_CAP_CONCURRENCY",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-takeover-correction-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_CONTRACT_TAKEOVER_CORRECTION_CONCURRENCY",
-      "databaseEnv": ["CONTRACT_TAKEOVER_CORRECTION_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-change-limit-transaction.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_CONTRACT_CHANGE_LIMIT_DATABASE",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/direct-payment-capacity-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_DIRECT_PAYMENT_CAPACITY_CONCURRENCY",
-      "databaseEnv": ["DIRECT_PAYMENT_CAPACITY_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/project-affiliate-business-fact-db.spec.ts",
-      "pendingTests": 3,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_PROJECT_AFFILIATE_BUSINESS_DB_TESTS",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/approval-review-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "partial_pending",
-      "runFlag": "RUN_APPROVAL_REVIEW_CONCURRENCY",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/spot-material-classification-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_SPOT_MATERIAL_CLASSIFICATION_DATABASE",
-      "databaseEnv": ["SPOT_MATERIAL_CLASSIFICATION_DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-change-baseline-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/project-upstream-fund-fact-db.spec.ts",
-      "pendingTests": 2,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_PROJECT_UPSTREAM_FUND_DB_TESTS",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/contract-governance-file-concurrency.spec.ts",
-      "pendingTests": 1,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_CONTRACT_GOVERNANCE_CONCURRENCY",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/project-external-upstream-db.spec.ts",
-      "pendingTests": 2,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    },
-    {
-      "path": "services/api/src/database/project-affiliate-subject-db.spec.ts",
-      "pendingTests": 2,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_PROJECT_AFFILIATE_DB_TESTS",
-      "databaseEnv": ["DATABASE_URL"],
-      "reason": "missing_disposable_pg16_orchestration"
-    }
-  ]
+  "remainingFiles": []
 }
