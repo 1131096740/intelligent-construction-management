@@ -71,6 +71,11 @@ describe("historical change baseline database concurrency", () => {
           currentPassword: "not-a-real-password"
         })
       ));
+      if (results.filter((result) => result.status === "fulfilled").length !== 1) {
+        throw new Error(results.map((result) => result.status === "fulfilled"
+          ? "fulfilled"
+          : `rejected: ${String(result.reason)}`).join("\n"));
+      }
       expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
       expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
       expect(await first.$queryRaw<Array<{ original: bigint; increase: bigint }>>`

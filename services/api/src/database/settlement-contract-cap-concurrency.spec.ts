@@ -52,7 +52,7 @@ describe("settlement contract cap database concurrency", () => {
         "id" TEXT PRIMARY KEY
       )`);
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "ApprovalInstance" (
-        "id" TEXT PRIMARY KEY
+        "id" TEXT PRIMARY KEY, "businessType" TEXT, "businessId" TEXT
       )`);
       await clients[0]!.$executeRawUnsafe(`CREATE TABLE "SettlementSignedDocument" (
         "id" TEXT PRIMARY KEY, "settlementDraftId" TEXT, "purpose" TEXT NOT NULL,
