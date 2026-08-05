@@ -34,9 +34,10 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 
 ## Current Phase
 
-- The project is now in production-equivalent validation, real trial-run preparation, and Web Admin UI governance rollout.
+- The project is in production operation and post-go-live governance under a documented `Conditional Go` decision.
+- The accepted rollback scope is same-host isolated deploy -> rollback -> redeploy. Whole-host failure and cross-host takeover remain known residual risks, not completed evidence.
 - Do not expand new major modules unless `PROGRESS.md` says the real trial run is blocked by them.
-- Current priority: real data initialization, historical contract takeover, 3-5 active contract flows, contract master sign-off, permission matrix validation, and Go-Live approval.
+- Current priority: production observation, real business sign-off, historical contract takeover, contract master sign-off, draft lifecycle cleanup, and removal of obsolete development/worktree state.
 - Mini-program runtime retirement is approved but not yet implemented. Mobile and desktop target the same responsive Web system; OCR, full OA, invoicing, attendance, HR, safety, and large dashboards stay out of current P0 unless explicitly re-scoped.
 
 ## Architecture Decisions
@@ -138,3 +139,17 @@ Use real business positions, not old generic roles:
 - 项目实时进度以 `PROGRESS.md` 为唯一登记入口；状态结论仍必须与代码、Schema、迁移、测试、Git/部署和生产只读证据交叉核验。
 - 每完成一个子任务，必须在 `PROGRESS.md` 勾选/更新，并随代码一起 commit。
 - 接手开发（CodeX 或 Claude）第一件事：先读 `PROGRESS.md`。
+
+## Agent skills
+
+### Issue tracker
+
+任务、PRD 和分诊事项使用 GitHub Issues 管理。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用默认五态标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+采用 multi-context 布局，由根目录 `CONTEXT-MAP.md` 导航 API、Web Admin 与 shared-domain 的领域文档。详见 `docs/agents/domain.md`。
