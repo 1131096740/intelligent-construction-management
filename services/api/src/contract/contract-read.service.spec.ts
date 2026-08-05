@@ -382,6 +382,7 @@ describe("ContractReadService", () => {
           typePricing: "未明确类型 · 固定总价",
           amount: "¥986,500.00",
           version: "v2",
+          status: "effective",
           currentNode: "可发起结算",
           nodeTone: "success",
           ownerDepartment: "合同部",
@@ -631,7 +632,7 @@ describe("ContractReadService", () => {
     expect(result.rows[0]).not.toHaveProperty("takeoverStatus");
   });
 
-  it("excludes abandoned-only contracts and falls back to the latest non-abandoned version", async () => {
+  it("keeps retained abandoned versions while excluding deleting versions", async () => {
     const prisma = {
       contract: {
         findMany: jest.fn().mockResolvedValue([
@@ -656,7 +657,7 @@ describe("ContractReadService", () => {
     const result = await service.listRecent(50);
 
     expect(prisma.contractVersion.findMany).toHaveBeenCalledWith({
-      where: { contractId: { in: ["contract-1", "contract-2"] }, status: { not: "abandoned" } },
+      where: { contractId: { in: ["contract-1", "contract-2"] }, status: { not: "deleting" } },
       orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
     });
     expect(result.rows).toHaveLength(1);
@@ -2093,6 +2094,9 @@ describe("ContractReadService", () => {
     const version = (contractId: string, id: string, versionNo: number, status: string) => ({
       id, contractId, versionNo, status, amountCents: 100n, amountLimitType: "capped",
       pricingNature: "fixed_total", changeType: versionNo > 1 ? "change" : "original",
+      firstSubmittedAt: ["approval_rejected", "abandoned", "final_rejected"].includes(status)
+        ? now
+        : null,
       draftRevision: 3, updatedAt: now,
       abandonedAt: status === "abandoned" ? now : null,
       abandonReason: status === "abandoned" ? "不再继续" : null
@@ -2145,6 +2149,7 @@ describe("ContractReadService", () => {
     const version = (contractId: string, id: string, status: string) => ({
       id, contractId, versionNo: 1, status, amountCents: 100n, amountLimitType: "capped",
       pricingNature: "fixed_total", changeType: "original", draftRevision: 1, updatedAt: now,
+      firstSubmittedAt: status === "approval_rejected" ? now : null,
       abandonedAt: null, abandonReason: null
     });
     const prisma = {

@@ -56,6 +56,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         ["unsubmitted_draft", "draft"],
         ["returned_editable", "approval_rejected"],
         ["ended_retained", "abandoned"],
+        ["ended_final_rejected", "final_rejected"],
         ["protected_formal", "effective"]
       ] as const;
       const contractIds = stages.map(([stage]) =>
@@ -143,7 +144,8 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                     abandonReason: "路由测试结束记录"
                   }
                 : {}),
-              ...(status === "approval_rejected" || status === "abandoned"
+              ...(status === "approval_rejected" || status === "abandoned" ||
+              status === "final_rejected"
                 ? { firstSubmittedAt: new Date() }
                 : {}),
               ...(status === "effective" ? { effectiveAt: new Date() } : {})
@@ -161,13 +163,11 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           prisma as never,
           projectVisibility as never
         );
-        const abandonDraft = jest.fn().mockResolvedValue({
-          status: "deleting"
-        });
+        const contractService = new ContractService(prisma as never);
         const moduleRef = await Test.createTestingModule({
           controllers: [ContractController, ContractDraftController],
           providers: [
-            { provide: ContractService, useValue: { abandonDraft } },
+            { provide: ContractService, useValue: contractService },
             { provide: ContractReadService, useValue: contractRead },
             { provide: ContractWorkbenchService, useValue: {} },
             { provide: ProjectVisibilityService, useValue: projectVisibility },
@@ -215,6 +215,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         expect(response.status).toBe(200);
         const body = await response.json() as {
           rows: Array<{
+            status: string;
             contractLifecycleStage: string;
             contractLifecycleCapabilities: {
               canEdit: boolean;
@@ -226,12 +227,19 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const rowByStage = new Map(
           body.rows.map((row) => [row.contractLifecycleStage, row])
         );
-        expect(body.rows).toHaveLength(4);
+        expect(body.rows).toHaveLength(5);
         expect([...rowByStage.keys()].sort()).toEqual([
           "ended_retained",
           "protected_formal",
           "returned_editable",
           "unsubmitted_draft"
+        ]);
+        expect(body.rows.map((row) => row.status).sort()).toEqual([
+          "abandoned",
+          "approval_rejected",
+          "draft",
+          "effective",
+          "final_rejected"
         ]);
         expect(rowByStage.get("unsubmitted_draft"))
           .toMatchObject({
@@ -279,7 +287,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           }
         );
         expect(forbiddenDelete.status).toBe(403);
-        expect(abandonDraft).not.toHaveBeenCalled();
 
         const invalidDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
@@ -290,7 +297,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           }
         );
         expect(invalidDelete.status).toBe(400);
-        expect(abandonDraft).not.toHaveBeenCalled();
 
         const ownerDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
@@ -301,12 +307,15 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           }
         );
         expect(ownerDelete.status).toBe(200);
-        expect(await ownerDelete.json()).toEqual({ status: "deleting" });
-        expect(abandonDraft).toHaveBeenCalledWith(
-          draftVersionId,
-          ownerId,
-          { expectedRevision: 1, action: "delete_pristine_draft" }
-        );
+        expect(await ownerDelete.json()).toMatchObject({
+          status: "deleting",
+          action: "delete_pristine_draft",
+          idempotent: false
+        });
+        await expect(prisma.contractVersion.findUnique({
+          where: { id: draftVersionId },
+          select: { status: true }
+        })).resolves.toEqual({ status: "deleting" });
 
         const adminDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
@@ -320,6 +329,10 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           }
         );
         expect(adminDelete.status).toBe(200);
+        expect(await adminDelete.json()).toMatchObject({
+          status: "deleting",
+          idempotent: true
+        });
       } finally {
         if (app) await app.close();
         await prisma.userPosition.deleteMany({

@@ -2,6 +2,7 @@ import {
   classifyContractDraftLifecycle,
   lockContractDraftMutationBoundary,
   loadContractDraftLifecycle,
+  projectContractDraftLifecycleViews,
   type ContractDraftLifecycleFacts
 } from "./contract-draft-lifecycle";
 
@@ -179,6 +180,34 @@ describe("contract draft lifecycle classification", () => {
         historyRetention: "none"
       }
     });
+  });
+
+  it("projects a final rejection into the retained-ended ledger view", () => {
+    const classification = classifyContractDraftLifecycle({
+      ...pristineFacts,
+      status: "final_rejected",
+      firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
+    });
+    const version = {
+      id: "version-final-rejected",
+      status: "final_rejected",
+      changeType: "original"
+    };
+
+    const views = projectContractDraftLifecycleViews(
+      { ownerUserId: "owner-1", voidedAt: null },
+      [version],
+      new Map([[version.id, classification]]),
+      "owner-1"
+    );
+
+    expect(views.matches).toMatchObject({
+      formal_ledger: false,
+      my_drafts: false,
+      returned_for_revision: false,
+      ended: true
+    });
+    expect(views.versionByView.ended).toBe(version);
   });
 
   it.each([

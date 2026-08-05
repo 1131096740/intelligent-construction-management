@@ -37,8 +37,8 @@
 - [x] 合同草稿删除与签署生命周期规格已收敛至 `docs/specs/2026-08-05-contract-draft-deletion-and-signing-lifecycle.md`。
 - [x] GitHub 父 Issue #7 与 13 张子票 #8–#20 已建立，实施顺序和 `Blocked by` 依赖已冻结；当前仅无 blocker 的 #8 标记为 `ready-for-agent`，#9–#20 已移除该标签并须在各自 blocker 关闭后再逐票启用。
 - [x] 规格已区分即时清理、审批型记录保留、数据库聚合、COS 全版本/删除标记及共享文件解除关联等边界。
-- [x] 当前阶段仅提交规格并建立 Issues，未修改业务代码、Schema、迁移、COS 或生产数据。
-- [~] Issue #8 修复候选已完成代码与验证：生命周期状态 fail-closed、`deleting` 清理状态、统一读模型投影及真实 Nest 路由/权限/校验失败路径已落地；定向回归 298/298、API typecheck、lint、`git diff --check`，以及本机 PostgreSQL 16 动态门（pending-dynamic 54 tests/9 groups、remaining-dynamic 31 tests/8 groups）均通过。最终精确 HEAD 与独立 `/code-review` 仍是进入下游前的最后门禁。
+- [x] 规格与 Issues 先于代码冻结；本候选未修改生产数据库、COS 生命周期规则或生产业务数据。
+- [~] Issue #8 修复候选已完成代码与验证：生命周期状态 fail-closed、`deleting` 清理状态、统一读模型投影及真实 Nest 路由/权限/校验失败路径已落地；五套定向回归 343/343、API typecheck、lint、`git diff --check`，以及本机 PostgreSQL 16 动态门（55 tests/29 files/9 groups，含 remaining-dynamic 31 tests/8 groups）均通过。最终精确 HEAD 与独立 `/code-review` 仍是进入下游前的最后门禁。
 - [ ] Issue #9–#20 在各自 blocking edge 解除前不得并行写共享 Schema 或权限模型；Issue #8 关闭后才重新启用直接下游票据。
 - [ ] 未经单独授权，不修改生产业务数据、生产数据库记录或 COS 对象/生命周期规则。
 
@@ -58,7 +58,7 @@
 | 结算审批过期状态 | [x] | 稳定 HTTP 409 / `SETTLEMENT_APPROVAL_REVIEW_CONFLICT`，并验证零写入 |
 | 99 个治理 blocker | [x] | Web/page/route/capability manifests 均为 ready，无 blocker |
 | 3 个重复 mutation route | [x] | 已收敛为领域唯一写入口，不以通配豁免隐藏 |
-| CI 动态数据库门 | [x] | PostgreSQL 16：118 migrations、54/54 tests、28/28 files、9 groups |
+| CI 动态数据库门 | [x] | PostgreSQL 16：118 migrations、55/55 tests、29/29 files、9 groups |
 | 四类 `--require-ready` | [x] | Web API、页面动作、route usage、capability matrix 全部硬门通过 |
 | 最终 SHA 与差异证据 | [x] | CI/部署输入绑定候选 SHA；候选工作树和 `git diff --check` 已核验 |
 | P0 与五包 Task 11 | [x] | 已纳入最终候选并通过候选级回归；详细过程见历史快照和发布收据 |

@@ -95,6 +95,7 @@ export function assertGenericContractDraftVersion(
 }
 
 const ENDED_STATUSES = new Set(["abandoned", "final_rejected"]);
+const ENDED_LEDGER_STATUSES = new Set(["abandoned", "final_rejected", "voided"]);
 const PERMANENT_FORMAL_STATUSES = new Set([
   "effective",
   "superseded",
@@ -542,7 +543,7 @@ export function projectContractDraftLifecycleViews<
 ) {
   const latest = versions[0];
   const latestVisible = versions.find(
-    (candidate) => !["abandoned", "deleting"].includes(candidate.status)
+    (candidate) => !["abandoned", "final_rejected", "deleting"].includes(candidate.status)
   );
   const latestFormal = versions.find((candidate) =>
     candidate.changeType !== "historical_takeover" &&
@@ -570,7 +571,7 @@ export function projectContractDraftLifecycleViews<
       contract.ownerUserId === actorUserId
     ),
     ended: Boolean(
-      latest && (contract.voidedAt || ["abandoned", "voided"].includes(latest.status))
+      latest && (contract.voidedAt || ENDED_LEDGER_STATUSES.has(latest.status))
     )
   };
   return {
@@ -579,7 +580,7 @@ export function projectContractDraftLifecycleViews<
       formal_ledger: latestFormal,
       my_drafts: latestVisible,
       returned_for_revision: latestVisible,
-      ended: latest && ["abandoned", "voided"].includes(latest.status)
+      ended: latest && ENDED_LEDGER_STATUSES.has(latest.status)
         ? latest
         : latestVisible
     } satisfies Record<DraftLedgerView, V | undefined>

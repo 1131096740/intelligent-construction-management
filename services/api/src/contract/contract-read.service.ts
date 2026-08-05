@@ -295,7 +295,7 @@ export class ContractReadService {
         ? this.prisma.contractVersion.findMany({
             where: {
               contractId: { in: contractIds },
-              status: { notIn: ["abandoned", "deleting"] }
+              status: { not: "deleting" }
             },
             orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
           })
@@ -310,9 +310,10 @@ export class ContractReadService {
         where: { id: { in: [...new Set(contracts.map((contract) => contract.projectId))] } }
       })
     ]);
-    const takeovers = await this.contractTakeoverLedgerRows(
-      versions.map((version) => version.id)
-    );
+    const [takeovers, lifecycleByVersion] = await Promise.all([
+      this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
+      this.contractDraftLifecycleByVersion(versions)
+    ]);
     const versionByContractId = new Map<string, (typeof versions)[number]>();
     for (const version of versions) {
       if (!versionByContractId.has(version.contractId)) versionByContractId.set(version.contractId, version);
@@ -342,12 +343,23 @@ export class ContractReadService {
         version,
         termsVersion,
         projectById.get(contract.projectId),
-        this.contractTakeoverLedgerProjection(
-          contract,
-          version,
-          takeoverByVersion.get(version.id),
-          false
-        )
+        {
+          contractVersionId: version.id,
+          contractLifecycleStage: lifecycleByVersion.get(version.id)?.contractLifecycleStage,
+          contractLifecycleCapabilities: lifecycleByVersion.get(version.id)?.capabilities,
+          lifecycleKind: lifecycleByVersion.get(version.id)?.lifecycleKind,
+          lifecycleBlockers: lifecycleByVersion.get(version.id)?.blockers ?? [],
+          draftRevision: version.draftRevision ?? null,
+          lifecycleUpdatedAt: version.updatedAt instanceof Date
+            ? version.updatedAt.toISOString()
+            : contract.updatedAt.toISOString(),
+          ...this.contractTakeoverLedgerProjection(
+            contract,
+            version,
+            takeoverByVersion.get(version.id),
+            false
+          )
+        }
       )];
     });
 
@@ -1087,7 +1099,7 @@ export class ContractReadService {
       this.prisma.contractVersion.findMany({
         where: {
           contractId: contract.id,
-          status: { notIn: ["abandoned", "deleting"] }
+          status: { not: "deleting" }
         },
         orderBy: { versionNo: "desc" }
       })
@@ -2349,6 +2361,8 @@ export class ContractReadService {
       sealed_pending_archive: { label: "待归档确认", tone: "primary" },
       effective: { label: "已生效", tone: "success" },
       abandoned: { label: "已放弃", tone: "default" },
+      final_rejected: { label: "最终驳回", tone: "danger" },
+      deleting: { label: "删除处理中", tone: "warning" },
       superseded: { label: "已被新版本替代", tone: "default" },
       voided: { label: "已作废", tone: "danger" }
     };
@@ -2421,6 +2435,8 @@ export class ContractReadService {
       pending_archive_confirm: "合同部主管",
       sealed_pending_archive: "合同部主管",
       effective: "系统归档",
+      final_rejected: "系统归档",
+      deleting: "系统清理",
       voided: "系统归档"
     };
 
@@ -2440,6 +2456,8 @@ export class ContractReadService {
       pending_archive_confirm: "合同部主管确认双方最终版",
       sealed_pending_archive: "主管确认归档",
       effective: "可发起结算",
+      final_rejected: "无",
+      deleting: "无",
       voided: "无"
     };
 
@@ -2896,6 +2914,7 @@ export class ContractReadService {
       typePricing: this.contractTypePricingLabel(contract.contractTypeKey, version.pricingNature),
       amount: this.formatContractAmount(version),
       version: `v${version.versionNo}`,
+      status: version.status,
       currentNode: nextAction,
       nodeTone: status.tone,
       ownerDepartment: pendingOwner,
