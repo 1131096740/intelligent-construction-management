@@ -5,7 +5,6 @@ const {
   copyFile,
   mkdir,
   readFile,
-  stat,
   writeFile
 } = require("fs/promises");
 const { dirname, join } = require("path");
@@ -209,17 +208,17 @@ async function copyPrivateSeedFile(file, sourcePath) {
   const targetPath = privateStoragePath(file.objectKey);
   await mkdir(dirname(targetPath), { recursive: true });
   await copyFile(sourcePath, targetPath);
-  const buffer = await readFile(targetPath);
-  return {
-    sizeBytes: (await stat(targetPath)).size,
-    contentSha256: createHash("sha256").update(buffer).digest("hex")
-  };
+  return fileMetadata(await readFile(targetPath));
 }
 
 async function writePrivateSeedFile(file, buffer) {
   const targetPath = privateStoragePath(file.objectKey);
   await mkdir(dirname(targetPath), { recursive: true });
   await writeFile(targetPath, buffer);
+  return fileMetadata(buffer);
+}
+
+function fileMetadata(buffer) {
   return {
     sizeBytes: buffer.length,
     contentSha256: createHash("sha256").update(buffer).digest("hex")
@@ -246,7 +245,7 @@ function minimalPreviewPdf() {
   return Buffer.from(body);
 }
 
-async function upsertSeedFile(file, uploadedByUserId, artifact) {
+async function upsertSeedFile(file, uploadedByUserId, metadata) {
   await prisma.fileObject.upsert({
     where: { id: file.id },
     update: {
@@ -254,9 +253,9 @@ async function upsertSeedFile(file, uploadedByUserId, artifact) {
       objectKey: file.objectKey,
       originalName: file.originalName,
       mimeType: file.mimeType,
-      sizeBytes: artifact.sizeBytes,
+      sizeBytes: metadata.sizeBytes,
+      contentSha256: metadata.contentSha256,
       uploadedByUserId,
-      contentSha256: artifact.contentSha256,
       storageStatus: "active"
     },
     create: {
@@ -265,9 +264,9 @@ async function upsertSeedFile(file, uploadedByUserId, artifact) {
       objectKey: file.objectKey,
       originalName: file.originalName,
       mimeType: file.mimeType,
-      sizeBytes: artifact.sizeBytes,
+      sizeBytes: metadata.sizeBytes,
+      contentSha256: metadata.contentSha256,
       uploadedByUserId,
-      contentSha256: artifact.contentSha256,
       storageStatus: "active"
     }
   });
@@ -535,17 +534,17 @@ async function seedPaymentExecutionClosedLoop() {
 }
 
 async function seedWorkbenchTemplate(data) {
-  const docxSize = await copyPrivateSeedFile(
+  const docxMetadata = await copyPrivateSeedFile(
     data.layout.docxFile,
     join(__dirname, "..", "assets", "templates", data.layout.docxFile.originalName)
   );
-  const previewSize = await writePrivateSeedFile(
+  const previewMetadata = await writePrivateSeedFile(
     data.layout.previewPdfFile,
     minimalPreviewPdf()
   );
 
-  await upsertSeedFile(data.layout.docxFile, seed.users.contractStaff.id, docxSize);
-  await upsertSeedFile(data.layout.previewPdfFile, seed.users.contractStaff.id, previewSize);
+  await upsertSeedFile(data.layout.docxFile, seed.users.contractStaff.id, docxMetadata);
+  await upsertSeedFile(data.layout.previewPdfFile, seed.users.contractStaff.id, previewMetadata);
 
   await prisma.standardClause.upsert({
     where: { code: data.standardPaymentClause.code },
@@ -766,11 +765,15 @@ async function main() {
   await seedAuthAssignments();
   await seedContractWorkbenchTemplates();
 
-  const ownerContractFileSize = await writePrivateSeedFile(
+  const ownerContractFileMetadata = await writePrivateSeedFile(
     seed.ownerContractFile,
     minimalPreviewPdf()
   );
-  await upsertSeedFile(seed.ownerContractFile, seed.users.contractStaff.id, ownerContractFileSize);
+  await upsertSeedFile(
+    seed.ownerContractFile,
+    seed.users.contractStaff.id,
+    ownerContractFileMetadata
+  );
   await prisma.projectOwnerContract.upsert({
     where: { id: seed.ownerContract.id },
     update: {
@@ -786,8 +789,7 @@ async function main() {
       retentionSummary: seed.ownerContract.retentionSummary,
       fileId: seed.ownerContractFile.id,
       documentVersion: seed.ownerContract.documentVersion,
-      fileContentSha256Snapshot:
-        ownerContractFileSize.contentSha256,
+      fileContentSha256Snapshot: ownerContractFileMetadata.contentSha256,
       recordedByUserId: seed.users.contractStaff.id,
       confirmedByUserId: "seed-user-contract-director",
       confirmedAt: seed.ownerContract.confirmedAt,
@@ -810,8 +812,7 @@ async function main() {
       retentionSummary: seed.ownerContract.retentionSummary,
       fileId: seed.ownerContractFile.id,
       documentVersion: seed.ownerContract.documentVersion,
-      fileContentSha256Snapshot:
-        ownerContractFileSize.contentSha256,
+      fileContentSha256Snapshot: ownerContractFileMetadata.contentSha256,
       recordedByUserId: seed.users.contractStaff.id,
       confirmedByUserId: "seed-user-contract-director",
       confirmedAt: seed.ownerContract.confirmedAt,
@@ -819,14 +820,14 @@ async function main() {
     }
   });
 
-  const upstreamSettlementFileSize = await writePrivateSeedFile(
+  const upstreamSettlementFileMetadata = await writePrivateSeedFile(
     seed.upstreamSettlementFile,
     minimalPreviewPdf()
   );
   await upsertSeedFile(
     seed.upstreamSettlementFile,
     "seed-user-budget-staff",
-    upstreamSettlementFileSize
+    upstreamSettlementFileMetadata
   );
   await prisma.projectUpstreamSettlement.upsert({
     where: { id: seed.upstreamSettlement.id },
@@ -841,8 +842,7 @@ async function main() {
       description: seed.upstreamSettlement.description,
       voucherFileId: seed.upstreamSettlementFile.id,
       documentVersion: seed.upstreamSettlement.documentVersion,
-      fileContentSha256Snapshot:
-        upstreamSettlementFileSize.contentSha256,
+      fileContentSha256Snapshot: upstreamSettlementFileMetadata.contentSha256,
       recordedByUserId: "seed-user-budget-staff",
       status: seed.upstreamSettlement.status,
       confirmedByUserId: null,
@@ -866,18 +866,17 @@ async function main() {
       description: seed.upstreamSettlement.description,
       voucherFileId: seed.upstreamSettlementFile.id,
       documentVersion: seed.upstreamSettlement.documentVersion,
-      fileContentSha256Snapshot:
-        upstreamSettlementFileSize.contentSha256,
+      fileContentSha256Snapshot: upstreamSettlementFileMetadata.contentSha256,
       recordedByUserId: "seed-user-budget-staff",
       status: seed.upstreamSettlement.status
     }
   });
 
-  const projectReceiptFileSize = await writePrivateSeedFile(
+  const projectReceiptFileMetadata = await writePrivateSeedFile(
     seed.projectReceiptFile,
     minimalPreviewPdf()
   );
-  await upsertSeedFile(seed.projectReceiptFile, seed.users.cashier.id, projectReceiptFileSize);
+  await upsertSeedFile(seed.projectReceiptFile, seed.users.cashier.id, projectReceiptFileMetadata);
   await prisma.projectReceipt.upsert({
     where: { id: seed.projectReceipt.id },
     update: {
