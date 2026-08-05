@@ -1026,42 +1026,19 @@ export class ContractService {
           if (input.action !== "delete_pristine_draft") {
             throw new ForbiddenException("只有当前合同经办人可以删除草稿或放弃申请");
           }
-          const assignments = await tx.userPosition.findMany({
-            where: { userId: actorUserId, projectId: null }
-          });
-          const positions = assignments.length
-            ? await tx.position.findMany({
-                where: {
-                  id: {
-                    in: assignments.map((assignment) => assignment.positionId)
-                  }
-                }
-              })
-            : [];
-          if (!positions.some((position) => position.key === "contract_director")) {
-            throw new ForbiddenException("只有当前合同经办人或合同部主管可以删除纯净草稿");
+          if (!(await this.hasGlobalContractDraftCleanupRole(tx, actorUserId))) {
+            throw new ForbiddenException("只有当前合同经办人、合同部主管或系统管理员可以删除纯净草稿");
           }
-          if (!reason) {
-            throw new BadRequestException("合同部主管代清理必须填写原因");
-          }
-          const currentPassword = input.currentPassword ?? "";
-          if (!currentPassword.trim()) {
-            throw new BadRequestException("合同部主管代清理必须验证当前密码");
-          }
-          if (!this.auth) {
-            throw new Error("当前密码校验服务不可用，请稍后重试");
-          }
-          await this.auth.confirmPassword(actorUserId, currentPassword);
           proxyCleanup = true;
         }
         assertGenericContractDraftVersion({
           changeType: locked.changeType,
           hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
         });
-        if (locked.abandonedAt || locked.status === "abandoned") {
-          const terminalAction = locked.abandonReason
-            ? "abandon_application"
-            : "delete_pristine_draft";
+        if (locked.abandonedAt || ["abandoned", "deleting"].includes(locked.status)) {
+          const terminalAction = locked.status === "deleting" || !locked.abandonReason
+            ? "delete_pristine_draft"
+            : "abandon_application";
           if (input.action !== terminalAction) {
             throw new ConflictException(
               "合同草稿已按另一种方式结束，请刷新后核对"
@@ -1069,12 +1046,12 @@ export class ContractService {
           }
           return {
             contractVersionId: locked.id,
-            status: "abandoned",
+            status: locked.status === "deleting" ? "deleting" : "abandoned",
             lifecycleKind: terminalAction === "delete_pristine_draft"
               ? "pristine_draft"
               : "approval_draft",
             action: terminalAction,
-            abandonedAt: locked.abandonedAt,
+            abandonedAt: locked.status === "deleting" ? null : locked.abandonedAt,
             abandonedByUserId: locked.abandonedByUserId,
             reason: locked.abandonReason,
             idempotent: true
@@ -1124,9 +1101,9 @@ export class ContractService {
             abandonedAt: null
           },
           data: {
-            status: "abandoned",
-            abandonedAt: now,
-            abandonedByUserId: actorUserId,
+            status: expectedAction === "delete_pristine_draft" ? "deleting" : "abandoned",
+            abandonedAt: expectedAction === "delete_pristine_draft" ? null : now,
+            abandonedByUserId: expectedAction === "delete_pristine_draft" ? null : actorUserId,
             abandonReason: expectedAction === "abandon_application" ? reason : null,
             draftRevision: { increment: 1 }
           }
@@ -1271,7 +1248,7 @@ export class ContractService {
               : "approval_draft",
             previousStatus: locked.status,
             blockers,
-            reason: expectedAction === "abandon_application" || proxyCleanup
+            reason: expectedAction === "abandon_application"
               ? reason
               : null,
             proxyCleanup,
@@ -1285,14 +1262,14 @@ export class ContractService {
 
         return {
           contractVersionId: locked.id,
-          status: "abandoned",
+          status: expectedAction === "delete_pristine_draft" ? "deleting" : "abandoned",
           lifecycleKind: expectedAction === "delete_pristine_draft"
             ? "pristine_draft"
             : "approval_draft",
           action: expectedAction,
-          abandonedAt: now,
-          abandonedByUserId: actorUserId,
-          reason: expectedAction === "abandon_application" || proxyCleanup
+          abandonedAt: expectedAction === "delete_pristine_draft" ? null : now,
+          abandonedByUserId: expectedAction === "delete_pristine_draft" ? null : actorUserId,
+          reason: expectedAction === "abandon_application"
             ? reason
             : null,
           blockers,
@@ -1309,6 +1286,22 @@ export class ContractService {
       }
       throw error;
     }
+  }
+
+  private async hasGlobalContractDraftCleanupRole(
+    client: Pick<Prisma.TransactionClient, "userPosition" | "position">,
+    actorUserId: string
+  ) {
+    const assignments = await client.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    if (!assignments.length) return false;
+    const positions = await client.position.findMany({
+      where: { id: { in: assignments.map((assignment) => assignment.positionId) } }
+    });
+    return positions.some((position) =>
+      ["contract_director", "super_admin"].includes(position.key)
+    );
   }
 
   private prepareChangeDraftSource(input: {

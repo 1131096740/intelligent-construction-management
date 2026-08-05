@@ -98,8 +98,11 @@ describe("contract draft lifecycle classification", () => {
     { firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z") },
     { approvalInstanceCount: 1 },
     { approvalActionCount: 1 },
-    { status: "approval_rejected" }
-  ])("classifies returned or withdrawn applications as editable", (overrides) => {
+    {
+      status: "approval_rejected" as const,
+      firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
+    }
+  ] as const)("classifies returned or withdrawn applications as editable", (overrides) => {
     expect(classifyContractDraftLifecycle({
       ...pristineFacts,
       ...overrides
@@ -119,12 +122,28 @@ describe("contract draft lifecycle classification", () => {
     });
   });
 
-  it.each(["abandoned", "final_rejected"])(
+  it.each(["approval_rejected", "abandoned", "final_rejected"] as const)(
+    "fails closed when %s has no approval evidence",
+    (status) => {
+      expect(() => classifyContractDraftLifecycle({
+        ...pristineFacts,
+        status
+      })).toThrow(expect.objectContaining({
+        response: expect.objectContaining({
+          statusCode: 409,
+          code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION"
+        })
+      }));
+    }
+  );
+
+  it.each(["abandoned", "final_rejected"] as const)(
     "classifies %s as an ended record retained for three calendar months",
     (status) => {
       expect(classifyContractDraftLifecycle({
         ...pristineFacts,
-        status
+        status,
+        firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
       })).toMatchObject({
         contractLifecycleStage: "ended_retained",
         lifecycleKind: "approval_draft",
@@ -148,7 +167,7 @@ describe("contract draft lifecycle classification", () => {
       status: "deleting"
     })).toMatchObject({
       contractLifecycleStage: "deleting",
-      lifecycleKind: "formal_record",
+      lifecycleKind: "pristine_draft",
       expectedAction: null,
       capabilities: {
         canView: false,
@@ -197,7 +216,7 @@ describe("contract draft lifecycle classification", () => {
     });
   });
 
-  it.each(["in_approval", "approved_pending_seal", "pending_archive_confirm"])(
+  it.each(["in_approval", "approved_pending_seal", "pending_archive_confirm"] as const)(
     "protects active formal-process status %s without claiming permanent retention",
     (status) => {
       expect(classifyContractDraftLifecycle({

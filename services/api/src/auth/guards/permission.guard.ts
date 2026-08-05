@@ -106,7 +106,10 @@ export class PermissionGuard implements CanActivate {
       if (governedApprovalAccess === false) {
         throw new ForbiddenException("当前账号不是该审批节点冻结的处理人");
       }
-      if (!canPerform(requiredAction, effectiveRoleKeys)) {
+      const globalSuperAdminDraftCleanup =
+        requiredAction === "contract.draft.delete" &&
+        roleScopes.globalRoleKeys.includes("super_admin");
+      if (!canPerform(requiredAction, effectiveRoleKeys) && !globalSuperAdminDraftCleanup) {
         const delegatedApprovalAllowed =
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&

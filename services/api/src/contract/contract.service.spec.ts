@@ -907,7 +907,7 @@ describe("ContractService", () => {
           })
         });
       } else {
-        expect(state.status).toBe("abandoned");
+        expect(state.status).toBe("deleting");
         expect(outcomes[1]).toMatchObject({
           reason: expect.objectContaining({
             response: expect.objectContaining({
@@ -6396,7 +6396,7 @@ describe("ContractService", () => {
     };
   }
 
-  it("marks a never-submitted original contract as a deleted pristine draft", async () => {
+  it("moves a never-submitted original contract into deleting", async () => {
     const tx = abandonDraftTx();
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ContractService(prisma as never, audit as never);
@@ -6407,14 +6407,14 @@ describe("ContractService", () => {
     });
 
     expect(result).toMatchObject({
-      status: "abandoned",
+      status: "deleting",
       lifecycleKind: "pristine_draft",
       action: "delete_pristine_draft",
       idempotent: false
     });
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ draftRevision: 3, status: "draft" }),
-      data: expect.objectContaining({ status: "abandoned", abandonReason: null })
+      data: expect.objectContaining({ status: "deleting", abandonReason: null })
     }));
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
@@ -6801,7 +6801,7 @@ describe("ContractService", () => {
     expect(staleTx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
-  it("allows a contract director to proxy-delete a pristine draft with password and reason", async () => {
+  it("allows a contract director to proxy-delete a pristine draft without reason or password", async () => {
     const tx = abandonDraftTx({
       userPosition: {
         findMany: jest.fn().mockResolvedValue([{ positionId: "position-director" }])
@@ -6823,39 +6823,34 @@ describe("ContractService", () => {
     await expect(
       service.abandonDraft("contract-version-1", "director-1", {
         expectedRevision: 3,
-        action: "delete_pristine_draft",
-        reason: "清理重复创建的纯净草稿",
-        currentPassword: "current-password"
+        action: "delete_pristine_draft"
       })
     ).resolves.toMatchObject({
-      status: "abandoned",
+      status: "deleting",
       lifecycleKind: "pristine_draft",
-      reason: "清理重复创建的纯净草稿"
+      reason: null
     });
-    expect(auth.confirmPassword).toHaveBeenCalledWith(
-      "director-1",
-      "current-password"
-    );
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
         metadata: expect.objectContaining({
           proxyCleanup: true,
           ownerUserId: "owner-1",
-          reason: "清理重复创建的纯净草稿"
+          reason: null
         })
       })
     );
   });
 
-  it("requires both a reason and current password for director proxy cleanup", async () => {
+  it("allows a global super admin to proxy-delete a pristine draft", async () => {
     const tx = abandonDraftTx({
       userPosition: {
-        findMany: jest.fn().mockResolvedValue([{ positionId: "position-director" }])
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-admin" }])
       },
       position: {
         findMany: jest.fn().mockResolvedValue([
-          { id: "position-director", key: "contract_director" }
+          { id: "position-admin", key: "super_admin" }
         ])
       }
     });
@@ -6867,37 +6862,29 @@ describe("ContractService", () => {
       auth as never
     );
 
-    await expect(
-      service.abandonDraft("contract-version-1", "director-1", {
+    await expect(service.abandonDraft("contract-version-1", "admin-1", {
         expectedRevision: 3,
-        action: "delete_pristine_draft",
-        currentPassword: "current-password"
-      })
-    ).rejects.toThrow("合同部主管代清理必须填写原因");
-    await expect(
-      service.abandonDraft("contract-version-1", "director-1", {
-        expectedRevision: 3,
-        action: "delete_pristine_draft",
-        reason: "清理重复创建的纯净草稿"
-      })
-    ).rejects.toThrow("合同部主管代清理必须验证当前密码");
+        action: "delete_pristine_draft"
+      })).resolves.toMatchObject({
+        status: "deleting",
+        lifecycleKind: "pristine_draft",
+        reason: null
+      });
     expect(auth.confirmPassword).not.toHaveBeenCalled();
-    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
-  it("returns the existing terminal fact for a repeated abandonment request", async () => {
-    const abandonedAt = new Date("2026-07-19T12:00:00.000Z");
+  it("returns the existing deleting fact for a repeated pristine-delete request", async () => {
     const tx = abandonDraftTx({
       $queryRaw: jest.fn().mockResolvedValue([{
         id: "contract-version-1",
         contractId: "contract-1",
         versionNo: 1,
         changeType: "original",
-        status: "abandoned",
+        status: "deleting",
         draftRevision: 4,
         firstSubmittedAt: null,
-        abandonedAt,
-        abandonedByUserId: "owner-1",
+        abandonedAt: null,
+        abandonedByUserId: null,
         abandonReason: null,
         ownerUserId: "owner-1"
       }])
@@ -6908,7 +6895,12 @@ describe("ContractService", () => {
     await expect(service.abandonDraft("contract-version-1", "owner-1", {
       expectedRevision: 3,
       action: "delete_pristine_draft"
-    })).resolves.toMatchObject({ idempotent: true, abandonedAt });
+    })).resolves.toMatchObject({
+      idempotent: true,
+      status: "deleting",
+      abandonedAt: null,
+      abandonedByUserId: null
+    });
     expect(tx.approvalInstance.findMany).not.toHaveBeenCalled();
     expect(tx.approvalInstance.updateMany).not.toHaveBeenCalled();
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -6921,11 +6913,11 @@ describe("ContractService", () => {
         contractId: "contract-1",
         versionNo: 1,
         changeType: "original",
-        status: "abandoned",
+        status: "deleting",
         draftRevision: 4,
         firstSubmittedAt: null,
-        abandonedAt: new Date("2026-07-19T12:00:00.000Z"),
-        abandonedByUserId: "owner-1",
+        abandonedAt: null,
+        abandonedByUserId: null,
         abandonReason: null,
         ownerUserId: "owner-1"
       }])
@@ -6948,11 +6940,11 @@ describe("ContractService", () => {
         contractId: "contract-1",
         versionNo: 1,
         changeType: "original",
-        status: "abandoned",
+        status: "deleting",
         draftRevision: 4,
         firstSubmittedAt: null,
-        abandonedAt: new Date("2026-07-19T12:00:00.000Z"),
-        abandonedByUserId: "director-old",
+        abandonedAt: null,
+        abandonedByUserId: null,
         abandonReason: null,
         ownerUserId: "owner-1"
       }]),
@@ -6987,7 +6979,7 @@ describe("ContractService", () => {
       action: "delete_pristine_draft",
       reason: null
     });
-    expect(auth.confirmPassword).toHaveBeenCalled();
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
 

@@ -51,6 +51,8 @@ import type { HistoricalContractPaymentBalance } from "../payment/settlement-pay
 import { contractChangeVersionsReadModel } from "./contract-change-read-model";
 import {
   classifyContractDraftLifecycle,
+  parseContractDraftLifecycleStatus,
+  projectContractDraftLifecycleViews,
   type ContractDraftLifecycleClassification,
   type ContractDraftLifecycleFacts
 } from "./contract-draft-lifecycle";
@@ -291,7 +293,10 @@ export class ContractReadService {
     const [versions, terms, projects] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
-            where: { contractId: { in: contractIds }, status: { not: "abandoned" } },
+            where: {
+              contractId: { in: contractIds },
+              status: { notIn: ["abandoned", "deleting"] }
+            },
             orderBy: [{ contractId: "asc" }, { versionNo: "desc" }]
           })
         : Promise.resolve([]),
@@ -550,7 +555,7 @@ export class ContractReadService {
       const facts: ContractDraftLifecycleFacts = {
         changeType: version.changeType ?? "original",
         versionNo: version.versionNo ?? 1,
-        status: version.status,
+        status: parseContractDraftLifecycleStatus(version.status),
         firstSubmittedAt: version.firstSubmittedAt ?? null,
         approvalInstanceCount: approvalInstanceCounts.get(version.id) ?? 0,
         approvalActionCount: approvalActionCounts.get(version.id) ?? 0,
@@ -620,7 +625,7 @@ export class ContractReadService {
     );
     const classified = contracts.flatMap((contract) => {
       const all = versionsByContract.get(contract.id) ?? [];
-      const lifecycle = this.classifyContractLifecycle(
+      const lifecycle = projectContractDraftLifecycleViews(
         contract,
         all,
         lifecycleByVersion,
@@ -1080,7 +1085,10 @@ export class ContractReadService {
     const [project, versions] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: contract.projectId } }),
       this.prisma.contractVersion.findMany({
-        where: { contractId: contract.id, status: { not: "abandoned" } },
+        where: {
+          contractId: contract.id,
+          status: { notIn: ["abandoned", "deleting"] }
+        },
         orderBy: { versionNo: "desc" }
       })
     ]);
@@ -2911,7 +2919,7 @@ export class ContractReadService {
     actorUserId: string,
     view: DraftLedgerView
   ) {
-    return contracts.filter((contract) => this.classifyContractLifecycle(
+    return contracts.filter((contract) => projectContractDraftLifecycleViews(
       contract,
       versionsByContract.get(contract.id) ?? [],
       lifecycleByVersion,
@@ -2919,67 +2927,8 @@ export class ContractReadService {
     ).matches[view]).length;
   }
 
-  private classifyContractLifecycle<
-    V extends { id: string; status: string; changeType?: string | null }
-  >(
-    contract: { ownerUserId: string | null; voidedAt: Date | null },
-    versions: V[],
-    lifecycleByVersion: ReadonlyMap<
-      string,
-      ContractDraftLifecycleClassification
-    >,
-    actorUserId: string
-  ) {
-    const latest = versions[0];
-    const latestNotAbandoned = versions.find((candidate) => candidate.status !== "abandoned");
-    const latestFormal = versions.find((candidate) =>
-      candidate.changeType !== "historical_takeover" &&
-      (
-        !["draft", "approval_rejected", "abandoned", "voided"].includes(
-          candidate.status
-        ) ||
-        lifecycleByVersion.get(candidate.id)?.contractLifecycleStage ===
-          "protected_formal"
-      ) &&
-      !["abandoned", "voided"].includes(candidate.status)
-    );
-    const latestDraftLifecycle = latestNotAbandoned
-      ? lifecycleByVersion.get(latestNotAbandoned.id)
-      : undefined;
-    const matches = {
-      formal_ledger: Boolean(
-        latest && !contract.voidedAt && latest.status !== "voided" && latestFormal
-      ),
-      my_drafts: Boolean(
-        latestNotAbandoned?.status === "draft" &&
-        latestDraftLifecycle?.contractLifecycleStage === "unsubmitted_draft" &&
-        contract.ownerUserId === actorUserId
-      ),
-      returned_for_revision: Boolean(
-        latestNotAbandoned &&
-        ["draft", "approval_rejected"].includes(latestNotAbandoned.status) &&
-        latestDraftLifecycle?.contractLifecycleStage === "returned_editable" &&
-        contract.ownerUserId === actorUserId
-      ),
-      ended: Boolean(
-        latest && (contract.voidedAt || ["abandoned", "voided"].includes(latest.status))
-      )
-    };
-    return {
-      matches,
-      versionByView: {
-        formal_ledger: latestFormal,
-        my_drafts: latestNotAbandoned,
-        returned_for_revision: latestNotAbandoned,
-        ended: latest && ["abandoned", "voided"].includes(latest.status)
-          ? latest
-          : latestNotAbandoned ?? latest
-      } satisfies Record<DraftLedgerView, V | undefined>
-    };
-  }
-
   private currentWorkbenchVersion<V extends { status: string }>(versions: V[]): V | undefined {
-    return versions.find((version) => !["abandoned", "voided"].includes(version.status)) ?? versions[0];
+    return versions.find((version) => !["abandoned", "deleting", "voided"].includes(version.status));
   }
 
   private matchesWorkbenchView(

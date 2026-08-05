@@ -1,12 +1,19 @@
 import "reflect-metadata";
-import type { INestApplication } from "@nestjs/common";
+import { ValidationPipe, type INestApplication } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
+import { PermissionGuard } from "../auth/guards/permission.guard";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
+import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
+import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
+import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
+import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { ContractController } from "../contract/contract.controller";
 import { ContractReadService } from "../contract/contract-read.service";
 import { ContractService } from "../contract/contract.service";
+import { PrismaService } from "./prisma.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
 
@@ -40,7 +47,11 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       });
       const suffix = `${process.pid}-${Date.now()}`;
       const ownerId = `lifecycle-route-owner-${suffix}`;
+      const intruderId = `lifecycle-route-intruder-${suffix}`;
+      const adminId = `lifecycle-route-admin-${suffix}`;
       const projectId = `lifecycle-route-project-${suffix}`;
+      const contractStaffPositionId = `lifecycle-route-contract-staff-${suffix}`;
+      const superAdminPositionId = `lifecycle-route-super-admin-${suffix}`;
       const stages = [
         ["unsubmitted_draft", "draft"],
         ["returned_editable", "approval_rejected"],
@@ -53,12 +64,30 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       let app: INestApplication | undefined;
 
       try {
-        await prisma.user.create({
-          data: {
-            id: ownerId,
-            name: "合同生命周期路由测试用户",
-            mustChangePassword: false
-          }
+        await prisma.user.createMany({
+          data: [
+            {
+              id: ownerId,
+              name: "合同生命周期路由测试用户",
+              mustChangePassword: false
+            },
+            {
+              id: intruderId,
+              name: "合同生命周期路由越权用户",
+              mustChangePassword: false
+            },
+            {
+              id: adminId,
+              name: "合同生命周期路由系统管理员",
+              mustChangePassword: false
+            }
+          ]
+        });
+        await prisma.position.createMany({
+          data: [
+            { id: contractStaffPositionId, key: "contract_staff", name: "合同员" },
+            { id: superAdminPositionId, key: "super_admin", name: "系统管理员" }
+          ]
         });
         await prisma.project.create({
           data: {
@@ -66,6 +95,22 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             code: `LIFECYCLE-${suffix}`,
             name: "合同生命周期路由测试项目"
           }
+        });
+        await prisma.userPosition.createMany({
+          data: [
+            {
+              id: `lifecycle-route-owner-position-${suffix}`,
+              userId: ownerId,
+              positionId: contractStaffPositionId,
+              projectId
+            },
+            {
+              id: `lifecycle-route-admin-position-${suffix}`,
+              userId: adminId,
+              positionId: superAdminPositionId,
+              projectId: null
+            }
+          ]
         });
         for (const [[stage, status], contractId] of stages.map(
           (stage, index) => [stage, contractIds[index]] as const
@@ -98,6 +143,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                     abandonReason: "路由测试结束记录"
                   }
                 : {}),
+              ...(status === "approval_rejected"
+                ? { firstSubmittedAt: new Date() }
+                : {}),
               ...(status === "effective" ? { effectiveAt: new Date() } : {})
             }
           });
@@ -113,24 +161,48 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           prisma as never,
           projectVisibility as never
         );
+        const abandonDraft = jest.fn().mockResolvedValue({
+          status: "deleting"
+        });
         const moduleRef = await Test.createTestingModule({
-          controllers: [ContractController],
+          controllers: [ContractController, ContractDraftController],
           providers: [
-            { provide: ContractService, useValue: {} },
+            { provide: ContractService, useValue: { abandonDraft } },
             { provide: ContractReadService, useValue: contractRead },
             { provide: ContractWorkbenchService, useValue: {} },
-            { provide: ProjectVisibilityService, useValue: projectVisibility }
+            { provide: ProjectVisibilityService, useValue: projectVisibility },
+            { provide: ContractDraftAggregateService, useValue: {} },
+            { provide: ContractDraftEditLeaseService, useValue: {} },
+            { provide: ContractDocumentService, useValue: {} },
+            { provide: PrismaService, useValue: prisma }
           ]
         }).compile();
         app = moduleRef.createNestApplication();
+        app.useGlobalGuards(new PermissionGuard(new Reflector(), prisma as never));
+        app.useGlobalPipes(
+          new ValidationPipe({
+            transform: true,
+            whitelist: true,
+            forbidNonWhitelisted: true
+          })
+        );
         app.use((
-          request: { user?: unknown },
+          request: { user?: unknown; headers: Record<string, string | string[] | undefined> },
           _response: unknown,
           next: () => void
         ) => {
+          const userId = request.headers["x-test-user"] === intruderId
+            ? intruderId
+            : request.headers["x-test-user"] === adminId
+              ? adminId
+              : ownerId;
           request.user = {
-            id: ownerId,
-            name: "合同生命周期路由测试用户",
+            id: userId,
+            name: userId === adminId
+              ? "合同生命周期路由系统管理员"
+              : userId === intruderId
+                ? "合同生命周期路由越权用户"
+                : "合同生命周期路由测试用户",
             phone: null
           };
           next();
@@ -193,14 +265,77 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               historyRetention: "permanent"
             }
           });
+
+        const draftVersionId = `${contractIds[0]}-v1`;
+        const forbiddenDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              "x-test-user": intruderId
+            },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(forbiddenDelete.status).toBe(403);
+        expect(abandonDraft).not.toHaveBeenCalled();
+
+        const invalidDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedRevision: 1, unexpected: true })
+          }
+        );
+        expect(invalidDelete.status).toBe(400);
+        expect(abandonDraft).not.toHaveBeenCalled();
+
+        const ownerDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(ownerDelete.status).toBe(200);
+        expect(await ownerDelete.json()).toEqual({ status: "deleting" });
+        expect(abandonDraft).toHaveBeenCalledWith(
+          draftVersionId,
+          ownerId,
+          { expectedRevision: 1, action: "delete_pristine_draft" }
+        );
+
+        const adminDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              "x-test-user": adminId
+            },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(adminDelete.status).toBe(200);
       } finally {
         if (app) await app.close();
+        await prisma.userPosition.deleteMany({
+          where: { userId: { in: [ownerId, intruderId, adminId] } }
+        });
         await prisma.contractVersion.deleteMany({
           where: { contractId: { in: contractIds } }
         });
         await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
         await prisma.project.deleteMany({ where: { id: projectId } });
-        await prisma.user.deleteMany({ where: { id: ownerId } });
+        await prisma.position.deleteMany({
+          where: { id: { in: [contractStaffPositionId, superAdminPositionId] } }
+        });
+        await prisma.user.deleteMany({
+          where: { id: { in: [ownerId, intruderId, adminId] } }
+        });
         await prisma.$disconnect();
       }
     },

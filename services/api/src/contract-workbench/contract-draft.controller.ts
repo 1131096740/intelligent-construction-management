@@ -70,7 +70,7 @@ export class ContractDraftController {
   }
 
   @Delete(":contractVersionId")
-  @RequireProjectRole("contract.create")
+  @RequireProjectRole("contract.draft.delete")
   deleteDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: DeleteContractDraftDto,

@@ -23,7 +23,7 @@ describe("ContractDraftController", () => {
     const contracts = {
       abandonDraft: jest.fn().mockResolvedValue({
         contractVersionId: "cv-1",
-        status: "abandoned",
+        status: "deleting",
         lifecycleKind: "pristine_draft"
       }),
       submitApproval: jest.fn().mockResolvedValue({
@@ -260,21 +260,17 @@ describe("ContractDraftController", () => {
         REQUIRED_PROJECT_ACTION_KEY,
         ContractDraftController.prototype.deleteDraft
       )
-    ).toBe("contract.create");
+    ).toBe("contract.draft.delete");
   });
 
   it("delegates daily deletion to the existing logical draft lifecycle", async () => {
     const { contracts, controller } = makeController();
-    const body = {
-      expectedRevision: 7,
-      reason: "主管代清理重复测试草稿",
-      currentPassword: "current-password"
-    };
+    const body = { expectedRevision: 7 };
 
     await expect(
       controller.deleteDraft("cv-1", body, { id: "director-1" } as never)
     ).resolves.toMatchObject({
-      status: "abandoned",
+      status: "deleting",
       lifecycleKind: "pristine_draft"
     });
     expect(contracts.abandonDraft).toHaveBeenCalledWith(

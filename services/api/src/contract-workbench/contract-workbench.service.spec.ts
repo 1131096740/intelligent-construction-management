@@ -2157,8 +2157,8 @@ describe("ContractWorkbenchService", () => {
         key: "delete_pristine_draft",
         enabled: true,
         disabledReason: null,
-        requiresComment: true,
-        requiresPassword: true
+        requiresComment: false,
+        requiresPassword: false
       })
     ]);
   });

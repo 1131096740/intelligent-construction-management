@@ -348,12 +348,12 @@ export class ContractWorkbenchService {
       : null;
     const isChangeVersion = version.changeType === "change" || version.changeType === "supplement";
     const isOwner = contract.ownerUserId === actorUserId;
-    const isDirectorProxyCleanup =
+    const isGlobalDraftCleanupOperator =
       !isOwner &&
       lifecycleAction === "delete_pristine_draft" &&
-      await this.hasGlobalContractDirector(this.prisma, actorUserId);
+      await this.hasGlobalContractDraftCleanupRole(this.prisma, actorUserId);
     const canExecuteLifecycleAction =
-      Boolean(lifecycleAction) && (isOwner || isDirectorProxyCleanup);
+      Boolean(lifecycleAction) && (isOwner || isGlobalDraftCleanupOperator);
     const lifecycleDisabledReasons = lifecycleAction && !canExecuteLifecycleAction
       ? ["只有当前合同经办人可以结束该草稿"]
       : [];
@@ -403,8 +403,8 @@ export class ContractWorkbenchService {
           enabled: canExecuteLifecycleAction,
           disabledReason: lifecycleDisabledReasons.length ? lifecycleDisabledReasons.join("；") : null,
           requiresComment:
-            lifecycleAction === "abandon_application" || isDirectorProxyCleanup,
-          requiresPassword: isDirectorProxyCleanup
+            lifecycleAction === "abandon_application",
+          requiresPassword: false
         }] : []),
         ...(remainderAction ? [remainderAction] : [])
       ],
@@ -1991,7 +1991,7 @@ export class ContractWorkbenchService {
   ) {
     if (
       ownerUserId !== actorUserId &&
-      !(await this.hasGlobalContractDirector(client, actorUserId))
+      !(await this.hasGlobalContractDraftCleanupRole(client, actorUserId))
     ) {
       throw new ForbiddenException("当前账号无权查看该合同草稿");
     }
@@ -2010,6 +2010,23 @@ export class ContractWorkbenchService {
       where: { id: { in: userPositions.map((row) => row.positionId) } }
     });
     return positions.some((position) => position.key === "contract_director");
+  }
+
+  private async hasGlobalContractDraftCleanupRole(
+    client: Pick<PrismaService, "userPosition" | "position">,
+    actorUserId: string
+  ) {
+    if (!client.userPosition || !client.position) return false;
+    const userPositions = await client.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null }
+    });
+    if (!userPositions.length) return false;
+    const positions = await client.position.findMany({
+      where: { id: { in: userPositions.map((row) => row.positionId) } }
+    });
+    return positions.some((position) =>
+      ["contract_director", "super_admin"].includes(position.key)
+    );
   }
 
   private async assertGlobalContractDirector(

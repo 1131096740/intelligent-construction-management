@@ -8,6 +8,7 @@ import { GLOBAL_BUSINESS_ROLE_KEYS, RoleKey } from "./roles";
  */
 export const BUSINESS_ACTIONS = [
   "contract.create",
+  "contract.draft.delete",
   "contract.submit",
   "contract.approve",
   "contract.seal",
@@ -121,6 +122,7 @@ export const FINAL_APPROVAL_ROLES: readonly RoleKey[] = [
  */
 export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> = {
   "contract.create": ["contract_staff", "contract_director"],
+  "contract.draft.delete": ["contract_staff", "contract_director"],
   "contract.submit": ["contract_staff", "contract_director"],
   "contract.approve": [
     "budget_director",

@@ -4,6 +4,18 @@ import type {
   ContractLifecycleCapabilities,
   ContractLifecycleStage
 } from "@jiangkong/shared-domain";
+import type {
+  ContractVersionStatus,
+  DraftLedgerView
+} from "@jiangkong/shared-domain";
+
+export type ContractDraftLifecycleStatus =
+  | ContractVersionStatus
+  | "approved"
+  | "sealed_pending_archive"
+  | "abandoned"
+  | "final_rejected"
+  | "deleting";
 
 export type ContractDraftLifecycleAction =
   | "delete_pristine_draft"
@@ -12,7 +24,7 @@ export type ContractDraftLifecycleAction =
 export interface ContractDraftLifecycleFacts {
   changeType: string;
   versionNo: number;
-  status: string;
+  status: ContractDraftLifecycleStatus;
   firstSubmittedAt: Date | null;
   approvalInstanceCount: number;
   approvalActionCount: number;
@@ -89,6 +101,37 @@ const PERMANENT_FORMAL_STATUSES = new Set([
   "voided"
 ]);
 
+const CONTRACT_DRAFT_LIFECYCLE_STATUSES = new Set<ContractDraftLifecycleStatus>([
+  "draft",
+  "in_approval",
+  "approval_rejected",
+  "approved",
+  "approved_pending_seal",
+  "in_seal",
+  "seal_approved_pending_archive",
+  "sealed_pending_archive",
+  "pending_archive_confirm",
+  "effective",
+  "superseded",
+  "voided",
+  "abandoned",
+  "final_rejected",
+  "deleting"
+]);
+
+export function parseContractDraftLifecycleStatus(
+  status: string
+): ContractDraftLifecycleStatus {
+  if (CONTRACT_DRAFT_LIFECYCLE_STATUSES.has(status as ContractDraftLifecycleStatus)) {
+    return status as ContractDraftLifecycleStatus;
+  }
+  throw new ConflictException({
+    statusCode: 409,
+    code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION",
+    message: "合同生命周期状态未知，拒绝继续分类"
+  });
+}
+
 const LIFECYCLE_CAPABILITIES: Record<
   ContractLifecycleStage,
   ContractLifecycleCapabilities
@@ -157,8 +200,8 @@ export async function loadContractDraftLifecycle(
   client: ContractDraftLifecycleClient,
   version: Pick<
     ContractDraftLifecycleFacts,
-    "changeType" | "versionNo" | "status" | "firstSubmittedAt"
-  > & { id: string }
+    "changeType" | "versionNo" | "firstSubmittedAt"
+  > & { id: string; status: string }
 ) {
   const approvalInstances = await client.approvalInstance.findMany({
     where: {
@@ -209,7 +252,7 @@ export async function loadContractDraftLifecycle(
   const facts: ContractDraftLifecycleFacts = {
     changeType: version.changeType,
     versionNo: version.versionNo,
-    status: version.status,
+    status: parseContractDraftLifecycleStatus(version.status),
     firstSubmittedAt: version.firstSubmittedAt,
     approvalInstanceCount: approvalInstances.length,
     approvalActionCount,
@@ -389,6 +432,17 @@ export function classifyContractDraftLifecycle(
   ];
 
   if (
+    (facts.status === "approval_rejected" || ENDED_STATUSES.has(facts.status)) &&
+    !hasApprovalFacts
+  ) {
+    throw new ConflictException({
+      statusCode: 409,
+      code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION",
+      message: "合同结束或退回状态缺少审批事实，拒绝继续分类"
+    });
+  }
+
+  if (
     facts.status === "deleting" &&
     (hasApprovalFacts || hasFormalBusinessFacts || isDerivedVersion)
   ) {
@@ -403,7 +457,7 @@ export function classifyContractDraftLifecycle(
     return {
       contractLifecycleStage: "deleting",
       capabilities: { ...LIFECYCLE_CAPABILITIES.deleting },
-      lifecycleKind: "formal_record",
+      lifecycleKind: "pristine_draft",
       blockers: [],
       expectedAction: null
     };
@@ -475,5 +529,59 @@ export function classifyContractDraftLifecycle(
     lifecycleKind: "formal_record",
     blockers: contextBlockers,
     expectedAction: null
+  };
+}
+
+export function projectContractDraftLifecycleViews<
+  V extends { id: string; status: string; changeType?: string | null }
+>(
+  contract: { ownerUserId: string | null; voidedAt: Date | null },
+  versions: V[],
+  lifecycleByVersion: ReadonlyMap<string, ContractDraftLifecycleClassification>,
+  actorUserId: string
+) {
+  const latest = versions[0];
+  const latestVisible = versions.find(
+    (candidate) => !["abandoned", "deleting"].includes(candidate.status)
+  );
+  const latestFormal = versions.find((candidate) =>
+    candidate.changeType !== "historical_takeover" &&
+    candidate.status !== "voided" &&
+    candidate.status !== "deleting" &&
+    lifecycleByVersion.get(candidate.id)?.contractLifecycleStage ===
+      "protected_formal"
+  );
+  const latestDraftLifecycle = latestVisible
+    ? lifecycleByVersion.get(latestVisible.id)
+    : undefined;
+  const matches: Record<DraftLedgerView, boolean> = {
+    formal_ledger: Boolean(
+      latest && !contract.voidedAt && latest.status !== "voided" && latestFormal
+    ),
+    my_drafts: Boolean(
+      latestVisible?.status === "draft" &&
+      latestDraftLifecycle?.contractLifecycleStage === "unsubmitted_draft" &&
+      contract.ownerUserId === actorUserId
+    ),
+    returned_for_revision: Boolean(
+      latestVisible &&
+      ["draft", "approval_rejected"].includes(latestVisible.status) &&
+      latestDraftLifecycle?.contractLifecycleStage === "returned_editable" &&
+      contract.ownerUserId === actorUserId
+    ),
+    ended: Boolean(
+      latest && (contract.voidedAt || ["abandoned", "voided"].includes(latest.status))
+    )
+  };
+  return {
+    matches,
+    versionByView: {
+      formal_ledger: latestFormal,
+      my_drafts: latestVisible,
+      returned_for_revision: latestVisible,
+      ended: latest && ["abandoned", "voided"].includes(latest.status)
+        ? latest
+        : latestVisible
+    } satisfies Record<DraftLedgerView, V | undefined>
   };
 }
