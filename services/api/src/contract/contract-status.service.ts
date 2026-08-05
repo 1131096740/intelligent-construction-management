@@ -12,7 +12,9 @@ const ALLOWED: Record<ContractVersionStatus, ContractVersionStatus[]> = {
   effective: ["superseded", "voided"],
   // 已替代版本仍是后续版本的直接历史基版；保持终态才能稳定追溯历史引用。
   superseded: [],
-  voided: []
+  voided: [],
+  abandoned: [],
+  deleting: []
 };
 
 @Injectable()

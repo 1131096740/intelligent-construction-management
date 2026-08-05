@@ -123,7 +123,7 @@ describe("contract draft lifecycle classification", () => {
     });
   });
 
-  it.each(["approval_rejected", "abandoned", "final_rejected"] as const)(
+  it.each(["approval_rejected", "abandoned"] as const)(
     "fails closed when %s has no approval evidence",
     (status) => {
       expect(() => classifyContractDraftLifecycle({
@@ -138,7 +138,7 @@ describe("contract draft lifecycle classification", () => {
     }
   );
 
-  it.each(["abandoned", "final_rejected"] as const)(
+  it.each(["abandoned"] as const)(
     "classifies %s as an ended record retained for three calendar months",
     (status) => {
       expect(classifyContractDraftLifecycle({
@@ -182,15 +182,15 @@ describe("contract draft lifecycle classification", () => {
     });
   });
 
-  it("projects a final rejection into the retained-ended ledger view", () => {
+  it("projects an abandoned version into the retained-ended ledger view", () => {
     const classification = classifyContractDraftLifecycle({
       ...pristineFacts,
-      status: "final_rejected",
+      status: "abandoned",
       firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
     });
     const version = {
-      id: "version-final-rejected",
-      status: "final_rejected",
+      id: "version-abandoned",
+      status: "abandoned",
       changeType: "original"
     };
 

@@ -56,7 +56,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         ["unsubmitted_draft", "draft"],
         ["returned_editable", "approval_rejected"],
         ["ended_retained", "abandoned"],
-        ["ended_final_rejected", "final_rejected"],
         ["protected_formal", "effective"]
       ] as const;
       const contractIds = stages.map(([stage]) =>
@@ -144,8 +143,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                     abandonReason: "路由测试结束记录"
                   }
                 : {}),
-              ...(status === "approval_rejected" || status === "abandoned" ||
-              status === "final_rejected"
+              ...(status === "approval_rejected" || status === "abandoned"
                 ? { firstSubmittedAt: new Date() }
                 : {}),
               ...(status === "effective" ? { effectiveAt: new Date() } : {})
@@ -227,7 +225,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const rowByStage = new Map(
           body.rows.map((row) => [row.contractLifecycleStage, row])
         );
-        expect(body.rows).toHaveLength(5);
+        expect(body.rows).toHaveLength(4);
         expect([...rowByStage.keys()].sort()).toEqual([
           "ended_retained",
           "protected_formal",
@@ -238,8 +236,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           "abandoned",
           "approval_rejected",
           "draft",
-          "effective",
-          "final_rejected"
+          "effective"
         ]);
         expect(rowByStage.get("unsubmitted_draft"))
           .toMatchObject({

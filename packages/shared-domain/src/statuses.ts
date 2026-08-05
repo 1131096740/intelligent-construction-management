@@ -8,7 +8,9 @@ export const CONTRACT_VERSION_STATUSES = [
   "pending_archive_confirm",
   "effective",
   "superseded",
-  "voided"
+  "voided",
+  "abandoned",
+  "deleting"
 ] as const;
 
 export type ContractVersionStatus = (typeof CONTRACT_VERSION_STATUSES)[number];

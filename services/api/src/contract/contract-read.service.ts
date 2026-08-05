@@ -2361,7 +2361,6 @@ export class ContractReadService {
       sealed_pending_archive: { label: "待归档确认", tone: "primary" },
       effective: { label: "已生效", tone: "success" },
       abandoned: { label: "已放弃", tone: "default" },
-      final_rejected: { label: "最终驳回", tone: "danger" },
       deleting: { label: "删除处理中", tone: "warning" },
       superseded: { label: "已被新版本替代", tone: "default" },
       voided: { label: "已作废", tone: "danger" }
@@ -2435,7 +2434,6 @@ export class ContractReadService {
       pending_archive_confirm: "合同部主管",
       sealed_pending_archive: "合同部主管",
       effective: "系统归档",
-      final_rejected: "系统归档",
       deleting: "系统清理",
       voided: "系统归档"
     };
@@ -2456,7 +2454,6 @@ export class ContractReadService {
       pending_archive_confirm: "合同部主管确认双方最终版",
       sealed_pending_archive: "主管确认归档",
       effective: "可发起结算",
-      final_rejected: "无",
       deleting: "无",
       voided: "无"
     };

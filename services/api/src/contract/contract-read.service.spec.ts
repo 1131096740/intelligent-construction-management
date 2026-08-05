@@ -2094,7 +2094,7 @@ describe("ContractReadService", () => {
     const version = (contractId: string, id: string, versionNo: number, status: string) => ({
       id, contractId, versionNo, status, amountCents: 100n, amountLimitType: "capped",
       pricingNature: "fixed_total", changeType: versionNo > 1 ? "change" : "original",
-      firstSubmittedAt: ["approval_rejected", "abandoned", "final_rejected"].includes(status)
+      firstSubmittedAt: ["approval_rejected", "abandoned"].includes(status)
         ? now
         : null,
       draftRevision: 3, updatedAt: now,

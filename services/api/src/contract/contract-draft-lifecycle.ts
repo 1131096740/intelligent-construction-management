@@ -14,7 +14,6 @@ export type ContractDraftLifecycleStatus =
   | "approved"
   | "sealed_pending_archive"
   | "abandoned"
-  | "final_rejected"
   | "deleting";
 
 export type ContractDraftLifecycleAction =
@@ -94,8 +93,8 @@ export function assertGenericContractDraftVersion(
   });
 }
 
-const ENDED_STATUSES = new Set(["abandoned", "final_rejected"]);
-const ENDED_LEDGER_STATUSES = new Set(["abandoned", "final_rejected", "voided"]);
+const ENDED_STATUSES = new Set(["abandoned"]);
+const ENDED_LEDGER_STATUSES = new Set(["abandoned", "voided"]);
 const PERMANENT_FORMAL_STATUSES = new Set([
   "effective",
   "superseded",
@@ -116,7 +115,6 @@ const CONTRACT_DRAFT_LIFECYCLE_STATUSES = new Set<ContractDraftLifecycleStatus>(
   "superseded",
   "voided",
   "abandoned",
-  "final_rejected",
   "deleting"
 ]);
 
@@ -543,7 +541,7 @@ export function projectContractDraftLifecycleViews<
 ) {
   const latest = versions[0];
   const latestVisible = versions.find(
-    (candidate) => !["abandoned", "final_rejected", "deleting"].includes(candidate.status)
+    (candidate) => !["abandoned", "deleting"].includes(candidate.status)
   );
   const latestFormal = versions.find((candidate) =>
     candidate.changeType !== "historical_takeover" &&

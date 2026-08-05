@@ -13,9 +13,9 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 118;
+const EXPECTED_MIGRATION_COUNT = 119;
 const TERMINAL_MIGRATION =
-  "20260804031000_contract_takeover_allocation_zero_index";
+  "20260805090000_contract_draft_deleting_status";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
 const GROUPS = [

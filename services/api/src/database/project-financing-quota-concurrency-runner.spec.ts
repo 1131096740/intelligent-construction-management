@@ -43,9 +43,9 @@ describe("project financing quota PostgreSQL runner", () => {
     expect(runner.DATABASE_NAME).toBe(
       "jiangkong_project_financing_quota_concurrency"
     );
-    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(118);
+    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(119);
     expect(runner.CURRENT_TERMINAL_MIGRATION).toBe(
-      "20260804031000_contract_takeover_allocation_zero_index"
+      "20260805090000_contract_draft_deleting_status"
     );
     expect(runner.PRE115_MIGRATION_COUNT).toBe(114);
     expect(runner.PRE115_TERMINAL_MIGRATION).toBe(
