@@ -143,7 +143,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                     abandonReason: "路由测试结束记录"
                   }
                 : {}),
-              ...(status === "approval_rejected"
+              ...(status === "approval_rejected" || status === "abandoned"
                 ? { firstSubmittedAt: new Date() }
                 : {}),
               ...(status === "effective" ? { effectiveAt: new Date() } : {})
