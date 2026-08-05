@@ -99,10 +99,6 @@ describe("contract draft lifecycle classification", () => {
     { firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z") },
     { approvalInstanceCount: 1 },
     { approvalActionCount: 1 },
-    {
-      status: "approval_rejected" as const,
-      firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
-    }
   ] as const)("classifies returned or withdrawn applications as editable", (overrides) => {
     expect(classifyContractDraftLifecycle({
       ...pristineFacts,
@@ -119,6 +115,27 @@ describe("contract draft lifecycle classification", () => {
         canPhysicallyDelete: false,
         canDownload: true,
         historyRetention: "none"
+      }
+    });
+  });
+
+  it("classifies a final approval rejection as an ended retained record", () => {
+    expect(classifyContractDraftLifecycle({
+      ...pristineFacts,
+      status: "approval_rejected",
+      firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
+    })).toMatchObject({
+      contractLifecycleStage: "ended_retained",
+      lifecycleKind: "approval_draft",
+      expectedAction: null,
+      capabilities: {
+        canView: true,
+        canEdit: false,
+        canSubmit: false,
+        canAbandon: false,
+        canPhysicallyDelete: false,
+        canDownload: true,
+        historyRetention: "three_calendar_months"
       }
     });
   });
@@ -208,6 +225,49 @@ describe("contract draft lifecycle classification", () => {
       ended: true
     });
     expect(views.versionByView.ended).toBe(version);
+  });
+
+  it("keeps a voided contract root in only the ended view", () => {
+    const classification = classifyContractDraftLifecycle(pristineFacts);
+    const version = {
+      id: "version-voided-root",
+      status: "draft",
+      changeType: "original"
+    };
+
+    const views = projectContractDraftLifecycleViews(
+      { ownerUserId: "owner-1", voidedAt: new Date("2026-07-30T01:00:00.000Z") },
+      [version],
+      new Map([[version.id, classification]]),
+      "owner-1"
+    );
+
+    expect(views.matches).toEqual({
+      formal_ledger: false,
+      my_drafts: false,
+      returned_for_revision: false,
+      ended: true
+    });
+    expect(views.versionByView.ended).toBe(version);
+  });
+
+  it("recognizes a legacy never-submitted delete as an isolated cleanup candidate", () => {
+    expect(classifyContractDraftLifecycle({
+      ...pristineFacts,
+      status: "abandoned",
+      abandonedAt: new Date("2026-07-30T01:00:00.000Z"),
+      abandonedByUserId: "owner-1",
+      abandonReason: null
+    })).toMatchObject({
+      contractLifecycleStage: "deleting",
+      lifecycleKind: "pristine_draft",
+      expectedAction: null,
+      capabilities: expect.objectContaining({
+        canView: false,
+        canEdit: false,
+        canPhysicallyDelete: false
+      })
+    });
   });
 
   it.each([

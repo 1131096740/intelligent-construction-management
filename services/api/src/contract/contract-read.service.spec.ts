@@ -642,6 +642,17 @@ describe("ContractReadService", () => {
       },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-abandoned",
+            contractId: "contract-1",
+            versionNo: 2,
+            status: "abandoned",
+            firstSubmittedAt: new Date(),
+            abandonedAt: new Date(),
+            abandonedByUserId: "owner-1",
+            abandonReason: "不再继续",
+            amountCents: 100n
+          },
           { id: "version-effective", contractId: "contract-1", versionNo: 1, status: "effective", amountCents: 100n }
         ])
       },
@@ -2086,7 +2097,7 @@ describe("ContractReadService", () => {
     const contracts = [
       { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "变更后合同", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
       { id: "c2", projectId: "p1", code: null, temporaryCode: "CG-2", name: "纯草稿", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
-      { id: "c3", projectId: "p1", code: "HT-3", temporaryCode: null, name: "退回合同", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
+      { id: "c3", projectId: "p1", code: "HT-3", temporaryCode: null, name: "驳回合同", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
       { id: "c4", projectId: "p1", code: "HT-4", temporaryCode: null, name: "作废合同", counterparty: "乙方", ownerUserId: "u2", voidedAt: now, updatedAt: now },
       { id: "c5", projectId: "p1", code: null, temporaryCode: "CG-5", name: "删除的纯草稿", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now },
       { id: "c6", projectId: "p1", code: "HT-6", temporaryCode: null, name: "作废版本之上的放弃变更", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now }
@@ -2119,7 +2130,7 @@ describe("ContractReadService", () => {
     const service = new ContractReadService(prisma as never);
 
     const ended = await service.lifecycleLedger("ended", 1, 10, ["p1"], "u1");
-    expect(ended.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 1, ended: 4 });
+    expect(ended.summary).toEqual({ formal_ledger: 1, my_drafts: 1, returned_for_revision: 0, ended: 5 });
     expect(ended.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ contractVersionId: "c1-v2", lifecycleKind: "approval_draft", abandonReason: "不再继续" }),
       expect.objectContaining({ contractVersionId: "c4-v1", lifecycleKind: "formal_record" }),
@@ -2172,11 +2183,112 @@ describe("ContractReadService", () => {
     const pendingArchive = await service.workbenchLedger("pending_archive", 1, 20, ["p1"], "u1");
 
     expect(pendingArchive.summary).toEqual({
-      pending_action: 2, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 6
+      pending_action: 1, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 6
     });
     expect(pendingArchive.rows).toEqual([
       expect.objectContaining({ contractVersionId: "c4-v1", contractNo: "HT-4", currentNode: "合同部主管确认双方最终版" })
     ]);
+  });
+
+  it("selects the latest active version for an effective workbench view", async () => {
+    const now = new Date("2026-08-01T01:00:00.000Z");
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-1",
+          temporaryCode: null,
+          name: "有效版本合同",
+          counterparty: "乙方",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          updatedAt: now
+        }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-abandoned",
+            contractId: "contract-1",
+            versionNo: 2,
+            status: "abandoned",
+            changeType: "change",
+            firstSubmittedAt: now,
+            abandonedAt: now,
+            abandonedByUserId: "owner-1",
+            abandonReason: "放弃变更",
+            amountCents: 200n,
+            updatedAt: now
+          },
+          {
+            id: "version-effective",
+            contractId: "contract-1",
+            versionNo: 1,
+            status: "effective",
+            changeType: "original",
+            firstSubmittedAt: null,
+            abandonedAt: null,
+            abandonedByUserId: null,
+            abandonReason: null,
+            amountCents: 100n,
+            updatedAt: now
+          }
+        ])
+      },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }]) }
+    };
+    const service = new ContractReadService(prisma as never);
+
+    const result = await service.workbenchLedger("effective", 1, 20, ["project-1"], "owner-1");
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({ contractVersionId: "version-effective", version: "v1" })
+    ]);
+  });
+
+  it("does not expose an unsubmitted draft to another project-scoped reader", async () => {
+    const now = new Date("2026-08-01T01:00:00.000Z");
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "contract-1",
+          projectId: "project-1",
+          code: null,
+          temporaryCode: "CG-1",
+          name: "私有草稿",
+          counterparty: "乙方",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          updatedAt: now
+        }])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "version-draft",
+          contractId: "contract-1",
+          versionNo: 1,
+          status: "draft",
+          changeType: "original",
+          firstSubmittedAt: null,
+          amountCents: 100n,
+          updatedAt: now
+        }])
+      },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }]) }
+    };
+    const service = new ContractReadService(prisma as never, {
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(
+        new Map([["project-1", ["project_manager"]]])
+      )
+    } as never);
+
+    const result = await service.workbenchLedger("all", 1, 20, ["project-1"], "intruder-1");
+
+    expect(result.rows).toEqual([]);
+    expect(result.summary.all).toBe(0);
   });
 
   it("batch-projects one exact-version lifecycle classification into both contract ledgers", async () => {

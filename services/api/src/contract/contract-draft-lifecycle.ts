@@ -37,6 +37,10 @@ export interface ContractDraftLifecycleFacts {
   archiveFileCount: number;
   settlementCount: number;
   paymentRequestCount: number;
+  /** Present only when the persisted row carries a terminal cleanup fact. */
+  abandonedAt?: Date | null;
+  abandonedByUserId?: string | null;
+  abandonReason?: string | null;
 }
 
 export interface ContractDraftLifecycleClassification {
@@ -93,8 +97,7 @@ export function assertGenericContractDraftVersion(
   });
 }
 
-const ENDED_STATUSES = new Set(["abandoned"]);
-const ENDED_LEDGER_STATUSES = new Set(["abandoned", "voided"]);
+const ENDED_STATUSES = new Set(["approval_rejected", "abandoned"]);
 const PERMANENT_FORMAL_STATUSES = new Set([
   "effective",
   "superseded",
@@ -199,7 +202,12 @@ export async function loadContractDraftLifecycle(
   client: ContractDraftLifecycleClient,
   version: Pick<
     ContractDraftLifecycleFacts,
-    "changeType" | "versionNo" | "firstSubmittedAt"
+    | "changeType"
+    | "versionNo"
+    | "firstSubmittedAt"
+    | "abandonedAt"
+    | "abandonedByUserId"
+    | "abandonReason"
   > & { id: string; status: string }
 ) {
   const approvalInstances = await client.approvalInstance.findMany({
@@ -271,7 +279,10 @@ export async function loadContractDraftLifecycle(
     ).length,
     archiveFileCount,
     settlementCount,
-    paymentRequestCount
+    paymentRequestCount,
+    abandonedAt: version.abandonedAt ?? null,
+    abandonedByUserId: version.abandonedByUserId ?? null,
+    abandonReason: version.abandonReason ?? null
   };
   return {
     facts,
@@ -401,6 +412,12 @@ export function classifyContractDraftLifecycle(
     Boolean(facts.firstSubmittedAt) ||
     facts.approvalInstanceCount > 0 ||
     facts.approvalActionCount > 0;
+  const legacyDeleteAuthorized =
+    facts.status === "abandoned" &&
+    !hasApprovalFacts &&
+    Boolean(facts.abandonedAt) &&
+    Boolean(facts.abandonedByUserId) &&
+    facts.abandonReason == null;
   const formalBlockers = [
     ...(facts.activeSignedFormalFileCount > 0 ? ["存在正式合同文件"] : []),
     ...(facts.activeSealTaskCount > 0 ? ["存在用印记录"] : []),
@@ -431,8 +448,9 @@ export function classifyContractDraftLifecycle(
   ];
 
   if (
-    (facts.status === "approval_rejected" || ENDED_STATUSES.has(facts.status)) &&
-    !hasApprovalFacts
+    (facts.status === "approval_rejected" || facts.status === "abandoned") &&
+    !hasApprovalFacts &&
+    !legacyDeleteAuthorized
   ) {
     throw new ConflictException({
       statusCode: 409,
@@ -453,6 +471,16 @@ export function classifyContractDraftLifecycle(
   }
 
   if (facts.status === "deleting") {
+    return {
+      contractLifecycleStage: "deleting",
+      capabilities: { ...LIFECYCLE_CAPABILITIES.deleting },
+      lifecycleKind: "pristine_draft",
+      blockers: [],
+      expectedAction: null
+    };
+  }
+
+  if (legacyDeleteAuthorized) {
     return {
       contractLifecycleStage: "deleting",
       capabilities: { ...LIFECYCLE_CAPABILITIES.deleting },
@@ -496,8 +524,7 @@ export function classifyContractDraftLifecycle(
   }
 
   const isReturnedEditable =
-    facts.status === "approval_rejected" ||
-    (facts.status === "draft" && (hasApprovalFacts || isDerivedVersion));
+    facts.status === "draft" && (hasApprovalFacts || isDerivedVersion);
   if (isReturnedEditable) {
     return {
       contractLifecycleStage: "returned_editable",
@@ -540,8 +567,11 @@ export function projectContractDraftLifecycleViews<
   actorUserId: string
 ) {
   const latest = versions[0];
-  const latestVisible = versions.find(
-    (candidate) => !["abandoned", "deleting"].includes(candidate.status)
+  const latestClassification = latest
+    ? lifecycleByVersion.get(latest.id)
+    : undefined;
+  const latestVisible = versions.find((candidate) =>
+    lifecycleByVersion.get(candidate.id)?.contractLifecycleStage !== "deleting"
   );
   const latestFormal = versions.find((candidate) =>
     candidate.changeType !== "historical_takeover" &&
@@ -554,22 +584,26 @@ export function projectContractDraftLifecycleViews<
     ? lifecycleByVersion.get(latestVisible.id)
     : undefined;
   const matches: Record<DraftLedgerView, boolean> = {
-    formal_ledger: Boolean(
-      latest && !contract.voidedAt && latest.status !== "voided" && latestFormal
-    ),
+    formal_ledger: Boolean(latest && !contract.voidedAt && latestFormal),
     my_drafts: Boolean(
+      !contract.voidedAt &&
       latestVisible?.status === "draft" &&
       latestDraftLifecycle?.contractLifecycleStage === "unsubmitted_draft" &&
       contract.ownerUserId === actorUserId
     ),
     returned_for_revision: Boolean(
+      !contract.voidedAt &&
       latestVisible &&
-      ["draft", "approval_rejected"].includes(latestVisible.status) &&
+      latestVisible.status === "draft" &&
       latestDraftLifecycle?.contractLifecycleStage === "returned_editable" &&
       contract.ownerUserId === actorUserId
     ),
     ended: Boolean(
-      latest && (contract.voidedAt || ENDED_LEDGER_STATUSES.has(latest.status))
+      latest && (
+        contract.voidedAt ||
+        latestClassification?.contractLifecycleStage === "ended_retained" ||
+        latest.status === "voided"
+      )
     )
   };
   return {
@@ -578,9 +612,11 @@ export function projectContractDraftLifecycleViews<
       formal_ledger: latestFormal,
       my_drafts: latestVisible,
       returned_for_revision: latestVisible,
-      ended: latest && ENDED_LEDGER_STATUSES.has(latest.status)
+      ended: contract.voidedAt || latestClassification?.contractLifecycleStage === "ended_retained"
         ? latest
-        : latestVisible
+        : latest?.status === "voided"
+          ? latest
+          : undefined
     } satisfies Record<DraftLedgerView, V | undefined>
   };
 }

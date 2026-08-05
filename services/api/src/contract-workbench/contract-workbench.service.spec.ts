@@ -2992,7 +2992,7 @@ describe("ContractWorkbenchService", () => {
     const version = {
       id: "version-2",
       contractId: "contract-1",
-      status: "approval_rejected",
+      status: "draft",
       draftRevision: 4,
       firstSubmittedAt: new Date("2026-08-01T01:00:00.000Z"),
       changeType: "change",
