@@ -2,11 +2,11 @@
 
 建工智管是企业级建筑项目经营管理系统。
 
-Phase 1 MVP 聚焦审批、合同、结算、付款、用印、归档、PDF 与审计的核心闭环。当前试运行边界已收敛为“1 个真实项目 + 约 20 个已签在执行历史合同接管 + 3-5 个活跃合同跑后续结算/付款闭环”，并已补齐真实常用单据 P0-7（项目付款审批表 PDF、结算附件模板、差旅/招待/报销最小综合费用付款闭环）。详见 [历史合同接管与单项目试运行设计](docs/superpowers/specs/2026-07-03-historical-contract-takeover-trial-run-design.md)。
+Phase 1 MVP 聚焦审批、合同、结算、付款、用印、归档、PDF 与审计的核心闭环。系统当前处于生产运行与上线后治理阶段，发布结论为 [Conditional Go](docs/progress/2026-08-05-go-live-conditional-go.md)：同机隔离部署、回滚和再部署已验证，整机故障与跨主机接管仍是已知残余风险。
 
-当前工程约束与业务边界以 [AGENTS.md](AGENTS.md) 和 [PROGRESS.md](PROGRESS.md) 为准，产品与架构设计以 Obsidian 文档 `obsidian-current/建工智管_第一阶段MVP_产品与架构设计.md` 为当前来源。
+当前工程约束与业务边界以 [AGENTS.md](AGENTS.md) 和 [PROGRESS.md](PROGRESS.md) 为准；开发入口见 [CONTEXT-MAP.md](CONTEXT-MAP.md)，文档分类与默认阅读顺序见 [docs/README.md](docs/README.md)。产品与架构设计以 Obsidian 文档 `obsidian-current/建工智管_第一阶段MVP_产品与架构设计.md` 为当前来源。
 
-当前状态报告见 [建工智管_项目状态报告_20260715](obsidian-current/建工智管_项目状态报告_20260715.md)，文档的当前/历史边界见 [建工智管_文档有效性索引](obsidian-current/建工智管_文档有效性索引.md)。状态判断必须同时核对仓库实现、测试、迁移、发布和生产证据，不能只引用进度摘要。
+当前状态以 [上线 Conditional Go 收据](docs/progress/2026-08-05-go-live-conditional-go.md) 为最新快照，文档的当前/历史边界见 [建工智管_文档有效性索引](obsidian-current/建工智管_文档有效性索引.md)。状态判断必须同时核对仓库实现、测试、迁移、发布和生产证据，不能只引用进度摘要。
 
 前端改造方向以 [企业流程系统前端改造方案](docs/design/建工智管_企业流程系统前端改造方案_20260707.md) 为准；Web 管理端继续使用 Vue 3、TypeScript、TDesign 和 Vite，不引入第二套 UI 组件库。项目级 Design Token 已落地到 `apps/web-admin/src/app/design-tokens.css`，P0/P1 样板与响应式治理已形成待发布候选。Gitee/GitHub 开源后台只作为权限治理、流程待办、密集表单、模板治理和工程纪律参考，不迁移底座，不引入 Flowable 或低代码运行时。
 

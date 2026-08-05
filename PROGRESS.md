@@ -1,6 +1,6 @@
 # 建工智管 - 进度记录 (PROGRESS)
 
-> 本文件是项目的**唯一进度真相**：AGENTS.md / CLAUDE.md 写规则与边界，本文件写当前做到哪、下一步做什么。
+> 本文件是项目的**唯一进度登记入口**：`AGENTS.md` 写规则与边界，本文件写当前做到哪、下一步做什么。
 >
 > 协同纪律：CodeX 和 Claude 每完成一个子任务，必须更新本文件并随代码一起 commit。接手开发第一件事仍然是读本文件。
 >
@@ -11,6 +11,10 @@
 ---
 
 ## 快速结论（更新至 2026-08-05）
+
+- [x] 2026-08-05 上线修复候选 `733ddb8192b95d11043c67da8b6e3965ec784680` 已通过精确 SHA CI、PostgreSQL 16、四类 `--require-ready`、RC-06 隔离业务长链、Chromium/WebKit 真实岗位浏览器门、生产只读健康与备份核验，并通过同机 `127.0.0.1` 隔离槽位的部署 -> 回滚 -> 再部署演练；PR 合并提交为 `308c47b51c368a4573c9857411e59a872e1e5062`，生产运行目标仍绑定候选 SHA。负责人接受当前单机部署限制，将 RC-09/阶段 F 在“同机隔离回滚”范围内判定通过；整机故障、跨主机接管和 DNS/网络故障转移未演练，作为已知残余风险保留，最终结论为 **Conditional Go**。演练未修改正式生产业务数据。完整收据见 `docs/progress/2026-08-05-go-live-conditional-go.md`。
+
+> 下列上线候选推进记录保留为过程历史，其“尚未 push/部署”或“仍待门禁”等停止点均已被上述最终收据取代；下一轮文档压缩会将详细过程移入 `docs/progress/`。
 
 - [~] 2026-08-05 上线修复阻断已完成本地修复并进入新候选收口：先以失败测试复现并修复合同接管确认后的结算方式快照、过期迁移断言、seed 文件完整性快照与零星采购 PostgreSQL 并发验收夹具；同时修正金额门临时资金来源类型、实际付款锁顺序观测、资金服务装配、ProjectOwnerContract 新完整性约束夹具及现金不足固定中文断言。定向 API 147/147、shared-domain 149/149、API 全量 251 套 4,751/4,751（15 套/38 项条件跳过）、Web 139 文件 1,248/1,248、整仓 typecheck/lint、API/Web build、Prisma validate/generate、UI 规则检查均通过；金额精度门与 Spot 采购 PostgreSQL 16 全量并发门通过，后者覆盖付款竞争、余额隔离、幂等、凭证唯一、项目资金串行、现金不足零写、收货文件竞态、票据账本及原始 P2034。当前仅为本地候选分支，尚未 push、合并、部署或写入生产；仍需提交新精确 SHA 后重新绑定 CI、PG16、require-ready、RC-06、RC-09 和阶段 F 证据，并等待该精确 SHA 的生产操作授权。
 
@@ -402,6 +406,10 @@
 - [ ] 当前不进入本轮 P0：历史合同逐份 AI/OCR 自动识别、历史合同重走审批、开票、考勤、人事、安全。
 
 ## 当前下一步
+
+- [~] 完成仓库控制面与文档收敛：根工作区保持 `main`，活跃功能使用独立 worktree；历史会话归档；`PROGRESS.md` 的详细历史拆入 `docs/progress/`。本轮只治理协作与文档，不扩大产品范围。
+- [ ] 在独立功能会话继续“已删除草稿生命周期”需求：先固化业务规格和 COS/数据库清理边界，再拆 blocking tickets；未经单独授权不得修改生产业务数据或 COS 对象。
+- [ ] 继续生产观察和业务签认：合同母版逐页验收、真实业务附件上传/下载、首批真实合同/结算/付款闭环。Conditional Go 不等于跨主机灾备已验证。
 
 - [x] 2026-07-21 域名唯一入口已在第二个单独授权窗口完成：实际加载的 /etc/nginx/sites-enabled/jiangkong 已由 root-only 备份 /root/jiangkong-domain-boundary/20260721T065928Z 保护后替换，Nginx syntax test、reload、前后 SHA-256 校验、域名/API/安全头验收和近期日志核验全部通过。http://jgzg.site、原始 IP HTTP 和 www HTTPS 均固定跳转至 https://jgzg.site；规范域名首页和 health 为 200，未登录 projects 为 401；忽略证书告警的原始 IP HTTPS 与未知 TLS Host 均以 HTTP 000 拒绝，不返回业务内容。完整收据见 docs/progress/2026-07-21-domain-unique-entry.md；首次操作未生效 sites-available 文件后立即回滚的过程见 docs/progress/2026-07-21-domain-unique-entry-rollout-attempt.md。证书续期继续使用 DNS-01 manual hooks，未改 UFW/安全组、应用、数据库或业务数据。
 - [x] 2026-07-21 单人运维 Cockpit 已在独立授权窗口完成：Ubuntu noble-backports `cockpit 360-1~bpo24.04.1` 仅监听 `127.0.0.1:9090`，外网 `:9090` 最终 curl exit `28` / HTTP `000`，UFW 无 9090 入站规则且未改云安全组。管理员已通过 SSH 隧道以 `jgzg-ops` 登录；`root` 与 `ubuntu` 被禁止登录 Cockpit，`jgzg-ops` 无 SSH 公钥、无通用 sudo，仅可读取日志并执行 API 重启、Nginx 重载、健康检查启动三项固定动作。PostgreSQL 控制和未列出的参数均已验证被拒绝；最终 Nginx/API/PostgreSQL 为 active、API health 正常。完整回执见 docs/progress/2026-07-21-cockpit-local-only.md，日常操作见 docs/superpowers/runbooks/2026-07-21-single-operator-ops.md。
