@@ -53,11 +53,11 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       const contractStaffPositionId = `lifecycle-route-contract-staff-${suffix}`;
       const superAdminPositionId = `lifecycle-route-super-admin-${suffix}`;
       const stages = [
-        ["unsubmitted_draft", "draft"],
-        ["returned_editable", "draft"],
-        ["ended_retained", "abandoned"],
-        ["final_rejected", "approval_rejected"],
-        ["protected_formal", "effective"]
+        ["unsubmitted_draft", "unsubmitted_draft", "draft"],
+        ["returned_editable", "returned_editable", "draft"],
+        ["abandoned_ended", "ended_retained", "abandoned"],
+        ["rejected_ended", "ended_retained", "approval_rejected"],
+        ["protected_formal", "protected_formal", "effective"]
       ] as const;
       const contractIds = stages.map(([stage]) =>
         `lifecycle-route-contract-${stage}-${suffix}`
@@ -113,17 +113,17 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             }
           ]
         });
-        for (const [[stage, status], contractId] of stages.map(
+        for (const [[label, stage, status], contractId] of stages.map(
           (stage, index) => [stage, contractIds[index]] as const
         )) {
           await prisma.contract.create({
             data: {
               id: contractId,
               projectId,
-              name: `合同生命周期 ${stage}`,
+              name: `合同生命周期 ${label}`,
               counterparty: "测试相对方",
               ownerUserId: ownerId,
-              temporaryCode: `TMP-${stage}-${suffix}`
+              temporaryCode: `TMP-${label}-${suffix}`
             }
           });
           await prisma.contractVersion.create({
@@ -229,7 +229,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         expect(body.rows).toHaveLength(5);
         expect([...rowByStage.keys()].sort()).toEqual([
           "ended_retained",
-          "final_rejected",
           "protected_formal",
           "returned_editable",
           "unsubmitted_draft"
@@ -241,6 +240,12 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           "draft",
           "effective"
         ]);
+        expect(
+          body.rows
+            .filter((row) => row.contractLifecycleStage === "ended_retained")
+            .map((row) => row.status)
+            .sort()
+        ).toEqual(["abandoned", "approval_rejected"]);
         expect(rowByStage.get("unsubmitted_draft"))
           .toMatchObject({
             contractLifecycleCapabilities: {
