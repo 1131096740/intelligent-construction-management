@@ -2928,7 +2928,9 @@ export class ContractReadService {
   }
 
   private currentWorkbenchVersion<V extends { status: string }>(versions: V[]): V | undefined {
-    return versions.find((version) => !["abandoned", "deleting", "voided"].includes(version.status));
+    return versions.find((version) => !["deleting", "voided"].includes(version.status)) ??
+      versions.find((version) => version.status !== "deleting") ??
+      versions[0];
   }
 
   private matchesWorkbenchView(
