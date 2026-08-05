@@ -91,7 +91,15 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               amountCents: 100n,
               draftData: {},
               templateSnapshot: {},
-              clauseSnapshot: []
+              clauseSnapshot: [],
+              ...(status === "abandoned"
+                ? {
+                    abandonedAt: new Date(),
+                    abandonedByUserId: ownerId,
+                    abandonReason: "路由测试结束记录"
+                  }
+                : {}),
+              ...(status === "effective" ? { effectiveAt: new Date() } : {})
             }
           });
         }

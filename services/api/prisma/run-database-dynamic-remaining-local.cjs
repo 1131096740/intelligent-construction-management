@@ -341,6 +341,15 @@ async function main(sourceEnv = process.env) {
     const imageId = image.stdout.trim();
     if (!imageId) fail(`本机缺少已缓存镜像 ${IMAGE}`);
 
+    await run(pnpm, ["--filter", "@jiangkong/api", "build"], {
+      env: {
+        PATH: sourceEnv.PATH ?? "",
+        NODE_ENV: "test",
+        CI: "true"
+      },
+      forwardOutput: true
+    });
+
     await run(
       docker,
       [
