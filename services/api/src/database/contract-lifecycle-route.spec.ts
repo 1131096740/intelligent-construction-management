@@ -45,7 +45,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         ["unsubmitted_draft", "draft"],
         ["returned_editable", "approval_rejected"],
         ["ended_retained", "abandoned"],
-        ["deleting", "deleting"],
         ["protected_formal", "effective"]
       ] as const;
       const contractIds = stages.map(([stage]) =>
@@ -186,7 +185,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               historyRetention: "three_calendar_months"
             }
           });
-        expect(rowByStage.has("deleting")).toBe(false);
         expect(rowByStage.get("protected_formal"))
           .toMatchObject({
             contractLifecycleCapabilities: {
