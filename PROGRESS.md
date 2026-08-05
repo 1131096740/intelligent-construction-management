@@ -35,7 +35,7 @@
 ### P0：已删除草稿生命周期
 
 - [x] 合同草稿删除与签署生命周期规格已收敛至 `docs/specs/2026-08-05-contract-draft-deletion-and-signing-lifecycle.md`。
-- [x] GitHub 父 Issue #7 与 13 张子票 #8–#20 已建立，实施顺序和 blocking edges 已冻结；当前仅无 blocker 的 #8 标记为 `ready-for-agent`。
+- [x] GitHub 父 Issue #7 与 13 张子票 #8–#20 已建立，实施顺序和 `Blocked by` 依赖已冻结；当前仅无 blocker 的 #8 标记为 `ready-for-agent`，#9–#20 已移除该标签并须在各自 blocker 关闭后再逐票启用。
 - [x] 规格已区分即时清理、审批型记录保留、数据库聚合、COS 全版本/删除标记及共享文件解除关联等边界。
 - [x] 当前阶段仅提交规格并建立 Issues，未修改业务代码、Schema、迁移、COS 或生产数据。
 - [ ] 实施从 Issue #8 的生命周期分类与能力投影开始，按依赖顺序逐票先写失败测试、再修复、验证和代码审查。
