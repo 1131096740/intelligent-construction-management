@@ -15,7 +15,8 @@ export const CONTRACT_SETTLEMENT_MODE_SOURCES = [
   "rule",
   "contract_director",
   "inherited",
-  "backfill"
+  "backfill",
+  "contract_takeover"
 ] as const;
 
 export type ContractSettlementModeSource =
