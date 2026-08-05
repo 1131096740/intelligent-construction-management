@@ -28,6 +28,9 @@ const {
   SpotProcurementReceiptPdfService
 } = require("../dist/spot-procurement/spot-procurement-receipt-pdf.service");
 const {
+  ProjectFundingAvailabilityService
+} = require("../dist/project-funding/project-funding-availability.service");
+const {
   calculateProjectCashPoolBigInt,
   spotProcurementPaymentToMoneyRequestValue
 } = require("../dist/money/decimal-money");
@@ -85,6 +88,10 @@ function errorText(error) {
     }
   }
   return String(error);
+}
+
+function fixtureFileContentSha256(fileId) {
+  return createHash("sha256").update(fileId).digest("hex");
 }
 
 function isConflictOrP2034(error) {
@@ -377,6 +384,7 @@ function servicesFor(prisma) {
   const audit = new AuditService();
   const balances = new SpotProcurementBalanceService(prisma, audit);
   const closure = new SpotProcurementClosureService(audit);
+  const projectFunding = new ProjectFundingAvailabilityService();
   const pilot = new SpotProcurementPilotService();
   const payment = new SpotProcurementPaymentService(
     prisma,
@@ -394,7 +402,8 @@ function servicesFor(prisma) {
     {
       tryRefreshLatestForBusiness: async () => undefined
     },
-    closure
+    closure,
+    projectFunding
   );
   const receipt = new SpotProcurementReceiptService(
     prisma,
@@ -643,6 +652,7 @@ async function createExecutionVoucher(fileId) {
       originalName: `${fileId}.pdf`,
       mimeType: "application/pdf",
       sizeBytes: 1,
+      contentSha256: fixtureFileContentSha256(fileId),
       uploadedByUserId: FINANCE_USER_ID,
       storageStatus: "active"
     }
@@ -1571,9 +1581,9 @@ async function verifyExecutionRemainingCompetition(
     observerClient: clientB,
     acquireLock: (tx) =>
       tx.$queryRaw(
-        Prisma.sql`SELECT "id" FROM "SpotProcurementVersion" WHERE "id" = ${versionId} FOR UPDATE`
+        Prisma.sql`SELECT "id" FROM "Project" WHERE "id" = ${EXECUTION_PROJECT_ID} FOR UPDATE`
       ),
-    queryNeedle: "SpotProcurementVersion",
+    queryNeedle: "Project",
     start: () => [
       servicesA.payment.recordExecution(
         payment.id,
@@ -1646,9 +1656,9 @@ async function verifyExecutionIdempotencyConcurrency(
     observerClient: clientB,
     acquireLock: (tx) =>
       tx.$queryRaw(
-        Prisma.sql`SELECT "id" FROM "SpotProcurementVersion" WHERE "id" = ${versionId} FOR UPDATE`
+        Prisma.sql`SELECT "id" FROM "Project" WHERE "id" = ${EXECUTION_PROJECT_ID} FOR UPDATE`
       ),
-    queryNeedle: "SpotProcurementVersion",
+    queryNeedle: "Project",
     start: () => [
       servicesA.payment.recordExecution(
         payment.id,
@@ -1799,6 +1809,8 @@ async function createLegacyOwnerContractBinding(
       paymentTermsSummary: "并发验收",
       retentionSummary: "并发验收",
       fileId,
+      documentVersion: 1,
+      fileContentSha256Snapshot: fixtureFileContentSha256(fileId),
       recordedByUserId: FINANCE_USER_ID
     }
   });
@@ -2234,7 +2246,7 @@ async function verifyExecutionCashShortageZeroWrite(servicesA) {
     );
   assert(
     error?.message ===
-      "项目现金不足，当前最多可实际支付 0 分",
+      "项目可用资金不足，当前最多可实际支付 0 分",
     `现金不足必须固定中文阻断，实际 ${errorText(error)}`
   );
   const after = await readExecutionFacts([payment.id]);
@@ -3013,7 +3025,13 @@ async function verifyReceiptCrossColumnFileCompetition() {
       paymentTermsSummary: "验收专用",
       retentionSummary: "验收专用",
       fileId: "spot-receipt-restricted-owner-contract",
+      documentVersion: 1,
+      fileContentSha256Snapshot: hash(
+        buffers.get("spot-receipt-restricted-owner-contract")
+      ),
       recordedByUserId: HANDLER_USER_ID,
+      confirmedByUserId: HANDLER_USER_ID,
+      confirmedAt: new Date("2026-07-02T00:00:00.000Z"),
       status: "effective"
     }
   });

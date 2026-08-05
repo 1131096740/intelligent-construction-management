@@ -2928,7 +2928,14 @@ export class ContractTakeoverService {
       const confirmedAt = new Date();
       await tx.contractVersion.update({
         where: { id: takeover.contractVersionId },
-        data: { status: "effective", effectiveAt: confirmedAt }
+        data: {
+          status: "effective",
+          effectiveAt: confirmedAt,
+          settlementMode: "direct_payment",
+          settlementModeSource: "contract_takeover",
+          settlementModeConfirmedByUserId: actorUserId,
+          settlementModeConfirmedAt: confirmedAt
+        }
       });
       await tx.paymentTermsVersion.update({
         where: { id: takeover.paymentTermsVersionId },

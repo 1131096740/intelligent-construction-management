@@ -10,7 +10,9 @@
 
 ---
 
-## 快速结论（更新至 2026-08-03）
+## 快速结论（更新至 2026-08-05）
+
+- [~] 2026-08-05 上线修复阻断已完成本地修复并进入新候选收口：先以失败测试复现并修复合同接管确认后的结算方式快照、过期迁移断言、seed 文件完整性快照与零星采购 PostgreSQL 并发验收夹具；同时修正金额门临时资金来源类型、实际付款锁顺序观测、资金服务装配、ProjectOwnerContract 新完整性约束夹具及现金不足固定中文断言。定向 API 147/147、shared-domain 149/149、API 全量 251 套 4,751/4,751（15 套/38 项条件跳过）、Web 139 文件 1,248/1,248、整仓 typecheck/lint、API/Web build、Prisma validate/generate、UI 规则检查均通过；金额精度门与 Spot 采购 PostgreSQL 16 全量并发门通过，后者覆盖付款竞争、余额隔离、幂等、凭证唯一、项目资金串行、现金不足零写、收货文件竞态、票据账本及原始 P2034。当前仅为本地候选分支，尚未 push、合并、部署或写入生产；仍需提交新精确 SHA 后重新绑定 CI、PG16、require-ready、RC-06、RC-09 和阶段 F 证据，并等待该精确 SHA 的生产操作授权。
 
 - [x] 2026-08-03 已使用全局 Codex `setup-matt-pocock-skills` 完成仓库级工程技能配置：GitHub Issues 作为任务与 PRD 跟踪器，采用 `needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix` 五态分诊标签，并约定 API、Web Admin、shared-domain 的 multi-context 领域文档布局。配置仅写入 `AGENTS.md` 与 `docs/agents/`；未修改 `CLAUDE.md`，未复制或安装项目内 skills，未创建 `.agents/`、`skills-lock.json`、空 `CONTEXT.md`/`CONTEXT-MAP.md` 或 ADR，也未修改业务代码、Schema、迁移及生产环境。
 

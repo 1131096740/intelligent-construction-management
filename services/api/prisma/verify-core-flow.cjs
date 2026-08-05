@@ -14,6 +14,7 @@ const prisma = new PrismaClient();
 
 // 与 prisma/seed.cjs 中 testPassword 一致；所有 seed 账号同一初始密码。
 const PASSWORD = process.env.SEED_PASSWORD || "Jgzg@2026";
+const PAYMENT_LIQUIDITY_FIXTURE_CENTS = "1100000000";
 const PHONES = {
   contractStaff: coreFlowSeedData.users.contractStaff.phone,
   cashier: coreFlowSeedData.users.cashier.phone,
@@ -262,6 +263,12 @@ async function verifyWrongRoleIsRejected(tokens) {
   const { versionId: contractVersionId } = await seedDisposableContract(codeSuffix, "5000000");
 
   await postJson(
+    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
+    { expectedRevision: 1, settlementMode: "settlement_required" },
+    tokens.contractDirector
+  );
+
+  await postJson(
     `/contracts/${contractVersionId}/approval-submission`,
     {},
     tokens.contractStaff
@@ -415,53 +422,56 @@ async function verifyPhase1WriteLoop(tokens) {
     await configureLocalCanvasSignature(token);
   }
 
+  await prisma.projectReceipt.create({
+    data: {
+      id: require("crypto").randomUUID(),
+      projectId: coreFlowSeedData.project.id,
+      receivedAt: new Date("2026-06-20T00:00:00.000Z"),
+      amountCents: BigInt(PRECISION_SENTINEL_CENTS),
+      payerName: "一期大额金额验收业主",
+      sourceType: "general_contractor_payment",
+      description: "仅用于本地临时库的金额精度哨兵，不经过已退役收款写入口",
+      voucherFileId: coreFlowSeedData.projectReceiptFile.id,
+      recordedByUserId: coreFlowSeedData.users.cashier.id
+    }
+  });
+  await prisma.projectReceipt.create({
+    data: {
+      id: require("crypto").randomUUID(),
+      projectId: coreFlowSeedData.project.id,
+      receivedAt: new Date("2026-06-20T00:01:00.000Z"),
+      amountCents: BigInt(PAYMENT_LIQUIDITY_FIXTURE_CENTS),
+      payerName: "本地闭环资金可用性夹具",
+      sourceType: "general_contractor_payment",
+      description: "仅用于本地临时库覆盖长链分次支付资金占用",
+      voucherFileId: coreFlowSeedData.projectReceiptFile.id,
+      recordedByUserId: coreFlowSeedData.users.cashier.id
+    }
+  });
+
   const beforeReceiptOverview = await readJson(
     `/projects/${coreFlowSeedData.project.id}/operating-funds-overview`,
     tokens.cashier
   );
   assertExactMoneyText(
     beforeReceiptOverview.cash.actualReceiptsCents,
-    String(beforeReceiptOverview.cash.actualReceiptsCents),
-    "project receipts before bigint verification"
-  );
-  const receiptVoucher = await uploadPrivateFile(
-    `SK-P1-${codeSuffix}-precision-voucher.pdf`,
-    tokens.cashier
-  );
-  const precisionReceipt = await postJson(
-    `/projects/${coreFlowSeedData.project.id}/receipts`,
-    {
-      receivedAt: "2026-06-20T00:00:00.000Z",
-      amountCents: PRECISION_SENTINEL_CENTS,
-      payerName: "一期大额金额验收业主",
-      sourceType: "owner_direct_payment",
-      description: "超过 JavaScript 安全整数的本地临时库精度哨兵",
-      voucherFileId: receiptVoucher.id,
-      confirmationPassword: PASSWORD
-    },
-    tokens.cashier
-  );
-  assertExactMoneyText(
-    precisionReceipt.amountCents,
-    PRECISION_SENTINEL_CENTS,
-    "project receipt API"
-  );
-  const afterReceiptOverview = await readJson(
-    `/projects/${coreFlowSeedData.project.id}/operating-funds-overview`,
-    tokens.cashier
-  );
-  const expectedReceipts = (
-    BigInt(beforeReceiptOverview.cash.actualReceiptsCents) + BigInt(PRECISION_SENTINEL_CENTS)
-  ).toString();
-  assertExactMoneyText(
-    afterReceiptOverview.cash.actualReceiptsCents,
-    expectedReceipts,
+    (
+      BigInt(PRECISION_SENTINEL_CENTS) +
+      BigInt(PAYMENT_LIQUIDITY_FIXTURE_CENTS) +
+      80000000n
+    ).toString(),
     "project receipt aggregate API"
   );
 
   // 合同：草稿 → 提交(合同部) → 审批(董事长) → 用章(综合部主管) → 归档上传(合同部) → 归档确认(合同部主管) → 生效
   // 直接通过 Prisma 创建可处置合同行（POST /contracts 已替换为需要已发布模板的工作台接口）。
   const { versionId: contractVersionId, settlementTemplateVersionId } = await seedDisposableContract(codeSuffix);
+
+  await postJson(
+    `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
+    { expectedRevision: 1, settlementMode: "settlement_required" },
+    tokens.contractDirector
+  );
 
   let contractVersion = await postJson(
     `/contracts/${contractVersionId}/approval-submission`,

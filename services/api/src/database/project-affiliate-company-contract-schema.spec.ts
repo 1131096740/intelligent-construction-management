@@ -19,7 +19,7 @@ describe("project affiliate-company offline contract schema", () => {
     const names = readdirSync(migrationsPath)
       .filter((name) => /^\d/u.test(name))
       .sort();
-    expect(names.at(-1)).toBe(migrationName);
+    expect(names).toContain(migrationName);
     expect(migration).toMatch(/\nBEGIN;\n/u);
     expect(migration).toMatch(/COMMIT;\s*$/u);
     expect(migration).not.toMatch(/\b(?:DROP\s+TABLE|TRUNCATE|DELETE\s+FROM)\b/iu);
