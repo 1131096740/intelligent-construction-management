@@ -2119,7 +2119,12 @@ describe("ContractReadService", () => {
     expect(ended.rows).toEqual(expect.arrayContaining([
       expect.objectContaining({ contractVersionId: "c1-v2", lifecycleKind: "approval_draft", abandonReason: "不再继续" }),
       expect.objectContaining({ contractVersionId: "c4-v1", lifecycleKind: "formal_record" }),
-      expect.objectContaining({ contractVersionId: "c5-v1", lifecycleKind: "pristine_draft", copyAvailable: true }),
+      expect.objectContaining({
+        contractVersionId: "c5-v1",
+        contractLifecycleStage: "ended_retained",
+        lifecycleKind: "approval_draft",
+        copyAvailable: true
+      }),
       expect.objectContaining({ contractVersionId: "c6-v2", lifecycleKind: "approval_draft" })
     ]));
     const formal = await service.lifecycleLedger("formal_ledger", 1, 1, ["p1"], "u1");
@@ -2311,6 +2316,11 @@ describe("ContractReadService", () => {
         contractId: "contract-pristine",
         id: "HT-PRISTINE",
         contractVersionId: "version-pristine",
+        contractLifecycleStage: "unsubmitted_draft",
+        contractLifecycleCapabilities: expect.objectContaining({
+          canEdit: true,
+          canPhysicallyDelete: true
+        }),
         lifecycleKind: "pristine_draft",
         lifecycleBlockers: [],
         draftRevision: 4,
@@ -2322,12 +2332,19 @@ describe("ContractReadService", () => {
       }),
       expect.objectContaining({
         contractVersionId: "version-submitted",
+        contractLifecycleStage: "returned_editable",
         lifecycleKind: "approval_draft",
         draftRevision: 7,
         workbenchEditable: true
       }),
       expect.objectContaining({
         contractVersionId: "version-signed",
+        contractLifecycleStage: "protected_formal",
+        contractLifecycleCapabilities: expect.objectContaining({
+          canEdit: false,
+          canPhysicallyDelete: false,
+          historyRetention: "permanent"
+        }),
         lifecycleKind: "formal_record",
         draftRevision: 9,
         workbenchEditable: false
@@ -2508,7 +2525,12 @@ describe("ContractReadService", () => {
       where: { contractVersionId: { in: ["version-takeover"] } },
       select: { contractVersionId: true }
     });
-    expect(detail.lifecycleKind).toBe("approval_draft");
+    expect(detail.contractLifecycleStage).toBe("protected_formal");
+    expect(detail.contractLifecycleCapabilities).toEqual(expect.objectContaining({
+      canEdit: false,
+      canPhysicallyDelete: false
+    }));
+    expect(detail.lifecycleKind).toBe("formal_record");
     expect(detail.availableActions).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "submit_approval" }),
       expect.objectContaining({ key: "delete_pristine_draft" }),

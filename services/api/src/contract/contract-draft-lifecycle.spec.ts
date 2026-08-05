@@ -25,31 +25,45 @@ const pristineFacts: ContractDraftLifecycleFacts = {
 };
 
 describe("contract draft lifecycle classification", () => {
-  it("offers physical draft deletion only when no permanent business evidence exists", () => {
-    expect(classifyContractDraftLifecycle(pristineFacts)).toEqual({
+  it("classifies a never-submitted draft and projects every lifecycle capability", () => {
+    expect(classifyContractDraftLifecycle(pristineFacts)).toMatchObject({
+      contractLifecycleStage: "unsubmitted_draft",
       lifecycleKind: "pristine_draft",
       blockers: [],
-      expectedAction: "delete_pristine_draft"
+      expectedAction: "delete_pristine_draft",
+      capabilities: {
+        canView: true,
+        canEdit: true,
+        canSubmit: true,
+        canAbandon: false,
+        canPhysicallyDelete: true,
+        canDownload: true,
+        historyRetention: "none"
+      }
     });
   });
 
   it.each([
-    ["approvalInstanceCount", "存在审批记录"],
-    ["approvalActionCount", "存在审批记录"],
-    ["formalFileCount", "存在正式合同文件"],
-    ["authorizationCount", "存在授权委托书"],
-    ["authorizationLinkCount", "存在授权委托书"],
-    ["sealTaskCount", "存在用印记录"]
+    ["formalFileCount"],
+    ["signedFormalFileCount"],
+    ["authorizationCount"],
+    ["authorizationLinkCount"],
+    ["sealTaskCount"]
   ] as const)(
-    "requires application abandonment when %s records business evidence",
-    (field, blocker) => {
+    "does not invent a physical-deletion blocker from unsubmitted draft content in %s",
+    (field) => {
       expect(classifyContractDraftLifecycle({
         ...pristineFacts,
         [field]: 1
-      })).toEqual({
-        lifecycleKind: "approval_draft",
-        blockers: [blocker],
-        expectedAction: "abandon_application"
+      })).toMatchObject({
+        contractLifecycleStage: "unsubmitted_draft",
+        lifecycleKind: "pristine_draft",
+        blockers: [],
+        expectedAction: "delete_pristine_draft",
+        capabilities: expect.objectContaining({
+          canEdit: true,
+          canPhysicallyDelete: true
+        })
       });
     }
   );
@@ -61,66 +75,160 @@ describe("contract draft lifecycle classification", () => {
     ["settlementCount", "存在关联结算"],
     ["paymentRequestCount", "存在关联付款"]
   ] as const)(
-    "exposes no draft-ending action when %s proves a formal business record",
+    "permanently protects a version when %s proves formal business use",
     (field, blocker) => {
       expect(classifyContractDraftLifecycle({
         ...pristineFacts,
         [field]: 1
-      })).toEqual({
+      })).toMatchObject({
+        contractLifecycleStage: "protected_formal",
         lifecycleKind: "formal_record",
         blockers: [blocker],
-        expectedAction: null
+        expectedAction: null,
+        capabilities: expect.objectContaining({
+          canEdit: false,
+          canPhysicallyDelete: false,
+          historyRetention: "permanent"
+        })
       });
     }
   );
 
-  it("never reclassifies a successfully submitted version as a pristine draft", () => {
+  it.each([
+    { firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z") },
+    { approvalInstanceCount: 1 },
+    { approvalActionCount: 1 },
+    { status: "approval_rejected" }
+  ])("classifies returned or withdrawn applications as editable", (overrides) => {
     expect(classifyContractDraftLifecycle({
       ...pristineFacts,
-      firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
-    })).toEqual({
+      ...overrides
+    })).toMatchObject({
+      contractLifecycleStage: "returned_editable",
       lifecycleKind: "approval_draft",
-      blockers: ["合同曾进入审批"],
-      expectedAction: "abandon_application"
+      expectedAction: "abandon_application",
+      capabilities: {
+        canView: true,
+        canEdit: true,
+        canSubmit: true,
+        canAbandon: true,
+        canPhysicallyDelete: false,
+        canDownload: true,
+        historyRetention: "none"
+      }
     });
   });
 
-  it("routes a historical takeover draft to its dedicated closure workflow", () => {
+  it.each(["abandoned", "final_rejected"])(
+    "classifies %s as an ended record retained for three calendar months",
+    (status) => {
+      expect(classifyContractDraftLifecycle({
+        ...pristineFacts,
+        status
+      })).toMatchObject({
+        contractLifecycleStage: "ended_retained",
+        lifecycleKind: "approval_draft",
+        expectedAction: null,
+        capabilities: {
+          canView: true,
+          canEdit: false,
+          canSubmit: false,
+          canAbandon: false,
+          canPhysicallyDelete: false,
+          canDownload: true,
+          historyRetention: "three_calendar_months"
+        }
+      });
+    }
+  );
+
+  it("classifies an eligible cleanup transition as deleting and locks every action", () => {
     expect(classifyContractDraftLifecycle({
       ...pristineFacts,
-      changeType: "historical_takeover"
-    })).toEqual({
-      lifecycleKind: "approval_draft",
-      blockers: ["历史接管须使用专用关闭流程"],
-      expectedAction: null
+      status: "deleting"
+    })).toMatchObject({
+      contractLifecycleStage: "deleting",
+      lifecycleKind: "formal_record",
+      expectedAction: null,
+      capabilities: {
+        canView: false,
+        canEdit: false,
+        canSubmit: false,
+        canAbandon: false,
+        canPhysicallyDelete: false,
+        canDownload: false,
+        historyRetention: "none"
+      }
     });
   });
 
   it.each([
-    [{ changeType: "change", versionNo: 2 }, "合同变更或派生版本"],
-    [{ status: "approval_rejected" }, "合同曾进入审批"]
-  ])(
-    "requires application abandonment for editable non-pristine version facts",
-    (overrides, blocker) => {
+    { firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z") },
+    { approvalInstanceCount: 1 },
+    { activeSignedFormalFileCount: 1 },
+    { archiveFileCount: 1 },
+    { changeType: "change", versionNo: 2 }
+  ])("fails every ineligible deleting combination with one stable conflict code", (overrides) => {
+    expect(() => classifyContractDraftLifecycle({
+      ...pristineFacts,
+      status: "deleting",
+      ...overrides
+    })).toThrow(expect.objectContaining({
+      response: expect.objectContaining({
+        statusCode: 409,
+        code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION"
+      })
+    }));
+  });
+
+  it("keeps historical takeover records on their dedicated protected workflow", () => {
+    expect(classifyContractDraftLifecycle({
+      ...pristineFacts,
+      changeType: "historical_takeover"
+    })).toMatchObject({
+      contractLifecycleStage: "protected_formal",
+      lifecycleKind: "formal_record",
+      blockers: ["历史接管须使用专用关闭流程"],
+      expectedAction: null,
+      capabilities: expect.objectContaining({
+        canEdit: false,
+        canPhysicallyDelete: false
+      })
+    });
+  });
+
+  it.each(["in_approval", "approved_pending_seal", "pending_archive_confirm"])(
+    "protects active formal-process status %s without claiming permanent retention",
+    (status) => {
       expect(classifyContractDraftLifecycle({
         ...pristineFacts,
-        ...overrides
-      })).toEqual({
-        lifecycleKind: "approval_draft",
-        blockers: [blocker],
-        expectedAction: "abandon_application"
+        status,
+        firstSubmittedAt: new Date("2026-07-30T01:00:00.000Z")
+      })).toMatchObject({
+        contractLifecycleStage: "protected_formal",
+        expectedAction: null,
+        capabilities: expect.objectContaining({
+          canEdit: false,
+          canPhysicallyDelete: false,
+          historyRetention: "active_process"
+        })
       });
     }
   );
 
-  it("never exposes a draft-ending action for a formal status", () => {
+  it("permanently protects an effective version", () => {
     expect(classifyContractDraftLifecycle({
       ...pristineFacts,
       status: "effective"
-    })).toEqual({
+    })).toMatchObject({
+      contractLifecycleStage: "protected_formal",
       lifecycleKind: "formal_record",
       blockers: ["合同曾进入审批"],
-      expectedAction: null
+      expectedAction: null,
+      capabilities: expect.objectContaining({
+        historyRetention: "permanent",
+        canDownload: true
+      })
     });
   });
 });
@@ -260,7 +368,7 @@ describe("contract draft lifecycle fact loading", () => {
     expect(result.facts.approvalActionCount).toBe(0);
   });
 
-  it("keeps invalidated signed files as abandonment evidence without blocking reapproval", async () => {
+  it("keeps invalidated files as facts without blocking an unsubmitted draft", async () => {
     const client = lifecycleClient();
     client.approvalInstance.findMany.mockResolvedValue([]);
     client.contractFormalFile.findMany.mockResolvedValue([
@@ -290,9 +398,10 @@ describe("contract draft lifecycle fact loading", () => {
       activeSealTaskCount: 0
     });
     expect(result).toMatchObject({
-      lifecycleKind: "approval_draft",
-      blockers: expect.arrayContaining(["存在正式合同文件", "存在用印记录"]),
-      expectedAction: "abandon_application"
+      contractLifecycleStage: "unsubmitted_draft",
+      lifecycleKind: "pristine_draft",
+      blockers: [],
+      expectedAction: "delete_pristine_draft"
     });
   });
 });

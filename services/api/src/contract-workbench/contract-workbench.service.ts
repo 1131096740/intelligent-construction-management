@@ -391,6 +391,8 @@ export class ContractWorkbenchService {
         }
       : null;
     return this.toReadModel({
+      contractLifecycleStage: lifecycle.contractLifecycleStage,
+      contractLifecycleCapabilities: lifecycle.capabilities,
       lifecycleKind: lifecycle.lifecycleKind,
       availableLifecycleActions: lifecycleAction ? [lifecycleAction] : [],
       availableActions: [

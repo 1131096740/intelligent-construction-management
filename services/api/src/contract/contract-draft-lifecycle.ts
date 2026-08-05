@@ -1,5 +1,9 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import type {
+  ContractLifecycleCapabilities,
+  ContractLifecycleStage
+} from "@jiangkong/shared-domain";
 
 export type ContractDraftLifecycleAction =
   | "delete_pristine_draft"
@@ -25,6 +29,8 @@ export interface ContractDraftLifecycleFacts {
 }
 
 export interface ContractDraftLifecycleClassification {
+  contractLifecycleStage: ContractLifecycleStage;
+  capabilities: ContractLifecycleCapabilities;
   lifecycleKind: "pristine_draft" | "approval_draft" | "formal_record";
   blockers: string[];
   expectedAction: ContractDraftLifecycleAction | null;
@@ -76,7 +82,63 @@ export function assertGenericContractDraftVersion(
   });
 }
 
-const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
+const ENDED_STATUSES = new Set(["abandoned", "final_rejected"]);
+const PERMANENT_FORMAL_STATUSES = new Set([
+  "effective",
+  "superseded",
+  "voided"
+]);
+
+const LIFECYCLE_CAPABILITIES: Record<
+  ContractLifecycleStage,
+  ContractLifecycleCapabilities
+> = {
+  unsubmitted_draft: {
+    canView: true,
+    canEdit: true,
+    canSubmit: true,
+    canAbandon: false,
+    canPhysicallyDelete: true,
+    canDownload: true,
+    historyRetention: "none"
+  },
+  returned_editable: {
+    canView: true,
+    canEdit: true,
+    canSubmit: true,
+    canAbandon: true,
+    canPhysicallyDelete: false,
+    canDownload: true,
+    historyRetention: "none"
+  },
+  ended_retained: {
+    canView: true,
+    canEdit: false,
+    canSubmit: false,
+    canAbandon: false,
+    canPhysicallyDelete: false,
+    canDownload: true,
+    historyRetention: "three_calendar_months"
+  },
+  deleting: {
+    canView: false,
+    canEdit: false,
+    canSubmit: false,
+    canAbandon: false,
+    canPhysicallyDelete: false,
+    canDownload: false,
+    historyRetention: "none"
+  },
+  protected_formal: {
+    canView: true,
+    canEdit: false,
+    canSubmit: false,
+    canAbandon: false,
+    canPhysicallyDelete: false,
+    canDownload: true,
+    historyRetention: "active_process"
+  }
+};
 
 type ContractDraftLifecycleClient = Pick<
   Prisma.TransactionClient,
@@ -292,10 +354,23 @@ export function classifyContractDraftLifecycle(
   facts: ContractDraftLifecycleFacts
 ): ContractDraftLifecycleClassification {
   const isHistoricalTakeover = facts.changeType === "historical_takeover";
-  const blockers = [
+  const isDerivedVersion = facts.changeType !== "original" || facts.versionNo !== 1;
+  const hasApprovalFacts =
+    Boolean(facts.firstSubmittedAt) ||
+    facts.approvalInstanceCount > 0 ||
+    facts.approvalActionCount > 0;
+  const formalBlockers = [
+    ...(facts.activeSignedFormalFileCount > 0 ? ["存在正式合同文件"] : []),
+    ...(facts.activeSealTaskCount > 0 ? ["存在用印记录"] : []),
+    ...(facts.archiveFileCount > 0 ? ["存在归档记录"] : []),
+    ...(facts.settlementCount > 0 ? ["存在关联结算"] : []),
+    ...(facts.paymentRequestCount > 0 ? ["存在关联付款"] : [])
+  ];
+  const hasFormalBusinessFacts = formalBlockers.length > 0;
+  const contextBlockers = [
     ...(isHistoricalTakeover
       ? ["历史接管须使用专用关闭流程"]
-      : facts.changeType !== "original" || facts.versionNo !== 1
+      : isDerivedVersion
       ? ["合同变更或派生版本"]
       : []),
     ...(facts.status !== "draft" || Boolean(facts.firstSubmittedAt)
@@ -304,52 +379,101 @@ export function classifyContractDraftLifecycle(
     ...(facts.approvalInstanceCount > 0 || facts.approvalActionCount > 0
       ? ["存在审批记录"]
       : []),
-    ...(
-      facts.formalFileCount > 0 ||
-      facts.signedFormalFileCount > 0 ||
-      facts.activeSignedFormalFileCount > 0
+    ...(facts.formalFileCount > 0 || facts.signedFormalFileCount > 0
       ? ["存在正式合同文件"]
-      : []
-    ),
+      : []),
     ...(facts.authorizationCount > 0 || facts.authorizationLinkCount > 0
       ? ["存在授权委托书"]
       : []),
-    ...(facts.sealTaskCount > 0 || facts.activeSealTaskCount > 0
-      ? ["存在用印记录"]
-      : []),
-    ...(facts.archiveFileCount > 0 ? ["存在归档记录"] : []),
-    ...(facts.settlementCount > 0 ? ["存在关联结算"] : []),
-    ...(facts.paymentRequestCount > 0 ? ["存在关联付款"] : [])
+    ...(facts.sealTaskCount > 0 ? ["存在用印记录"] : [])
   ];
-  const hasFormalBusinessFacts =
-    facts.activeSignedFormalFileCount > 0 ||
-    facts.activeSealTaskCount > 0 ||
-    facts.archiveFileCount > 0 ||
-    facts.settlementCount > 0 ||
-    facts.paymentRequestCount > 0;
-  if (!EDITABLE_STATUSES.has(facts.status) || hasFormalBusinessFacts) {
+
+  if (
+    facts.status === "deleting" &&
+    (hasApprovalFacts || hasFormalBusinessFacts || isDerivedVersion)
+  ) {
+    throw new ConflictException({
+      statusCode: 409,
+      code: "CONTRACT_LIFECYCLE_INVARIANT_VIOLATION",
+      message: "合同生命周期事实冲突，不能进入物理删除中状态"
+    });
+  }
+
+  if (facts.status === "deleting") {
     return {
+      contractLifecycleStage: "deleting",
+      capabilities: { ...LIFECYCLE_CAPABILITIES.deleting },
       lifecycleKind: "formal_record",
-      blockers,
+      blockers: [],
       expectedAction: null
     };
   }
+
   if (isHistoricalTakeover) {
     return {
-      lifecycleKind: "approval_draft",
-      blockers,
+      contractLifecycleStage: "protected_formal",
+      capabilities: { ...LIFECYCLE_CAPABILITIES.protected_formal },
+      lifecycleKind: "formal_record",
+      blockers: contextBlockers,
       expectedAction: null
     };
   }
-  return blockers.length === 0
-    ? {
-        lifecycleKind: "pristine_draft",
-        blockers,
-        expectedAction: "delete_pristine_draft"
-      }
-    : {
-        lifecycleKind: "approval_draft",
-        blockers,
-        expectedAction: "abandon_application"
-      };
+
+  if (hasFormalBusinessFacts) {
+    return {
+      contractLifecycleStage: "protected_formal",
+      capabilities: {
+        ...LIFECYCLE_CAPABILITIES.protected_formal,
+        historyRetention: "permanent"
+      },
+      lifecycleKind: "formal_record",
+      blockers: formalBlockers,
+      expectedAction: null
+    };
+  }
+
+  if (ENDED_STATUSES.has(facts.status)) {
+    return {
+      contractLifecycleStage: "ended_retained",
+      capabilities: { ...LIFECYCLE_CAPABILITIES.ended_retained },
+      lifecycleKind: "approval_draft",
+      blockers: contextBlockers,
+      expectedAction: null
+    };
+  }
+
+  const isReturnedEditable =
+    facts.status === "approval_rejected" ||
+    (facts.status === "draft" && (hasApprovalFacts || isDerivedVersion));
+  if (isReturnedEditable) {
+    return {
+      contractLifecycleStage: "returned_editable",
+      capabilities: { ...LIFECYCLE_CAPABILITIES.returned_editable },
+      lifecycleKind: "approval_draft",
+      blockers: contextBlockers,
+      expectedAction: "abandon_application"
+    };
+  }
+
+  if (facts.status === "draft" && !isDerivedVersion) {
+    return {
+      contractLifecycleStage: "unsubmitted_draft",
+      capabilities: { ...LIFECYCLE_CAPABILITIES.unsubmitted_draft },
+      lifecycleKind: "pristine_draft",
+      blockers: [],
+      expectedAction: "delete_pristine_draft"
+    };
+  }
+
+  const permanentRetention = PERMANENT_FORMAL_STATUSES.has(facts.status);
+  return {
+    contractLifecycleStage: "protected_formal",
+    capabilities: {
+      ...LIFECYCLE_CAPABILITIES.protected_formal,
+      historyRetention: permanentRetention ? "permanent" : "active_process"
+    },
+    lifecycleKind: "formal_record",
+    blockers: contextBlockers,
+    expectedAction: null
+  };
 }

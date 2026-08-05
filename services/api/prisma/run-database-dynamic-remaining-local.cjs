@@ -24,14 +24,15 @@ const GROUPS = [
     database: "jiangkong_contract_draft_aggregate_test",
     files: [
       "src/database/contract-draft-aggregate-concurrency.spec.ts",
-      "src/database/contract-draft-retention-script.spec.ts"
+      "src/database/contract-draft-retention-script.spec.ts",
+      "src/database/contract-lifecycle-route.spec.ts"
     ],
     flags: {
       RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE: "1",
       CONTRACT_DRAFT_AGGREGATE_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 5
+    pendingTests: 6
   },
   {
     id: "project_funding_availability",

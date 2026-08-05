@@ -1,6 +1,10 @@
 import type { MoneyCents } from "./money";
 import type { ContractSettlementMode, ContractSettlementModeSource } from "./contract-settlement-mode";
 import type {
+  ContractLifecycleCapabilities,
+  ContractLifecycleStage
+} from "./contract-lifecycle";
+import type {
   ContractInvoiceType,
   ContractTaxFactSource,
   ContractTaxFactStatus,
@@ -213,6 +217,8 @@ export function contractPricingPolicy(input: {
 }
 
 export interface ContractWorkbenchReadModel {
+  contractLifecycleStage?: ContractLifecycleStage;
+  contractLifecycleCapabilities?: ContractLifecycleCapabilities;
   lifecycleKind?: "pristine_draft" | "approval_draft";
   availableLifecycleActions?: Array<"delete_pristine_draft" | "abandon_application">;
   lifecycleBlockers?: string[];

@@ -550,8 +550,7 @@ export class ContractReadService {
       const facts: ContractDraftLifecycleFacts = {
         changeType: version.changeType ?? "original",
         versionNo: version.versionNo ?? 1,
-        // An ended row retains the lifecycle it had before the controlled close.
-        status: version.status === "abandoned" ? "draft" : version.status,
+        status: version.status,
         firstSubmittedAt: version.firstSubmittedAt ?? null,
         approvalInstanceCount: approvalInstanceCounts.get(version.id) ?? 0,
         approvalActionCount: approvalActionCounts.get(version.id) ?? 0,
@@ -638,6 +637,8 @@ export class ContractReadService {
         projectById.get(contract.projectId),
         {
           contractVersionId: rowVersion.id,
+          contractLifecycleStage: draftLifecycle.contractLifecycleStage,
+          contractLifecycleCapabilities: draftLifecycle.capabilities,
           lifecycleKind: draftLifecycle.lifecycleKind,
           lifecycleBlockers: draftLifecycle.blockers,
           draftRevision: rowVersion.draftRevision,
@@ -772,12 +773,12 @@ export class ContractReadService {
         {
           contractVersionId: version.id,
           status: version.status,
+          contractLifecycleStage: draftLifecycle.contractLifecycleStage,
+          contractLifecycleCapabilities: draftLifecycle.capabilities,
           lifecycleKind: draftLifecycle.lifecycleKind,
           lifecycleBlockers: draftLifecycle.blockers,
           draftRevision: version.draftRevision,
-          workbenchEditable:
-            Boolean(draftLifecycle.expectedAction) &&
-            ["draft", "approval_rejected"].includes(version.status),
+          workbenchEditable: draftLifecycle.capabilities.canEdit,
           copyAvailable: view === "all" && version.status === "abandoned" &&
             version.changeType === "original" && version.versionNo === 1 &&
             contract.ownerUserId === actorUserId,
@@ -1411,6 +1412,8 @@ export class ContractReadService {
         .map((action) => action.key),
       reviewApprovalContext,
       withdrawApprovalContext,
+      contractLifecycleStage: draftLifecycle.contractLifecycleStage,
+      contractLifecycleCapabilities: draftLifecycle.capabilities,
       lifecycleKind: draftLifecycle.lifecycleKind,
       lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
@@ -2916,7 +2919,9 @@ export class ContractReadService {
     ).matches[view]).length;
   }
 
-  private classifyContractLifecycle<V extends { id: string; status: string }>(
+  private classifyContractLifecycle<
+    V extends { id: string; status: string; changeType?: string | null }
+  >(
     contract: { ownerUserId: string | null; voidedAt: Date | null },
     versions: V[],
     lifecycleByVersion: ReadonlyMap<
@@ -2928,11 +2933,13 @@ export class ContractReadService {
     const latest = versions[0];
     const latestNotAbandoned = versions.find((candidate) => candidate.status !== "abandoned");
     const latestFormal = versions.find((candidate) =>
+      candidate.changeType !== "historical_takeover" &&
       (
         !["draft", "approval_rejected", "abandoned", "voided"].includes(
           candidate.status
         ) ||
-        lifecycleByVersion.get(candidate.id)?.lifecycleKind === "formal_record"
+        lifecycleByVersion.get(candidate.id)?.contractLifecycleStage ===
+          "protected_formal"
       ) &&
       !["abandoned", "voided"].includes(candidate.status)
     );
@@ -2945,14 +2952,13 @@ export class ContractReadService {
       ),
       my_drafts: Boolean(
         latestNotAbandoned?.status === "draft" &&
-        latestDraftLifecycle?.lifecycleKind === "pristine_draft" &&
+        latestDraftLifecycle?.contractLifecycleStage === "unsubmitted_draft" &&
         contract.ownerUserId === actorUserId
       ),
       returned_for_revision: Boolean(
         latestNotAbandoned &&
         ["draft", "approval_rejected"].includes(latestNotAbandoned.status) &&
-        latestDraftLifecycle?.lifecycleKind === "approval_draft" &&
-        latestDraftLifecycle.expectedAction === "abandon_application" &&
+        latestDraftLifecycle?.contractLifecycleStage === "returned_editable" &&
         contract.ownerUserId === actorUserId
       ),
       ended: Boolean(
@@ -2985,6 +2991,7 @@ export class ContractReadService {
     pendingVersionIds: ReadonlySet<string>
   ) {
     const { status } = version;
+    if (!draftLifecycle.capabilities.canView) return false;
     if (view === "all") return true;
     if (view === "pending_action") {
       return pendingVersionIds.has(version.id) ||
@@ -2992,7 +2999,7 @@ export class ContractReadService {
     }
     if (view === "my_drafts") {
       return status === "draft" &&
-        draftLifecycle.lifecycleKind === "pristine_draft" &&
+        draftLifecycle.contractLifecycleStage === "unsubmitted_draft" &&
         ownerUserId === actorUserId;
     }
     if (view === "in_approval") return ["in_approval", "approval_pending"].includes(status);

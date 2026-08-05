@@ -1,5 +1,9 @@
 import type { BusinessAction } from "./permissions";
 import type { MoneyCents } from "./money";
+import type {
+  ContractLifecycleCapabilities,
+  ContractLifecycleStage
+} from "./contract-lifecycle";
 
 export const CORE_FLOW_READ_ENDPOINTS = {
   contractDetail: "/contracts/:contractId",
@@ -258,6 +262,8 @@ export interface ContractDetailReadModel {
   availableActionKeys: string[];
   reviewApprovalContext: ContractApprovalReviewContextReadModel | null;
   withdrawApprovalContext: ContractApprovalWithdrawalContextReadModel | null;
+  contractLifecycleStage?: ContractLifecycleStage;
+  contractLifecycleCapabilities?: ContractLifecycleCapabilities;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;
