@@ -107,3 +107,17 @@ Use real business positions, not old generic roles:
 - 项目实时进度以 `PROGRESS.md` 为唯一登记入口；状态结论仍必须与代码、Schema、迁移、测试、Git/部署和生产只读证据交叉核验。
 - 每完成一个子任务，必须在 `PROGRESS.md` 勾选/更新，并随代码一起 commit。
 - 接手开发（CodeX 或 Claude）第一件事：先读 `PROGRESS.md`。
+
+## Agent skills
+
+### Issue tracker
+
+任务、PRD 和分诊事项使用 GitHub Issues 管理。详见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+使用默认五态标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。详见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+采用 multi-context 布局，由根目录 `CONTEXT-MAP.md` 导航 API、Web Admin 与 shared-domain 的领域文档。详见 `docs/agents/domain.md`。
