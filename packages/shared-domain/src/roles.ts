@@ -85,3 +85,63 @@ export const CONTRACT_SETTLEMENT_LEDGER_EXPORT_ROLE_KEYS = [
   "finance_director",
   "comprehensive_director"
 ] as const satisfies readonly RoleKey[];
+
+/**
+ * 全局合同全貌岗位。
+ *
+ * 可查看全部激活项目的合同全貌（正文、金额、条款、清单、附件、版本、
+ * 审批和归档资料）。当前与 {@link GLOBAL_PROJECT_VISIBILITY_ROLE_KEYS}
+ * 一致，但作为独立的读取授权分组存在，避免把「项目可见性」与「合同读取
+ * 授权」耦合在一起。未来新增全局岗位必须在此显式配置，否则默认拒绝。
+ */
+export const CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS = [
+  "chairman",
+  "general_manager",
+  "contract_director",
+  "material_director",
+  "finance_director",
+  "finance_staff",
+  "comprehensive_director",
+  "budget_director",
+  "engineering_department_director",
+  "super_admin"
+] as const satisfies readonly RoleKey[];
+
+/**
+ * 项目范围合同全貌岗位。
+ *
+ * 只在本人激活的项目任职范围内看到合同全貌，不获得任何全局范围。
+ */
+export const CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS = [
+  "contract_staff",
+  "material_staff",
+  "budget_staff",
+  "project_manager",
+  "engineering_department_member",
+  "engineering_director",
+  "engineering_foreman",
+  "engineering_tech"
+] as const satisfies readonly RoleKey[];
+
+/**
+ * 可读取他人未提交草稿的岗位。
+ *
+ * 未提交草稿仅对当前经办人（合同根 owner）、合同部主管与 Super Admin 开放。
+ * 当前经办人在调用侧以 owner 身份单独判断，因此这里只列出全局角色。
+ */
+export const CONTRACT_DRAFT_PRIVATE_READ_ROLES: ReadonlySet<RoleKey> = new Set([
+  "contract_director",
+  "super_admin"
+]);
+
+/**
+ * 合同摘要查看岗位。
+ *
+ * 仅能看到本人任职项目中已归档生效合同的不敏感摘要，摘要字段为
+ * 正式编号、名称、类型、项目、相对方、生效日期与状态；金额、条款、
+ * 清单、正文、文件、版本与审批历史一律不返回。未来新增岗位默认无任何
+ * 合同查看权限，必须在此显式配置后才开放。
+ */
+export const CONTRACT_SUMMARY_VIEW_ROLE_KEYS: readonly RoleKey[] = [
+  "employee"
+] as const satisfies readonly RoleKey[];

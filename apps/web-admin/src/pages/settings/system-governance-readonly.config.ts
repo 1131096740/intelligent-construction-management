@@ -56,7 +56,9 @@ const contractStatusLabels = {
   pending_archive_confirm: "待归档确认",
   effective: "已生效",
   superseded: "已被新版替代",
-  voided: "已作废"
+  voided: "已作废",
+  abandoned: "已放弃",
+  deleting: "删除中"
 } satisfies Record<ContractVersionStatus, string>;
 
 const settlementStatusLabels = {

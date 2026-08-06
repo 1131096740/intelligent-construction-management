@@ -144,10 +144,10 @@ export const contractFilterFields: ContractFilterField[] = [
 ];
 
 export const contractSummaryItems: ContractSummaryItem[] = [
-  { label: "待我办理", value: "0", tone: "warning" },
+  { label: "正式台账", value: "0", tone: "primary" },
   { label: "我的草稿", value: "0", tone: "primary" },
-  { label: "审批中", value: "0", tone: "primary" },
-  { label: "已生效", value: "0", tone: "success" }
+  { label: "退回待修改", value: "0", tone: "warning" },
+  { label: "已结束", value: "0", tone: "default" }
 ];
 
 export const contractLedgerColumns: PrimaryTableCol<ContractLedgerRow>[] = [

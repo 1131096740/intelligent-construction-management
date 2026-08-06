@@ -41,17 +41,17 @@ describe("contract ledger page configuration", () => {
 
   it("keeps the compact summary strip focused on contract states", () => {
     expect(contractSummaryItems.map((item) => item.label)).toEqual([
-      "待我办理",
+      "正式台账",
       "我的草稿",
-      "审批中",
-      "已生效"
+      "退回待修改",
+      "已结束"
     ]);
   });
 
   it("keeps ended contract history readable without exposing the abandoned-draft copy mutation", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("ended: \"all\"");
-    expect(source).toContain("fetchContractWorkbenchLedger(");
+    expect(source).toContain("activeTab === 'ended'");
+    expect(source).toContain("fetchContractLifecycleLedger(");
     expect(source).toContain("openDetail(row.id)");
     expect(source).not.toContain("row.copyAvailable");
     expect(source).not.toContain("copyEndedContract");
@@ -59,13 +59,13 @@ describe("contract ledger page configuration", () => {
     expect(source).not.toContain("复制为新草稿");
   });
 
-  it("defaults an unqualified workbench visit to all visible contract roots", () => {
+  it("defaults an unqualified workbench visit to the formal lifecycle ledger", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
     expect(source).toMatch(
-      /const requested = typeof value === "string"[\s\S]+?\s: "all";/s
+      /const requested = typeof value === "string"[\s\S]+?\s: "formal_ledger";/s
     );
-    expect(source).toContain('formal_ledger: "all"');
-    expect(source).toContain('returned_for_revision: "pending_action"');
+    expect(source).toContain('pending_action: "returned_for_revision"');
+    expect(source).toContain('all: "formal_ledger"');
   });
 
   it("executes only server-advertised workbench actions without forcing an invalid save", () => {

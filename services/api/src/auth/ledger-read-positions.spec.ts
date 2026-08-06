@@ -18,8 +18,19 @@ describe("ledger read position policy", () => {
       "super_admin",
       "project_manager",
       "contract_staff",
-      "budget_staff"
+      "budget_staff",
+      "material_staff",
+      "engineering_department_member",
+      "engineering_director",
+      "engineering_foreman",
+      "engineering_tech",
+      "employee"
     ]);
+  });
+
+  it("admits the summary employee into the ledger gate without granting project overview", () => {
+    expect(LEDGER_READ_POSITION_KEYS).toContain("employee");
+    expect(PROJECT_OVERVIEW_READ_POSITION_KEYS).not.toContain("employee");
   });
 
   it("keeps the project overview to management read roles and the project manager", () => {

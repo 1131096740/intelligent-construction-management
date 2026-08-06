@@ -4,9 +4,13 @@ import type {
   ContractLifecycleCapabilities,
   ContractLifecycleStage
 } from "@jiangkong/shared-domain";
+import {
+  CONTRACT_DRAFT_PRIVATE_READ_ROLES
+} from "@jiangkong/shared-domain";
 import type {
   ContractVersionStatus,
-  DraftLedgerView
+  DraftLedgerView,
+  RoleKey
 } from "@jiangkong/shared-domain";
 
 export type ContractDraftLifecycleStatus =
@@ -564,7 +568,8 @@ export function projectContractDraftLifecycleViews<
   contract: { ownerUserId: string | null; voidedAt: Date | null },
   versions: V[],
   lifecycleByVersion: ReadonlyMap<string, ContractDraftLifecycleClassification>,
-  actorUserId: string
+  actorUserId: string,
+  actorRoleKeys: readonly RoleKey[] = []
 ) {
   const latest = versions[0];
   const latestClassification = latest
@@ -583,13 +588,21 @@ export function projectContractDraftLifecycleViews<
   const latestDraftLifecycle = latestVisible
     ? lifecycleByVersion.get(latestVisible.id)
     : undefined;
+  // Unsubmitted drafts are private to the owner; contract directors and
+  // super admins may inspect any of them through the my_drafts view.
+  const canReadOthersUnsubmittedDraft = actorRoleKeys.some((roleKey) =>
+    CONTRACT_DRAFT_PRIVATE_READ_ROLES.has(roleKey)
+  );
   const matches: Record<DraftLedgerView, boolean> = {
     formal_ledger: Boolean(latest && !contract.voidedAt && latestFormal),
     my_drafts: Boolean(
       !contract.voidedAt &&
       latestVisible?.status === "draft" &&
       latestDraftLifecycle?.contractLifecycleStage === "unsubmitted_draft" &&
-      contract.ownerUserId === actorUserId
+      (
+        contract.ownerUserId === actorUserId ||
+        (contract.ownerUserId != null && canReadOthersUnsubmittedDraft)
+      )
     ),
     returned_for_revision: Boolean(
       !contract.voidedAt &&
