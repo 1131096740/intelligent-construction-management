@@ -285,7 +285,7 @@ export class ContractReadService {
   async listRecent(
     rawLimit?: string | number,
     visibleProjectIds?: string[],
-    internalOptions?: { unbounded?: boolean }
+    internalOptions?: { unbounded?: boolean; actorUserId?: string }
   ) {
     const take = internalOptions?.unbounded ? undefined : this.limit(rawLimit);
     const contracts = await this.prisma.contract.findMany({
@@ -294,7 +294,8 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const [versions, terms, projects] = await Promise.all([
+    const projectIds = [...new Set(contracts.map((contract) => contract.projectId))];
+    const [versions, terms, projects, roleKeysByProject] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
             where: {
@@ -311,8 +312,14 @@ export class ContractReadService {
           })
         : Promise.resolve([]),
       this.prisma.project.findMany({
-        where: { id: { in: [...new Set(contracts.map((contract) => contract.projectId))] } }
-      })
+        where: { id: { in: projectIds } }
+      }),
+      internalOptions?.actorUserId
+        ? this.projectVisibility?.effectiveRoleKeysByProject(
+            internalOptions.actorUserId,
+            projectIds
+          ) ?? Promise.resolve(new Map<string, RoleKey[]>())
+        : Promise.resolve(new Map<string, RoleKey[]>())
     ]);
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
@@ -325,6 +332,12 @@ export class ContractReadService {
         candidate.contractId === contract.id &&
         !["deleting", "ended_retained"].includes(
           lifecycleByVersion.get(candidate.id)?.contractLifecycleStage ?? ""
+        ) &&
+        this.canReadContractVersionDraft(
+          candidate,
+          contract.ownerUserId,
+          internalOptions?.actorUserId,
+          roleKeysByProject.get(contract.projectId) ?? []
         )
       );
       if (version) versionByContractId.set(contract.id, version);
@@ -877,7 +890,8 @@ export class ContractReadService {
 
   async exportLedger(visibleProjectIds: string[], actorUserId: string) {
     const ledger = await this.listRecent(undefined, visibleProjectIds, {
-      unbounded: true
+      unbounded: true,
+      actorUserId
     });
     const rows = ledger.rows.map((row) => ({
       contractNo: row.contractNo,
@@ -1126,7 +1140,7 @@ export class ContractReadService {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
 
-    const [project, versions] = await Promise.all([
+    const [project, versions, roleKeys] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: contract.projectId } }),
       this.prisma.contractVersion.findMany({
         where: {
@@ -1134,7 +1148,8 @@ export class ContractReadService {
           status: { not: "deleting" }
         },
         orderBy: { versionNo: "desc" }
-      })
+      }),
+      this.actorRoleKeys(actorUserId, contract.projectId)
     ]);
 
     const lifecycleByVersion = versions.every((candidate) =>
@@ -1144,8 +1159,15 @@ export class ContractReadService {
       : new Map<string, ContractDraftLifecycleClassification>();
     const version = versions.find((candidate) => {
       const stage = lifecycleByVersion.get(candidate.id)?.contractLifecycleStage;
-      return stage !== "deleting" && stage !== "ended_retained";
-    }) ?? versions[0];
+      return stage !== "deleting" &&
+        stage !== "ended_retained" &&
+        this.canReadContractVersionDraft(
+          candidate,
+          contract.ownerUserId,
+          actorUserId,
+          roleKeys
+        );
+    });
 
     if (!version) {
       throw new NotFoundException("未找到合同版本，请刷新合同台账后重试");
@@ -1223,10 +1245,7 @@ export class ContractReadService {
         : Promise.resolve([]),
       settlementIds.length ? this.findProjectProxyPayments(settlementIds) : Promise.resolve([])
     ]);
-    const [historicalBalance, roleKeys] = await Promise.all([
-      this.confirmedHistoricalBalanceForContract(contract.id),
-      this.actorRoleKeys(actorUserId, contract.projectId)
-    ]);
+    const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
     const draftLifecycle = lifecycleByVersion.get(version.id) ??
       (await this.contractDraftLifecycleByVersion([version])).get(version.id);
     if (!draftLifecycle) {
@@ -1904,6 +1923,19 @@ export class ContractReadService {
     }
 
     return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
+  }
+
+  private canReadContractVersionDraft(
+    version: { status: string; firstSubmittedAt?: Date | null },
+    ownerUserId: string | null,
+    actorUserId: string | undefined,
+    projectRoleKeys: readonly RoleKey[]
+  ) {
+    if (!actorUserId || version.status !== "draft" || version.firstSubmittedAt) {
+      return true;
+    }
+    return ownerUserId === actorUserId ||
+      projectRoleKeys.some((roleKey) => CONTRACT_DRAFT_PRIVATE_READ_ROLES.has(roleKey));
   }
 
   private async canReviewCurrentApproval(

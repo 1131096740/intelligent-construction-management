@@ -408,7 +408,8 @@ describe("ContractReadService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
 
     expect(service.listRecent).toHaveBeenCalledWith(undefined, ["project-1"], {
-      unbounded: true
+      unbounded: true,
+      actorUserId: "finance-user"
     });
     expect(result.fileName).toMatch(/^合同台账-\d{8}\.xlsx$/);
     expect(workbook.getWorksheet("合同台账")?.getRow(2).getCell(1).value).toBe(
@@ -673,6 +674,112 @@ describe("ContractReadService", () => {
     });
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toMatchObject({ contractNo: "HT-1", version: "v1" });
+  });
+
+  it("omits another handler's private draft and falls back to the readable formal version", async () => {
+    const now = new Date("2026-08-05T01:00:00.000Z");
+    const prisma = {
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-with-formal-version",
+            projectId: "project-1",
+            code: "HT-READABLE-001",
+            temporaryCode: null,
+            name: "已有生效版本",
+            counterparty: "乙方一",
+            ownerUserId: "owner-1",
+            voidedAt: null,
+            updatedAt: now
+          },
+          {
+            id: "contract-private-draft-only",
+            projectId: "project-1",
+            code: null,
+            temporaryCode: "CG-PRIVATE-001",
+            name: "他人私有草稿",
+            counterparty: "乙方二",
+            ownerUserId: "owner-2",
+            voidedAt: null,
+            updatedAt: now
+          }
+        ])
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-private-v2",
+            contractId: "contract-with-formal-version",
+            versionNo: 2,
+            status: "draft",
+            changeType: "original",
+            firstSubmittedAt: null,
+            amountCents: 200n,
+            updatedAt: now
+          },
+          {
+            id: "version-effective-v1",
+            contractId: "contract-with-formal-version",
+            versionNo: 1,
+            status: "effective",
+            changeType: "original",
+            firstSubmittedAt: null,
+            amountCents: 100n,
+            updatedAt: now
+          },
+          {
+            id: "version-private-only",
+            contractId: "contract-private-draft-only",
+            versionNo: 1,
+            status: "draft",
+            changeType: "original",
+            firstSubmittedAt: null,
+            amountCents: 300n,
+            updatedAt: now
+          }
+        ])
+      },
+      paymentTermsVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "terms-effective-v1",
+            contractId: "contract-with-formal-version",
+            contractVersionId: "version-effective-v1",
+            versionNo: 1
+          }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1", name: "项目一" }])
+      }
+    };
+    const projectVisibility = {
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(
+        new Map([["project-1", ["project_manager"]]])
+      )
+    };
+    const service = new ContractReadService(
+      prisma as never,
+      projectVisibility as never
+    );
+
+    const result = await service.listRecent(
+      50,
+      ["project-1"],
+      { actorUserId: "reader-1" } as never
+    );
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        contractId: "contract-with-formal-version",
+        contractVersionId: "version-effective-v1",
+        version: "v1"
+      })
+    ]);
+    expect(projectVisibility.effectiveRoleKeysByProject).toHaveBeenCalledWith(
+      "reader-1",
+      ["project-1"]
+    );
   });
 
   it("lists business contract options for settlement and payment creation", async () => {
@@ -1025,6 +1132,103 @@ describe("ContractReadService", () => {
         businessId: "contract-version-draft-1"
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
+  });
+
+  it("selects the readable effective version when a newer private draft belongs to another handler", async () => {
+    const now = new Date("2026-08-05T02:00:00.000Z");
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          projectId: "project-1",
+          code: "HT-READABLE-001",
+          temporaryCode: null,
+          name: "可读生效合同",
+          counterparty: "乙方",
+          ownerUserId: "owner-1",
+          contractTypeKey: "subcontract",
+          updatedAt: now
+        })
+      },
+      project: {
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "项目一" })
+      },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-private-v2",
+            contractId: "contract-1",
+            versionNo: 2,
+            status: "draft",
+            changeType: "original",
+            firstSubmittedAt: null,
+            amountCents: 200n,
+            draftRevision: 2,
+            updatedAt: now,
+            contractGovernanceVersion: null
+          },
+          {
+            id: "version-effective-v1",
+            contractId: "contract-1",
+            versionNo: 1,
+            status: "effective",
+            changeType: "original",
+            firstSubmittedAt: null,
+            amountCents: 100n,
+            draftRevision: 1,
+            updatedAt: now,
+            contractGovernanceVersion: null
+          }
+        ])
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockImplementation(async ({
+          where
+        }: { where: { contractVersionId: string } }) => ({
+          id: `terms-${where.contractVersionId}`,
+          versionNo: where.contractVersionId === "version-effective-v1" ? 1 : 2,
+          status: where.contractVersionId === "version-effective-v1" ? "effective" : "draft"
+        }))
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalActionLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractAuthorization: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: { findMany: jest.fn().mockResolvedValue([]) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const projectVisibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["project_manager"])
+    };
+    const service = new ContractReadService(
+      prisma as never,
+      projectVisibility as never
+    );
+
+    const detail = await service.getDetail(
+      "HT-READABLE-001",
+      ["project-1"],
+      "reader-1"
+    );
+
+    expect(detail.contractVersionId).toBe("version-effective-v1");
+    expect(detail.meta).toContainEqual({ label: "当前版本", value: "合同 v1" });
+    expect(prisma.paymentTermsVersion.findFirst).toHaveBeenCalledWith({
+      where: { contractVersionId: "version-effective-v1" },
+      orderBy: { versionNo: "desc" }
     });
   });
 

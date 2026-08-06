@@ -313,14 +313,20 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         );
         expect(ownerDelete.status).toBe(200);
         expect(await ownerDelete.json()).toMatchObject({
-          status: "deleting",
+          status: "abandoned",
           action: "delete_pristine_draft",
+          abandonedAt: expect.any(String),
+          abandonedByUserId: ownerId,
           idempotent: false
         });
         await expect(prisma.contractVersion.findUnique({
           where: { id: draftVersionId },
-          select: { status: true }
-        })).resolves.toEqual({ status: "deleting" });
+          select: { status: true, abandonedAt: true, abandonedByUserId: true }
+        })).resolves.toEqual({
+          status: "abandoned",
+          abandonedAt: expect.any(Date),
+          abandonedByUserId: ownerId
+        });
 
         const adminDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
@@ -335,7 +341,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         );
         expect(adminDelete.status).toBe(200);
         expect(await adminDelete.json()).toMatchObject({
-          status: "deleting",
+          status: "abandoned",
           idempotent: true
         });
       } finally {

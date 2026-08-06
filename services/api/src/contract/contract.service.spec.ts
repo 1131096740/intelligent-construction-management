@@ -907,7 +907,7 @@ describe("ContractService", () => {
           })
         });
       } else {
-        expect(state.status).toBe("deleting");
+        expect(state.status).toBe("abandoned");
         expect(outcomes[1]).toMatchObject({
           reason: expect.objectContaining({
             response: expect.objectContaining({
@@ -6396,7 +6396,7 @@ describe("ContractService", () => {
     };
   }
 
-  it("moves a never-submitted original contract into deleting", async () => {
+  it("marks a never-submitted original contract for the existing retention worker", async () => {
     const tx = abandonDraftTx();
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ContractService(prisma as never, audit as never);
@@ -6407,14 +6407,21 @@ describe("ContractService", () => {
     });
 
     expect(result).toMatchObject({
-      status: "deleting",
+      status: "abandoned",
       lifecycleKind: "pristine_draft",
       action: "delete_pristine_draft",
+      abandonedAt: expect.any(Date),
+      abandonedByUserId: "owner-1",
       idempotent: false
     });
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ draftRevision: 3, status: "draft" }),
-      data: expect.objectContaining({ status: "deleting", abandonReason: null })
+      data: expect.objectContaining({
+        status: "abandoned",
+        abandonedAt: expect.any(Date),
+        abandonedByUserId: "owner-1",
+        abandonReason: null
+      })
     }));
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
       where: {
@@ -6826,8 +6833,10 @@ describe("ContractService", () => {
         action: "delete_pristine_draft"
       })
     ).resolves.toMatchObject({
-      status: "deleting",
+      status: "abandoned",
       lifecycleKind: "pristine_draft",
+      abandonedAt: expect.any(Date),
+      abandonedByUserId: "director-1",
       reason: null
     });
     expect(auth.confirmPassword).not.toHaveBeenCalled();
@@ -6866,8 +6875,10 @@ describe("ContractService", () => {
         expectedRevision: 3,
         action: "delete_pristine_draft"
       })).resolves.toMatchObject({
-        status: "deleting",
+        status: "abandoned",
         lifecycleKind: "pristine_draft",
+        abandonedAt: expect.any(Date),
+        abandonedByUserId: "admin-1",
         reason: null
       });
     expect(auth.confirmPassword).not.toHaveBeenCalled();

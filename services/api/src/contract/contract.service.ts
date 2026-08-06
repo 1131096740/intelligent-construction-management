@@ -1101,9 +1101,9 @@ export class ContractService {
             abandonedAt: null
           },
           data: {
-            status: expectedAction === "delete_pristine_draft" ? "deleting" : "abandoned",
-            abandonedAt: expectedAction === "delete_pristine_draft" ? null : now,
-            abandonedByUserId: expectedAction === "delete_pristine_draft" ? null : actorUserId,
+            status: "abandoned",
+            abandonedAt: now,
+            abandonedByUserId: actorUserId,
             abandonReason: expectedAction === "abandon_application" ? reason : null,
             draftRevision: { increment: 1 }
           }
@@ -1262,13 +1262,13 @@ export class ContractService {
 
         return {
           contractVersionId: locked.id,
-          status: expectedAction === "delete_pristine_draft" ? "deleting" : "abandoned",
+          status: "abandoned",
           lifecycleKind: expectedAction === "delete_pristine_draft"
             ? "pristine_draft"
             : "approval_draft",
           action: expectedAction,
-          abandonedAt: expectedAction === "delete_pristine_draft" ? null : now,
-          abandonedByUserId: expectedAction === "delete_pristine_draft" ? null : actorUserId,
+          abandonedAt: now,
+          abandonedByUserId: actorUserId,
           reason: expectedAction === "abandon_application"
             ? reason
             : null,
