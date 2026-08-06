@@ -38,7 +38,7 @@
 - [x] GitHub 父 Issue #7 与 13 张子票 #8–#20 已建立，实施顺序和 `Blocked by` 依赖已冻结；当前仅无 blocker 的 #8 标记为 `ready-for-agent`，#9–#20 已移除该标签并须在各自 blocker 关闭后再逐票启用。
 - [x] 规格已区分即时清理、审批型记录保留、数据库聚合、COS 全版本/删除标记及共享文件解除关联等边界。
 - [x] 规格与 Issues 先于代码冻结；本候选未修改生产数据库、COS 生命周期规则或生产业务数据。
-- [x] Issue #8 审查修复完成：最终驳回已归入已结束、旧 `abandoned` 仅凭可核验旧删除事实进入隐藏清理候选、作废根合同视图互斥，合同台账/工作台按生命周期选择正确版本并收紧未提交草稿读取；五套定向回归 345/345、API typecheck、lint、`git diff --check` 与动态门 manifest 自测均通过。已在本地 PostgreSQL 16 以完整 119 迁移验证 55/55 动态测试、29/29 文件、剩余 31/31 测试，9 组全部通过；最终精确 SHA 以本次提交后的动态门 `candidateSha` 证据绑定。
+- [x] Issue #8 实现完成并已独立双轴复审：最终驳回已归入已结束、旧 `abandoned` 仅凭可核验旧删除事实进入隐藏清理候选、作废根合同视图互斥，合同台账/工作台按生命周期选择正确版本并收紧未提交草稿读取。全量 jest 295 套件/5761 测试、typecheck、lint、business-errors、ops safety、api/web build、check:ui、`git diff --check` 与四类 `--require-ready` 全部通过；本地 PostgreSQL 16 动态门绑定最终代码 SHA `9042d62034ffe8a4bf8ec14ec704bfac71ac0c4c`（119 migrations、pending 55/55、remaining 31/31、29/29 files、9 groups）。业务轴逐项满足 Issue #8 四项验收标准；代码轴独立复审 APPROVE（0 CRITICAL / 0 HIGH）。已知项：retention worker 暂只匹配 `abandoned` 且处于 preview-only，旧 `deleting` 记录清理归属后续子票；`canReadContractVersionDraft` 未传 `actorUserId` 时默认放行，当前所有调用点均已传值，作防御性观察。
 - [ ] Issue #9–#20 在各自 blocking edge 解除前不得并行写共享 Schema 或权限模型；Issue #8 关闭后才重新启用直接下游票据。
 - [ ] 未经单独授权，不修改生产业务数据、生产数据库记录或 COS 对象/生命周期规则。
 
