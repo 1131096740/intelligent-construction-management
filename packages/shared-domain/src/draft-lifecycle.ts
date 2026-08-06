@@ -138,6 +138,18 @@ export interface SettlementWorkbenchLedgerPage<T> {
   summary: SettlementWorkbenchLedgerViewCount;
 }
 
+/**
+ * 合同台账行级可见性级别。
+ *
+ * - `full`：完整台账行（状态、金额、相对方、版本、生命周期事实等全部字段）
+ * - `summary`：仅 7 个公开摘要字段（正式编号、名称、类型、项目、相对方、
+ *   生效日期、状态），不含金额、条款、清单、正文、文件、版本与审批历史
+ * - `none`：该合同不得出现在任何台账视图
+ *
+ * 可见性由服务端按生命周期、岗位与项目范围计算，前端过滤仅是展示层。
+ */
+export type ContractVisibilityLevel = "full" | "summary" | "none";
+
 export function draftLifecycleKindLabel(value: DraftLifecycleKind) {
   return DRAFT_LIFECYCLE_KIND_LABELS[value];
 }

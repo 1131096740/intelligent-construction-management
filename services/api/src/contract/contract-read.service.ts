@@ -1,10 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional
+} from "@nestjs/common";
+import {
+  CONTRACT_DRAFT_PRIVATE_READ_ROLES,
+  CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS,
+  CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS,
   CONTRACT_INVOICE_TYPES,
+  CONTRACT_SUMMARY_VIEW_ROLE_KEYS,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
   canCreatePaymentFromSettlementStatus,
   canUseCurrentContractApprovalForm,
   contractInvoiceTypeLabel,
+  type ContractVisibilityLevel,
   type ContractWorkbenchLedgerPage,
   type ContractWorkbenchView,
   type SettlementStatus,
@@ -85,10 +96,6 @@ function emptyCurrentContractApprovalReview(): CurrentContractApprovalReview {
 const HISTORICAL_TAKEOVER_READ_ROLES = new Set<RoleKey>(
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS
 );
-const CONTRACT_DRAFT_PRIVATE_READ_ROLES = new Set<RoleKey>([
-  "contract_director",
-  "super_admin"
-]);
 
 const MATERIAL_CHANGE_TASK_STATUS_BY_VERSION_STATUS: Record<
   ContractSigningMaterialChangeStatus,
@@ -358,9 +365,26 @@ export class ContractReadService {
       takeovers.map((takeover) => [takeover.contractVersionId, takeover])
     );
 
-    const rows = contracts.flatMap((contract) => {
+    const rows = contracts.flatMap<Record<string, unknown>>((contract) => {
       const version = versionByContractId.get(contract.id);
       if (!version) return [];
+      const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      if (visibility === "none") return [];
+      if (visibility === "summary") {
+        if (
+          lifecycleByVersion.get(version.id)?.contractLifecycleStage !==
+            "protected_formal" ||
+          contract.voidedAt != null
+        ) {
+          return [];
+        }
+        return [this.contractEmployeeSummaryRow(
+          contract,
+          version,
+          projectById.get(contract.projectId)
+        )];
+      }
       const termsVersion = termsByContractId.get(contract.id);
       return [this.contractLedgerRow(
         contract,
@@ -393,7 +417,7 @@ export class ContractReadService {
         total: rows.length,
         inApproval: rows.filter((row) => row.currentNode === "等待审批").length,
         pendingSeal: rows.filter((row) => row.currentNode === "发起用章").length,
-        pendingArchive: rows.filter((row) => row.currentNode.includes("归档")).length,
+        pendingArchive: rows.filter((row) => String(row.currentNode ?? "").includes("归档")).length,
         effective: rows.filter((row) => row.currentNode === "可发起结算").length
       }
     };
@@ -631,7 +655,13 @@ export class ContractReadService {
       orderBy: { updatedAt: "desc" }
     });
     const contractIds = contracts.map((contract) => contract.id);
-    const [versions, terms, projects, takeoverReadableProjectIds] = await Promise.all([
+    const [
+      versions,
+      terms,
+      projects,
+      takeoverReadableProjectIds,
+      roleKeysByProject
+    ] = await Promise.all([
       contractIds.length
         ? this.prisma.contractVersion.findMany({
             where: { contractId: { in: contractIds } },
@@ -647,7 +677,9 @@ export class ContractReadService {
       visibleProjectIds.length
         ? this.prisma.project.findMany({ where: { id: { in: visibleProjectIds } } })
         : Promise.resolve([]),
-      this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds)
+      this.historicalTakeoverReadableProjectIds(actorUserId, visibleProjectIds),
+      this.projectVisibility?.effectiveRoleKeysByProject(actorUserId, visibleProjectIds) ??
+        Promise.resolve(new Map<string, RoleKey[]>())
     ]);
     const [takeovers, lifecycleByVersion] = await Promise.all([
       this.contractTakeoverLedgerRows(versions.map((version) => version.id)),
@@ -665,18 +697,34 @@ export class ContractReadService {
     const takeoverByVersion = new Map(
       takeovers.map((takeover) => [takeover.contractVersionId, takeover])
     );
-    const classified = contracts.flatMap((contract) => {
+    const classified = contracts.flatMap<Record<string, unknown>>((contract) => {
+      const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      if (visibility === "none") return [];
       const all = versionsByContract.get(contract.id) ?? [];
       const lifecycle = projectContractDraftLifecycleViews(
         contract,
         all,
         lifecycleByVersion,
-        actorUserId
+        actorUserId,
+        projectRoleKeys
       );
       const rowVersion = lifecycle.versionByView[view];
       if (!lifecycle.matches[view] || !rowVersion) return [];
       const draftLifecycle = lifecycleByVersion.get(rowVersion.id);
       if (!draftLifecycle) return [];
+      if (visibility === "summary") {
+        // Employee summary never leaves the protected formal ledger; the
+        // lifecycle view matcher already prevents drafts from appearing.
+        return draftLifecycle.contractLifecycleStage !== "protected_formal" ||
+          contract.voidedAt != null
+          ? []
+          : [this.contractEmployeeSummaryRow(
+              contract,
+              rowVersion,
+              projectById.get(contract.projectId)
+            )];
+      }
       return [this.contractLedgerRow(
         contract,
         rowVersion,
@@ -710,28 +758,32 @@ export class ContractReadService {
         versionsByContract,
         lifecycleByVersion,
         actorUserId,
-        "formal_ledger"
+        "formal_ledger",
+        roleKeysByProject
       ),
       my_drafts: this.lifecycleCount(
         contracts,
         versionsByContract,
         lifecycleByVersion,
         actorUserId,
-        "my_drafts"
+        "my_drafts",
+        roleKeysByProject
       ),
       returned_for_revision: this.lifecycleCount(
         contracts,
         versionsByContract,
         lifecycleByVersion,
         actorUserId,
-        "returned_for_revision"
+        "returned_for_revision",
+        roleKeysByProject
       ),
       ended: this.lifecycleCount(
         contracts,
         versionsByContract,
         lifecycleByVersion,
         actorUserId,
-        "ended"
+        "ended",
+        roleKeysByProject
       )
     };
     const start = (page - 1) * pageSize;
@@ -812,6 +864,11 @@ export class ContractReadService {
       if (!version) return [];
       const draftLifecycle = lifecycleByVersion.get(version.id);
       if (!draftLifecycle) return [];
+      const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      // The legacy workbench endpoint only serves full-view positions;
+      // employee summary rows belong on the lifecycle ledger, never here.
+      if (visibility !== "full") return [];
       if (!this.matchesWorkbenchView(
         view,
         version,
@@ -819,7 +876,7 @@ export class ContractReadService {
         contract.ownerUserId,
         actorUserId,
         pendingVersionIds,
-        roleKeysByProject.get(contract.projectId) ?? []
+        projectRoleKeys
       )) return [];
       return [this.contractLedgerRow(
         contract,
@@ -858,17 +915,17 @@ export class ContractReadService {
       );
       if (!version) return false;
       const draftLifecycle = lifecycleByVersion.get(version.id);
-      return Boolean(
-        draftLifecycle &&
-        this.matchesWorkbenchView(
-          targetView,
-          version,
-          draftLifecycle,
-          contract.ownerUserId,
-          actorUserId,
-          pendingVersionIds,
-          roleKeysByProject.get(contract.projectId) ?? []
-        )
+      if (!draftLifecycle) return false;
+      const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
+      if (this.resolveLedgerVisibility(projectRoleKeys) !== "full") return false;
+      return this.matchesWorkbenchView(
+        targetView,
+        version,
+        draftLifecycle,
+        contract.ownerUserId,
+        actorUserId,
+        pendingVersionIds,
+        projectRoleKeys
       );
     }).length;
     const summary = {
@@ -2964,6 +3021,99 @@ export class ContractReadService {
     };
   }
 
+  /**
+   * True only when the project-visibility service can actually resolve per
+   * project role keys. Legacy callers without the service (or without the
+   * resolver) keep the previous behavior instead of collapsing to `none`.
+   */
+  private ledgerRoleResolutionAvailable(): boolean {
+    return Boolean(
+      this.projectVisibility &&
+      typeof this.projectVisibility.effectiveRoleKeysByProject === "function"
+    );
+  }
+
+  /**
+   * Resolves a user's contract read visibility from their role keys.
+   *
+   * Spec 9 groups: global full-view positions see every project's full rows;
+   * project full-view positions see full rows inside their own projects;
+   * `employee` sees only the 7-field public summary of archived formal
+   * contracts; any unconfigured role resolves to `none`.
+   */
+  private getContractVisibilityLevel(
+    roleKeys: readonly RoleKey[]
+  ): ContractVisibilityLevel {
+    if (roleKeys.some((role) => CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS.some((candidate) => candidate === role))) {
+      return "full";
+    }
+    if (roleKeys.some((role) => CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS.some((candidate) => candidate === role))) {
+      return "full";
+    }
+    if (roleKeys.some((role) => CONTRACT_SUMMARY_VIEW_ROLE_KEYS.some((candidate) => candidate === role))) {
+      return "summary";
+    }
+    return "none";
+  }
+
+  /**
+   * Role-aware ledger visibility with a safe fallback for callers that cannot
+   * resolve roles: when role resolution is unavailable the pre-Spec-9 full
+   * rows behavior is kept instead of hiding every row.
+   */
+  private resolveLedgerVisibility(
+    projectRoleKeys: readonly RoleKey[]
+  ): ContractVisibilityLevel {
+    if (this.ledgerRoleResolutionAvailable()) {
+      return this.getContractVisibilityLevel(projectRoleKeys);
+    }
+    this.warnRoleResolutionFallback();
+    return "full";
+  }
+
+  private roleResolutionFallbackWarned = false;
+
+  private warnRoleResolutionFallback() {
+    if (this.roleResolutionFallbackWarned) return;
+    this.roleResolutionFallbackWarned = true;
+    Logger.warn(
+      "合同台账角色可见性解析不可用（projectVisibility 未配置），已回退为 full 全量可见；Spec-9 角色边界未生效。",
+      ContractReadService.name
+    );
+  }
+
+  /**
+   * The employee public summary row. Exactly the seven spec-9 fields:
+   * contract number, name, type, project, counterparty, effective date and
+   * status. Amounts, payment terms, bills, body text, files, versions and
+   * approval history are never projected for this role.
+   */
+  private contractEmployeeSummaryRow(
+    contract: {
+      id: string; code: string | null; temporaryCode: string | null; name: string;
+      projectId: string; counterparty: string; contractTypeKey?: string | null;
+    },
+    version: { status: string; effectiveAt?: Date | null },
+    project?: { name: string } | null
+  ) {
+    return {
+      id: contract.code ?? contract.id,
+      contractId: contract.id,
+      contractNo: contract.code ?? contract.temporaryCode ?? contract.id,
+      name: contract.name,
+      project: project?.name ?? contract.projectId,
+      counterparty: contract.counterparty,
+      type: contract.contractTypeKey ?? "-",
+      status: version.status,
+      effectiveDate: version.effectiveAt
+        ? version.effectiveAt.toLocaleDateString("zh-CN", {
+            timeZone: "Asia/Shanghai"
+          })
+        : null,
+      visibility: "summary" as const
+    };
+  }
+
   private contractLedgerRow(
     contract: {
       id: string; code: string | null; temporaryCode: string | null; name: string;
@@ -3005,21 +3155,44 @@ export class ContractReadService {
   }
 
   private lifecycleCount(
-    contracts: Array<{ id: string; ownerUserId: string | null; voidedAt: Date | null }>,
+    contracts: Array<{
+      id: string;
+      projectId: string;
+      ownerUserId: string | null;
+      voidedAt: Date | null;
+    }>,
     versionsByContract: Map<string, Array<{ id: string; status: string }>>,
     lifecycleByVersion: ReadonlyMap<
       string,
       ContractDraftLifecycleClassification
     >,
     actorUserId: string,
-    view: DraftLedgerView
+    view: DraftLedgerView,
+    roleKeysByProject: ReadonlyMap<string, readonly RoleKey[]>
   ) {
-    return contracts.filter((contract) => projectContractDraftLifecycleViews(
-      contract,
-      versionsByContract.get(contract.id) ?? [],
-      lifecycleByVersion,
-      actorUserId
-    ).matches[view]).length;
+    return contracts.filter((contract) => {
+      const projectRoleKeys = roleKeysByProject.get(contract.projectId) ?? [];
+      const visibility = this.resolveLedgerVisibility(projectRoleKeys);
+      if (visibility === "none") return false;
+      const views = projectContractDraftLifecycleViews(
+        contract,
+        versionsByContract.get(contract.id) ?? [],
+        lifecycleByVersion,
+        actorUserId,
+        projectRoleKeys
+      );
+      if (!views.matches[view]) return false;
+      if (visibility === "summary") {
+        const rowVersion = views.versionByView[view];
+        return Boolean(
+          rowVersion &&
+          contract.voidedAt == null &&
+          lifecycleByVersion.get(rowVersion.id)?.contractLifecycleStage ===
+            "protected_formal"
+        );
+      }
+      return true;
+    }).length;
   }
 
   private currentWorkbenchVersion<V extends { id: string; status: string }>(

@@ -27,8 +27,8 @@
       class="contract-tabs"
     >
       <t-tab-panel
-        value="pending_action"
-        :label="`待我办理 ${lifecycleSummary.pending_action}`"
+        value="formal_ledger"
+        :label="`正式台账 ${lifecycleSummary.formal_ledger}`"
       />
       <t-tab-panel
         v-if="canManageContracts"
@@ -36,28 +36,16 @@
         :label="`我的草稿 ${lifecycleSummary.my_drafts}`"
       />
       <t-tab-panel
-        value="in_approval"
-        :label="`审批中 ${lifecycleSummary.in_approval}`"
+        value="returned_for_revision"
+        :label="`退回待修改 ${lifecycleSummary.returned_for_revision}`"
       />
       <t-tab-panel
-        value="pending_seal"
-        :label="`待我方用章 ${lifecycleSummary.pending_seal}`"
-      />
-      <t-tab-panel
-        value="pending_archive"
-        :label="`待归档 ${lifecycleSummary.pending_archive}`"
-      />
-      <t-tab-panel
-        value="effective"
-        :label="`已生效 ${lifecycleSummary.effective}`"
-      />
-      <t-tab-panel
-        value="all"
-        :label="`全部合同 ${lifecycleSummary.all}`"
+        value="ended"
+        :label="`已结束 ${lifecycleSummary.ended}`"
       />
     </t-tabs>
 
-    <template v-if="activeTab !== 'my_drafts'">
+    <template v-if="activeTab === 'formal_ledger' || activeTab === 'ended'">
       <BusinessStatusSummary
         :items="summaryValues"
         appearance="metrics"
@@ -189,13 +177,11 @@
               theme="primary"
               @click="isHistoricalTakeoverLedgerRow(row)
                 ? openHistoricalTakeoverRow(row)
-                : row.workbenchEditable
-                  ? openLifecycleRow(row)
-                  : openDetail(row.id)"
+                : openDetail(row.id)"
             >
               {{ isHistoricalTakeoverLedgerRow(row)
                 ? historicalTakeoverLedgerOperationLabel(row)
-                : row.workbenchEditable ? '继续办理' : '查看详情' }}
+                : '查看详情' }}
             </t-link>
           </template>
         </t-table>
@@ -277,13 +263,11 @@
           <t-space size="small">
             <t-link
               theme="primary"
-              @click="isHistoricalTakeoverLedgerRow(row)
-                ? openHistoricalTakeoverRow(row)
-                : openLifecycleRow(row)"
+              @click="openLifecycleRow(row)"
             >
-              {{ isHistoricalTakeoverLedgerRow(row)
-                ? historicalTakeoverLedgerOperationLabel(row)
-                : canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台" }}
+              {{ activeTab === 'my_drafts'
+                ? (canDeleteDraftFromLedger(row) ? "进入工作台删除草稿" : "进入工作台")
+                : "继续办理" }}
             </t-link>
           </t-space>
         </template>
@@ -308,12 +292,12 @@
 
 <script setup lang="ts">
 import { MessagePlugin } from "tdesign-vue-next";
-import type { ContractWorkbenchView } from "@jiangkong/shared-domain";
+import type { DraftLedgerView } from "@jiangkong/shared-domain";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   downloadContractLedgerExport,
-  fetchContractWorkbenchLedger,
+  fetchContractLifecycleLedger,
   type ContractLifecycleLedgerRow
 } from "../../api/core-flow-read.api";
 import {
@@ -362,24 +346,28 @@ const canExportLedger = computed(() =>
   canExportContractSettlementLedger(roleKeys.value)
 );
 const noticeMessage = ref("");
-const lifecycleViews = new Set<ContractWorkbenchView>([
-  "pending_action", "my_drafts", "in_approval", "pending_seal", "pending_archive", "effective", "all"
+const lifecycleViews = new Set<DraftLedgerView>([
+  "formal_ledger", "my_drafts", "returned_for_revision", "ended"
 ]);
-function routeLifecycleView(value: unknown): ContractWorkbenchView {
-  const legacyViewMap: Record<string, ContractWorkbenchView> = {
-    formal_ledger: "all",
-    returned_for_revision: "pending_action",
-    ended: "all"
-  };
+const LEGACY_WORKBENCH_VIEW_MAP: Record<string, DraftLedgerView> = {
+  pending_action: "returned_for_revision",
+  in_approval: "formal_ledger",
+  pending_seal: "formal_ledger",
+  pending_archive: "formal_ledger",
+  effective: "formal_ledger",
+  all: "formal_ledger"
+};
+function routeLifecycleView(value: unknown): DraftLedgerView {
   const requested = typeof value === "string"
-    ? legacyViewMap[value] ?? (lifecycleViews.has(value as ContractWorkbenchView)
-      ? value as ContractWorkbenchView : "all")
-    : "all";
+    ? (lifecycleViews.has(value as DraftLedgerView)
+      ? value as DraftLedgerView
+      : LEGACY_WORKBENCH_VIEW_MAP[value] ?? "formal_ledger")
+    : "formal_ledger";
   return !canManageContracts.value && requested === "my_drafts"
-    ? "all"
+    ? "formal_ledger"
     : requested;
 }
-const activeTab = ref<ContractWorkbenchView>(routeLifecycleView(route.query.view));
+const activeTab = ref<DraftLedgerView>(routeLifecycleView(route.query.view));
 const contractLedgerRows = ref<Array<ContractLedgerRow & ContractLifecycleLedgerRow>>([]);
 const contractFilters = reactive(emptyContractLedgerFilters());
 const ledgerLoading = ref(false);
@@ -390,13 +378,10 @@ const configurableContractColumnKeys = contractLedgerColumns
   .filter((key) => key !== "operation");
 const visibleContractColumnKeys = ref<string[]>([...configurableContractColumnKeys]);
 const lifecycleSummary = ref({
-  pending_action: 0,
+  formal_ledger: 0,
   my_drafts: 0,
-  in_approval: 0,
-  pending_seal: 0,
-  pending_archive: 0,
-  effective: 0,
-  all: 0
+  returned_for_revision: 0,
+  ended: 0
 });
 const lifecycleMeta = ref({
   page: 1,
@@ -407,10 +392,10 @@ const lifecycleMeta = ref({
 
 const summaryValues = computed(() => {
   const values = [
-    lifecycleSummary.value.pending_action,
+    lifecycleSummary.value.formal_ledger,
     lifecycleSummary.value.my_drafts,
-    lifecycleSummary.value.in_approval,
-    lifecycleSummary.value.effective
+    lifecycleSummary.value.returned_for_revision,
+    lifecycleSummary.value.ended
   ];
 
   return contractSummaryItems.map((item, index) => ({
@@ -438,22 +423,16 @@ const visibleContractLedgerColumns = computed(() => {
 });
 
 const activeLifecycleTitle = computed(() => ({
+  formal_ledger: "正式台账",
   my_drafts: "我的草稿",
-  pending_action: "待我办理",
-  in_approval: "审批中",
-  pending_seal: "待我方用章",
-  pending_archive: "待归档",
-  effective: "已生效",
-  all: "全部合同"
+  returned_for_revision: "退回待修改",
+  ended: "已结束"
 })[activeTab.value]);
 const activeLifecycleDescription = computed(() => ({
-  my_drafts: "仅显示当前账号可继续办理的合同草稿。",
-  pending_action: "只显示服务端确认当前账号可办理的合同事项，也包含退回给本人的修改任务。",
-  in_approval: "显示正在审批的合同根单。",
-  pending_seal: "显示我方用章流程中的合同根单。",
-  pending_archive: "显示待上传或确认归档的合同根单。",
-  effective: "显示当前已生效、可发起结算的合同根单。",
-  all: "显示当前权限范围内的全部合同根单；历史已结束记录仍保留在此视图。"
+  formal_ledger: "只展示已归档生效或保留的正式合同记录，不含草稿与已结束申请。",
+  my_drafts: "仅显示当前账号可继续办理的合同草稿；合同部主管与超级管理员可查看全部未提交草稿。",
+  returned_for_revision: "只显示退回给当前账号修改的合同草稿，可继续办理或放弃申请。",
+  ended: "展示已结束、已作废或已撤回的合同记录；仅保留查看详情能力。"
 })[activeTab.value]);
 
 function optionsForFilter(key: ContractFilterKey) {
@@ -465,7 +444,7 @@ async function loadContractLifecycleLedger() {
   ledgerLoading.value = true;
   noticeMessage.value = "";
   try {
-    const result = await fetchContractWorkbenchLedger(
+    const result = await fetchContractLifecycleLedger(
       activeTab.value,
       lifecycleMeta.value.page,
       lifecycleMeta.value.pageSize
@@ -507,7 +486,7 @@ async function exportContractLedger() {
 function applyRouteProjectFilter(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return;
   contractFilters.project = value.trim();
-  activeTab.value = "all";
+  activeTab.value = "formal_ledger";
 }
 
 function goContractTakeover() {
@@ -628,7 +607,7 @@ watch(activeTab, (tab) => {
 });
 watch(canManageContracts, (allowed) => {
   if (allowed || activeTab.value !== "my_drafts") return;
-  activeTab.value = "all";
+  activeTab.value = "formal_ledger";
 });
 
 onMounted(() => {

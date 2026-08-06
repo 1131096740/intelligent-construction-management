@@ -1,4 +1,10 @@
 import * as ExcelJS from "exceljs";
+import {
+  CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS,
+  CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS,
+  CONTRACT_SUMMARY_VIEW_ROLE_KEYS,
+  ROLE_KEYS
+} from "@jiangkong/shared-domain";
 import { ContractReadService } from "./contract-read.service";
 
 describe("ContractReadService", () => {
@@ -2948,5 +2954,207 @@ describe("ContractReadService", () => {
       ])
     );
     expect(detail.availableActionKeys).toContain("abandon_application");
+  });
+
+  describe("Issue #9 — lifecycle-based contract read visibility", () => {
+    const now = new Date("2026-07-20T01:00:00.000Z");
+    const ledgerVersion = (
+      contractId: string,
+      id: string,
+      versionNo: number,
+      status: string,
+      extra: Record<string, unknown> = {}
+    ) => ({
+      id,
+      contractId,
+      versionNo,
+      status,
+      amountCents: 100n,
+      amountLimitType: "capped",
+      pricingNature: "fixed_total",
+      changeType: versionNo > 1 ? "change" : "original",
+      firstSubmittedAt: ["approval_rejected", "abandoned", "effective"].includes(status)
+        ? now
+        : null,
+      draftRevision: 1,
+      updatedAt: now,
+      abandonedAt: status === "abandoned" ? now : null,
+      abandonReason: status === "abandoned" ? "不再继续" : null,
+      ...extra
+    });
+    const makeLedgerService = (
+      contracts: unknown[],
+      versions: unknown[],
+      roles: string[]
+    ) => {
+      const prisma = {
+        contract: { findMany: jest.fn().mockResolvedValue(contracts) },
+        contractVersion: { findMany: jest.fn().mockResolvedValue(versions) },
+        paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([]) },
+        project: { findMany: jest.fn().mockResolvedValue([{ id: "p1", name: "项目一" }]) },
+        approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+        contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+        contractVersionAuthorizationLink: { findMany: jest.fn().mockResolvedValue([]) }
+      };
+      const projectVisibility = {
+        effectiveRoleKeysByProject: jest.fn().mockResolvedValue(
+          new Map([["p1", roles]])
+        )
+      };
+      return new ContractReadService(prisma as never, projectVisibility as never);
+    };
+
+    it.each([
+      ...CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS.map((role) => [role, "full"] as const),
+      ...CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS.map((role) => [role, "full"] as const),
+      ...CONTRACT_SUMMARY_VIEW_ROLE_KEYS.map((role) => [role, "summary"] as const)
+    ])("resolves %s to %s visibility", (role, expected) => {
+      const service = new ContractReadService({} as never) as unknown as {
+        getContractVisibilityLevel(roleKeys: string[]): string;
+      };
+      expect(service.getContractVisibilityLevel([role])).toBe(expected);
+    });
+
+    it("covers every role in exactly one visibility group", () => {
+      const groups = [
+        CONTRACT_FULL_VIEW_GLOBAL_ROLE_KEYS,
+        CONTRACT_FULL_VIEW_PROJECT_ROLE_KEYS,
+        CONTRACT_SUMMARY_VIEW_ROLE_KEYS
+      ];
+      for (const role of ROLE_KEYS) {
+        const hits = groups.filter((group) => group.some((candidate) => candidate === role)).length;
+        if (hits !== 1) {
+          throw new Error(`role ${role} must be in exactly one visibility group`);
+        }
+      }
+    });
+
+    it("rejects a role that is configured nowhere from any contract rows", () => {
+      const service = new ContractReadService({} as never) as unknown as {
+        getContractVisibilityLevel(roleKeys: string[]): string;
+      };
+      expect(service.getContractVisibilityLevel(["future_security_guard"])).toBe("none");
+    });
+
+    it.each([
+      ["u1", ["contract_staff"], 1],
+      ["u2", ["contract_director"], 2],
+      ["u3", ["super_admin"], 2],
+      ["u1", ["project_manager"], 1],
+      ["u4", ["project_manager"], 0],
+      ["u5", ["employee"], 0]
+    ])("my_drafts for %s with roles %j shows %i rows", async (actorUserId, roles, expected) => {
+      const draftContracts = [
+        { id: "c1", projectId: "p1", code: null, temporaryCode: "CG-1", name: "A草稿", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" },
+        { id: "c2", projectId: "p1", code: null, temporaryCode: "CG-2", name: "B草稿", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
+      ];
+      const draftVersions = [
+        ledgerVersion("c1", "c1-v1", 1, "draft"),
+        ledgerVersion("c2", "c2-v1", 1, "draft")
+      ];
+      const service = makeLedgerService(draftContracts, draftVersions, roles);
+      const result = await service.lifecycleLedger("my_drafts", 1, 10, ["p1"], actorUserId);
+      expect(result.summary.my_drafts).toBe(expected);
+      expect(result.rows).toHaveLength(expected);
+    });
+
+    it("returns only the 7-field public summary to an employee", async () => {
+      const formalContracts = [
+        { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "正式合同", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" },
+        { id: "c2", projectId: "p1", code: null, temporaryCode: "CG-2", name: "他人草稿", counterparty: "乙方", ownerUserId: "u2", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
+      ];
+      const formalVersions = [
+        ledgerVersion("c1", "c1-v1", 1, "effective", { effectiveAt: now }),
+        ledgerVersion("c2", "c2-v1", 1, "draft")
+      ];
+      const service = makeLedgerService(formalContracts, formalVersions, ["employee"]);
+      const result = await service.lifecycleLedger("formal_ledger", 1, 10, ["p1"], "emp");
+      expect(result.summary).toEqual({
+        formal_ledger: 1,
+        my_drafts: 0,
+        returned_for_revision: 0,
+        ended: 0
+      });
+      expect(result.rows).toHaveLength(1);
+      const row = result.rows[0];
+      expect(row.visibility).toBe("summary");
+      expect(row).toEqual(expect.objectContaining({
+        contractId: "c1",
+        contractNo: "HT-1",
+        name: "正式合同",
+        project: "项目一",
+        counterparty: "甲方",
+        type: "engineering_general",
+        status: "effective"
+      }));
+      expect(row.effectiveDate).toBeTruthy();
+      for (const forbidden of [
+        "amount",
+        "paymentTermsVersion",
+        "version",
+        "currentNode",
+        "returnReason",
+        "pendingOwner"
+      ]) {
+        expect(row).not.toHaveProperty(forbidden);
+      }
+    });
+
+    it("keeps the formal ledger free of drafts and ended applications", async () => {
+      const endedContracts = [
+        { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "A", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" },
+        { id: "c2", projectId: "p1", code: null, temporaryCode: "CG-2", name: "B", counterparty: "乙方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" },
+        { id: "c3", projectId: "p1", code: "HT-3", temporaryCode: null, name: "C", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
+      ];
+      const endedVersions = [
+        ledgerVersion("c1", "c1-v2", 2, "abandoned"),
+        ledgerVersion("c1", "c1-v1", 1, "effective"),
+        ledgerVersion("c2", "c2-v1", 1, "draft"),
+        ledgerVersion("c3", "c3-v1", 1, "approval_rejected")
+      ];
+      const service = makeLedgerService(endedContracts, endedVersions, ["contract_staff"]);
+      const formal = await service.lifecycleLedger("formal_ledger", 1, 10, ["p1"], "reader");
+      expect(formal.summary.formal_ledger).toBe(1);
+      expect(formal.rows[0]).toEqual(expect.objectContaining({ contractVersionId: "c1-v1" }));
+      const ended = await service.lifecycleLedger("ended", 1, 10, ["p1"], "reader");
+      expect(ended.summary.ended).toBe(2);
+      expect(ended.rows).toEqual(expect.arrayContaining([
+        expect.objectContaining({ contractVersionId: "c1-v2" }),
+        expect.objectContaining({ contractVersionId: "c3-v1" })
+      ]));
+    });
+
+    it("returns no rows for a role not configured anywhere", async () => {
+      const contracts = [
+        { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "正式合同", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
+      ];
+      const versions = [
+        ledgerVersion("c1", "c1-v1", 1, "effective")
+      ];
+      const service = makeLedgerService(contracts, versions, ["future_security_guard"]);
+      const result = await service.lifecycleLedger("formal_ledger", 1, 10, ["p1"], "x");
+      expect(result.rows).toEqual([]);
+      expect(result.summary).toEqual({
+        formal_ledger: 0,
+        my_drafts: 0,
+        returned_for_revision: 0,
+        ended: 0
+      });
+    });
+
+    it("keeps employee and unknown roles out of the legacy workbench rows", async () => {
+      const contracts = [
+        { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "正式合同", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
+      ];
+      const versions = [
+        ledgerVersion("c1", "c1-v1", 1, "effective")
+      ];
+      for (const roles of [["employee"], ["future_security_guard"]]) {
+        const service = makeLedgerService(contracts, versions, roles);
+        const result = await service.workbenchLedger("all", 1, 10, ["p1"], "x");
+        expect(result.rows).toEqual([]);
+        expect(result.summary.all).toBe(0);
+      }
+    });
   });
 });

@@ -12,7 +12,7 @@ describe("business read-only page boundaries", () => {
 
     expect(contracts).toContain('v-if="canManageContracts"');
     expect(contracts).toContain(
-      "activeTab !== 'my_drafts'"
+      '!canManageContracts.value && requested === "my_drafts"'
     );
     expect(contracts).not.toContain("loadMyDrafts");
     expect(settlements).toContain('v-if="canManageSettlements"');
