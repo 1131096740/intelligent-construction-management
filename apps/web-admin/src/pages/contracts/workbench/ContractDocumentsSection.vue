@@ -15,28 +15,19 @@
           placeholder="选择已发布版式"
         />
       </label>
-      <label class="field">
-        <span class="field-label">文档用途</span>
-        <div class="purpose-segments">
-          <button
-            v-for="option in purposeOptions"
-            :key="option.value"
-            type="button"
-            :class="['segment', { active: purpose === option.value }]"
-            :disabled="disabled || busy"
-            @click="purpose = option.value"
-          >
-            {{ option.label }}
-          </button>
-        </div>
-      </label>
-      <t-button
-        theme="primary"
-        :disabled="disabled || busy || !layoutTemplateVersionId"
-        @click="queueDocument"
-      >
-        生成文档
-      </t-button>
+      <div class="generate-controls">
+        <span class="field-label">外发合同文件</span>
+        <span class="field-hint">
+          生成无水印 DOCX 与 PDF；首次生成时分配并永久占用正式编号。
+        </span>
+        <t-button
+          theme="primary"
+          :disabled="disabled || busy || !layoutTemplateVersionId"
+          @click="queueDocument"
+        >
+          生成合同文件
+        </t-button>
+      </div>
     </div>
 
     <div
@@ -330,11 +321,12 @@ const emit = defineEmits<{
   } | null): void;
 }>();
 
-const purposeOptions = [
-  { label: "草稿", value: "draft" },
-  { label: "对外磋商稿", value: "negotiation" },
-  { label: "内部送审稿", value: "internal_review" }
-];
+const purposeLabelMap: Record<string, string> = {
+  draft: "草稿",
+  negotiation: "对外磋商稿",
+  internal_review: "内部送审稿",
+  external: "外发合同"
+};
 const identityAttachmentLabels = {
   portrait: "身份证人像面",
   emblem: "身份证国徽面"
@@ -343,7 +335,6 @@ const identityAttachmentLabels = {
 const layoutRecords = ref<Array<Record<string, unknown>>>([]);
 const layoutOptions = ref<Array<{ label: string; value: string }>>([]);
 const layoutTemplateVersionId = ref("");
-const purpose = ref("draft");
 const confirmationPassword = ref("");
 const downloadReason = ref("");
 const downloadDialogVisible = ref(false);
@@ -481,7 +472,7 @@ async function queueDocument() {
       prepared = true;
       await queueContractDocumentWithCapability(current.version.id, {
         layoutTemplateVersionId: layoutTemplateVersionId.value,
-        purpose: purpose.value,
+        purpose: "external",
         attachmentFileIds: attachments.value.map((file) => file.id)
       });
     },
@@ -612,7 +603,7 @@ function closeContractDocumentDownload() {
 }
 
 function purposeLabel(value: string) {
-  return purposeOptions.find((option) => option.value === value)?.label ?? value;
+  return purposeLabelMap[value] ?? value;
 }
 
 function documentStatusLabel(value: string) {
@@ -665,36 +656,21 @@ function layoutThumbnailUrl(layout: Record<string, unknown>) {
 
 .document-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(240px, auto) 180px auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(320px, auto);
   align-items: end;
   gap: 12px;
 }
 
-.purpose-segments {
-  display: inline-flex;
-  border: 1px solid #b8c7e6;
-  border-radius: 3px;
-  overflow: hidden;
+.generate-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 
-.segment {
-  min-height: 30px;
-  padding: 0 10px;
-  color: #424955;
-  background: #fff;
-  border: 0;
-  border-right: 1px solid #b8c7e6;
-  cursor: pointer;
-}
-
-.segment:last-child {
-  border-right: 0;
-}
-
-.segment.active {
-  color: #0052d9;
-  background: #eaf2ff;
-  font-weight: 600;
+.field-hint {
+  color: #6b7480;
+  font-size: 12px;
 }
 
 .layout-preview,

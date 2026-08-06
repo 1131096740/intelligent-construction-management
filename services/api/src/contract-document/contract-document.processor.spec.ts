@@ -508,7 +508,8 @@ describe("ContractDocumentProcessor", () => {
     expect(mockedRender).toHaveBeenCalledWith(
       Buffer.from("template"),
       { values: { "contract.name": "合同" } },
-      []
+      [],
+      { allowBlankWatermark: false }
     );
     expect(mockedAppendDocxAttachments).toHaveBeenCalledWith(Buffer.from("rendered-docx"), [
       {
@@ -608,6 +609,113 @@ describe("ContractDocumentProcessor", () => {
           pdfNewFileId: "pdf-file",
           replacementKind: null
         }
+      })
+    );
+  });
+
+  it("renders an external document without a watermark and binds the generated files", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(
+      queuedDocument({
+        purpose: "external",
+        inputSnapshot: {
+          templateFileId: "layout-file",
+          outputBaseName: "HT-20260806-007-外发合同-修订3",
+          renderInput: {
+            values: {
+              "contract.name": "钢材采购合同",
+              "contract.code": "HT-20260806-007"
+            }
+          },
+          requiredKeys: [],
+          attachmentFiles: []
+        }
+      })
+    );
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(mockedRender).toHaveBeenCalledWith(
+      Buffer.from("template"),
+      {
+        values: {
+          "contract.name": "钢材采购合同",
+          "contract.code": "HT-20260806-007"
+        }
+      },
+      [],
+      { allowBlankWatermark: true }
+    );
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: { id: "document-1", status: "processing", sourceRevision: 3 },
+      data: expect.objectContaining({
+        status: "success",
+        docxFileId: "docx-file",
+        pdfFileId: "pdf-file"
+      })
+    });
+    expect(files.discardUnlinkedGeneratedFiles).toHaveBeenCalled();
+  });
+
+  it("marks a failed external generation without binding any file", async () => {
+    const prisma = makePrisma();
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(
+      queuedDocument({
+        purpose: "external",
+        inputSnapshot: {
+          templateFileId: "layout-file",
+          outputBaseName: "HT-20260806-007-外发合同-修订3",
+          renderInput: { values: {} },
+          requiredKeys: [],
+          attachmentFiles: []
+        }
+      })
+    );
+    mockedRender.mockImplementation(() => {
+      throw new Error("合同 DOCX 模板渲染失败，请检查模板内容");
+    });
+    const files = {
+      getFileBuffer: jest.fn().mockResolvedValue({
+        file: { id: "layout-file" },
+        buffer: Buffer.from("template")
+      }),
+      uploadPrivateFile: jest.fn(),
+      linkFileReplacement: jest.fn(),
+      discardUnlinkedGeneratedFiles: jest.fn().mockResolvedValue(undefined)
+    };
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: { id: "document-1", status: "processing", sourceRevision: 3 },
+      data: {
+        status: "failed",
+        errorMessage: "合同 DOCX 模板渲染失败，请检查模板内容",
+        completedAt: expect.any(Date)
+      }
+    });
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(files.discardUnlinkedGeneratedFiles).toHaveBeenCalledWith(
+      [],
+      "owner-1"
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.failure",
+        businessId: "document-1",
+        metadata: expect.objectContaining({ orphanFileIds: [] })
       })
     );
   });
@@ -1120,7 +1228,11 @@ describe("ContractDocumentProcessor", () => {
     await processor.processNext();
 
     const failure = prisma.tx.contractGeneratedDocument.updateMany.mock.calls[0][0];
-    expect(failure.where).toEqual({ id: "document-1", status: "processing" });
+    expect(failure.where).toEqual({
+      id: "document-1",
+      status: "processing",
+      sourceRevision: 2
+    });
     expect(failure.data.status).toBe("failed");
     expect(failure.data.errorMessage).toBe("合同文档生成失败，请检查模板和附件后重试");
     expect(failure.data.errorMessage).not.toContain("orphan-docx");

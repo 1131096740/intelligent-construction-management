@@ -527,7 +527,8 @@ export class ContractDocumentProcessor
       const docx = renderContractDocx(
         template.buffer,
         snapshot.renderInput,
-        snapshot.requiredKeys
+        snapshot.requiredKeys,
+        { allowBlankWatermark: job.purpose === "external" }
       );
       const attachments: PdfAttachment[] = [];
       for (const attachment of snapshot.attachmentFiles) {
@@ -843,7 +844,7 @@ export class ContractDocumentProcessor
   }
 
   private async failDocument(
-    job: { id: string; createdByUserId: string },
+    job: { id: string; createdByUserId: string; sourceRevision: number },
     cause: unknown,
     uploadedFileIds: string[]
   ) {
@@ -853,7 +854,11 @@ export class ContractDocumentProcessor
     );
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.contractGeneratedDocument.updateMany({
-        where: { id: job.id, status: "processing" },
+        where: {
+          id: job.id,
+          status: "processing",
+          sourceRevision: job.sourceRevision
+        },
         data: { status: "failed", errorMessage, completedAt: new Date() }
       });
       if (updated.count !== 1) return;

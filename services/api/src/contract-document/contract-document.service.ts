@@ -13,6 +13,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
@@ -23,7 +24,11 @@ import {
   formatMoneyCents
 } from "./contract-docx-renderer";
 
-export type ContractDocumentPurpose = "draft" | "negotiation" | "internal_review";
+export type ContractDocumentPurpose =
+  | "draft"
+  | "negotiation"
+  | "internal_review"
+  | "external";
 
 export interface QueueContractDocumentInput {
   layoutTemplateVersionId?: string;
@@ -68,12 +73,14 @@ const BASE_REQUIRED_PLACEHOLDERS = [
 const PURPOSES = new Set<ContractDocumentPurpose>([
   "draft",
   "negotiation",
-  "internal_review"
+  "internal_review",
+  "external"
 ]);
 const PURPOSE_FILE_LABELS: Record<ContractDocumentPurpose, string> = {
   draft: "草稿",
   negotiation: "对外磋商稿",
-  internal_review: "内部送审稿"
+  internal_review: "内部送审稿",
+  external: "外发合同"
 };
 export const CONTRACT_DOCUMENT_ENGINE_VERSION = "contract-document-v1";
 
@@ -82,7 +89,8 @@ export class ContractDocumentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly files: FileService
+    private readonly files: FileService,
+    private readonly businessNumbers?: BusinessNumberingService
   ) {}
 
   async queue(
@@ -100,13 +108,14 @@ export class ContractDocumentService {
       const result = await this.prisma.$transaction(async (tx) => {
         const {
           version,
-          contract,
+          contract: ownedContract,
           formalBlockers
         } = await this.loadOwnedVersionForUpdate(
           tx,
           contractVersionId,
           actorUserId
         );
+        let contract = ownedContract;
         if (version.changeType === "historical_takeover") {
           throw new BadRequestException(
             "历史接管草稿必须在历史接管工作台办理"
@@ -191,6 +200,23 @@ export class ContractDocumentService {
         }
         if (existing) {
           throw new BadRequestException("上一次文档生成失败，请先重试失败记录");
+        }
+
+        if (input.purpose === "external" && contract.code == null) {
+          if (!this.businessNumbers) {
+            throw new Error("外发合同文件生成需要正式编号服务");
+          }
+          const formalCode = await this.businessNumbers.allocateDaily(tx, "HT");
+          const claimed = await tx.contract.updateMany({
+            where: { id: contract.id, code: null, voidedAt: null },
+            data: { code: formalCode }
+          });
+          if (claimed.count !== 1) {
+            throw new Error(
+              "合同正式编号分配失败：编号已被占用或合同状态已变化，请刷新后重试"
+            );
+          }
+          contract = { ...contract, code: formalCode };
         }
 
         const [parties, bills] = await Promise.all([
@@ -866,7 +892,13 @@ export class ContractDocumentService {
       "contract.amount": formatMoneyCents(version.amountCents),
       "contract.amountUppercase": formatChineseUppercaseMoney(version.amountCents),
       "document.watermark":
-        purpose === "draft" ? "草稿" : purpose === "negotiation" ? "磋商稿" : "内部评审",
+        purpose === "draft"
+          ? "草稿"
+          : purpose === "negotiation"
+            ? "磋商稿"
+            : purpose === "internal_review"
+              ? "内部评审"
+              : "",
       "document.generatedAt": new Date().toISOString()
     };
 
