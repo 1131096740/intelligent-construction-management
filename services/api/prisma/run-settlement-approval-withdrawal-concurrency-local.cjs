@@ -27,7 +27,7 @@ const EXPECTED_MIGRATION_COUNT = 119;
 const TERMINAL_MIGRATION =
   "20260805090000_contract_draft_deleting_status";
 const TERMINAL_MIGRATION_CHECKSUM =
-  "801de5c5504a4b02eba000769e8efed19909125f92f0cf2d380e35dac6a57aca";
+  "8c5d5f14ec63443d8ff1e55a1a20eb197dc8baf5332739f7854b0ff1fedaaaf1";
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
 const pnpm =

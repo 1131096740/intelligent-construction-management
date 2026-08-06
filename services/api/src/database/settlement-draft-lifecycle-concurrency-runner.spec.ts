@@ -20,7 +20,7 @@ describe("settlement draft lifecycle PostgreSQL concurrency runner", () => {
     expect(runner.DATABASE_NAME).toBe(
       "jiangkong_settlement_draft_lifecycle_concurrency"
     );
-    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(118);
+    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(119);
     expect(runner.EXPECTED_MIGRATION_COUNT).toBe(
       readdirSync(resolve(prismaRoot, "migrations"), {
         withFileTypes: true

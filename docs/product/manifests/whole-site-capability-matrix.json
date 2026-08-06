@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "d41b0c1c264462aadd12b325fdc00d3bc2d768d4847292a7178469e0d73e54f6",
+      "sha256": "23aea8482fe3e8a172d429960cb2f0c797513966871a0d2636d70f76bee68af4",
       "status": "ready",
       "summary": {
         "routeCount": 446
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "548a5952d7110ef7007d41cfaed72ae849e0dc0c7a7dc58ae76e59cb6e9fb9b9",
+      "sha256": "ae76040e1a6d58028c1976aa27a549ff112f3481d912a73144a3ad0f78867b47",
       "status": "ready",
       "summary": {
         "routeCount": 446,
@@ -215,7 +215,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "contract.create",
+        "requiredProjectAction": "contract.draft.delete",
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false
