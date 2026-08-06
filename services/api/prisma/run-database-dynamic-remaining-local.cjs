@@ -103,6 +103,17 @@ const GROUPS = [
     pendingTests: 1
   },
   {
+    id: "file_binding_manifest",
+    database: "jiangkong_file_binding_manifest_test",
+    files: ["src/database/file-binding-manifest.spec.ts"],
+    flags: {
+      RUN_FILE_BINDING_MANIFEST_DATABASE: "1",
+      FILE_BINDING_MANIFEST_DATABASE_URL: "databaseUrl",
+      DATABASE_URL: "databaseUrl"
+    },
+    pendingTests: 1
+  },
+  {
     id: "generic_database_constraints",
     database: "jiangkong_database_dynamic_misc",
     files: [
