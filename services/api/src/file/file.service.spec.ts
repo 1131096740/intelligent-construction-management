@@ -4651,6 +4651,57 @@ describe("FileService", () => {
     });
   });
 
+  it("allows the generation requester to download their own generated contract document via a short-lived ticket", async () => {
+    const tx = {
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "generated-docx",
+          bucket: "private-local",
+          objectKey: "uploads/generated-docx.pdf",
+          originalName: "HT-20260806-007-外发合同.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "owner-1"
+        })
+      },
+      pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
+      approvalFormGenerationClaim: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectOwnerContract: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+
+    const ticket = await service.createDownloadTicket("generated-docx", {
+      actorUserId: "owner-1",
+      downloadReason: "外发合同核对"
+    });
+
+    expect(ticket.downloadUrl).toContain("/files/generated-docx/download?");
+    expect(ticket.downloadUrl).toContain("actorUserId=owner-1");
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: "owner-1",
+      action: "file.download.ticket",
+      businessType: "file_object",
+      businessId: "generated-docx",
+      metadata: {
+        expiresAt: ticket.expiresAt,
+        downloadReason: "外发合同核对"
+      }
+    });
+  });
+
   it("publishes a download-ticket capability only after the same file ACL check", async () => {
     const tx = {
       fileObject: {

@@ -45,6 +45,34 @@ describe("contract document canvas state", () => {
     expect(state.document?.pdfFileId).toBe("pdf-latest-current");
   });
 
+  it("selects a successful external-purpose document for the current draft revision", () => {
+    const state = contractDocumentCanvasState(
+      [
+        {
+          id: "outgoing",
+          purpose: "external",
+          status: "success",
+          sourceRevision: 4,
+          pdfFileId: "pdf-outgoing",
+          completedAt: "2026-07-12T08:00:00.000Z"
+        },
+        {
+          id: "older-draft",
+          purpose: "draft",
+          status: "success",
+          sourceRevision: 3,
+          pdfFileId: "pdf-older-draft",
+          completedAt: "2026-07-12T06:00:00.000Z"
+        }
+      ],
+      4
+    );
+
+    expect(state.kind).toBe("ready");
+    expect(state.document?.id).toBe("outgoing");
+    expect(state.document?.pdfFileId).toBe("pdf-outgoing");
+  });
+
   it("reports an outdated canvas instead of presenting an old PDF as current", () => {
     const state = contractDocumentCanvasState(
       [

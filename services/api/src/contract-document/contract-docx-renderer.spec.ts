@@ -291,6 +291,20 @@ describe("contract DOCX renderer", () => {
     }
   );
 
+  it("renders no watermark when the blank-watermark policy is enabled for outgoing files", () => {
+    const template = createDocx(paragraph("{contract.name}|{document.watermark}"));
+
+    const result = renderContractDocx(
+      template,
+      { values: requiredValues({ "document.watermark": "" }) },
+      [],
+      { allowBlankWatermark: true }
+    );
+
+    expect(renderedDocumentXml(result)).toContain("钢材采购合同");
+    expect(renderedDocumentXml(result)).not.toContain("草稿");
+  });
+
   it("rejects invalid DOCX input with a clear error", () => {
     expect(() =>
       renderContractDocx(Buffer.from("not a docx"), {

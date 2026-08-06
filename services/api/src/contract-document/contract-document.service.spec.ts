@@ -187,9 +187,18 @@ describe("ContractDocumentService", () => {
         findUnique: jest.fn().mockResolvedValue(null)
       }
     } as unknown as PrismaService;
+    const businessNumbers = {
+      allocateDaily: jest.fn().mockResolvedValue("HT-20260806-007")
+    };
     return {
-      service: new ContractDocumentService(prisma, audit as never, files as never),
-      prisma
+      service: new ContractDocumentService(
+        prisma,
+        audit as never,
+        files as never,
+        businessNumbers as never
+      ),
+      prisma,
+      businessNumbers
     };
   }
 
@@ -255,6 +264,195 @@ describe("ContractDocumentService", () => {
       "attachment-a",
       "owner-1"
     );
+  });
+
+  it("allocates and locks a formal contract code on first external-file generation", async () => {
+    const tx = makeTx();
+    const { service, businessNumbers } = makeService(tx);
+
+    const result = await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "external",
+      attachmentFileIds: ["attachment-a"]
+    });
+
+    expect(result).toMatchObject({ id: "document-1", status: "queued", purpose: "external" });
+    expect(businessNumbers.allocateDaily).toHaveBeenCalledWith(tx, "HT");
+    expect(tx.contract.updateMany).toHaveBeenCalledWith({
+      where: { id: "contract-1", code: null, voidedAt: null },
+      data: { code: "HT-20260806-007" }
+    });
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purpose: "external",
+        inputSnapshot: expect.objectContaining({
+          outputBaseName: "HT-20260806-007-外发合同-修订7",
+          renderInput: {
+            values: expect.objectContaining({
+              "contract.code": "HT-20260806-007",
+              "document.watermark": ""
+            })
+          }
+        })
+      })
+    });
+  });
+
+  it("reuses the locked formal code on repeated external-file generation", async () => {
+    const tx = makeTx({
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "owner-1",
+          voidedAt: null,
+          name: "钢材采购合同",
+          contractTypeKey: "materials",
+          temporaryCode: "草稿-001",
+          code: "HT-20260806-007"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service, businessNumbers } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "external",
+      attachmentFileIds: []
+    });
+
+    expect(businessNumbers.allocateDaily).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purpose: "external",
+        inputSnapshot: expect.objectContaining({
+          renderInput: {
+            values: expect.objectContaining({
+              "contract.code": "HT-20260806-007",
+              "document.watermark": ""
+            })
+          }
+        })
+      })
+    });
+  });
+
+  it("keeps the legacy draft watermark without allocating a formal code", async () => {
+    const tx = makeTx();
+    const { service, businessNumbers } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      attachmentFileIds: []
+    });
+
+    expect(businessNumbers.allocateDaily).not.toHaveBeenCalled();
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purpose: "draft",
+        inputSnapshot: expect.objectContaining({
+          renderInput: {
+            values: expect.objectContaining({
+              "document.watermark": "草稿"
+            })
+          }
+        })
+      })
+    });
+  });
+
+  it("rejects external generation when the code allocation gate is contested, without creating a document", async () => {
+    const tx = makeTx();
+    tx.contract.updateMany.mockResolvedValue({ count: 0 });
+    const { service, businessNumbers } = makeService(tx);
+
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "external",
+        attachmentFileIds: []
+      })
+    ).rejects.toThrow("合同正式编号");
+
+    expect(businessNumbers.allocateDaily).toHaveBeenCalledTimes(1);
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy generation purposes accepted during the extension period", async () => {
+    const tx = makeTx();
+    const { service, businessNumbers } = makeService(tx);
+
+    await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "internal_review",
+      attachmentFileIds: []
+    });
+
+    expect(businessNumbers.allocateDaily).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ purpose: "internal_review" })
+    });
+  });
+
+  it("lists legacy and external generated documents for read compatibility", async () => {
+    const baseTx = makeTx();
+    const tx = makeTx({
+      contractGeneratedDocument: {
+        ...baseTx.contractGeneratedDocument,
+        findMany: jest.fn().mockResolvedValue([
+          { id: "old-draft", purpose: "draft", status: "success" },
+          { id: "external", purpose: "external", status: "success" }
+        ])
+      }
+    });
+    const { service } = makeService(tx);
+
+    const result = await service.list("version-1", "owner-1");
+
+    expect(result.map((document) => document.purpose)).toEqual(["draft", "external"]);
+  });
+
+  it("reuses the locked code snapshot when retrying a failed external generation", async () => {
+    const failedDocument = {
+      id: "document-1",
+      contractVersionId: "version-1",
+      status: "failed",
+      purpose: "external",
+      sourceRevision: 7,
+      layoutTemplateVersionId: "layout-1",
+      inputSnapshot: {
+        templateFileId: "layout-file-1",
+        outputBaseName: "HT-20260806-007-外发合同-修订7",
+        renderInput: {
+          values: {
+            "contract.code": "HT-20260806-007",
+            "document.watermark": ""
+          }
+        },
+        requiredKeys: [],
+        attachmentFiles: []
+      }
+    };
+    const tx = makeTx({
+      contractGeneratedDocument: {
+        ...makeTx().contractGeneratedDocument,
+        findUnique: jest.fn().mockResolvedValue(failedDocument),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      }
+    });
+    const { service, businessNumbers } = makeService(tx);
+
+    await service.retry("document-1", "owner-1");
+
+    expect(businessNumbers.allocateDaily).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "document-1", status: "failed" }),
+      data: expect.objectContaining({ status: "queued" })
+    });
   });
 
   it("keeps the previous successful preview available while a newer revision has not succeeded", async () => {

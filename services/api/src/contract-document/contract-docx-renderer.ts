@@ -108,14 +108,19 @@ export function formatChineseUppercaseMoney(value: bigint): string {
 
 function assertRequiredValues(
   values: Record<string, unknown>,
-  requiredKeys: readonly string[]
+  requiredKeys: readonly string[],
+  allowBlankWatermark = false
 ): void {
   const missing = [...new Set([...REQUIRED_VALUES, ...requiredKeys])].filter(
-    (key) =>
-      !Object.prototype.hasOwnProperty.call(values, key) ||
-      values[key] === null ||
-      values[key] === undefined ||
-      (typeof values[key] === "string" && values[key].trim() === "")
+    (key) => {
+      if (!Object.prototype.hasOwnProperty.call(values, key)) return true;
+      if (values[key] === null || values[key] === undefined) return true;
+      if (typeof values[key] === "string" && values[key].trim() === "") {
+        if (allowBlankWatermark && key === "document.watermark") return false;
+        return true;
+      }
+      return false;
+    }
   );
   if (missing.length) {
     throw new Error("合同文档缺少必填内容，请补充后重试");
@@ -209,9 +214,14 @@ function mergeRepeatedBillTables(documentXml: string): string {
 export function renderContractDocx(
   templateBuffer: Buffer,
   renderInput: ContractDocumentRenderInput,
-  requiredKeys: readonly string[] = []
+  requiredKeys: readonly string[] = [],
+  options: { allowBlankWatermark?: boolean } = {}
 ): Buffer {
-  assertRequiredValues(renderInput.values, requiredKeys);
+  assertRequiredValues(
+    renderInput.values,
+    requiredKeys,
+    options.allowBlankWatermark === true
+  );
 
   const zip = (() => {
     try {
