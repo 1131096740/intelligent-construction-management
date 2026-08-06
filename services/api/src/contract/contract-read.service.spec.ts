@@ -3010,9 +3010,9 @@ describe("ContractReadService", () => {
       ...CONTRACT_SUMMARY_VIEW_ROLE_KEYS.map((role) => [role, "summary"] as const)
     ])("resolves %s to %s visibility", (role, expected) => {
       const service = new ContractReadService({} as never) as unknown as {
-        getContractVisibilityLevel(roleKeys: string[]): { level: string };
+        getContractVisibilityLevel(roleKeys: string[]): string;
       };
-      expect(service.getContractVisibilityLevel([role]).level).toBe(expected);
+      expect(service.getContractVisibilityLevel([role])).toBe(expected);
     });
 
     it("covers every role in exactly one visibility group", () => {
@@ -3031,9 +3031,9 @@ describe("ContractReadService", () => {
 
     it("rejects a role that is configured nowhere from any contract rows", () => {
       const service = new ContractReadService({} as never) as unknown as {
-        getContractVisibilityLevel(roleKeys: string[]): { level: string };
+        getContractVisibilityLevel(roleKeys: string[]): string;
       };
-      expect(service.getContractVisibilityLevel(["future_security_guard"]).level).toBe("none");
+      expect(service.getContractVisibilityLevel(["future_security_guard"])).toBe("none");
     });
 
     it.each([
@@ -3140,6 +3140,21 @@ describe("ContractReadService", () => {
         returned_for_revision: 0,
         ended: 0
       });
+    });
+
+    it("keeps employee and unknown roles out of the legacy workbench rows", async () => {
+      const contracts = [
+        { id: "c1", projectId: "p1", code: "HT-1", temporaryCode: null, name: "正式合同", counterparty: "甲方", ownerUserId: "u1", voidedAt: null, updatedAt: now, contractTypeKey: "engineering_general" }
+      ];
+      const versions = [
+        ledgerVersion("c1", "c1-v1", 1, "effective")
+      ];
+      for (const roles of [["employee"], ["future_security_guard"]]) {
+        const service = makeLedgerService(contracts, versions, roles);
+        const result = await service.workbenchLedger("all", 1, 10, ["p1"], "x");
+        expect(result.rows).toEqual([]);
+        expect(result.summary.all).toBe(0);
+      }
     });
   });
 });

@@ -3463,6 +3463,10 @@ export function fetchContractLifecycleLedger(
   );
 }
 
+/**
+ * @deprecated 合同生命周期台账已迁移至 `/contracts/lifecycle-ledger`（4 视图），
+ * 本函数仅保留向后兼容，新代码一律使用 `fetchContractLifecycleLedger`。
+ */
 export function fetchContractWorkbenchLedger(
   view: ContractWorkbenchView,
   page: number,
