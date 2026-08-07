@@ -1,6 +1,11 @@
 import { PDFDocument } from "pdf-lib";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ContractFormalFileService } from "./contract-formal-file.service";
+import { convertDocxToPdf } from "../contract-document/libreoffice-converter";
+
+jest.mock("../contract-document/libreoffice-converter", () => ({
+  convertDocxToPdf: jest.fn()
+}));
 
 async function pdfBytes() {
   const pdf = await PDFDocument.create();
@@ -322,5 +327,363 @@ describe("ContractFormalFileService", () => {
     const service = new ContractFormalFileService(prisma as never);
     await expect(service.uploadApprovalVersion("version-1", "owner-1", input))
       .resolves.toMatchObject({ id: "formal-winner" });
+  });
+});
+
+describe("ContractFormalFileService.counterparty", () => {
+  // 1x1 合法 PNG，供 pdf-lib 真实嵌入合并。
+  const PNG_1PX = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+    "base64"
+  );
+  const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+  function counterpartyHarness(overrides: Record<string, unknown> = {}) {
+    const version = {
+      id: "version-1",
+      contractId: "contract-1",
+      status: "draft",
+      draftRevision: 3,
+      contractGovernanceVersion: 1
+    };
+    const formalFacts = {
+      hasSignedFormalFile: false,
+      hasActiveSealTask: false,
+      hasArchiveFile: false,
+      hasSettlement: false,
+      hasPaymentRequest: false
+    };
+    const tx = {
+      $queryRaw: jest.fn(async (query: { strings?: readonly string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) return [version];
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }];
+        }
+        if (sql.includes('AS "hasSignedFormalFile"')) return [formalFacts];
+        return [];
+      }),
+      contractFormalFile: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        update: jest.fn().mockImplementation(async ({ where, data }) => ({
+          id: where.id,
+          confirmedByUserId: data.confirmedByUserId ?? null,
+          confirmedAt: data.confirmedAt ?? null,
+          confirmationSnapshot: data.confirmationSnapshot ?? null
+        })),
+        create: jest.fn().mockImplementation(({ data }) => ({ id: `formal-${randomUUID()}`, ...data }))
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) }
+    };
+    const prisma = {
+      $transaction: jest.fn((fn) => fn(tx)),
+      fileObject: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      contractVersion: { findUnique: jest.fn() },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      ...overrides
+    };
+    const files = {
+      getFileBuffer: jest.fn(),
+      uploadPrivateFile: jest.fn(),
+      discardUnlinkedGeneratedFile: jest.fn().mockResolvedValue(undefined)
+    };
+    return { version, tx, prisma, files };
+  }
+
+  function makeFile(
+    id: string,
+    originalName: string,
+    mimeType: string,
+    bytes: Buffer
+  ) {
+    return {
+      id,
+      originalName,
+      uploadedByUserId: "owner-1",
+      storageStatus: "active",
+      mimeType,
+      sizeBytes: bytes.length,
+      contentSha256: createHash("sha256").update(bytes).digest("hex")
+    };
+  }
+
+  it("上传单一 PDF：预览内联复用原文件，创建原始行与预览行并冻结到当前修订", async () => {
+    const bytes = await pdfBytes();
+    const { tx, prisma, files } = counterpartyHarness();
+    const file = makeFile("file-1", "乙方签章.pdf", "application/pdf", bytes);
+    prisma.fileObject.findUnique.mockResolvedValue(file);
+    files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    const result = await service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["file-1"],
+      sourceRevision: 3
+    });
+    expect(result).toMatchObject({
+      originalFormalFileIds: [expect.any(String)],
+      previewFormalFileId: expect.any(String),
+      confirmationValid: false
+    });
+    expect(tx.contractFormalFile.create).toHaveBeenCalledTimes(2);
+    const purposes = tx.contractFormalFile.create.mock.calls.map(
+      (call: [{ data: { purpose: string } }]) => call[0].data.purpose
+    );
+    expect(purposes).toEqual(["counterparty_signed", "counterparty_signed_preview"]);
+    const previewData = tx.contractFormalFile.create.mock.calls[1][0].data;
+    expect(previewData).toMatchObject({
+      fileId: "file-1",
+      sourceRevision: 3,
+      purpose: "counterparty_signed_preview"
+    });
+    expect(previewData.declarationSnapshot).toMatchObject({ mode: "inline_pdf" });
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("上传单一 DOCX：转换为 PDF 预览并创建新预览文件", async () => {
+    const pdf = await pdfBytes();
+    jest.mocked(convertDocxToPdf).mockResolvedValue(pdf);
+    const { tx, prisma, files } = counterpartyHarness();
+    const docx = Buffer.from("fake-docx");
+    const file = makeFile("file-docx", "乙方签章.docx", DOCX_MIME, docx);
+    prisma.fileObject.findUnique.mockResolvedValue(file);
+    files.getFileBuffer.mockResolvedValue({ file, buffer: docx });
+    files.uploadPrivateFile.mockResolvedValue({ id: "preview-file-1" });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["file-docx"],
+      sourceRevision: 3
+    });
+    expect(files.uploadPrivateFile).toHaveBeenCalledWith(expect.objectContaining({
+      originalName: "乙方签章.pdf",
+      mimeType: "application/pdf",
+      uploadedByUserId: "owner-1",
+      sizeBytes: pdf.length
+    }));
+    const previewData = tx.contractFormalFile.create.mock.calls[1][0].data;
+    expect(previewData).toMatchObject({ fileId: "preview-file-1", purpose: "counterparty_signed_preview" });
+    expect(previewData.declarationSnapshot).toMatchObject({ mode: "converted_pdf" });
+  });
+
+  it("上传多张图片：合并为 A4 PDF 预览，每个原始文件一条记录", async () => {
+    const { tx, prisma, files } = counterpartyHarness();
+    prisma.fileObject.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "img-1"
+        ? makeFile("img-1", "签章1.png", "image/png", PNG_1PX)
+        : makeFile("img-2", "签章2.png", "image/png", PNG_1PX)
+    );
+    files.getFileBuffer.mockImplementation(async (id: string) => ({
+      file: makeFile(id, id === "img-1" ? "签章1.png" : "签章2.png", "image/png", PNG_1PX),
+      buffer: PNG_1PX
+    }));
+    files.uploadPrivateFile.mockResolvedValue({ id: "preview-file-1" });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["img-1", "img-2"],
+      sourceRevision: 3
+    });
+    expect(tx.contractFormalFile.create).toHaveBeenCalledTimes(3);
+    const originalPurposes = tx.contractFormalFile.create.mock.calls
+      .slice(0, 2)
+      .map((call: [{ data: { purpose: string } }]) => call[0].data.purpose);
+    expect(originalPurposes).toEqual(["counterparty_signed", "counterparty_signed"]);
+    const previewData = tx.contractFormalFile.create.mock.calls[2][0].data;
+    expect(previewData).toMatchObject({ fileId: "preview-file-1", purpose: "counterparty_signed_preview" });
+    expect(previewData.declarationSnapshot).toMatchObject({ mode: "merged_images_pdf" });
+    expect(previewData.declarationSnapshot.sourceFileIds).toEqual(["img-1", "img-2"]);
+  });
+
+  it("拒绝混合格式（PDF + 图片），要求分批上传同类型", async () => {
+    const pdf = await pdfBytes();
+    const { tx, prisma, files } = counterpartyHarness();
+    prisma.fileObject.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === "a"
+        ? makeFile("a", "合同.pdf", "application/pdf", pdf)
+        : makeFile("b", "签章.png", "image/png", PNG_1PX)
+    );
+    files.getFileBuffer.mockImplementation(async (id: string) => ({
+      file: makeFile(id, id === "a" ? "合同.pdf" : "签章.png", id === "a" ? "application/pdf" : "image/png", id === "a" ? pdf : PNG_1PX),
+      buffer: id === "a" ? pdf : PNG_1PX
+    }));
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await expect(service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["a", "b"],
+      sourceRevision: 3
+    })).rejects.toThrow("暂不支持混合格式");
+    expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("只能关联本人上传的乙方签章文件", async () => {
+    const bytes = await pdfBytes();
+    const { prisma, files } = counterpartyHarness();
+    const file = { ...makeFile("file-1", "签章.pdf", "application/pdf", bytes), uploadedByUserId: "other-1" };
+    prisma.fileObject.findUnique.mockResolvedValue(file);
+    files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await expect(service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["file-1"],
+      sourceRevision: 3
+    })).rejects.toThrow("只能关联本人本次上传的乙方签章文件");
+  });
+
+  it("草稿修订已变更时拒绝确认，并拒绝以旧修订上传", async () => {
+    const { tx, prisma } = counterpartyHarness();
+    const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
+    await expect(service.confirmCounterpartySigned("version-1", "owner-1", {
+      formalFileId: "preview-1",
+      expectedDraftRevision: 2
+    })).rejects.toThrow("合同草稿已更新");
+    expect(tx.contractFormalFile.update).not.toHaveBeenCalled();
+  });
+
+  it("确认预览：记录操作者、时间与冻结修订", async () => {
+    const { tx, prisma } = counterpartyHarness();
+    tx.contractFormalFile.findFirst.mockResolvedValue({
+      id: "preview-1",
+      contractVersionId: "version-1",
+      purpose: "counterparty_signed_preview",
+      status: "active",
+      sourceRevision: 3
+    });
+    const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
+
+    const result = await service.confirmCounterpartySigned("version-1", "owner-1", {
+      formalFileId: "preview-1",
+      expectedDraftRevision: 3
+    });
+    expect(result).toMatchObject({
+      formalFileId: "preview-1",
+      confirmedByUserId: "owner-1",
+      confirmedAtRevision: 3,
+      confirmationValid: true
+    });
+    expect(tx.contractFormalFile.update).toHaveBeenCalledWith(
+      {
+        where: { id: "preview-1" },
+        data: expect.objectContaining({
+          confirmedByUserId: "owner-1",
+          confirmationSnapshot: { confirmedAtRevision: 3 }
+        })
+      }
+    );
+  });
+
+  it("list 实时计算确认有效性：草稿修订变更后自动失效", async () => {
+    const { prisma } = counterpartyHarness();
+    prisma.contractVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      draftRevision: 4,
+      status: "draft"
+    });
+    prisma.contractFormalFile.findMany.mockResolvedValue([
+      {
+        id: "preview-1",
+        contractVersionId: "version-1",
+        purpose: "counterparty_signed_preview",
+        fileId: "preview-file",
+        contentSha256: "x".repeat(64),
+        pageCount: 1,
+        sourceRevision: 3,
+        status: "active",
+        uploadedByUserId: "owner-1",
+        confirmedByUserId: "owner-1",
+        confirmedAt: new Date("2026-01-01T00:00:00Z"),
+        confirmationSnapshot: { confirmedAtRevision: 3 },
+        declarationSnapshot: { kind: "counterparty_signed_preview", mode: "inline_pdf" },
+        createdAt: new Date("2026-01-01T00:00:00Z")
+      }
+    ]);
+    prisma.fileObject.findMany.mockResolvedValue([
+      { id: "preview-file", originalName: "preview.pdf", mimeType: "application/pdf" }
+    ]);
+    const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
+
+    const result = await service.listCounterpartySigned("version-1");
+    expect(result.draftRevision).toBe(4);
+    expect(result.confirmationValid).toBe(false);
+    expect(result.preview).toMatchObject({ confirmationValid: false, confirmedAtRevision: 3 });
+  });
+
+  it("list 在修订一致且已确认时判定确认有效", async () => {
+    const { prisma } = counterpartyHarness();
+    prisma.contractVersion.findUnique.mockResolvedValue({
+      id: "version-1",
+      draftRevision: 3,
+      status: "draft"
+    });
+    prisma.contractFormalFile.findMany.mockResolvedValue([
+      {
+        id: "preview-1",
+        contractVersionId: "version-1",
+        purpose: "counterparty_signed_preview",
+        fileId: "preview-file",
+        contentSha256: "x".repeat(64),
+        pageCount: 1,
+        sourceRevision: 3,
+        status: "active",
+        uploadedByUserId: "owner-1",
+        confirmedByUserId: "owner-1",
+        confirmedAt: new Date("2026-01-01T00:00:00Z"),
+        confirmationSnapshot: { confirmedAtRevision: 3 },
+        declarationSnapshot: { kind: "counterparty_signed_preview", mode: "inline_pdf" },
+        createdAt: new Date("2026-01-01T00:00:00Z")
+      }
+    ]);
+    prisma.fileObject.findMany.mockResolvedValue([
+      { id: "preview-file", originalName: "preview.pdf", mimeType: "application/pdf" }
+    ]);
+    const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
+
+    const result = await service.listCounterpartySigned("version-1");
+    expect(result.confirmationValid).toBe(true);
+    expect(result.preview).toMatchObject({ confirmationValid: true });
+  });
+
+  it("事务失败时尽力清理新生成的预览文件，并映射序列化冲突", async () => {
+    const pdf = await pdfBytes();
+    jest.mocked(convertDocxToPdf).mockResolvedValue(pdf);
+    const { prisma, files } = counterpartyHarness();
+    const docx = Buffer.from("fake-docx");
+    const file = makeFile("file-docx", "签章.docx", DOCX_MIME, docx);
+    prisma.fileObject.findUnique.mockResolvedValue(file);
+    files.getFileBuffer.mockResolvedValue({ file, buffer: docx });
+    files.uploadPrivateFile.mockResolvedValue({ id: "preview-file-1" });
+    prisma.$transaction = jest.fn().mockRejectedValue({ code: "P2034" });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await expect(service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["file-docx"],
+      sourceRevision: 3
+    })).rejects.toThrow("乙方签章文件正在更新，请刷新后重试");
+    expect(files.discardUnlinkedGeneratedFile).toHaveBeenCalledWith("preview-file-1", "owner-1");
+  });
+
+  it("重复上传会先替代旧的一批原始行与预览行", async () => {
+    const bytes = await pdfBytes();
+    const { tx, prisma, files } = counterpartyHarness();
+    const file = makeFile("file-1", "乙方签章.pdf", "application/pdf", bytes);
+    prisma.fileObject.findUnique.mockResolvedValue(file);
+    files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["file-1"],
+      sourceRevision: 3
+    });
+    expect(tx.contractFormalFile.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          contractVersionId: "version-1",
+          purpose: { in: ["counterparty_signed", "counterparty_signed_preview"] }
+        }),
+        data: expect.objectContaining({ status: "superseded" })
+      })
+    );
   });
 });

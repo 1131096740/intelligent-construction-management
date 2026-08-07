@@ -6,9 +6,9 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 191 条 |
-| Web API 请求 | 已扫描 145 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 446 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| Controller 源码路由 | 已扫描 194 条 |
+| Web API 请求 | 已扫描 148 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 449 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 54 条合同专项候选；物理删除授权固定为否 |
 
@@ -16,7 +16,7 @@
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 100 |
+| matched | 103 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 39 |
 | backend_internal_only | 0 |
@@ -66,10 +66,10 @@
 | POST | `/contract-drafts/:param/edit-lease` | acquireContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/heartbeat` | heartbeatContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/edit-lease/takeover` | takeOverContractDraftEditLease | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
-| POST | `/contract-drafts/:param/files` | uploadContractWorkbenchPrivateFile | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue | matched | 保留 | 否 | — |
+| POST | `/contract-drafts/:param/files` | uploadContractWorkbenchPrivateFile | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/preview-generation` | queueContractDraftPreview | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/submission` | submitContractDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
-| GET | `/contract-drafts/:param/workbench` | fetchContractDraftOperationCapabilities | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
+| GET | `/contract-drafts/:param/workbench` | fetchContractDraftOperationCapabilities | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/workbench` | fetchContractDraftWorkbench | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue<br>apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | PATCH | `/contract-layout-template-versions/:param` | updateLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-layout-template-versions/:param/clone` | cloneLayoutTemplateVersion |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
@@ -147,6 +147,9 @@
 | GET | `/contracts/:param/change-eligibility` | fetchContractChangeEligibility | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/copies` | copyAbandonedContractDraft |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/formal-files/approval` | uploadContractFormalApprovalFile | apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue | matched | 保留 | 否 | — |
+| GET | `/contracts/:param/formal-files/counterparty` | listCounterpartySignedFiles | apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/formal-files/counterparty` | uploadCounterpartySignedFiles | apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/formal-files/counterparty/confirmation` | confirmCounterpartySignedFile | apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/final` | uploadMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/final/confirmation` | confirmMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/final/return` | returnMutuallySignedContractForCorrection | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |

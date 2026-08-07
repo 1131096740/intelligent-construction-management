@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 446,
-    "exactRouteCount": 446,
-    "normalizedRouteCount": 446,
+    "routeCount": 449,
+    "exactRouteCount": 449,
+    "normalizedRouteCount": 449,
     "classificationOverrideCount": 165,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "b8c248b3167c686f42f5dc94261f057bae230ac26ebd43cab476b3843a0b9207",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 281,
-    "pageRouteCount": 282,
+    "derivedProductionPageCount": 284,
+    "pageRouteCount": 285,
     "externalTakeoverCount": 61,
     "exitCandidateCount": 100,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 331,
+      "web_api_wrapper": 334,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 331,
+    "productionWrapperRouteCount": 334,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -955,6 +955,7 @@
               "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
@@ -1709,6 +1710,46 @@
             "normalizedKey": "GET /contracts/:param/change-eligibility",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/formal-files/counterparty",
+      "normalizedKey": "GET /contracts/:param/formal-files/counterparty",
+      "controller": "ContractController",
+      "handler": "listCounterpartySignedFiles",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.submit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "listCounterpartySignedFiles",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/formal-files/counterparty",
+            "normalizedKey": "GET /contracts/:param/formal-files/counterparty",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
             ]
           }
         ],
@@ -7470,6 +7511,7 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+              "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
@@ -9241,6 +9283,86 @@
             "normalizedKey": "POST /contracts/:param/formal-files/approval",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/formal-files/counterparty",
+      "normalizedKey": "POST /contracts/:param/formal-files/counterparty",
+      "controller": "ContractController",
+      "handler": "uploadCounterpartySignedFiles",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.submit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "uploadCounterpartySignedFiles",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/formal-files/counterparty",
+            "normalizedKey": "POST /contracts/:param/formal-files/counterparty",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/formal-files/counterparty/confirmation",
+      "normalizedKey": "POST /contracts/:param/formal-files/counterparty/confirmation",
+      "controller": "ContractController",
+      "handler": "confirmCounterpartySignedFiles",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.submit",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "confirmCounterpartySignedFile",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/formal-files/counterparty/confirmation",
+            "normalizedKey": "POST /contracts/:param/formal-files/counterparty/confirmation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
             ]
           }
         ],

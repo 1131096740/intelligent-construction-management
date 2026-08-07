@@ -1,7 +1,18 @@
 import { createHash } from "node:crypto";
 import PDFKitDocument = require("pdfkit");
 import { PDFDocument, degrees } from "pdf-lib";
-import { inspectSignedPdf } from "./contract-formal-pdf-inspector";
+import {
+  inspectSignedPdf,
+  mergeCounterpartyImagesToPdf
+} from "./contract-formal-pdf-inspector";
+
+// 1x1 合法 PNG（含完整关键块）。
+const PNG_1PX = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64"
+);
+// GIF 魔数，用于验证非 PNG/JPEG 被拒绝。
+const GIF_BYTES = Buffer.from("GIF89a\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00", "binary");
 
 async function createEncryptedPdf() {
   return await new Promise<Buffer>((resolve, reject) => {
@@ -65,5 +76,32 @@ describe("inspectSignedPdf", () => {
     await expect(inspectSignedPdf(await createEncryptedPdf())).rejects.toThrow(
       "无法读取合同 PDF 原件"
     );
+  });
+});
+
+describe("mergeCounterpartyImagesToPdf", () => {
+  it("把多张 PNG 等比居中拼成 A4 PDF，每张一页", async () => {
+    const merged = await mergeCounterpartyImagesToPdf([
+      { buffer: PNG_1PX, name: "签章1.png" },
+      { buffer: PNG_1PX, name: "签章2.png" }
+    ]);
+    expect(merged.pageCount).toBe(2);
+    const document = await PDFDocument.load(merged.buffer);
+    expect(document.getPageCount()).toBe(2);
+    for (const page of document.getPages()) {
+      const { width, height } = page.getSize();
+      expect(Math.round(width)).toBe(595);
+      expect(Math.round(height)).toBe(842);
+    }
+  });
+
+  it("拒绝空图片列表", async () => {
+    await expect(mergeCounterpartyImagesToPdf([])).rejects.toThrow("乙方签章图片不能为空");
+  });
+
+  it("拒绝非 PNG/JPEG 的图片字节", async () => {
+    await expect(
+      mergeCounterpartyImagesToPdf([{ buffer: GIF_BYTES, name: "动画.gif" }])
+    ).rejects.toThrow("仅支持 PNG 或 JPEG");
   });
 });

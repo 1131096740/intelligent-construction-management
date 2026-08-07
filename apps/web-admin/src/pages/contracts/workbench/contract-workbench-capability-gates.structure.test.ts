@@ -26,6 +26,7 @@ describe("contract workbench mutation capability gates", () => {
     ["ContractAuthorizationSection.vue", "setContractAuthorizationWithCapability"],
     ["ContractFormalDocumentSection.vue", "uploadContractFormalFileWithCapability"],
     ["ContractFormalDocumentSection.vue", "uploadContractFormalApprovalFileWithCapability"],
+    ["ContractCounterpartySignedFilesPanel.vue", "uploadPrivateFileWithCapability"],
     ["ContractPartySection.vue", "uploadContractPartyFileWithCapability"]
   ])("uses %s helper %s", (file, helper) => {
     const source = read(file);
@@ -42,6 +43,7 @@ describe("contract workbench mutation capability gates", () => {
   it.each([
     "ContractAuthorizationSection.vue",
     "ContractBillFocusEditor.vue",
+    "ContractCounterpartySignedFilesPanel.vue",
     "ContractDocumentsSection.vue",
     "ContractFormalDocumentSection.vue",
     "ContractNegotiationSection.vue",

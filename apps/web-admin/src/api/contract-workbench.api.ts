@@ -797,6 +797,72 @@ export function uploadContractFormalApprovalFile(
   return postJson<unknown>(`/contracts/${contractVersionId}/formal-files/approval`, body);
 }
 
+export interface UploadCounterpartySignedFilesPayload {
+  fileIds: string[];
+  sourceRevision: number;
+}
+
+export interface ConfirmCounterpartySignedFilePayload {
+  formalFileId: string;
+  expectedDraftRevision: number;
+}
+
+export interface CounterpartySignedOriginalFile {
+  formalFileId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sourceRevision: number;
+  status: string;
+  uploadedAt: string;
+  displayOrder: number | null;
+}
+
+export interface CounterpartySignedPreviewFile {
+  formalFileId: string;
+  fileId: string;
+  fileName: string;
+  pageCount: number;
+  sourceRevision: number;
+  status: string;
+  mode: "inline_pdf" | "converted_pdf" | "merged_images_pdf" | string;
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+  confirmedAtRevision: number | null;
+  confirmationValid: boolean;
+}
+
+export interface CounterpartySignedReadModel {
+  draftRevision: number;
+  status: string;
+  confirmationValid: boolean;
+  originalFiles: CounterpartySignedOriginalFile[];
+  preview: CounterpartySignedPreviewFile | null;
+}
+
+export function uploadCounterpartySignedFiles(
+  contractVersionId: string,
+  body: UploadCounterpartySignedFilesPayload
+) {
+  return postJson<unknown>(`/contracts/${contractVersionId}/formal-files/counterparty`, body);
+}
+
+export function confirmCounterpartySignedFile(
+  contractVersionId: string,
+  body: ConfirmCounterpartySignedFilePayload
+) {
+  return postJson<unknown>(
+    `/contracts/${contractVersionId}/formal-files/counterparty/confirmation`,
+    body
+  );
+}
+
+export function listCounterpartySignedFiles(contractVersionId: string) {
+  return readJson<CounterpartySignedReadModel>(
+    `/contracts/${contractVersionId}/formal-files/counterparty`
+  );
+}
+
 export function uploadContractWorkbenchPrivateFile(
   contractVersionId: string,
   file: Blob,

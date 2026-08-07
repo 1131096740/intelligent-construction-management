@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 452,
-    "transportWrapperCount": 432,
+    "exportedFunctionCount": 455,
+    "transportWrapperCount": 435,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 452,
+    "mainRequestBindingCount": 455,
     "ticketFollowupCount": 2,
-    "requestEdgeCount": 451,
-    "productionConsumerCount": 339,
+    "requestEdgeCount": 454,
+    "productionConsumerCount": 342,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 248,
-    "reachableProductionModuleCount": 227
+    "productionModuleCount": 249,
+    "reachableProductionModuleCount": 228
   },
   "wrappers": [
     {
@@ -1150,6 +1150,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "confirmCounterpartySignedFile",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/counterparty/confirmation",
+          "normalizedPath": "/contracts/:param/formal-files/counterparty/confirmation",
+          "normalizedKey": "POST /contracts/:param/formal-files/counterparty/confirmation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmCounterpartySignedFile",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createBusinessParty",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
@@ -1568,7 +1596,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1908,
+          "sourceLine": 1974,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1598,7 +1626,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1908,
+          "sourceLine": 1974,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1644,7 +1672,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1473,
+          "sourceLine": 1539,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -1832,6 +1860,7 @@
         "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
@@ -2236,6 +2265,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/contract-templates/ContractNumberRuleReadonlyPage.vue"
       ]
+    },
+    {
+      "name": "listCounterpartySignedFiles",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 73,
+          "method": "GET",
+          "path": "/contracts/:param/formal-files/counterparty",
+          "normalizedPath": "/contracts/:param/formal-files/counterparty",
+          "normalizedKey": "GET /contracts/:param/formal-files/counterparty",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "listCounterpartySignedFiles",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
     },
     {
       "name": "listPublishedContractTemplates",
@@ -3373,11 +3430,40 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadCounterpartySignedFiles",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/counterparty",
+          "normalizedPath": "/contracts/:param/formal-files/counterparty",
+          "normalizedKey": "POST /contracts/:param/formal-files/counterparty",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "uploadCounterpartySignedFiles",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

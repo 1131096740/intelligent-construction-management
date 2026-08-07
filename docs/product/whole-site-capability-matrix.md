@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `0e9e3ad9ef1dd1bbfc637f482a58c971cdc1f2397e6d4093bffcc5b3f0e76c0c` |
-| webApiWrappers | ready | `d9b6ad0f89857471cba945a2c6624f5f340ce4ea8c4cf092e4581e39cf14e555` |
-| webPageActions | ready | `cb8e4515fa201cd54f325669398f998d5997bce3e8594fbf67bf81a46adbc46b` |
-| routeUsage | ready | `ac43825d653df49d4ea3c605e17f3abefd80c940a761ba0b5ca055d1d42062ba` |
+| nestRoutes | ready | `f9fe443c4ac9db0d6b6dad817a1148895e64252feb9ddc4f45e6ec116291a127` |
+| webApiWrappers | ready | `6f57e5f32b9a3ed99f4da2e1ecc04e6f6f28fecdbd7a6b3129627a2379be006a` |
+| webPageActions | ready | `893086727df7df4ac928899e543b446e1344104b780fcb92bd86b288cf8f19ce` |
+| routeUsage | ready | `f316b0cb3888f15313076392a4fff9c69a27556247526089eebfdb5d1adeb5b3` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 446 |
-| pageRouteCount | 282 |
+| routeCount | 449 |
+| pageRouteCount | 285 |
 | externalTakeoverRouteCount | 61 |
 | exitCandidateRouteCount | 100 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 452 |
+| mainRequestBindingCount | 455 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 241 |
-| actionBindingCount | 271 |
-| acceptedActionBindingCount | 252 |
+| registeredActionCount | 244 |
+| actionBindingCount | 274 |
+| acceptedActionBindingCount | 255 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 231 |
-| coveredProductionMutationConsumerPairCount | 231 |
+| productionMutationConsumerPairCount | 234 |
+| coveredProductionMutationConsumerPairCount | 234 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -79,6 +79,7 @@
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
 | GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalWithdrawalAction | contract.signing-material-change | not_applicable | — |
+| GET | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listCounterpartySignedFiles | — | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
 | GET | /contracts/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractCreateCapabilities | — | not_applicable | — |
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
@@ -218,7 +219,7 @@
 | POST | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#acquireContractDraftEditLease | contract-draft.lease-acquire | covered | — |
 | POST | /contract-drafts/:contractVersionId/edit-lease/heartbeat | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#heartbeatContractDraftEditLease | contract-draft.lease-heartbeat | covered | — |
 | POST | /contract-drafts/:contractVersionId/edit-lease/takeover | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#takeOverContractDraftEditLease | contract-draft.lease-takeover | covered | — |
-| POST | /contract-drafts/:contractVersionId/files | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractWorkbenchPrivateFile | contract-authorization.upload-file<br>contract-bill-import.upload-file<br>contract-document.upload-file<br>contract-formal-document.upload-file<br>contract-negotiation.upload-file<br>contract-party.upload-file | covered | — |
+| POST | /contract-drafts/:contractVersionId/files | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractWorkbenchPrivateFile | contract-authorization.upload-file<br>contract-bill-import.upload-file<br>contract-counterparty-signed.upload-private-file<br>contract-document.upload-file<br>contract-formal-document.upload-file<br>contract-negotiation.upload-file<br>contract-party.upload-file | covered | — |
 | POST | /contract-drafts/:contractVersionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview | contract-draft.preview-queue | covered | — |
 | POST | /contract-drafts/:contractVersionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft | contract-workbench.submit | covered | — |
 | POST | /contract-layout-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | — | not_applicable | — |
@@ -268,6 +269,8 @@
 | POST | /contracts/:contractVersionId/change-drafts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | contract-change.create-draft | covered | — |
 | POST | /contracts/:contractVersionId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/formal-files/approval | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | contract-formal-document.associate-approval | covered | — |
+| POST | /contracts/:contractVersionId/formal-files/counterparty/confirmation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmCounterpartySignedFile | contract-counterparty-signed.confirm | covered | — |
+| POST | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadCounterpartySignedFiles | contract-counterparty-signed.submit-files | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final/confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmMutuallySignedContract | contract-final.confirm | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract | contract-final.associate | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final/return | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnMutuallySignedContractForCorrection | contract-final.return | covered | — |
