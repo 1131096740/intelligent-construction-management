@@ -2,14 +2,32 @@ import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
+import { convertDocxToPdf } from "../contract-document/libreoffice-converter";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
-import { inspectSignedPdf } from "./contract-formal-pdf-inspector";
+import {
+  inspectSignedPdf,
+  mergeCounterpartyImagesToPdf
+} from "./contract-formal-pdf-inspector";
 import { lockContractDraftMutationBoundary } from "./contract-draft-lifecycle";
-import type { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
+import type {
+  ConfirmCounterpartySignedFileDto,
+  UploadContractFormalFileDto,
+  UploadCounterpartySignedFileDto
+} from "./dto/contract-formal-file.dto";
 
 const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
 const PDF_MIME = "application/pdf";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const COUNTERPARTY_SIGNED_PURPOSE = "counterparty_signed";
+const COUNTERPARTY_PREVIEW_PURPOSE = "counterparty_signed_preview";
+const ALLOWED_COUNTERPARTY_MIME = new Set([
+  PDF_MIME,
+  DOCX_MIME,
+  "image/png",
+  "image/jpeg"
+]);
+const COUNTERPARTY_FILE_LIMIT = 20;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 export class ContractGovernanceDenial extends BadRequestException {
@@ -198,6 +216,231 @@ export class ContractFormalFileService {
       }
       throw error;
     }
+  }
+
+  // 接收灵活格式的乙方签章文件（PDF / DOCX / 多张图片），生成规范化预览并冻结到当前草稿修订。
+  // 每个原始文件一条 counterparty_signed 记录，规范化预览一条 counterparty_signed_preview 记录。
+  async uploadCounterpartySigned(
+    contractVersionId: string,
+    actorUserId: string,
+    input: UploadCounterpartySignedFileDto
+  ) {
+    const loaded = await this.loadCounterpartyFiles(input.fileIds, actorUserId);
+    const preview = await this.buildCounterpartyPreview(loaded, actorUserId);
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { version } = await this.lockEditableVersion(tx, contractVersionId, actorUserId);
+        if (input.sourceRevision !== version.draftRevision) {
+          throw this.deny("合同草稿已更新，请刷新后重新上传当前版本的乙方签章文件", "contract.formal_file.counterparty_upload_denied");
+        }
+        await tx.contractFormalFile.updateMany({
+          where: {
+            contractVersionId: version.id,
+            purpose: { in: [COUNTERPARTY_SIGNED_PURPOSE, COUNTERPARTY_PREVIEW_PURPOSE] },
+            status: "active"
+          },
+          data: {
+            status: "superseded",
+            invalidatedAt: new Date(),
+            invalidationReason: "已上传新的乙方签章文件"
+          }
+        });
+        const createdOriginals: Array<{ id: string }> = [];
+        for (const [index, item] of loaded.entries()) {
+          createdOriginals.push(await tx.contractFormalFile.create({
+            data: {
+              contractVersionId: version.id,
+              purpose: COUNTERPARTY_SIGNED_PURPOSE,
+              fileId: item.file.id,
+              contentSha256: item.sha256,
+              pageCount: item.pageCount,
+              sourceRevision: version.draftRevision,
+              status: "active",
+              uploadedByUserId: actorUserId,
+              supersedesId: null,
+              declarationSnapshot: {
+                kind: "counterparty_signed_original",
+                originalName: item.file.originalName,
+                mimeType: item.file.mimeType,
+                displayOrder: index
+              },
+              declaredByUserId: actorUserId,
+              declaredAt: new Date()
+            }
+          }));
+        }
+        const previewRow = await tx.contractFormalFile.create({
+          data: {
+            contractVersionId: version.id,
+            purpose: COUNTERPARTY_PREVIEW_PURPOSE,
+            fileId: preview.fileId,
+            contentSha256: preview.sha256,
+            pageCount: preview.pageCount,
+            sourceRevision: version.draftRevision,
+            status: "active",
+            uploadedByUserId: actorUserId,
+            supersedesId: null,
+            declarationSnapshot: {
+              kind: "counterparty_signed_preview",
+              mode: preview.mode,
+              sourceFileIds: input.fileIds,
+              sourceSha256: loaded.map((item) => item.sha256)
+            },
+            declaredByUserId: actorUserId,
+            declaredAt: new Date()
+          }
+        });
+        await this.audit?.record(tx, {
+          actorUserId,
+          action: "contract.formal_file.counterparty_upload",
+          businessType: "contract_version",
+          businessId: version.id,
+          metadata: {
+            formalFileId: previewRow.id,
+            sourceRevision: version.draftRevision,
+            fileIds: input.fileIds,
+            previewFileId: preview.fileId,
+            pageCount: preview.pageCount,
+            mode: preview.mode
+          }
+        });
+        return {
+          originalFormalFileIds: createdOriginals.map((item) => item.id),
+          previewFormalFileId: previewRow.id,
+          confirmationValid: false
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (preview.createdNewFileId) {
+        await this.discardPreviewOrphan(preview.createdNewFileId, actorUserId);
+      }
+      await this.persistDenial(contractVersionId, actorUserId, error);
+      if (this.isSerializationConflict(error)) {
+        throw new BadRequestException("乙方签章文件正在更新，请刷新后重试");
+      }
+      if (this.isUniqueConflict(error)) {
+        throw new BadRequestException("乙方签章文件已被更新，请刷新后确认当前版本");
+      }
+      throw error;
+    }
+  }
+
+  // 对规范化预览做整体确认：确认覆盖该预览对应的所有原始文件，并冻结到当前草稿修订。
+  async confirmCounterpartySigned(
+    contractVersionId: string,
+    actorUserId: string,
+    input: ConfirmCounterpartySignedFileDto
+  ) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const { version } = await this.lockEditableVersion(tx, contractVersionId, actorUserId);
+        if (input.expectedDraftRevision !== version.draftRevision) {
+          throw this.deny("合同草稿已更新，请刷新后重新确认当前版本的乙方签章文件", "contract.formal_file.counterparty_confirm_denied");
+        }
+        const preview = await tx.contractFormalFile.findFirst({
+          where: {
+            id: input.formalFileId,
+            contractVersionId: version.id,
+            purpose: COUNTERPARTY_PREVIEW_PURPOSE,
+            status: "active"
+          }
+        });
+        if (!preview) {
+          throw this.deny("乙方签章预览文件不存在或已过期，请重新上传", "contract.formal_file.counterparty_confirm_denied");
+        }
+        if (preview.sourceRevision !== version.draftRevision) {
+          throw this.deny("乙方签章预览已过期，请重新上传当前修订的文件", "contract.formal_file.counterparty_confirm_denied");
+        }
+        const confirmed = await tx.contractFormalFile.update({
+          where: { id: preview.id },
+          data: {
+            confirmedByUserId: actorUserId,
+            confirmedAt: new Date(),
+            confirmationSnapshot: { confirmedAtRevision: version.draftRevision }
+          }
+        });
+        await this.audit?.record(tx, {
+          actorUserId,
+          action: "contract.formal_file.counterparty_confirm",
+          businessType: "contract_version",
+          businessId: version.id,
+          metadata: {
+            formalFileId: confirmed.id,
+            sourceRevision: version.draftRevision
+          }
+        });
+        return {
+          formalFileId: confirmed.id,
+          confirmedByUserId: confirmed.confirmedByUserId,
+          confirmedAt: confirmed.confirmedAt?.toISOString() ?? null,
+          confirmedAtRevision: version.draftRevision,
+          confirmationValid: true
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      await this.persistDenial(contractVersionId, actorUserId, error);
+      if (this.isSerializationConflict(error)) {
+        throw new BadRequestException("乙方签章文件正在更新，请刷新后重试");
+      }
+      throw error;
+    }
+  }
+
+  // 读取乙方签章文件及其规范化预览，实时计算确认有效性（草稿修订变更后自动失效）。
+  async listCounterpartySigned(contractVersionId: string) {
+    const version = await this.prisma.contractVersion.findUnique({
+      where: { id: contractVersionId },
+      select: { id: true, draftRevision: true, status: true }
+    });
+    if (!version) throw new BadRequestException("合同草稿不存在，请刷新后重试");
+    const rows = await this.prisma.contractFormalFile.findMany({
+      where: {
+        contractVersionId,
+        purpose: { in: [COUNTERPARTY_SIGNED_PURPOSE, COUNTERPARTY_PREVIEW_PURPOSE] }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    const fileIds = [...new Set(rows.map((item) => item.fileId))];
+    const fileObjects = fileIds.length ? await this.prisma.fileObject.findMany({
+      where: { id: { in: fileIds } },
+      select: { id: true, originalName: true, mimeType: true }
+    }) : [];
+    const names = new Map(fileObjects.map((item) => [item.id, item]));
+    const activeOriginals = rows.filter((item) =>
+      item.purpose === COUNTERPARTY_SIGNED_PURPOSE && item.status === "active"
+    );
+    const activePreview = rows.find((item) =>
+      item.purpose === COUNTERPARTY_PREVIEW_PURPOSE && item.status === "active"
+    ) ?? null;
+    const confirmationValid = this.isCounterpartyConfirmationValid(version, activePreview);
+    return {
+      draftRevision: version.draftRevision,
+      status: version.status,
+      confirmationValid,
+      originalFiles: activeOriginals.map((item) => ({
+        formalFileId: item.id,
+        fileId: item.fileId,
+        fileName: names.get(item.fileId)?.originalName ?? "乙方签章文件",
+        mimeType: this.counterpartyDeclarationString(item.declarationSnapshot, "mimeType") ?? "application/octet-stream",
+        sourceRevision: item.sourceRevision,
+        status: item.status,
+        uploadedAt: item.createdAt.toISOString(),
+        displayOrder: this.counterpartyDeclarationNumber(item.declarationSnapshot, "displayOrder")
+      })),
+      preview: activePreview ? {
+        formalFileId: activePreview.id,
+        fileId: activePreview.fileId,
+        fileName: names.get(activePreview.fileId)?.originalName ?? "乙方签章预览.pdf",
+        pageCount: activePreview.pageCount,
+        sourceRevision: activePreview.sourceRevision,
+        status: activePreview.status,
+        mode: this.counterpartyDeclarationString(activePreview.declarationSnapshot, "mode") ?? "inline_pdf",
+        confirmedByUserId: activePreview.confirmedByUserId,
+        confirmedAt: activePreview.confirmedAt?.toISOString() ?? null,
+        confirmedAtRevision: this.counterpartyConfirmationRevision(activePreview.confirmationSnapshot),
+        confirmationValid
+      } : null
+    };
   }
 
   async assertReadyForSubmission(tx: Prisma.TransactionClient, version: GovernedVersion) {
@@ -490,5 +733,250 @@ export class ContractFormalFileService {
         (error.code === "P2010" && "meta" in error && error.meta &&
           typeof error.meta === "object" && "code" in error.meta && error.meta.code === "40001"))
     );
+  }
+
+  private async loadCounterpartyFiles(
+    fileIds: string[],
+    actorUserId: string
+  ): Promise<Array<{
+    file: {
+      id: string;
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      contentSha256: string | null;
+      storageStatus: string;
+    };
+    buffer: Uint8Array;
+    sha256: string;
+    pageCount: number;
+  }>> {
+    if (!this.files) {
+      throw new BadRequestException("合同文件校验服务暂不可用，请稍后重试或联系管理员");
+    }
+    const uniqueIds = [...new Set(fileIds)];
+    if (uniqueIds.length !== fileIds.length) {
+      throw this.deny("乙方签章文件列表存在重复，请重新选择", "contract.formal_file.counterparty_file_denied");
+    }
+    if (uniqueIds.length > COUNTERPARTY_FILE_LIMIT) {
+      throw this.deny("乙方签章文件数量超出上限，请分批上传", "contract.formal_file.counterparty_file_denied");
+    }
+    const loaded: Array<{
+      file: {
+        id: string;
+        originalName: string;
+        mimeType: string;
+        sizeBytes: number;
+        contentSha256: string | null;
+        storageStatus: string;
+      };
+      buffer: Uint8Array;
+      sha256: string;
+      pageCount: number;
+    }> = [];
+    for (const fileId of uniqueIds) {
+      const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+      if (!file || file.storageStatus !== "active") {
+        throw this.deny("所选乙方签章文件不存在或当前不可用，请重新上传", "contract.formal_file.counterparty_file_denied");
+      }
+      if (file.uploadedByUserId !== actorUserId) {
+        throw this.deny("只能关联本人本次上传的乙方签章文件", "contract.formal_file.counterparty_file_denied");
+      }
+      if (!ALLOWED_COUNTERPARTY_MIME.has(file.mimeType)) {
+        throw this.deny("乙方签章文件仅支持 PDF、DOCX、PNG 或 JPEG 格式", "contract.formal_file.counterparty_file_denied");
+      }
+      if (file.sizeBytes <= 0 || file.sizeBytes > Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)) {
+        throw this.deny("乙方签章文件为空或超过系统允许大小，请重新上传", "contract.formal_file.counterparty_file_denied");
+      }
+      if (!file.contentSha256 || !SHA256_PATTERN.test(file.contentSha256)) {
+        throw this.deny("乙方签章文件缺少完整性摘要，请重新上传", "contract.formal_file.counterparty_file_denied");
+      }
+      let loadedBuffer: Awaited<ReturnType<FileService["getFileBuffer"]>>;
+      try {
+        loadedBuffer = await this.files.getFileBuffer(fileId);
+      } catch {
+        throw this.deny("乙方签章文件暂时无法读取，请重新上传或稍后重试", "contract.formal_file.counterparty_file_denied");
+      }
+      if (
+        loadedBuffer.file.id !== file.id ||
+        loadedBuffer.file.storageStatus !== file.storageStatus ||
+        loadedBuffer.file.mimeType !== file.mimeType ||
+        loadedBuffer.file.sizeBytes !== file.sizeBytes ||
+        loadedBuffer.file.contentSha256 !== file.contentSha256 ||
+        loadedBuffer.buffer.length !== file.sizeBytes
+      ) {
+        throw this.deny("乙方签章文件在校验期间发生变化，请重新上传", "contract.formal_file.counterparty_file_denied");
+      }
+      const actualSha256 = createHash("sha256").update(loadedBuffer.buffer).digest("hex");
+      if (actualSha256 !== file.contentSha256) {
+        throw this.deny("乙方签章文件完整性校验失败，请重新上传", "contract.formal_file.counterparty_file_denied");
+      }
+      const pageCount = file.mimeType === PDF_MIME
+        ? await this.inspectCounterpartyPdf(loadedBuffer.buffer)
+        : file.mimeType.startsWith("image/")
+          ? 1
+          : 0;
+      loaded.push({
+        file: {
+          id: file.id,
+          originalName: file.originalName,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          contentSha256: file.contentSha256,
+          storageStatus: file.storageStatus
+        },
+        buffer: loadedBuffer.buffer,
+        sha256: actualSha256,
+        pageCount
+      });
+    }
+    return loaded;
+  }
+
+  private async buildCounterpartyPreview(
+    loaded: Array<{
+      file: { id: string; originalName: string; mimeType: string };
+      buffer: Uint8Array;
+      sha256: string;
+      pageCount: number;
+    }>,
+    actorUserId: string
+  ): Promise<{
+    fileId: string;
+    sha256: string;
+    pageCount: number;
+    mode: "inline_pdf" | "converted_pdf" | "merged_images_pdf";
+    createdNewFileId?: string;
+  }> {
+    if (!this.files) {
+      throw new BadRequestException("合同文件校验服务暂不可用，请稍后重试或联系管理员");
+    }
+    const singlePdf = loaded.length === 1 && loaded[0].file.mimeType === PDF_MIME;
+    const singleDocx = loaded.length === 1 && loaded[0].file.mimeType === DOCX_MIME;
+    const allImages = loaded.length >= 1 && loaded.every((item) => item.file.mimeType.startsWith("image/"));
+    if (singlePdf) {
+      // 单一 PDF 无需生成新文件，预览直接复用原始文件。
+      return {
+        fileId: loaded[0].file.id,
+        sha256: loaded[0].sha256,
+        pageCount: loaded[0].pageCount,
+        mode: "inline_pdf"
+      };
+    }
+    if (singleDocx) {
+      const pdfBuffer = await this.convertDocxToPdfBuffer(loaded[0].buffer);
+      const pageCount = await this.inspectCounterpartyPdf(pdfBuffer);
+      const uploaded = await this.files.uploadPrivateFile({
+        originalName: this.pdfNamed(loaded[0].file.originalName),
+        mimeType: PDF_MIME,
+        sizeBytes: pdfBuffer.length,
+        uploadedByUserId: actorUserId,
+        buffer: Buffer.from(pdfBuffer)
+      });
+      return {
+        fileId: uploaded.id,
+        sha256: createHash("sha256").update(pdfBuffer).digest("hex"),
+        pageCount,
+        mode: "converted_pdf",
+        createdNewFileId: uploaded.id
+      };
+    }
+    if (allImages) {
+      const merged = await mergeCounterpartyImagesToPdf(
+        loaded.map((item) => ({ buffer: item.buffer, name: item.file.originalName }))
+      );
+      const pdfBuffer = Buffer.from(merged.buffer);
+      const uploaded = await this.files.uploadPrivateFile({
+        originalName: "乙方签章合并预览.pdf",
+        mimeType: PDF_MIME,
+        sizeBytes: pdfBuffer.length,
+        uploadedByUserId: actorUserId,
+        buffer: pdfBuffer
+      });
+      return {
+        fileId: uploaded.id,
+        sha256: createHash("sha256").update(pdfBuffer).digest("hex"),
+        pageCount: merged.pageCount,
+        mode: "merged_images_pdf",
+        createdNewFileId: uploaded.id
+      };
+    }
+    throw this.deny(
+      "乙方签章文件仅支持单一 PDF、单一 DOCX 或多张图片，暂不支持混合格式，请分批上传同类型文件",
+      "contract.formal_file.counterparty_format_denied"
+    );
+  }
+
+  private async inspectCounterpartyPdf(buffer: Uint8Array) {
+    try {
+      return (await inspectSignedPdf(buffer)).pageCount;
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim()
+        ? error.message
+        : "无法读取乙方签章 PDF，请确认文件未损坏、未加密后重新上传";
+      throw this.deny(message, "contract.formal_file.counterparty_file_denied");
+    }
+  }
+
+  private async convertDocxToPdfBuffer(buffer: Uint8Array) {
+    try {
+      return await convertDocxToPdf(Buffer.from(buffer));
+    } catch (error) {
+      const message = error instanceof Error && error.message.trim()
+        ? error.message
+        : "乙方签章 DOCX 转换失败，请上传 PDF 或图片格式";
+      throw this.deny(message, "contract.formal_file.counterparty_format_denied");
+    }
+  }
+
+  private async discardPreviewOrphan(fileId: string, actorUserId: string) {
+    try {
+      await this.files?.discardUnlinkedGeneratedFile(fileId, actorUserId);
+    } catch {
+      // 清理失败不覆盖原业务异常；孤儿文件留待统一清理通道处理。
+    }
+  }
+
+  private isCounterpartyConfirmationValid(
+    version: { draftRevision: number },
+    preview: {
+      sourceRevision: number;
+      confirmedByUserId: string | null;
+      confirmationSnapshot: Prisma.JsonValue;
+    } | null
+  ) {
+    if (!preview || !preview.confirmedByUserId) return false;
+    if (preview.sourceRevision !== version.draftRevision) return false;
+    if (
+      !preview.confirmationSnapshot ||
+      typeof preview.confirmationSnapshot !== "object" ||
+      Array.isArray(preview.confirmationSnapshot)
+    ) {
+      return false;
+    }
+    return (preview.confirmationSnapshot as Prisma.JsonObject).confirmedAtRevision === version.draftRevision;
+  }
+
+  private counterpartyDeclarationString(value: Prisma.JsonValue, key: string): string | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const item = (value as Prisma.JsonObject)[key];
+    return typeof item === "string" ? item : null;
+  }
+
+  private counterpartyDeclarationNumber(value: Prisma.JsonValue, key: string): number | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const item = (value as Prisma.JsonObject)[key];
+    return typeof item === "number" ? item : null;
+  }
+
+  private counterpartyConfirmationRevision(value: Prisma.JsonValue): number | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const item = (value as Prisma.JsonObject).confirmedAtRevision;
+    return typeof item === "number" ? item : null;
+  }
+
+  private pdfNamed(originalName: string) {
+    const base = originalName.replace(/\.(docx|doc)$/iu, "");
+    return `${base}.pdf`;
   }
 }

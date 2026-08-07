@@ -110,7 +110,9 @@ export class ContractDraftAggregateService {
         ] : []),
         ...(version.status === "draft" ? ["submit_contract_draft"] : []),
         ...(version.contractGovernanceVersion === 1 ? [
-          "upload_contract_formal_approval_file"
+          "upload_contract_formal_approval_file",
+          "upload_contract_counterparty_signed_files",
+          "confirm_contract_counterparty_signed_files"
         ] : []),
         "upload_contract_negotiation_revision",
         "upload_contract_workbench_private_file"

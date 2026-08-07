@@ -45,7 +45,11 @@ import { UploadContractArchiveFileDto } from "./dto/upload-contract-archive-file
 import { CreateContractChangeDraftDto } from "./dto/create-contract-change-draft.dto";
 import { AbandonContractDraftDto } from "./dto/abandon-contract-draft.dto";
 import { CopyContractDraftDto } from "./dto/copy-contract-draft.dto";
-import { UploadContractFormalFileDto } from "./dto/contract-formal-file.dto";
+import {
+  ConfirmCounterpartySignedFileDto,
+  UploadContractFormalFileDto,
+  UploadCounterpartySignedFileDto
+} from "./dto/contract-formal-file.dto";
 import { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import { ContractAuthorizationService } from "./contract-authorization.service";
@@ -347,6 +351,37 @@ export class ContractController {
   ) {
     if (!this.seals) throw new InternalServerErrorException("合同用章任务服务暂不可用，请稍后重试");
     return this.seals.complete(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/formal-files/counterparty")
+  @RequireProjectRole("contract.submit")
+  uploadCounterpartySignedFiles(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: UploadCounterpartySignedFileDto
+  ) {
+    if (!this.formalFiles) throw new InternalServerErrorException("合同正式文件服务暂不可用，请稍后重试");
+    return this.formalFiles.uploadCounterpartySigned(contractVersionId, user.id, body);
+  }
+
+  @Post(":contractVersionId/formal-files/counterparty/confirmation")
+  @RequireProjectRole("contract.submit")
+  confirmCounterpartySignedFiles(
+    @Param("contractVersionId") contractVersionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: ConfirmCounterpartySignedFileDto
+  ) {
+    if (!this.formalFiles) throw new InternalServerErrorException("合同正式文件服务暂不可用，请稍后重试");
+    return this.formalFiles.confirmCounterpartySigned(contractVersionId, user.id, body);
+  }
+
+  @Get(":contractVersionId/formal-files/counterparty")
+  @RequireProjectRole("contract.submit")
+  listCounterpartySignedFiles(
+    @Param("contractVersionId") contractVersionId: string
+  ) {
+    if (!this.formalFiles) throw new InternalServerErrorException("合同正式文件服务暂不可用，请稍后重试");
+    return this.formalFiles.listCounterpartySigned(contractVersionId);
   }
 
   @Post(":contractVersionId/formal-files/final")

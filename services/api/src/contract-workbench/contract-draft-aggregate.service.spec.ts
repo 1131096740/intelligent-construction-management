@@ -142,6 +142,8 @@ describe("ContractDraftAggregateService", () => {
       "set_contract_authorization",
       "submit_contract_draft",
       "upload_contract_formal_approval_file",
+      "upload_contract_counterparty_signed_files",
+      "confirm_contract_counterparty_signed_files",
       "upload_contract_negotiation_revision",
       "upload_contract_workbench_private_file"
     ]);

@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 241,
+    "registeredActionCount": 244,
     "pageActionCount": 44,
-    "backgroundActionCount": 197,
-    "reachableVueFileCount": 127,
+    "backgroundActionCount": 200,
+    "reachableVueFileCount": 128,
     "routeRootCount": 47,
-    "totalVueFileCount": 142,
-    "parsedVueFileCount": 142,
-    "reachableProductionModuleCount": 227,
-    "templateEventDirectiveCount": 841,
+    "totalVueFileCount": 143,
+    "parsedVueFileCount": 143,
+    "reachableProductionModuleCount": 228,
+    "templateEventDirectiveCount": 843,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 231,
-    "candidateProductionMutationConsumerCount": 231,
-    "acceptedProductionMutationConsumerCount": 231,
-    "productionMutationConsumerPairCount": 231,
+    "coveredProductionMutationConsumerCount": 234,
+    "candidateProductionMutationConsumerCount": 234,
+    "acceptedProductionMutationConsumerCount": 234,
+    "productionMutationConsumerPairCount": 234,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 248,
-    "reachableProductionModuleCount": 227,
-    "totalVueFileCount": 142,
-    "parsedVueFileCount": 142
+    "totalProductionModuleCount": 249,
+    "reachableProductionModuleCount": 228,
+    "totalVueFileCount": 143,
+    "parsedVueFileCount": 143
   },
   "actions": [
     {
@@ -1616,6 +1616,204 @@
       ]
     },
     {
+      "id": "contract-counterparty-signed.confirm",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmCounterpartySignedFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 217,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.draftOperationAvailableActions",
+        "key": "confirm_contract_counterparty_signed_files",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "confirmCounterpartySignedFile",
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/counterparty/confirmation",
+          "normalizedKey": "POST /contracts/:param/formal-files/counterparty/confirmation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/formal-files/counterparty/confirmation",
+            "normalizedKey": "POST /contracts/:param/formal-files/counterparty/confirmation",
+            "controller": "ContractController",
+            "handler": "confirmCounterpartySignedFiles",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmCounterpartySignedFileWithCapability",
+              "confirmCounterpartySignedFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-counterparty-signed.submit-files",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadCounterpartySignedFilesWithCapability",
+        "kind": "background_call",
+        "sourceLine": 199,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.draftOperationAvailableActions",
+        "key": "upload_contract_counterparty_signed_files",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadCounterpartySignedFiles",
+          "method": "POST",
+          "path": "/contracts/:param/formal-files/counterparty",
+          "normalizedKey": "POST /contracts/:param/formal-files/counterparty",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contracts/:contractVersionId/formal-files/counterparty",
+            "normalizedKey": "POST /contracts/:param/formal-files/counterparty",
+            "controller": "ContractController",
+            "handler": "uploadCounterpartySignedFiles",
+            "sourceFile": "services/api/src/contract/contract.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.submit"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadCounterpartySignedFilesWithCapability",
+              "uploadCounterpartySignedFiles"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "contract-counterparty-signed.upload-private-file",
+      "usage": "background",
+      "routePaths": [
+        "/合同工作台/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同工作台/:contractId",
+        "/合同工作台/新建"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadPrivateFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 180,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.draftOperationAvailableActions",
+        "key": "upload_contract_workbench_private_file",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "uploadContractWorkbenchPrivateFile",
+          "method": "POST",
+          "path": "/contract-drafts/:param/files",
+          "normalizedKey": "POST /contract-drafts/:param/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/contract-drafts/:contractVersionId/files",
+            "normalizedKey": "POST /contract-drafts/:param/files",
+            "controller": "ContractDraftController",
+            "handler": "uploadPrivateFile",
+            "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadPrivateFileWithCapability",
+              "uploadContractWorkbenchPrivateFile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "contract-document.download-ticket",
       "usage": "page_action",
       "routePaths": [
@@ -1898,7 +2096,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 968,
+        "sourceLine": 975,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2136,7 +2334,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 935,
+        "sourceLine": 942,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2643,7 +2841,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1172,
+        "sourceLine": 1179,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6179,7 +6377,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1148,
+        "sourceLine": 1155,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6245,7 +6443,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1083,
+        "sourceLine": 1090,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6311,7 +6509,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1103,
+        "sourceLine": 1110,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6377,7 +6575,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1124,
+        "sourceLine": 1131,
         "sourceColumn": 0
       },
       "semantic": "business_write",

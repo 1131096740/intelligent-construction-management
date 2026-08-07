@@ -724,6 +724,13 @@
                   :prepare-mutation="prepareGovernanceMutation"
                   :complete-mutation="completeGovernanceMutation"
                 />
+                <ContractCounterpartySignedFilesPanel
+                  v-if="governedWorkbench"
+                  :workbench="governedWorkbench"
+                  :disabled="editorDisabled"
+                  :prepare-mutation="prepareGovernanceMutation"
+                  :complete-mutation="completeGovernanceMutation"
+                />
                 <div class="attachment-schema">
                   <h2>模板附件要求</h2>
                   <p
@@ -1228,6 +1235,7 @@ import {
 } from "./contract-scenario.state";
 import ContractBasicSection from "./workbench/ContractBasicSection.vue";
 import ContractAuthorizationSection from "./workbench/ContractAuthorizationSection.vue";
+import ContractCounterpartySignedFilesPanel from "./workbench/ContractCounterpartySignedFilesPanel.vue";
 import ContractBillFocusEditor, {
   type ContractBillRemainderCancellationExecutionResult,
   type ContractBillRemainderCancellationRequest

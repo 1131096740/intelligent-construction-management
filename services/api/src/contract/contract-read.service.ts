@@ -255,7 +255,10 @@ export class ContractReadService {
         orderBy: { createdAt: "desc" }
       }),
       this.prisma.contractFormalFile.findMany({
-        where: { contractVersionId },
+        where: {
+          contractVersionId,
+          purpose: { in: ["approval_original", "mutually_signed_final"] }
+        },
         orderBy: { createdAt: "desc" }
       })
     ]);

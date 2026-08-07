@@ -765,6 +765,36 @@
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractFormalApprovalFile" }]
     },
     {
+      "id": "contract-counterparty-signed.upload-private-file",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadPrivateFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
+    },
+    {
+      "id": "contract-counterparty-signed.submit-files",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadCounterpartySignedFilesWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_counterparty_signed_files" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadCounterpartySignedFiles" }]
+    },
+    {
+      "id": "contract-counterparty-signed.confirm",
+      "usage": "background",
+      "routePaths": ["/合同工作台/:contractId"],
+      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmCounterpartySignedFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "confirm_contract_counterparty_signed_files" },
+      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "confirmCounterpartySignedFile" }]
+    },
+    {
       "id": "contract-party.upload-file",
       "usage": "background",
       "routePaths": ["/合同工作台/:contractId"],
