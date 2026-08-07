@@ -30,7 +30,7 @@
 - [x] 仓库控制面 PR #21 已合并为 `fc855cfef0d2ad0629cc7cc7dc6b9253993e7332`，且未触发部署。
 - [x] GitHub 使用五态标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`。
 - [~] 根 `PROGRESS.md` 已压缩为实时看板；完整旧内容原样保存在历史快照中。
-- [~] Issue #27（`pdfjs-dist` / CVE-2026-16633）已建立独立安全修复分支：直接依赖从 `6.1.200` 升至厂商修复下限 `6.2.108`；本地 `pnpm audit --prod --audit-level high` 已无 high（仍有 5 个既有 moderate），Web 全量测试、类型检查、lint、生产构建和 UI 规则均通过，待独立 PR 的远端 CI 与复核。
+- [~] Issue #27（`pdfjs-dist` / CVE-2026-16633）已建立独立安全修复分支：直接依赖从 `6.1.200` 升至厂商修复下限 `6.2.108`；候选 `d88210904a8317938ef828d92d8cd8fa97ea4eda` 的本地与远端 `pnpm audit --prod --audit-level high` 均无 high（仍有 5 个既有 moderate），Web 全量测试、类型检查、lint、生产构建、UI 规则及精确 SHA PostgreSQL 16 动态门均通过；远端 CI 唯一失败为 #23 已知的 `CAPABILITY_EXIT_CANDIDATE_CONSUMER_PRESENT` manifests blocker，本票零改动，PR 保持草稿待独立复核。
 - [ ] 文档收敛 PR 合并后，复核最终 worktree/分支拓扑并归档旧 Codex 会话。
 
 ### P0：已删除草稿生命周期
