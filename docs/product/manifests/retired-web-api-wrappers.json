@@ -91,7 +91,7 @@
         "createApprovalDelegation",
         "createSettlementDraft",
         "fetchActiveContractNumberRules",
-        "fetchContractLifecycleLedger",
+        "fetchContractWorkbenchLedger",
         "fetchProjectAffiliateMappingReport",
         "fetchSettlementLifecycleLedger",
         "fetchWorkbenchSummary",

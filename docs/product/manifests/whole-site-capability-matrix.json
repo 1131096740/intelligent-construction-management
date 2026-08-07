@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "23aea8482fe3e8a172d429960cb2f0c797513966871a0d2636d70f76bee68af4",
+      "sha256": "0e9e3ad9ef1dd1bbfc637f482a58c971cdc1f2397e6d4093bffcc5b3f0e76c0c",
       "status": "ready",
       "summary": {
         "routeCount": 446
@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8d052f1bf556031567ec87fb7e72cb849c184da5ad806161ceef7d1bca818224",
+      "sha256": "d9b6ad0f89857471cba945a2c6624f5f340ce4ea8c4cf092e4581e39cf14e555",
       "status": "ready",
       "summary": {
         "apiModuleCount": 15,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "2dcfc283a901e0e07b9f480180176743dee952da43e5cdcdfdcd10e849e1869a",
+      "sha256": "cb8e4515fa201cd54f325669398f998d5997bce3e8594fbf67bf81a46adbc46b",
       "status": "ready",
       "summary": {
         "registeredActionCount": 241,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 142,
         "parsedVueFileCount": 142,
         "reachableProductionModuleCount": 227,
-        "templateEventDirectiveCount": 840,
+        "templateEventDirectiveCount": 841,
         "propCallbackDirectiveCount": 7,
         "coveredProductionMutationConsumerCount": 231,
         "candidateProductionMutationConsumerCount": 231,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "ae76040e1a6d58028c1976aa27a549ff112f3481d912a73144a3ad0f78867b47",
+      "sha256": "ac43825d653df49d4ea3c605e17f3abefd80c940a761ba0b5ca055d1d42062ba",
       "status": "ready",
       "summary": {
         "routeCount": 446,
@@ -72,7 +72,7 @@
         "normalizedRouteCount": 446,
         "classificationOverrideCount": 165,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "93861177f13d95f7c180f317086ab252409b8397e2a4871c860a9c160d5f1bba",
+        "classificationOverrideSha256": "b8c248b3167c686f42f5dc94261f057bae230ac26ebd43cab476b3843a0b9207",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
         "derivedProductionPageCount": 281,
         "pageRouteCount": 282,
@@ -2067,11 +2067,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -2210,11 +2216,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -2223,8 +2235,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "exit_candidate",
-      "consumerSurface": "none",
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -2233,7 +2245,9 @@
           "path": "/contracts/lifecycle-ledger?:param",
           "normalizedKey": "GET /contracts/lifecycle-ledger",
           "bodyKind": "none",
-          "productionConsumers": [],
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractListPage.vue"
+          ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
@@ -2345,11 +2359,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -2358,8 +2378,8 @@
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
@@ -2368,9 +2388,7 @@
           "path": "/contracts/workbench?:param",
           "normalizedKey": "GET /contracts/workbench",
           "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractListPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
@@ -3328,11 +3346,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -5808,11 +5832,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -5863,11 +5893,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -5979,11 +6015,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -6032,11 +6074,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -6087,11 +6135,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],
@@ -22059,11 +22113,17 @@
           "comprehensive_director",
           "contract_director",
           "contract_staff",
+          "employee",
           "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
           "finance_director",
           "finance_staff",
           "general_manager",
           "material_director",
+          "material_staff",
           "project_manager",
           "super_admin"
         ],

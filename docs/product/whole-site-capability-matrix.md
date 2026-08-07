@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `23aea8482fe3e8a172d429960cb2f0c797513966871a0d2636d70f76bee68af4` |
-| webApiWrappers | ready | `8d052f1bf556031567ec87fb7e72cb849c184da5ad806161ceef7d1bca818224` |
-| webPageActions | ready | `2dcfc283a901e0e07b9f480180176743dee952da43e5cdcdfdcd10e849e1869a` |
-| routeUsage | ready | `ae76040e1a6d58028c1976aa27a549ff112f3481d912a73144a3ad0f78867b47` |
+| nestRoutes | ready | `0e9e3ad9ef1dd1bbfc637f482a58c971cdc1f2397e6d4093bffcc5b3f0e76c0c` |
+| webApiWrappers | ready | `d9b6ad0f89857471cba945a2c6624f5f340ce4ea8c4cf092e4581e39cf14e555` |
+| webPageActions | ready | `cb8e4515fa201cd54f325669398f998d5997bce3e8594fbf67bf81a46adbc46b` |
+| routeUsage | ready | `ac43825d653df49d4ea3c605e17f3abefd80c940a761ba0b5ca055d1d42062ba` |
 
 ## 汇总
 
@@ -82,10 +82,10 @@
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
 | GET | /contracts/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractCreateCapabilities | — | not_applicable | — |
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
-| GET | /contracts/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLifecycleLedger | — | not_applicable | — |
+| GET | /contracts/lifecycle-ledger | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLifecycleLedger | — | not_applicable | — |
 | GET | /contracts/payment-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentContractOptions | — | not_applicable | — |
 | GET | /contracts/settlement-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementContractOptions | — | not_applicable | — |
-| GET | /contracts/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractWorkbenchLedger | — | not_applicable | — |
+| GET | /contracts/workbench | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractWorkbenchLedger | — | not_applicable | — |
 | GET | /draft-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDraftRetentionPreview | — | not_applicable | — |
 | GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | — | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
