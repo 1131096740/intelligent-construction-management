@@ -441,7 +441,7 @@ const activeLifecycleDescription = computed(() => ({
   formal_ledger: "只展示已归档生效或保留的正式合同记录，不含草稿与已结束申请。",
   my_drafts: "仅显示当前账号可继续办理的合同草稿；合同部主管与超级管理员可查看全部未提交草稿。",
   returned_for_revision: "只显示退回给当前账号修改的合同草稿，可继续办理或放弃申请。",
-  ended: "展示已结束、已作废或已撤回的合同记录；仅保留查看详情能力。"
+  ended: "展示已放弃或最终驳回的合同申请记录；仅保留查看详情能力。"
 })[activeTab.value]);
 
 function optionsForFilter(key: ContractFilterKey) {

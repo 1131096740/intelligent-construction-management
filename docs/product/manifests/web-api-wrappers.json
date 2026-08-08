@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 15,
-    "exportedFunctionCount": 457,
-    "transportWrapperCount": 437,
+    "apiModuleCount": 16,
+    "exportedFunctionCount": 460,
+    "transportWrapperCount": 440,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 459,
+    "mainRequestBindingCount": 462,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 459,
-    "productionConsumerCount": 335,
+    "requestEdgeCount": 462,
+    "productionConsumerCount": 338,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 249,
-    "reachableProductionModuleCount": 223
+    "productionModuleCount": 251,
+    "reachableProductionModuleCount": 225
   },
   "wrappers": [
     {
@@ -202,6 +202,96 @@
         "apps/web-admin/src/api/company-entity.api.test.ts"
       ],
       "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createContractEndedApplicationRetentionHold",
+      "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 81,
+          "method": "POST",
+          "path": "/contract-ended-retention/:param/holds",
+          "normalizedPath": "/contract-ended-retention/:param/holds",
+          "normalizedKey": "POST /contract-ended-retention/:param/holds",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createContractEndedApplicationRetentionHold",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-ended-retention.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchContractEndedApplicationRetentionPreview",
+      "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 75,
+          "method": "GET",
+          "path": "/contract-ended-retention/preview?:param",
+          "normalizedPath": "/contract-ended-retention/preview",
+          "normalizedKey": "GET /contract-ended-retention/preview",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchContractEndedApplicationRetentionPreview",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-ended-retention.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "releaseContractEndedApplicationRetentionHold",
+      "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 81,
+          "method": "POST",
+          "path": "/contract-ended-retention/:param/hold-release",
+          "normalizedPath": "/contract-ended-retention/:param/hold-release",
+          "normalizedKey": "POST /contract-ended-retention/:param/hold-release",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "releaseContractEndedApplicationRetentionHold",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-ended-retention.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -4869,7 +4959,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6949,
+          "sourceLine": 6952,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4899,7 +4989,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6933,
+          "sourceLine": 6936,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4929,7 +5019,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6933,
+          "sourceLine": 6936,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4959,7 +5049,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5351,
+          "sourceLine": 5354,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4988,7 +5078,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6933,
+          "sourceLine": 6936,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5050,7 +5140,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5241,
+          "sourceLine": 5244,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -5135,7 +5225,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6976,
+          "sourceLine": 6979,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -5164,7 +5254,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6963,
+          "sourceLine": 6966,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5193,7 +5283,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6991,
+          "sourceLine": 6994,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5222,7 +5312,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6933,
+          "sourceLine": 6936,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",

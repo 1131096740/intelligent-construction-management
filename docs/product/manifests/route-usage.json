@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 449,
-    "exactRouteCount": 449,
-    "normalizedRouteCount": 449,
+    "routeCount": 452,
+    "exactRouteCount": 452,
+    "normalizedRouteCount": 452,
     "classificationOverrideCount": 173,
     "consumerSurfaceOverrideCount": 4,
     "classificationOverrideSha256": "3acd4ec0b16634bfe9fee7a9858033cb789193236e84382f89193b02f685cf6d",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 276,
-    "pageRouteCount": 277,
+    "derivedProductionPageCount": 279,
+    "pageRouteCount": 280,
     "externalTakeoverCount": 61,
     "exitCandidateCount": 108,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 326,
+      "web_api_wrapper": 329,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 326,
+    "productionWrapperRouteCount": 329,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -991,6 +991,48 @@
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contract-ended-retention/preview",
+      "normalizedKey": "GET /contract-ended-retention/preview",
+      "controller": "ContractEndedApplicationRetentionController",
+      "handler": "preview",
+      "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+            "wrapper": "fetchContractEndedApplicationRetentionPreview",
+            "method": "GET",
+            "normalizedPath": "/contract-ended-retention/preview",
+            "normalizedKey": "GET /contract-ended-retention/preview",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
             ]
           }
         ],
@@ -7589,6 +7631,90 @@
             "normalizedKey": "POST /contract-drafts/:param/submission",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contract-ended-retention/:contractVersionId/hold-release",
+      "normalizedKey": "POST /contract-ended-retention/:param/hold-release",
+      "controller": "ContractEndedApplicationRetentionController",
+      "handler": "releaseHold",
+      "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+            "wrapper": "releaseContractEndedApplicationRetentionHold",
+            "method": "POST",
+            "normalizedPath": "/contract-ended-retention/:param/hold-release",
+            "normalizedKey": "POST /contract-ended-retention/:param/hold-release",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contract-ended-retention/:contractVersionId/holds",
+      "normalizedKey": "POST /contract-ended-retention/:param/holds",
+      "controller": "ContractEndedApplicationRetentionController",
+      "handler": "createHold",
+      "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+            "wrapper": "createContractEndedApplicationRetentionHold",
+            "method": "POST",
+            "normalizedPath": "/contract-ended-retention/:param/holds",
+            "normalizedKey": "POST /contract-ended-retention/:param/holds",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
             ]
           }
         ],

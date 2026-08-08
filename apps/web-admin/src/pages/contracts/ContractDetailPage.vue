@@ -2216,7 +2216,7 @@ async function reloadContractDetail() {
 }
 
 watch(
-  () => [route.params.contractId, route.query.versionId],
+  () => [route.params.contractId, route.query?.versionId],
   (next, previous) => {
     if (next[0] === previous[0] && next[1] === previous[1]) return;
     clearChangeTransientState();
@@ -2235,7 +2235,7 @@ function routeContractId() {
 }
 
 function routeVersionId() {
-  const value = route.query.versionId;
+  const value = route.query?.versionId;
   return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
 }
 

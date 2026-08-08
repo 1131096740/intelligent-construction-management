@@ -2661,7 +2661,7 @@ describe("ContractReadService", () => {
     const pendingArchive = await service.workbenchLedger("pending_archive", 1, 20, ["p1"], "u1");
 
     expect(pendingArchive.summary).toEqual({
-      pending_action: 1, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 6
+      pending_action: 1, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 5
     });
     expect(pendingArchive.rows).toEqual([
       expect.objectContaining({ contractVersionId: "c4-v1", contractNo: "HT-4", currentNode: "合同部主管确认双方最终版" })

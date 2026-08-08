@@ -59,6 +59,14 @@ describe("contract ledger page configuration", () => {
     expect(source).not.toContain("复制为新草稿");
   });
 
+  it("does not describe editable withdrawals as ended history", () => {
+    const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
+    expect(source).toContain(
+      "展示已放弃或最终驳回的合同申请记录；仅保留查看详情能力。"
+    );
+    expect(source).not.toContain("已结束、已作废或已撤回");
+  });
+
   it("defaults an unqualified workbench visit to the formal lifecycle ledger", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
     expect(source).toMatch(

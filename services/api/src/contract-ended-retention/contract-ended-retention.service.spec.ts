@@ -1,8 +1,17 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import { ContractEndedApplicationRetentionService } from "./contract-ended-retention.service";
+import {
+  addCalendarMonths,
+  ContractEndedApplicationRetentionService
+} from "./contract-ended-retention.service";
 
 describe("ContractEndedApplicationRetentionService", () => {
   const terminalAt = new Date("2026-08-31T10:15:00.000Z");
+
+  it("uses Shanghai calendar dates for the three-month ended-retention deadline", () => {
+    expect(addCalendarMonths(new Date("2026-02-28T16:00:00.000Z"), 3)).toEqual(
+      new Date("2026-05-31T16:00:00.000Z")
+    );
+  });
 
   function prisma(overrides: Record<string, unknown> = {}) {
     const client = {

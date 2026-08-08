@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "0db52f45c640cf999a82654f775edad5266d9aa835636342e06deadebcf3e5f3",
+      "sha256": "91475f482ed03646bc943f05f482a8cacf04dadf4d0a1d31e4aa101f452cbb46",
       "status": "ready",
       "summary": {
-        "routeCount": 449
+        "routeCount": 452
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "9ac2b40081bf70efba130461f9ac9e6bfea660dd923aab200008259dc449004e",
+      "sha256": "5153023929aa08143b466f66cd00d9af19af8a34858bd52cd416e1a2a872618d",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 15,
-        "exportedFunctionCount": 457,
-        "transportWrapperCount": 437,
+        "apiModuleCount": 16,
+        "exportedFunctionCount": 460,
+        "transportWrapperCount": 440,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 459,
+        "mainRequestBindingCount": 462,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 459,
-        "productionConsumerCount": 335,
+        "requestEdgeCount": 462,
+        "productionConsumerCount": 338,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "00932aeeea0013ef75b51c87b0758a099125ca39ceec1ebf14ba7087b4265f4f",
+      "sha256": "3fb1b28d067e5d2d88c3be22d4f74583a98b7c832da979f27af6b84c86aa83ca",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 236,
-        "pageActionCount": 44,
+        "registeredActionCount": 238,
+        "pageActionCount": 46,
         "backgroundActionCount": 192,
-        "reachableVueFileCount": 125,
+        "reachableVueFileCount": 126,
         "routeRootCount": 47,
-        "totalVueFileCount": 143,
-        "parsedVueFileCount": 143,
-        "reachableProductionModuleCount": 223,
-        "templateEventDirectiveCount": 829,
+        "totalVueFileCount": 144,
+        "parsedVueFileCount": 144,
+        "reachableProductionModuleCount": 225,
+        "templateEventDirectiveCount": 835,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 227,
-        "candidateProductionMutationConsumerCount": 227,
-        "acceptedProductionMutationConsumerCount": 227,
-        "productionMutationConsumerPairCount": 227,
+        "coveredProductionMutationConsumerCount": 229,
+        "candidateProductionMutationConsumerCount": 229,
+        "acceptedProductionMutationConsumerCount": 229,
+        "productionMutationConsumerPairCount": 229,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "0f45a8484581a5e27795ce4e527b846373ded5828a21279b746cb99cb363b24d",
+      "sha256": "b0b6e471e53c65714f4e9a442dc2d10e3e2988967ae7be81e3c906812d66eb8f",
       "status": "ready",
       "summary": {
-        "routeCount": 449,
-        "exactRouteCount": 449,
-        "normalizedRouteCount": 449,
+        "routeCount": 452,
+        "exactRouteCount": 452,
+        "normalizedRouteCount": 452,
         "classificationOverrideCount": 173,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "3acd4ec0b16634bfe9fee7a9858033cb789193236e84382f89193b02f685cf6d",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 276,
-        "pageRouteCount": 277,
+        "derivedProductionPageCount": 279,
+        "pageRouteCount": 280,
         "externalTakeoverCount": 61,
         "exitCandidateCount": 108,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 326,
+          "web_api_wrapper": 329,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 449,
-    "pageRouteCount": 277,
+    "routeCount": 452,
+    "pageRouteCount": 280,
     "externalTakeoverRouteCount": 61,
     "exitCandidateRouteCount": 108,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 459,
+    "mainRequestBindingCount": 462,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 236,
-    "actionBindingCount": 267,
-    "acceptedActionBindingCount": 247,
+    "registeredActionCount": 238,
+    "actionBindingCount": 269,
+    "acceptedActionBindingCount": 249,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 227,
-    "coveredProductionMutationConsumerPairCount": 227,
+    "productionMutationConsumerPairCount": 229,
+    "coveredProductionMutationConsumerPairCount": 229,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -1332,6 +1332,49 @@
           "blockerCodes": []
         }
       ],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/contract-ended-retention/preview",
+        "normalizedKey": "GET /contract-ended-retention/preview",
+        "controller": "ContractEndedApplicationRetentionController",
+        "handler": "preview",
+        "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "wrapper": "fetchContractEndedApplicationRetentionPreview",
+          "method": "GET",
+          "path": "/contract-ended-retention/preview?:param",
+          "normalizedKey": "GET /contract-ended-retention/preview",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-ended-retention.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -9502,6 +9545,144 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/contract-ended-retention/:contractVersionId/hold-release",
+        "normalizedKey": "POST /contract-ended-retention/:param/hold-release",
+        "controller": "ContractEndedApplicationRetentionController",
+        "handler": "releaseHold",
+        "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "wrapper": "releaseContractEndedApplicationRetentionHold",
+          "method": "POST",
+          "path": "/contract-ended-retention/:param/hold-release",
+          "normalizedKey": "POST /contract-ended-retention/:param/hold-release",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-ended-retention.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "contract-ended-retention.release-hold",
+          "bindingIndex": 0,
+          "identity": "contract-ended-retention.release-hold\u0000apps/web-admin/src/api/contract-ended-retention.api.ts\u0000releaseContractEndedApplicationRetentionHold\u0000POST\u0000POST /contract-ended-retention/:param/hold-release\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "preview.canManageRetention",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "wrapper": "releaseContractEndedApplicationRetentionHold",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/contract-ended-retention/:contractVersionId/holds",
+        "normalizedKey": "POST /contract-ended-retention/:param/holds",
+        "controller": "ContractEndedApplicationRetentionController",
+        "handler": "createHold",
+        "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "contract_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "wrapper": "createContractEndedApplicationRetentionHold",
+          "method": "POST",
+          "path": "/contract-ended-retention/:param/holds",
+          "normalizedKey": "POST /contract-ended-retention/:param/holds",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/contract-ended-retention.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "contract-ended-retention.create-hold",
+          "bindingIndex": 0,
+          "identity": "contract-ended-retention.create-hold\u0000apps/web-admin/src/api/contract-ended-retention.api.ts\u0000createContractEndedApplicationRetentionHold\u0000POST\u0000POST /contract-ended-retention/:param/holds\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "preview.canManageRetention",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "wrapper": "createContractEndedApplicationRetentionHold",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue"
           ],
           "causalVerified": true,
           "accepted": true,

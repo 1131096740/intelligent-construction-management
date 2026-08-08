@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
+import { addShanghaiCalendarMonths } from "../contract/contract-retention-calendar";
 
 const DAY_MS = 86_400_000;
 const RETENTION_MONTHS = 3;
@@ -48,19 +49,7 @@ function addDays(value: Date, days: number) {
 }
 
 export function addCalendarMonths(value: Date, months: number) {
-  const targetMonth = value.getUTCMonth() + months;
-  const targetYear = value.getUTCFullYear() + Math.floor(targetMonth / 12);
-  const normalizedMonth = ((targetMonth % 12) + 12) % 12;
-  const lastDay = new Date(Date.UTC(targetYear, normalizedMonth + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(
-    targetYear,
-    normalizedMonth,
-    Math.min(value.getUTCDate(), lastDay),
-    value.getUTCHours(),
-    value.getUTCMinutes(),
-    value.getUTCSeconds(),
-    value.getUTCMilliseconds()
-  ));
+  return addShanghaiCalendarMonths(value, months);
 }
 
 function remainingDays(now: Date, dueAt: Date) {

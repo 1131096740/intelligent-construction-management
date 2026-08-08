@@ -3282,7 +3282,9 @@ export class ContractReadService {
     pendingVersionIds: ReadonlySet<string>
   ): V | undefined {
     const candidates = versions.filter((version) =>
-      lifecycleByVersion.get(version.id)?.contractLifecycleStage !== "deleting"
+      !["deleting", "ended_retained"].includes(
+        lifecycleByVersion.get(version.id)?.contractLifecycleStage ?? ""
+      )
     );
     if (view === "all") return candidates[0];
     if (view === "my_drafts") {
@@ -3323,6 +3325,7 @@ export class ContractReadService {
   ) {
     const { status } = version;
     if (!draftLifecycle.capabilities.canView) return false;
+    if (draftLifecycle.contractLifecycleStage === "ended_retained") return false;
     if (
       draftLifecycle.contractLifecycleStage === "unsubmitted_draft" &&
       ownerUserId !== actorUserId &&
