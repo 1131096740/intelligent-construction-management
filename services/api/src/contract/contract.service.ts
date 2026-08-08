@@ -1955,7 +1955,7 @@ export class ContractService {
           if (!this.readiness) {
             throw new Error("合同提交审批服务暂不可用，请稍后重试或联系管理员");
           }
-          const readiness = await this.readiness.check(tx, version, contract, false);
+          const readiness = await this.readiness.check(tx, version, contract);
           if (readiness.blocking.length > 0) {
             throw new BadRequestException({
               message: "合同资料尚未满足提交审批条件，请按阻断项补齐后再提交",

@@ -3211,8 +3211,7 @@ describe("ContractService", () => {
         }
       } as never,
       { ...version, defaultTaxRatePercent: null, clauseSnapshot: [] } as never,
-      { contractTypeKey: "material_purchase" },
-      true
+      { contractTypeKey: "material_purchase" }
     );
     expect(invalidReadiness.blocking.map((item) => item.key)).toEqual(
       expect.arrayContaining([
@@ -3228,8 +3227,7 @@ describe("ContractService", () => {
     const savedReadiness = await readiness.check(
       tx as never,
       version as never,
-      { contractTypeKey: "material_purchase" },
-      true
+      { contractTypeKey: "material_purchase" }
     );
     expect(savedReadiness.blocking).toEqual([]);
 

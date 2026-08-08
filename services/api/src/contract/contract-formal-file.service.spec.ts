@@ -56,6 +56,7 @@ function harness(overrides: Record<string, unknown> = {}) {
     }),
     contractFormalFile: {
       findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       create: jest.fn().mockImplementation(({ data }) => ({ id: "formal-1", ...data }))
     },
@@ -719,6 +720,14 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
         status: "active",
         declarationSnapshot: {}
       });
+    tx.contractFormalFile.findMany.mockResolvedValueOnce([
+      {
+        id: "counterparty-original-1",
+        fileId: "file-1",
+        contentSha256: sha256,
+        sourceRevision: 3
+      }
+    ]);
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const service = new ContractFormalFileService(prisma as never, audit as never, files as never);
 
@@ -747,7 +756,15 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
     });
     expect(createData.declarationSnapshot._counterparty_confirmed).toMatchObject({
       confirmedAtRevision: 3,
-      formalFileId: "preview-1"
+      formalFileId: "preview-1",
+      sourceFiles: [
+        {
+          formalFileId: "counterparty-original-1",
+          fileId: "file-1",
+          contentSha256: sha256,
+          sourceRevision: 3
+        }
+      ]
     });
     expect(tx.contractFormalFile.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({

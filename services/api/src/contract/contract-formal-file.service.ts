@@ -491,6 +491,22 @@ export class ContractFormalFileService {
     if (version.contractGovernanceVersion !== 1) return null;
     const preview = await this.findConfirmedCounterpartyPreview(tx, version);
     if (!preview) return null;
+    const sourceFiles = await tx.contractFormalFile.findMany({
+      where: {
+        contractVersionId: version.id,
+        purpose: COUNTERPARTY_SIGNED_PURPOSE,
+        status: "active",
+        sourceRevision: version.draftRevision
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        fileId: true,
+        contentSha256: true,
+        sourceRevision: true
+      }
+    });
+    if (sourceFiles.length === 0) return null;
     const previous = await tx.contractFormalFile.findFirst({
       where: {
         contractVersionId: version.id,
@@ -524,7 +540,8 @@ export class ContractFormalFileService {
         uploadedByUserId: actorUserId,
         supersedesId: previous?.id ?? null,
         declarationSnapshot: this.counterpartyApprovalDeclaration(
-          preview
+          preview,
+          sourceFiles
         ) as Prisma.InputJsonValue,
         declaredByUserId: actorUserId,
         declaredAt: new Date()
@@ -1078,7 +1095,13 @@ export class ContractFormalFileService {
       id: string;
       sourceRevision: number;
       confirmationSnapshot: Prisma.JsonValue;
-    }
+    },
+    sourceFiles: Array<{
+      id: string;
+      fileId: string;
+      contentSha256: string;
+      sourceRevision: number;
+    }>
   ): Prisma.JsonObject {
     return {
       kind: "counterparty_bridge",
@@ -1092,7 +1115,13 @@ export class ContractFormalFileService {
         confirmedAtRevision:
           this.counterpartyConfirmationRevision(preview.confirmationSnapshot) ??
           preview.sourceRevision,
-        formalFileId: preview.id
+        formalFileId: preview.id,
+        sourceFiles: sourceFiles.map((source) => ({
+          formalFileId: source.id,
+          fileId: source.fileId,
+          contentSha256: source.contentSha256,
+          sourceRevision: source.sourceRevision
+        }))
       }
     };
   }

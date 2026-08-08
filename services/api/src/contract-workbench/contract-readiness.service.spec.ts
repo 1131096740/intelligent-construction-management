@@ -181,8 +181,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, defaultTaxRatePercent: null },
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -204,8 +203,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       current as never,
       version,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -242,8 +240,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       current as never,
       version,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -270,8 +267,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       current as never,
       version,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -299,18 +295,16 @@ describe("ContractReadinessService", () => {
       draftData: {}
     };
 
-    const material = await service.check(tx() as never, fieldVersion, contract, false);
+    const material = await service.check(tx() as never, fieldVersion, contract);
     const labor = await service.check(
       tx() as never,
       fieldVersion,
-      { contractTypeKey: "labor_subcontract" },
-      false
+      { contractTypeKey: "labor_subcontract" }
     );
     const rental = await service.check(
       tx() as never,
       fieldVersion,
-      { contractTypeKey: "equipment_rental" },
-      false
+      { contractTypeKey: "equipment_rental" }
     );
 
     expect(material.blocking).not.toContainEqual(expect.objectContaining({ key: "field.deliveryDeadline" }));
@@ -345,7 +339,7 @@ describe("ContractReadinessService", () => {
       contractId: "contract-1",
       changeType: "change",
       baseVersionId: "version-0"
-    }, contract, false);
+    }, contract);
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
       key: "bill.cross_version_mapping",
@@ -529,8 +523,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, draftData: { project_name: "" } } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -542,8 +535,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, draftData: { fieldValues: { project_name: "建设项目" } } } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual([]);
@@ -553,8 +545,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, clauseSnapshot: [{ ...version.clauseSnapshot[0], content: "" }] } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -571,8 +562,7 @@ describe("ContractReadinessService", () => {
           { ...version.clauseSnapshot[0], content: { text: "仅约定付款" } }
         ]
       } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -584,8 +574,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       version as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual([]);
@@ -612,8 +601,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -641,8 +629,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -670,8 +657,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking.some((item) => item.key.startsWith("counterparty_signed"))).toBe(false);
@@ -681,8 +667,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       version as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking.some((item) => item.section === "attachments")).toBe(false);
@@ -696,8 +681,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       version as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -714,8 +698,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, [field]: value } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -740,8 +723,7 @@ describe("ContractReadinessService", () => {
         contractBillRow: { findMany: jest.fn().mockResolvedValue([]) }
       }) as never,
       fixedVersion as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking.some((item) => item.section === "amount")).toBe(false);
@@ -755,8 +737,7 @@ describe("ContractReadinessService", () => {
         amountSource: "manual",
         amountAdjustmentReason: "旧调整说明"
       } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -794,14 +775,12 @@ describe("ContractReadinessService", () => {
     const single = await new ContractReadinessService().check(
       differentRateTx as never,
       version as never,
-      contract,
-      false
+      contract
     );
     const multiple = await new ContractReadinessService().check(
       differentRateTx as never,
       { ...version, taxMode: "multiple_rate" } as never,
-      contract,
-      false
+      contract
     );
 
     expect(single.blocking).toEqual(
@@ -837,8 +816,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       { ...version, taxMode: "multiple_rate" } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -882,8 +860,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       frameworkTx as never,
       frameworkVersion as never,
-      contract,
-      false
+      contract
     );
     const snapshot = await new ContractReadinessService().freeze(
       frameworkTx as never,
@@ -928,8 +905,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       governedTx as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(expect.arrayContaining([
@@ -982,8 +958,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       governedTx as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(expect.arrayContaining([

@@ -147,34 +147,6 @@ type ReadinessClient = {
       contractTypeKey: string;
     } | null>;
   };
-  contractGeneratedDocument: {
-    findMany(input: unknown): Promise<
-      Array<{
-        id: string;
-        purpose: string;
-        status: string;
-        sourceRevision: number;
-        layoutTemplateVersionId: string;
-        docxFileId?: string | null;
-        pdfFileId?: string | null;
-      }>
-    >;
-  };
-  contractNegotiationRound: {
-    findMany(input: unknown): Promise<Array<{ id: string; status: string }>>;
-  };
-  contractOfflineRevision: {
-    findMany(input: unknown): Promise<Array<{ id: string; status: string }>>;
-  };
-  contractDocumentComparison: {
-    findMany(input: unknown): Promise<
-      Array<{ id: string; offlineRevisionId: string; status: string }>
-    >;
-  };
-  contractDocumentDifference: {
-    findFirst(input: unknown): Promise<{ id: string } | null>;
-    findMany(input: unknown): Promise<Array<{ id: string; candidate: Prisma.JsonValue | null }>>;
-  };
   contractVersionAuthorizationLink: {
     findMany(input: unknown): Promise<Array<{
       side: string;
@@ -280,7 +252,7 @@ export class ContractReadinessService {
       if (contract.voidedAt) {
         throw new BadRequestException("合同草稿已作废，不能继续检查资料");
       }
-      const result = await this.check(tx, version, contract, false);
+      const result = await this.check(tx, version, contract);
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: version.id,
@@ -299,11 +271,8 @@ export class ContractReadinessService {
   async check(
     tx: ReadinessClient,
     version: ReadinessVersion,
-    contract: ReadinessContract,
-    requireInternalReviewDocument: boolean
+    contract: ReadinessContract
   ): Promise<ContractReadinessResult> {
-    // 磋商强制阻断已随 #13 移除；参数保留以兼容既有调用方，但不再产生任何分支。
-    void requireInternalReviewDocument;
     const blocking: ContractReadinessResult["blocking"] = [];
     const warnings: ContractReadinessResult["warnings"] = [];
     const template = this.template(version.templateSnapshot);
