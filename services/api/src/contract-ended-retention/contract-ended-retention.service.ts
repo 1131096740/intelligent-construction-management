@@ -18,6 +18,7 @@ type EndedVersion = {
   contractId: string;
   status: string;
   endedAt: Date | null;
+  firstSubmittedAt: Date | null;
   abandonedAt: Date | null;
 };
 
@@ -60,6 +61,13 @@ function remainingDays(now: Date, dueAt: Date) {
   return Math.ceil((dueAt.getTime() - now.getTime()) / DAY_MS);
 }
 
+function isRetainedEndedApplication(version: EndedVersion) {
+  if (!TERMINAL_STATUSES.includes(version.status as (typeof TERMINAL_STATUSES)[number])) {
+    return false;
+  }
+  return Boolean(version.endedAt || version.firstSubmittedAt);
+}
+
 @Injectable()
 export class ContractEndedApplicationRetentionService {
   constructor(
@@ -82,7 +90,8 @@ export class ContractEndedApplicationRetentionService {
       throw new ConflictException("结束申请保留策略尚未初始化，拒绝生成清理预览");
     }
     const truncated = versions.length > 500;
-    const endedVersions = (truncated ? [] : versions) as EndedVersion[];
+    const endedVersions = (truncated ? [] : (versions as EndedVersion[]))
+      .filter(isRetainedEndedApplication);
     const contractIds = [...new Set(endedVersions.map((version) => version.contractId))];
     const versionIds = endedVersions.map((version) => version.id);
     const [contracts, holds] = await Promise.all([
@@ -184,7 +193,7 @@ export class ContractEndedApplicationRetentionService {
       const version = await tx.contractVersion.findUnique({
         where: { id: contractVersionId }
       });
-      this.assertEndedApplication(version);
+      this.assertRetainedEndedApplication(version);
       const existing = await tx.contractEndedApplicationRetentionHold.findFirst({
         where: { contractVersionId, releasedAt: null },
         orderBy: { createdAt: "desc" }
@@ -232,7 +241,7 @@ export class ContractEndedApplicationRetentionService {
           where: { id: ENDED_RETENTION_POLICY_ID }
         })
       ]);
-      this.assertEndedApplication(version);
+      this.assertRetainedEndedApplication(version);
       if (!policy) {
         throw new ConflictException("结束申请保留策略尚未初始化，拒绝解除保留");
       }
@@ -291,8 +300,10 @@ export class ContractEndedApplicationRetentionService {
     return reason;
   }
 
-  private assertEndedApplication(version: EndedVersion | null): asserts version is EndedVersion {
-    if (!version || !TERMINAL_STATUSES.includes(version.status as (typeof TERMINAL_STATUSES)[number])) {
+  private assertRetainedEndedApplication(
+    version: EndedVersion | null
+  ): asserts version is EndedVersion {
+    if (!version || !isRetainedEndedApplication(version)) {
       throw new BadRequestException("仅已放弃或最终驳回的合同申请可以设置保留");
     }
   }

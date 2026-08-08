@@ -50,7 +50,7 @@ import type {
   VoidDraftDto
 } from "./dto/contract-workbench.dto";
 
-const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
+const EDITABLE_STATUSES = new Set(["draft"]);
 const PRICING_NATURES = new Set([
   "fixed_total",
   "provisional_total",

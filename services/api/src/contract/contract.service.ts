@@ -1134,7 +1134,7 @@ export class ContractService {
             abandonedAt: now,
             abandonedByUserId: actorUserId,
             abandonReason: expectedAction === "abandon_application" ? reason : null,
-            endedAt: now,
+            endedAt: expectedAction === "abandon_application" ? now : null,
             draftRevision: { increment: 1 }
           }
         });

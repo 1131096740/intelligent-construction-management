@@ -6952,7 +6952,7 @@ describe("ContractService", () => {
     };
   }
 
-  it("marks a never-submitted original contract for the existing retention worker", async () => {
+  it("keeps a never-submitted original contract as technical cleanup without an ended timestamp", async () => {
     const tx = abandonDraftTx();
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ContractService(prisma as never, audit as never);
@@ -6977,7 +6977,7 @@ describe("ContractService", () => {
         abandonedAt: expect.any(Date),
         abandonedByUserId: "owner-1",
         abandonReason: null,
-        endedAt: expect.any(Date)
+        endedAt: null
       })
     }));
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({

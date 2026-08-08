@@ -183,6 +183,16 @@ describe("ContractDraftAggregateService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("does not expose editing actions for a final-rejected retained application", async () => {
+    const { service } = makeService({
+      foundVersion: { ...version, status: "approval_rejected" }
+    });
+
+    await expect(service.getWorkbench("cv-1", "actor-1")).resolves.toMatchObject({
+      draftOperationAvailableActions: []
+    });
+  });
+
   it("rejects a historical takeover version before opening the generic workbench", async () => {
     const legacyError = new BadRequestException({
       statusCode: 400,
@@ -575,6 +585,25 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         buffer: Buffer.from("private-file")
       })
     ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects aggregate save and private-file upload for a final-rejected retained application", async () => {
+    const { files, service, tx } = makeSaveService({ versionStatus: "approval_rejected" });
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, aggregateInput() as never)
+    ).rejects.toMatchObject({ response: { code: "DRAFT_NOT_EDITABLE" } });
+    await expect(
+      service.uploadPrivateFile("cv-1", "owner-1", {
+        originalName: "结束申请不得上传.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 128,
+        buffer: Buffer.from("ended-application")
+      })
+    ).rejects.toMatchObject({ response: { code: "DRAFT_NOT_EDITABLE" } });
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 

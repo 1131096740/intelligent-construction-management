@@ -15,6 +15,8 @@ describe("ContractEndedApplicationRetentionService", () => {
             changeType: "original",
             versionNo: 1,
             endedAt: terminalAt,
+            firstSubmittedAt: terminalAt,
+            abandonReason: null,
             abandonedAt: null
           },
           {
@@ -24,6 +26,8 @@ describe("ContractEndedApplicationRetentionService", () => {
             changeType: "original",
             versionNo: 1,
             endedAt: terminalAt,
+            firstSubmittedAt: terminalAt,
+            abandonReason: null,
             abandonedAt: null
           }
         ]),
@@ -116,6 +120,8 @@ describe("ContractEndedApplicationRetentionService", () => {
           changeType: "original",
           versionNo: 1,
           endedAt: terminalAt,
+          firstSubmittedAt: terminalAt,
+          abandonReason: "存在争议",
           abandonedAt: terminalAt
         })
       },
@@ -174,6 +180,8 @@ describe("ContractEndedApplicationRetentionService", () => {
           changeType: "original",
           versionNo: 1,
           endedAt: null,
+          firstSubmittedAt: new Date("2025-01-10T00:00:00.000Z"),
+          abandonReason: null,
           abandonedAt: new Date("2025-01-10T00:00:00.000Z")
         })
       },
@@ -223,6 +231,8 @@ describe("ContractEndedApplicationRetentionService", () => {
           changeType: "original",
           versionNo: 1,
           endedAt: terminalAt,
+          firstSubmittedAt: terminalAt,
+          abandonReason: "等待仲裁",
           abandonedAt: terminalAt
         })
       },
@@ -264,6 +274,8 @@ describe("ContractEndedApplicationRetentionService", () => {
           changeType: "original",
           versionNo: 1,
           endedAt: terminalAt,
+          firstSubmittedAt: terminalAt,
+          abandonReason: null,
           abandonedAt: null
         })
       }
@@ -275,5 +287,65 @@ describe("ContractEndedApplicationRetentionService", () => {
     await expect(
       service.createHold("version-effective", "director-1", { reason: "不应允许" })
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("excludes an abandoned record without application evidence from preview and manual holds", async () => {
+    const cleanupVersion = {
+      id: "version-cleanup",
+      contractId: "contract-cleanup",
+      status: "abandoned",
+      endedAt: null,
+      firstSubmittedAt: null,
+      abandonReason: "历史技术清理标记",
+      abandonedAt: terminalAt
+    };
+    const client = prisma({
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-ended",
+            contractId: "contract-ended",
+            status: "abandoned",
+            endedAt: terminalAt,
+            firstSubmittedAt: terminalAt,
+            abandonReason: "业务申请放弃",
+            abandonedAt: terminalAt
+          },
+          cleanupVersion
+        ]),
+        findUnique: jest.fn().mockResolvedValue(cleanupVersion)
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-ended",
+            projectId: "project-1",
+            code: "HT-ENDED",
+            name: "结束申请",
+            counterparty: "测试相对方"
+          },
+          {
+            id: "contract-cleanup",
+            projectId: "project-1",
+            code: "HT-CLEANUP",
+            name: "技术清理草稿",
+            counterparty: "测试相对方"
+          }
+        ])
+      }
+    });
+    const service = new ContractEndedApplicationRetentionService(client as never, {
+      record: jest.fn()
+    } as never);
+
+    const preview = await service.preview(new Date("2026-10-31T10:15:00.000Z"));
+
+    expect(preview.candidates).toEqual([
+      expect.objectContaining({ contractVersionId: "version-ended" })
+    ]);
+    await expect(
+      service.createHold("version-cleanup", "director-1", { reason: "不应允许" })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(client.contractEndedApplicationRetentionHold.create).not.toHaveBeenCalled();
   });
 });
