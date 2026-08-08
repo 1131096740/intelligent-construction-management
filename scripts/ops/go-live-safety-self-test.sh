@@ -679,6 +679,10 @@ make_deploy_fixture() {
     > "$fixture/repo/scripts/ops/systemd/jiangkong-draft-retention.service"
   printf '[Unit]\nDescription=fixture retention timer\n' \
     > "$fixture/repo/scripts/ops/systemd/jiangkong-draft-retention.timer"
+  printf '[Unit]\nDescription=fixture pristine draft receipt purge service\n' \
+    > "$fixture/repo/scripts/ops/systemd/jiangkong-pristine-draft-deletion-receipt-purge.service"
+  printf '[Unit]\nDescription=fixture pristine draft receipt purge timer\n' \
+    > "$fixture/repo/scripts/ops/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer"
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
   printf 'DATABASE_URL=postgresql://local/jiangkong\n' > "$fixture/api.env"
@@ -796,6 +800,10 @@ grep -Fq 'curl args=-fsS http://127.0.0.1:3000/health runtime=' "$FAKE_LOG" ||
   fail "deployment did not check API liveness"
 grep -Fq 'curl args=-fsS http://127.0.0.1:3000/health/readiness runtime=' "$FAKE_LOG" ||
   fail "deployment did not check database readiness"
+[[ -f "$api_only_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.service" ]] ||
+  fail "deployment did not install the pristine draft deletion receipt purge service"
+[[ -f "$api_only_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer" ]] ||
+  fail "deployment did not install the pristine draft deletion receipt purge timer"
 
 api_only_health_failure_fixture="$TEST_ROOT/deploy-api-only-health-failure"
 make_deploy_fixture "$api_only_health_failure_fixture"
