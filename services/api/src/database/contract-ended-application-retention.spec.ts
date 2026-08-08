@@ -181,6 +181,30 @@ describe("contract ended application retention PostgreSQL evidence", () => {
       await expect(prisma.auditLog.count({
         where: { businessId: inactiveVersionId }
       })).resolves.toBe(0);
+      const inactiveHold = await prisma.contractEndedApplicationRetentionHold.create({
+        data: {
+          contractVersionId: inactiveVersionId,
+          reason: "历史保留记录",
+          createdByUserId: directorId,
+          createdAt: terminalAt
+        }
+      });
+      await expect(service.releaseHold(
+        inactiveVersionId,
+        directorId,
+        { reason: "停用项目不可解除" }
+      )).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(prisma.contractEndedApplicationRetentionHold.findUnique({
+        where: { id: inactiveHold.id },
+        select: { releasedAt: true, releasedByUserId: true, releaseReason: true }
+      })).resolves.toEqual({
+        releasedAt: null,
+        releasedByUserId: null,
+        releaseReason: null
+      });
+      await expect(prisma.auditLog.count({
+        where: { businessId: inactiveVersionId }
+      })).resolves.toBe(0);
       expect(beforeExpiry.executionAllowed).toBe(false);
 
       const created = await service.createHold(
