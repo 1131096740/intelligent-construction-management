@@ -6,6 +6,11 @@ import {
 } from "@jiangkong/shared-domain";
 import { PrismaService } from "../database/prisma.service";
 
+export interface EffectiveProjectRoleScopes {
+  globalRoleKeys: RoleKey[];
+  projectRoleKeys: RoleKey[];
+}
+
 @Injectable()
 export class ProjectVisibilityService {
   constructor(private readonly prisma: PrismaService) {}
@@ -49,6 +54,32 @@ export class ProjectVisibilityService {
   async effectiveRoleKeys(userId: string, projectId: string): Promise<RoleKey[]> {
     const roleKeysByProject = await this.effectiveRoleKeysByProject(userId, [projectId]);
     return roleKeysByProject.get(projectId) ?? [];
+  }
+
+  async effectiveRoleScopes(userId: string, projectId: string): Promise<EffectiveProjectRoleScopes> {
+    const [globalPositions, projectPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({ where: { userId, projectId: null } }),
+      this.prisma.userPosition.findMany({ where: { userId, projectId } }),
+      this.prisma.projectMember.findMany({ where: { userId, projectId } })
+    ]);
+    const positionIds = Array.from(
+      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
+    );
+    const positions = positionIds.length
+      ? await this.prisma.position.findMany({ where: { id: { in: positionIds } } })
+      : [];
+    const positionKeyById = new Map(positions.map((position) => [position.id, position.key as RoleKey]));
+    return {
+      globalRoleKeys: globalPositions
+        .map((position) => positionKeyById.get(position.positionId))
+        .filter((roleKey): roleKey is RoleKey => Boolean(roleKey)),
+      projectRoleKeys: [
+        ...projectPositions
+          .map((position) => positionKeyById.get(position.positionId))
+          .filter((roleKey): roleKey is RoleKey => Boolean(roleKey)),
+        ...projectMembers.map((member) => member.positionKey as RoleKey)
+      ]
+    };
   }
 
   async effectiveRoleKeysByProject(

@@ -19,6 +19,16 @@ describe("requiresApprovalSelfReviewConfirmation", () => {
     }
   );
 
+  it("requires confirmation for the scoped contract-director handler self-review", () => {
+    expect(requiresApprovalSelfReviewConfirmation({
+      applicantUserId: "contract-director-1",
+      actorUserId: "contract-director-1",
+      actorRoleKeys: ["contract_director"],
+      nodeRoleKeys: ["contract_director"],
+      allowContractDirectorSelfReview: true
+    })).toBe(true);
+  });
+
   it.each([
     {
       name: "mixed leader and ordinary roles at an ordinary node",
@@ -80,14 +90,14 @@ describe("assertOrdinaryApplicantCannotReview", () => {
     ).not.toThrow();
   });
 
-  it("冻结领导候选调岗后仍按审批身份允许二次确认", () => {
+  it("冻结领导候选调岗后拒绝自审", () => {
     expect(() => assertOrdinaryApplicantCannotReview({
       applicantUserId: "leader-1",
       actorUserId: "leader-1",
       actorRoleKeys: [],
       approvedRoleKey: "chairman",
       representedUserId: "leader-1"
-    })).not.toThrow();
+    })).toThrow("申请人不能审批自己发起的业务");
   });
 
   it("节点指派不能制造领导自审例外", () => {
@@ -103,6 +113,37 @@ describe("assertOrdinaryApplicantCannotReview", () => {
 });
 
 describe("confirmApprovalSelfReview", () => {
+  it("allows the scoped current contract-director handler self-review", async () => {
+    const confirmPassword = jest.fn().mockResolvedValue({ ok: true });
+
+    await expect(confirmApprovalSelfReview({
+      applicantUserId: "contract-director-1",
+      actorUserId: "contract-director-1",
+      actorRoleKeys: ["contract_director"],
+      approvedRoleKey: "contract_director",
+      selfReviewReason: "  当前项目由本人兼任合同经办与合同部主管  ",
+      confirmationPassword: "current-password",
+      confirmPassword,
+      allowContractDirectorSelfReview: true
+    })).resolves.toEqual({
+      isSelfReview: true,
+      metadata: {
+        selfReview: true,
+        selfReviewReason: "当前项目由本人兼任合同经办与合同部主管"
+      }
+    });
+    expect(confirmPassword).toHaveBeenCalledWith("current-password");
+  });
+
+  it("does not expand the contract-director self-review exception to other flows", () => {
+    expect(() => assertOrdinaryApplicantCannotReview({
+      applicantUserId: "contract-director-1",
+      actorUserId: "contract-director-1",
+      actorRoleKeys: ["contract_director"],
+      approvedRoleKey: "contract_director"
+    })).toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+  });
+
   it("董事长自审缺少原因时拒绝且不校验密码", async () => {
     const confirmPassword = jest.fn();
 
@@ -132,6 +173,27 @@ describe("confirmApprovalSelfReview", () => {
         confirmPassword: jest.fn()
       })
     ).rejects.toThrow("董事长或总经理自审前，请输入当前密码完成二次确认");
+  });
+
+  it.each([
+    [
+      { confirmationPassword: "current-password" },
+      "合同部主管审批自己发起的业务时，请填写自审原因"
+    ],
+    [
+      { selfReviewReason: "合同经办与合同部主管兼任" },
+      "合同部主管自审前，请输入当前密码完成二次确认"
+    ]
+  ] as const)("合同部主管自审缺少确认事实时保留岗位语义", async (input, message) => {
+    await expect(confirmApprovalSelfReview({
+      applicantUserId: "contract-director-1",
+      actorUserId: "contract-director-1",
+      actorRoleKeys: ["contract_director"],
+      approvedRoleKey: "contract_director",
+      allowContractDirectorSelfReview: true,
+      confirmPassword: jest.fn(),
+      ...input
+    })).rejects.toThrow(message);
   });
 
   it("正确密码确认后只返回自审标记和修剪后的原因", async () => {

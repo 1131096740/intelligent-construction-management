@@ -23,6 +23,7 @@ import {
 } from "../../approval/approval-review-identity";
 import { PrismaService } from "../../database/prisma.service";
 import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
+import { resolveGovernedFinalArchiveAccess } from "../../contract/contract-final-archive-access";
 import type { AuthenticatedRequest } from "../auth.types";
 import {
   ANY_PROJECT_POSITION_SCOPE_KEY,
@@ -95,21 +96,28 @@ export class PermissionGuard implements CanActivate {
     }
 
     if (requiredAction) {
+      const governedFinalArchiveAccess = await this.governedFinalArchiveAccess(
+        request,
+        request.user.id,
+        requiredAction,
+        context.getHandler().name
+      );
+      if (governedFinalArchiveAccess === false) {
+        throw new ForbiddenException("当前账号无权处理双方最终版合同归档");
+      }
       const governedApprovalAccess = this.isDelegatedApprovalAction(requiredAction)
         ? await this.governedApprovalAccess(
             request,
             request.user.id,
             effectiveRoleKeys,
-            projectId
+            projectId,
+            roleScopes
           )
         : null;
       if (governedApprovalAccess === false) {
         throw new ForbiddenException("当前账号不是该审批节点冻结的处理人");
       }
-      const globalSuperAdminDraftCleanup =
-        requiredAction === "contract.draft.delete" &&
-        roleScopes.globalRoleKeys.includes("super_admin");
-      if (!canPerform(requiredAction, effectiveRoleKeys) && !globalSuperAdminDraftCleanup) {
+      if (!canPerform(requiredAction, effectiveRoleKeys)) {
         const delegatedApprovalAllowed =
           governedApprovalAccess === true ||
           (requiredAction !== "project_expense.approve" &&
@@ -208,11 +216,54 @@ export class PermissionGuard implements CanActivate {
     );
   }
 
+  private async governedFinalArchiveAccess(
+    request: AuthenticatedRequest,
+    actorUserId: string,
+    requiredAction: BusinessAction,
+    handlerName: string
+  ): Promise<boolean | null> {
+    const isFinalArchiveRoute =
+      requiredAction === "contract.archive.final.upload" ||
+      (requiredAction === "contract.archive.confirm" && [
+        "returnMutuallySignedFinal",
+        "confirmMutuallySignedFinal"
+      ].includes(handlerName));
+    const contractVersionId = request.params?.contractVersionId;
+    if (!isFinalArchiveRoute || !contractVersionId) return null;
+
+    const version = await this.prisma.contractVersion.findUnique({
+      where: { id: contractVersionId },
+      select: { contractId: true, contractGovernanceVersion: true }
+    });
+    if (!version || version.contractGovernanceVersion !== 1) return null;
+    const [contract, task] = await Promise.all([
+      this.prisma.contract.findUnique({
+        where: { id: version.contractId },
+        select: { projectId: true }
+      }),
+      this.prisma.contractSealTask.findFirst({
+        where: { contractVersionId, status: { not: "cancelled" } },
+        orderBy: { createdAt: "desc" },
+        select: { handlerUserId: true }
+      })
+    ]);
+    if (!contract || !task) return false;
+    const access = await resolveGovernedFinalArchiveAccess(this.prisma, {
+      actorUserId,
+      projectId: contract.projectId,
+      handlerUserId: task.handlerUserId
+    });
+    return requiredAction === "contract.archive.final.upload"
+      ? access.canUpload
+      : access.canConfirm;
+  }
+
   private async governedApprovalAccess(
     request: AuthenticatedRequest,
     userId: string,
     roleKeys: RoleKey[],
-    projectId?: string
+    projectId?: string,
+    roleScopes?: { globalRoleKeys: RoleKey[]; projectRoleKeys: RoleKey[] }
   ): Promise<boolean | null> {
     const target: {
       businessType: string;
@@ -261,7 +312,8 @@ export class PermissionGuard implements CanActivate {
       return Boolean(resolveApprovalReviewIdentity({
         node: { ...node, assignments: [] },
         actorUserId: userId,
-        actorRoleKeys: roleKeys
+        actorRoleKeys: roleKeys,
+        actorRoleScopes: roleScopes
       }));
     }
 
@@ -270,16 +322,25 @@ export class PermissionGuard implements CanActivate {
       ? await activeApprovalDelegatorIds(delegationClient as ActiveApprovalDelegationClient, userId)
       : [];
     const activeDelegators = projectId
-      ? await Promise.all(delegatorIds.map(async (delegatorId) => ({
-          userId: delegatorId,
-          roleKeys: await this.loadEffectiveRoleKeys(delegatorId, projectId)
-        })))
+      ? await Promise.all(delegatorIds.map(async (delegatorId) => {
+          const delegatorRoleScopes = await this.loadRoleScopes(delegatorId, projectId);
+          return {
+            userId: delegatorId,
+            roleKeys: resolveEffectiveRoleKeys(
+              delegatorRoleScopes.globalRoleKeys,
+              delegatorRoleScopes.projectRoleKeys
+            ),
+            roleScopes: delegatorRoleScopes
+          };
+        }))
       : [];
     return Boolean(resolveApprovalReviewIdentity({
       node,
       actorUserId: userId,
       actorRoleKeys: roleKeys,
-      activeDelegators
+      actorRoleScopes: roleScopes,
+      activeDelegators,
+      legacyContractRoute: target.businessType === "contract_version"
     }));
   }
 

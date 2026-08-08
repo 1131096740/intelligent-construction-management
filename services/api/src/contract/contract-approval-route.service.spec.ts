@@ -83,13 +83,25 @@ describe("ContractApprovalRouteService", () => {
       "finance_director",
       "chairman|general_manager"
     ]);
+    expect(result.map((node) => node.roleScopesByRole)).toEqual([
+      { contract_director: "global" },
+      { project_manager: "project" },
+      { finance_director: "global" },
+      { chairman: "global", general_manager: "global" }
+    ]);
     expect(result.at(-1)?.candidateUserIds).toEqual(["chairman-1", "gm-1"]);
   });
 
-  it("skips the contract-director node when the company director initiates a change", async () => {
+  it("freezes the contract-director self-review node when the company director initiates a change", async () => {
     const tx = changeTx({
       projectApplicantRoles: [],
-      globalApplicantRoles: [{ userId: "director-1", roleKey: "contract_director" }]
+      globalApplicantRoles: [{ userId: "director-1", roleKey: "contract_director" }],
+      globalCandidates: [
+        { userId: "director-1", roleKey: "contract_director" },
+        { userId: "finance-1", roleKey: "finance_director" },
+        { userId: "chairman-1", roleKey: "chairman" },
+        { userId: "gm-1", roleKey: "general_manager" }
+      ]
     });
 
     const result = await service.freezeContractChangeRoute(
@@ -99,11 +111,13 @@ describe("ContractApprovalRouteService", () => {
     );
 
     expect(result.map((node) => node.roleKeys)).toEqual([
+      ["contract_director"],
       ["project_manager"],
       ["finance_director"],
       ["chairman", "general_manager"]
     ]);
-    expect(result.flatMap((node) => node.candidateUserIds)).not.toContain("director-1");
+    expect(result[0]?.candidateUserIdsByRole).toEqual({ contract_director: ["director-1"] });
+    expect(result.slice(1).flatMap((node) => node.candidateUserIds)).not.toContain("director-1");
   });
 
   it("fails closed when the change applicant is not project contract staff or company director", async () => {
@@ -169,10 +183,18 @@ describe("ContractApprovalRouteService", () => {
     expect(frozen[0]?.roleKeys).toEqual(["contract_director"]);
   });
 
-  it("skips only the first node when a company-level contract director applies", async () => {
+  it("freezes the director self-review node but keeps later required nodes distinct", async () => {
     const { tx } = txFor({
       projectApplicantRoles: [],
-      globalApplicantRoles: [{ userId: "director-1", roleKey: "contract_director" }]
+      globalApplicantRoles: [{ userId: "director-1", roleKey: "contract_director" }],
+      globalCandidates: [
+        { userId: "director-1", roleKey: "contract_director" },
+        { userId: "material-director-2", roleKey: "material_director" },
+        { userId: "comprehensive-director-2", roleKey: "comprehensive_director" },
+        { userId: "finance-director-2", roleKey: "finance_director" },
+        { userId: "chairman-2", roleKey: "chairman" },
+        { userId: "general-manager-2", roleKey: "general_manager" }
+      ]
     });
 
     const frozen = await service.freezeNewContractRoute(
@@ -181,7 +203,15 @@ describe("ContractApprovalRouteService", () => {
       "director-1"
     );
 
-    expect(frozen[0]?.roleKeys).toEqual(["comprehensive_director"]);
+    expect(frozen.map((node) => node.roleKeys)).toEqual([
+      ["contract_director"],
+      ["comprehensive_director"],
+      ["project_manager"],
+      ["finance_director"],
+      ["chairman", "general_manager"]
+    ]);
+    expect(frozen[0]?.candidateUserIdsByRole).toEqual({ contract_director: ["director-1"] });
+    expect(frozen.slice(1).flatMap((node) => node.candidateUserIds)).not.toContain("director-1");
   });
 
   it("does not treat a project-scoped legacy contract director as an applicant role", async () => {

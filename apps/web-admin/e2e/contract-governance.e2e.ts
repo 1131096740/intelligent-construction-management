@@ -205,6 +205,118 @@ test("受治理合同仅按后端动作展示签署归档，并以敏感确认�
   });
 });
 
+test("合同经办人兼合同部主管仅按服务端自审能力完成合同部节点", async ({ page }) => {
+  const selfReviewAction = {
+    ...action("review_approval", "处理合同审批", "primary", true),
+    requiresSelfReviewConfirmation: true
+  };
+  const detail = {
+    ...governedDetail({
+      status: "合同审批中",
+      actions: [selfReviewAction],
+      primaryAction: "review_approval"
+    }),
+    availableActionKeys: ["review_approval"],
+    lifecycleUpdatedAt: "2026-08-08T00:00:00.000Z",
+    reviewApprovalContext: {
+      expectedContractUpdatedAt: "2026-08-08T00:00:00.000Z",
+      expectedApprovalInstanceId: "approval-self-review-1",
+      expectedNodeIndex: 0,
+      expectedApprovalUpdatedAt: "2026-08-08T00:00:01.000Z"
+    }
+  };
+  let reviewBody: Record<string, unknown> | null = null;
+
+  await installLoginRoutes(page, ["contract_staff", "contract_director"]);
+  await page.route("**/api/approval-delegations/user-options", (route) => route.fulfill({
+    contentType: "application/json",
+    body: "[]"
+  }));
+  await page.route(`**/api/contracts/${versionId}/change-eligibility`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ eligible: false, reason: "当前版本尚未生效", currentEffective: null, activeChange: null })
+  }));
+  await page.route("**/api/contracts/HT-GOVERNED-001", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(detail)
+  }));
+  await page.route(`**/api/contracts/${versionId}/approval`, (route) => {
+    reviewBody = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "in_approval" }) });
+  });
+
+  await login(page);
+  await page.goto("/contracts/HT-GOVERNED-001");
+  await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "自审原因" })).toBeVisible();
+  await page.getByRole("textbox", { name: "自审原因" })
+    .fill("项目合同经办与合同部主管由本人兼任");
+  await page.getByRole("button", { name: "通过" }).click();
+  await expect(page.getByText("确认通过合同审批？", { exact: true })).toBeVisible();
+  await page.getByPlaceholder("用于确认当前操作者身份").fill("Governance@2026");
+  await page.getByRole("button", { name: "确认通过" }).click();
+  await expect.poll(() => reviewBody).toEqual({
+    decision: "approve",
+    selfReviewReason: "项目合同经办与合同部主管由本人兼任",
+    confirmationPassword: "Governance@2026",
+    expectedContractUpdatedAt: "2026-08-08T00:00:00.000Z",
+    expectedApprovalInstanceId: "approval-self-review-1",
+    expectedNodeIndex: 0,
+    expectedApprovalUpdatedAt: "2026-08-08T00:00:01.000Z"
+  });
+});
+
+test("当前合同部主管经办人仅在服务端授权后确认自己的双方最终版", async ({ page }) => {
+  const detail = {
+    ...governedDetail({
+      status: "待最终版归档确认",
+      actions: [action("confirm_final_contract", "确认归档", "primary", true)],
+      primaryAction: "confirm_final_contract",
+      formalFiles: [
+        approvalOriginal(),
+        { ...mutuallySignedFinal(), uploadedByUserId: "governance-user-1" }
+      ]
+    }),
+    availableActionKeys: ["confirm_final_contract"]
+  };
+  let confirmationBody: Record<string, unknown> | null = null;
+
+  await installLoginRoutes(page, ["contract_director"]);
+  await page.route("**/api/approval-delegations/user-options", (route) => route.fulfill({
+    contentType: "application/json",
+    body: "[]"
+  }));
+  await page.route(`**/api/contracts/${versionId}/change-eligibility`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ eligible: false, reason: "当前版本尚未生效", currentEffective: null, activeChange: null })
+  }));
+  await page.route("**/api/contracts/HT-GOVERNED-001", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(detail)
+  }));
+  await page.route(`**/api/contracts/${versionId}/formal-files/final/confirmation`, (route) => {
+    confirmationBody = route.request().postDataJSON() as Record<string, unknown>;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "effective" }) });
+  });
+
+  await login(page);
+  await page.goto("/contracts/HT-GOVERNED-001");
+  await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+  const finalReviewGroup = page.locator(".action-group").filter({ hasText: "双方最终版复核" });
+  await expect(finalReviewGroup.getByRole("button", { name: "确认归档" })).toBeVisible();
+  const confirmations = finalReviewGroup.locator(".t-checkbox");
+  await expect(confirmations).toHaveCount(6);
+  for (let index = 0; index < 6; index += 1) await confirmations.nth(index).click();
+  await finalReviewGroup.getByRole("button", { name: "确认归档" }).click();
+  await expect(page.getByText("确认双方最终版并归档？", { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder("用于确认当前操作者身份")).toHaveCount(0);
+  await page.getByRole("button", { name: "确认归档" }).last().click();
+  await expect.poll(() => confirmationBody).toEqual({
+    formalFileId: "final-file-1",
+    ...finalDeclaration()
+  });
+});
+
 for (const roleKey of ["finance_staff", "comprehensive_director"]) {
 test(`${roleKey} 只读查看合同不请求变更资格且不暴露写入动作`, async ({ page }) => {
   let changeEligibilityRequests = 0;

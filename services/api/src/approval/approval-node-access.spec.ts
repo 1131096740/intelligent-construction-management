@@ -12,7 +12,7 @@ describe("approvalReviewAccessOnFrozenNode", () => {
     )).toEqual({ canAct: false, canReview: false, requiresSelfReviewConfirmation: false });
   });
 
-  it("allows a frozen candidate after a role change", () => {
+  it("hides a frozen candidate after the current role is removed", () => {
     expect(approvalReviewAccessOnFrozenNode(
       [{ roleKeys: ["finance_director"], candidateUserIdsByRole: { finance_director: ["finance-1"] } }],
       0,
@@ -20,7 +20,7 @@ describe("approvalReviewAccessOnFrozenNode", () => {
       "finance-1",
       "applicant-1",
       []
-    )).toEqual({ canAct: true, canReview: true, requiresSelfReviewConfirmation: false });
+    )).toEqual({ canAct: false, canReview: false, requiresSelfReviewConfirmation: false });
   });
 
   it("does not let an empty governed candidate list fall back to a legacy role", () => {
@@ -32,6 +32,18 @@ describe("approvalReviewAccessOnFrozenNode", () => {
       "applicant-1",
       []
     ).canAct).toBe(false);
+  });
+
+  it("shows the scoped contract-director handler self-review as an explicit review", () => {
+    expect(approvalReviewAccessOnFrozenNode(
+      [{ roleKeys: ["contract_director"] }],
+      0,
+      ["contract_director"],
+      "contract-director-1",
+      "contract-director-1",
+      false,
+      true
+    )).toEqual({ canAct: true, canReview: true, requiresSelfReviewConfirmation: true });
   });
   it("allows leader final self-review only from the same direct pending role", () => {
     expect(

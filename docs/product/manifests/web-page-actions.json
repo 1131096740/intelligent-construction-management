@@ -1565,7 +1565,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1525,
+        "sourceLine": 1526,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2904,7 +2904,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1558,
+        "sourceLine": 1559,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3021,7 +3021,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1546,
+        "sourceLine": 1547,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3117,7 +3117,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "contract.archive.upload"
+            "requiredProjectAction": "contract.archive.final.upload"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"

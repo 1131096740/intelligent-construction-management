@@ -9291,7 +9291,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "contract.archive.upload",
+      "requiredProjectAction": "contract.archive.final.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,

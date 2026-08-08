@@ -13,6 +13,7 @@ export const BUSINESS_ACTIONS = [
   "contract.approve",
   "contract.seal",
   "contract.archive.upload",
+  "contract.archive.final.upload",
   "contract.archive.confirm",
   "contract.takeover.file.upload",
   "contract.takeover.payment_evidence.upload",
@@ -136,6 +137,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "contract.seal": ["comprehensive_director"],
   "contract.archive.upload": ["contract_staff"],
+  "contract.archive.final.upload": ["contract_staff", "contract_director"],
   "contract.archive.confirm": ["contract_director"],
   "contract.takeover.file.upload": [
     "contract_staff",

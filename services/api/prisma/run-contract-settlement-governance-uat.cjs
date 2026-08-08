@@ -422,20 +422,52 @@ async function prepareAndSubmitContract(fixture, tokens) {
       completedAt: new Date()
     }
   });
-  const approvalPdf = await uploadContractDraftPdf(
+  const counterpartySignedPdf = await uploadContractDraftPdf(
     tokens[fixture.applicantRole],
     fixture.version.id,
-    `UAT-${runId}-${fixture.config.type}-approval.pdf`
+    `UAT-${runId}-${fixture.config.type}-counterparty-signed.pdf`
   );
-  await request("POST", `/contracts/${fixture.version.id}/formal-files/approval`, tokens[fixture.applicantRole], {
-    fileId: approvalPdf.id,
-    sourceRevision: current.draftRevision,
-    counterpartySigned: true,
-    counterpartyStamped: true,
-    crossPageSealCompleted: true,
-    documentOrderConfirmed: true,
-    authorizationsBeforeSignaturePageConfirmed: true
-  });
+  const counterpartySigned = await request(
+    "POST",
+    `/contracts/${fixture.version.id}/formal-files/counterparty`,
+    tokens[fixture.applicantRole],
+    {
+      fileIds: [counterpartySignedPdf.id],
+      sourceRevision: current.draftRevision
+    }
+  );
+  const unconfirmedSubmission = await request(
+    "POST",
+    `/contracts/${fixture.version.id}/approval-submission`,
+    tokens[fixture.applicantRole],
+    { numberRuleId: fixture.numberRule.id },
+    400
+  );
+  assert(
+    unconfirmedSubmission.status >= 400 && unconfirmedSubmission.status < 500,
+    `${fixture.config.type} 乙方签章整体确认前提交未被 4xx 阻断`
+  );
+  const [unconfirmedVersion, unconfirmedInstance] = await Promise.all([
+    prisma.contractVersion.findUnique({ where: { id: fixture.version.id } }),
+    prisma.approvalInstance.findFirst({
+      where: {
+        businessType: "contract_version",
+        businessId: fixture.version.id,
+        flowType: "contract.approve"
+      }
+    })
+  ]);
+  assert(unconfirmedVersion?.status === "draft", `${fixture.config.type} 未确认乙方签章时合同状态被错误提交`);
+  assert(!unconfirmedInstance, `${fixture.config.type} 未确认乙方签章时错误创建审批实例`);
+  await request(
+    "POST",
+    `/contracts/${fixture.version.id}/formal-files/counterparty/confirmation`,
+    tokens[fixture.applicantRole],
+    {
+      formalFileId: counterpartySigned.previewFormalFileId,
+      expectedDraftRevision: current.draftRevision
+    }
+  );
   const submitted = await request("POST", `/contracts/${fixture.version.id}/approval-submission`, tokens[fixture.applicantRole], {
     numberRuleId: fixture.numberRule.id
   });
@@ -445,16 +477,14 @@ async function prepareAndSubmitContract(fixture, tokens) {
   });
   assert(instance, `${fixture.config.type} 未写入审批实例`);
   const frozenRoute = instance.frozenNodes.map((node) => [...node.roleKeys]);
-  const expectedRoute = fixture.applicantRole === "contractDirector"
-    ? expectedContractRoutes[fixture.config.type].slice(1)
-    : expectedContractRoutes[fixture.config.type];
+  const expectedRoute = expectedContractRoutes[fixture.config.type];
   assert(
     JSON.stringify(frozenRoute) === JSON.stringify(expectedRoute),
     `${fixture.config.type} 冻结审批路线不符：${JSON.stringify(frozenRoute)}`
   );
-  fixture.approvalPdf = approvalPdf;
+  fixture.approvalPdf = counterpartySignedPdf;
   fixture.instance = instance;
-  evidence.set(fixture.config.id, [instance.id, approvalPdf.id, submitted.formalCode]);
+  evidence.set(fixture.config.id, [instance.id, counterpartySignedPdf.id, submitted.formalCode]);
   return instance;
 }
 
@@ -468,8 +498,8 @@ function roleSequenceForType(type) {
   return ["contractDirector", "comprehensiveDirector", "projectManager", "financeDirector", "chairman"];
 }
 
-async function approveContract(fixture, tokens) {
-  for (const role of roleSequenceForType(fixture.config.type)) {
+async function approveContract(fixture, tokens, roles = roleSequenceForType(fixture.config.type)) {
+  for (const role of roles) {
     const [version, instance] = await Promise.all([
       prisma.contractVersion.findUnique({ where: { id: fixture.version.id } }),
       prisma.approvalInstance.findFirst({
@@ -483,13 +513,18 @@ async function approveContract(fixture, tokens) {
       })
     ]);
     assert(version && instance, `${fixture.config.type} 审批坐标缺失`);
+    const isDirectorSelfReview = role === "contractDirector" && fixture.applicantRole === "contractDirector";
     await request("POST", `/contracts/${fixture.version.id}/approval`, tokens[role], {
       decision: "approve",
       comment: `UAT ${role} 通过`,
       expectedContractUpdatedAt: version.updatedAt.toISOString(),
       expectedApprovalInstanceId: instance.id,
       expectedNodeIndex: instance.currentNodeIndex,
-      expectedApprovalUpdatedAt: instance.updatedAt.toISOString()
+      expectedApprovalUpdatedAt: instance.updatedAt.toISOString(),
+      ...(isDirectorSelfReview ? {
+        selfReviewReason: "UAT 合同部主管作为冻结经办人自审",
+        confirmationPassword: password
+      } : {})
     });
   }
   const approved = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
@@ -524,8 +559,7 @@ async function sealAndArchive(fixture, tokens) {
     ...completion,
     formalFileId: final.id,
     onlyPermittedSignatureChanges: true,
-    documentOrderConfirmed: true,
-    confirmationPassword: password
+    documentOrderConfirmed: true
   });
   const effective = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
   assert(effective.status === "effective" && effective.effectiveAt, "合同双方最终版归档后未生效");
@@ -554,14 +588,102 @@ async function assertAuthorizationCombinations(fixtures) {
   }
 }
 
-async function assertDirectorSkip(shared, tokens) {
-  const config = { id: "contract_director_initiator_skip", type: "material_purchase", auth: [false, false] };
+async function assertDirectorInitiatorSelfReview(shared, tokens) {
+  const config = { id: "contract_director_initiator_self_review", type: "material_purchase", auth: [false, false] };
   const fixture = await createContractFixture(config, shared, tokens, "contractDirector");
   const instance = await prepareAndSubmitContract(fixture, tokens);
-  const serialized = JSON.stringify(instance.frozenNodes);
-  assert(!serialized.includes("contract_director"), "合同部主管发起时仍包含自审节点");
-  assert(serialized.includes("material_director"), "主管发起后未从业务主管节点开始");
-  evidence.set(config.id, [instance.id]);
+  assert(
+    JSON.stringify(instance.frozenNodes[0]?.roleKeys) === JSON.stringify(["contract_director"]),
+    "合同部主管发起时未冻结合同部主管自审节点"
+  );
+  const version = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  const current = await prisma.approvalInstance.findFirst({
+    where: {
+      businessType: "contract_version",
+      businessId: fixture.version.id,
+      flowType: "contract.approve",
+      status: "in_progress"
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  assert(version && current, "合同部主管自审前审批坐标缺失");
+  await request("POST", `/contracts/${fixture.version.id}/approval`, tokens.projectManager, {
+    decision: "approve",
+    comment: "UAT 项目经理不得越过合同部主管自审节点",
+    expectedContractUpdatedAt: version.updatedAt.toISOString(),
+    expectedApprovalInstanceId: current.id,
+    expectedNodeIndex: current.currentNodeIndex,
+    expectedApprovalUpdatedAt: current.updatedAt.toISOString()
+  }, 403);
+
+  await approveContract(fixture, tokens);
+  const logs = await prisma.approvalActionLog.findMany({
+    where: { approvalInstanceId: instance.id, action: "approve" },
+    orderBy: { createdAt: "asc" }
+  });
+  const selfReviewLog = logs.find((item) => item.approvedRoleKey === "contract_director");
+  assert(
+    selfReviewLog?.actorUserId === users.contractDirector.id &&
+      selfReviewLog.representedUserId === users.contractDirector.id &&
+      selfReviewLog.metadata?.selfReview === true &&
+      selfReviewLog.metadata?.selfReviewReason === "UAT 合同部主管作为冻结经办人自审",
+    "合同部主管自审未记录当前岗位、经办身份与自审原因"
+  );
+  for (const roleKey of ["project_manager", "finance_director", "chairman"]) {
+    assert(logs.some((item) => item.approvedRoleKey === roleKey), `合同部主管自审后缺少 ${roleKey} 审批节点`);
+  }
+  const selfReviewAudit = await prisma.auditLog.findFirst({
+    where: {
+      action: "contract.approval.approve",
+      businessType: "contract_version",
+      businessId: fixture.version.id,
+      actorUserId: users.contractDirector.id
+    },
+    orderBy: { createdAt: "desc" }
+  });
+  assert(
+    selfReviewAudit?.metadata?.selfReview === true &&
+      selfReviewAudit.metadata?.selfReviewReason === "UAT 合同部主管作为冻结经办人自审",
+    "合同部主管自审未写入审批审计"
+  );
+  evidence.set(config.id, [
+    instance.id,
+    selfReviewLog.id,
+    selfReviewAudit.id,
+    "HTTP-403-project-manager-before-self-review"
+  ]);
+}
+
+async function assertDirectorHandlerSelfArchive(shared, tokens) {
+  const config = { id: "contract_director_handler_self_archive", type: "material_purchase", auth: [false, false] };
+  const fixture = await createContractFixture(config, shared, tokens, "contractDirector");
+  await prepareAndSubmitContract(fixture, tokens);
+  await approveContract(fixture, tokens);
+
+  await request("POST", `/contracts/${fixture.version.id}/seal/approve`, tokens.comprehensiveDirector, {
+    confirmationPassword: password
+  });
+  const completion = {
+    firstPartySignedOrStamped: true,
+    companySealCompleted: true,
+    crossPageSealCompleted: true,
+    signingDateCompleted: true
+  };
+  await request("POST", `/contracts/${fixture.version.id}/seal/complete`, tokens.contractDirector, completion);
+  const finalPdf = await uploadPdf(
+    tokens.contractDirector,
+    `UAT-${runId}-contract-director-handler-self-archive-final.pdf`
+  );
+  const final = await request("POST", `/contracts/${fixture.version.id}/formal-files/final`, tokens.contractDirector, {
+    ...completion,
+    fileId: finalPdf.id,
+    sourceRevision: (await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } })).draftRevision,
+    onlyPermittedSignatureChanges: true,
+    documentOrderConfirmed: true
+  });
+  const pending = await prisma.contractVersion.findUnique({ where: { id: fixture.version.id } });
+  assert(pending?.status === "pending_archive_confirm", "合同部主管经办人的最终版上传后未进入待归档确认");
+  evidence.set(config.id, [fixture.contract.id, fixture.version.id, final.id]);
 }
 
 async function createEffectiveBoundaryBase(type, suffix, shared, tokens) {
@@ -629,16 +751,29 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
       completedAt: new Date()
     }
   });
-  const approvalPdf = await uploadPdf(tokens.contractStaff, `UAT-${runId}-change-${suffix}-approval.pdf`);
-  await request("POST", `/contracts/${draft.id}/formal-files/approval`, tokens.contractStaff, {
-    fileId: approvalPdf.id,
-    sourceRevision: current.draftRevision,
-    counterpartySigned: true,
-    counterpartyStamped: true,
-    crossPageSealCompleted: true,
-    documentOrderConfirmed: true,
-    authorizationsBeforeSignaturePageConfirmed: true
-  });
+  const changeCounterpartySignedPdf = await uploadContractDraftPdf(
+    tokens.contractStaff,
+    draft.id,
+    `UAT-${runId}-change-${suffix}-counterparty-signed.pdf`
+  );
+  const changeCounterpartySigned = await request(
+    "POST",
+    `/contracts/${draft.id}/formal-files/counterparty`,
+    tokens.contractStaff,
+    {
+      fileIds: [changeCounterpartySignedPdf.id],
+      sourceRevision: current.draftRevision
+    }
+  );
+  await request(
+    "POST",
+    `/contracts/${draft.id}/formal-files/counterparty/confirmation`,
+    tokens.contractStaff,
+    {
+      formalFileId: changeCounterpartySigned.previewFormalFileId,
+      expectedDraftRevision: current.draftRevision
+    }
+  );
   if (allowed) {
     const submitted = await request("POST", `/contracts/${draft.id}/approval-submission`, tokens.contractStaff, {
       numberRuleId: base.numberRule.id
@@ -648,7 +783,7 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
       where: { businessType: "contract_version", businessId: draft.id, flowType: "contract.approve" }
     });
     assert(instance, `${percentLabel}% 变更未生成审批实例`);
-    evidence.set(`contract_change_${suffix}_percent`, [draft.id, instance.id, approvalPdf.id]);
+    evidence.set(`contract_change_${suffix}_percent`, [draft.id, instance.id, changeCounterpartySignedPdf.id]);
   } else {
     const failed = await request("POST", `/contracts/${draft.id}/approval-submission`, tokens.contractStaff, {
       numberRuleId: base.numberRule.id
@@ -658,7 +793,7 @@ async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens
       where: { action: "contract.change.limit.denied", businessId: draft.id }
     });
     assert(denial, "10.01% 阻断未持久化审计日志");
-    evidence.set(`contract_change_${suffix}_percent`, [draft.id, denial.id, approvalPdf.id]);
+    evidence.set(`contract_change_${suffix}_percent`, [draft.id, denial.id, changeCounterpartySignedPdf.id]);
   }
 }
 
@@ -790,7 +925,7 @@ async function assertReadonlyBoundaries(tokens) {
 function writeEvidence() {
   const required = [
     ...contractCases.map((item) => item.id),
-    "contract_director_initiator_skip", "contract_final_or_sign",
+    "contract_director_initiator_self_review", "contract_director_handler_self_archive", "contract_final_or_sign",
     "contract_authorization_none_none", "contract_authorization_first_only",
     "contract_authorization_counterparty_only", "contract_authorization_both",
     "contract_change_9_99_percent", "contract_change_10_percent", "contract_change_10_01_percent",
@@ -842,7 +977,8 @@ async function main() {
   await sealAndArchive(fixtures.material_purchase, tokens);
   await approveContract(fixtures.generic_contract, tokens);
   await sealAndArchive(fixtures.generic_contract, tokens);
-  await assertDirectorSkip(shared, tokens);
+  await assertDirectorInitiatorSelfReview(shared, tokens);
+  await assertDirectorHandlerSelfArchive(shared, tokens);
   await assertChangeBoundary("9.99", 99_900, true, shared, tokens);
   await assertChangeBoundary("10", 100_000, true, shared, tokens);
   await assertChangeBoundary("10.01", 100_100, false, shared, tokens);
@@ -853,7 +989,7 @@ async function main() {
   await assertGenericDirectPayment(fixtures.generic_contract, tokens);
   await assertReadonlyBoundaries(tokens);
   const output = writeEvidence();
-  console.log(`合同结算治理隔离 UAT 已通过 20 项，证据：${output}`);
+  console.log(`合同结算治理隔离 UAT 已通过 21 项，证据：${output}`);
 }
 
 if (require.main === module) {

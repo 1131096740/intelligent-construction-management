@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import type { RoleKey } from "@jiangkong/shared-domain";
 
-const SELF_REVIEW_BUSINESS_ROLES = new Set<RoleKey>(["chairman", "general_manager"]);
+const LEADER_SELF_REVIEW_BUSINESS_ROLES = new Set<RoleKey>(["chairman", "general_manager"]);
 
 export interface ApprovalSelfReviewInput {
   applicantUserId: string;
@@ -14,6 +14,7 @@ export interface ApprovalSelfReviewInput {
   approvedRoleKey: RoleKey;
   representedUserId?: string;
   viaAssignment?: boolean;
+  allowContractDirectorSelfReview?: boolean;
 }
 
 export interface ConfirmApprovalSelfReviewInput extends ApprovalSelfReviewInput {
@@ -34,22 +35,31 @@ export function requiresApprovalSelfReviewConfirmation(input: {
   actorUserId: string;
   actorRoleKeys: readonly RoleKey[];
   nodeRoleKeys: readonly RoleKey[];
+  allowContractDirectorSelfReview?: boolean;
 }): boolean {
   if (input.applicantUserId !== input.actorUserId) return false;
   const approvedRoleKey = input.nodeRoleKeys.find((roleKey) =>
     input.actorRoleKeys.includes(roleKey)
   );
-  return approvedRoleKey !== undefined && SELF_REVIEW_BUSINESS_ROLES.has(approvedRoleKey);
+  return approvedRoleKey !== undefined && isAllowedSelfReviewRole(
+    approvedRoleKey,
+    input.allowContractDirectorSelfReview === true
+  );
 }
 
 export function assertOrdinaryApplicantCannotReview(input: ApprovalSelfReviewInput): void {
   if (input.applicantUserId !== input.actorUserId) return;
   const resolvedDirectIdentity =
-    input.representedUserId === input.actorUserId && input.viaAssignment !== true;
+    input.representedUserId === input.actorUserId &&
+    input.viaAssignment !== true &&
+    input.actorRoleKeys.includes(input.approvedRoleKey);
   const legacyDirectIdentity =
     input.representedUserId === undefined && input.actorRoleKeys.includes(input.approvedRoleKey);
   if (
-    SELF_REVIEW_BUSINESS_ROLES.has(input.approvedRoleKey) &&
+    isAllowedSelfReviewRole(
+      input.approvedRoleKey,
+      input.allowContractDirectorSelfReview === true
+    ) &&
     (resolvedDirectIdentity || legacyDirectIdentity)
   ) {
     return;
@@ -67,12 +77,16 @@ export async function confirmApprovalSelfReview(
 
   const selfReviewReason = input.selfReviewReason?.trim();
   if (!selfReviewReason) {
-    throw new BadRequestException("董事长或总经理审批自己发起的业务时，请填写自审原因");
+    throw new BadRequestException(
+      `${selfReviewRoleLabel(input.approvedRoleKey)}审批自己发起的业务时，请填写自审原因`
+    );
   }
 
   const confirmationPassword = input.confirmationPassword;
   if (!confirmationPassword?.trim()) {
-    throw new BadRequestException("董事长或总经理自审前，请输入当前密码完成二次确认");
+    throw new BadRequestException(
+      `${selfReviewRoleLabel(input.approvedRoleKey)}自审前，请输入当前密码完成二次确认`
+    );
   }
   if (!input.confirmPassword) {
     throw new ServiceUnavailableException("审批身份确认服务暂不可用，请稍后重试");
@@ -83,4 +97,17 @@ export async function confirmApprovalSelfReview(
     isSelfReview: true,
     metadata: { selfReview: true, selfReviewReason }
   };
+}
+
+function isAllowedSelfReviewRole(
+  roleKey: RoleKey,
+  allowContractDirectorSelfReview: boolean
+) {
+  return LEADER_SELF_REVIEW_BUSINESS_ROLES.has(roleKey) ||
+    (allowContractDirectorSelfReview && roleKey === "contract_director");
+}
+
+function selfReviewRoleLabel(roleKey: RoleKey) {
+  if (LEADER_SELF_REVIEW_BUSINESS_ROLES.has(roleKey)) return "董事长或总经理";
+  return "合同部主管";
 }

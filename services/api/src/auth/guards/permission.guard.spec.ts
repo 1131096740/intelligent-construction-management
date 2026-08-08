@@ -3,14 +3,14 @@ import type { ExecutionContext } from "@nestjs/common";
 import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import { PermissionGuard } from "./permission.guard";
 
-function contextWithRequest(request: unknown): ExecutionContext {
+function contextWithRequest(request: unknown, handler: () => void = () => undefined): ExecutionContext {
   return {
-    getHandler: () => ({}),
+    getHandler: () => handler,
     getClass: () => ({}),
     switchToHttp: () => ({
       getRequest: () => request
     })
-  } as ExecutionContext;
+  } as unknown as ExecutionContext;
 }
 
 describe("PermissionGuard", () => {
@@ -127,6 +127,47 @@ describe("PermissionGuard", () => {
       }
     });
   }
+
+  it("blocks a project-scoped director from the governed final-file routes before the service, without tightening ordinary archive-file confirmation", async () => {
+    const prisma = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1", contractGovernanceVersion: 1 }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      contractSealTask: { findFirst: jest.fn().mockResolvedValue({ handlerUserId: "project-director-1" }) },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { projectId?: string | null } }) =>
+          Promise.resolve(where.projectId === null ? [] : [{ positionId: "project-director-position" }])
+        ),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-director-position", key: "contract_director" }]),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-director-position" })
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) }
+    };
+    const guard = (action: "contract.archive.final.upload" | "contract.archive.confirm") => new PermissionGuard(
+      {
+        getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce(action)
+      } as never,
+      prisma as never
+    );
+    const request = {
+      user: { id: "project-director-1" },
+      params: { contractVersionId: "version-1" }
+    };
+
+    await expect(guard("contract.archive.final.upload").canActivate(
+      contextWithRequest(request, function uploadMutuallySignedFinal() {})
+    )).rejects.toThrow("当前账号无权处理双方最终版合同归档");
+
+    await expect(guard("contract.archive.confirm").canActivate(
+      contextWithRequest(request, function confirmArchiveFile() {})
+    )).resolves.toBe(true);
+  });
 
   it.each([
     ["contract.tax_fact.supplement", "contract_staff"],
@@ -262,7 +303,7 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
-  it("allows a governed frozen candidate after the candidate changes roles", async () => {
+  it("rejects a governed frozen candidate after the candidate changes roles", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
@@ -290,10 +331,10 @@ describe("PermissionGuard", () => {
     await expect(guard.canActivate(contextWithRequest({
       user: { id: "former-finance-1" },
       params: { paymentId: "payment-1" }
-    }))).resolves.toBe(true);
+    }))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
   });
 
-  it("allows a governed project expense candidate after the frozen candidate loses the approval role", async () => {
+  it("rejects a governed project expense candidate after the frozen candidate loses the approval role", async () => {
     const prisma = buildProjectExpenseApprovalPrisma({
       candidateUserId: "former-finance-1"
     });
@@ -302,7 +343,7 @@ describe("PermissionGuard", () => {
       projectExpenseApproveGuard(prisma).canActivate(
         projectExpenseApprovalContext("former-finance-1")
       )
-    ).resolves.toBe(true);
+    ).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
   });
 
   it("rejects a governed project expense assignment recipient without the current approval role", async () => {
@@ -446,7 +487,7 @@ describe("PermissionGuard", () => {
     }))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
   });
 
-  it("allows only the frozen non-project fact witness to handle an expense claim", async () => {
+  it("rejects a frozen non-project fact witness without a current approval role", async () => {
     const prisma = {
       ...buildPrisma("employee"),
       expenseClaim: { findUnique: jest.fn().mockResolvedValue({ projectId: null }) },
@@ -474,7 +515,8 @@ describe("PermissionGuard", () => {
       userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "position-1" }]) }
     } as never);
 
-    await expect(guard().canActivate(context("witness-1"))).resolves.toBe(true);
+    await expect(guard().canActivate(context("witness-1")))
+      .rejects.toThrow("当前账号不是该审批节点冻结的处理人");
     await expect(guard().canActivate(context("other-employee"))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
   });
 
@@ -517,9 +559,17 @@ describe("PermissionGuard", () => {
 
   it("allows standing delegation only when the delegator is the governed frozen candidate", async () => {
     const prisma = {
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { userId: string } }) =>
+          Promise.resolve(where.userId === "finance-1" ? [{ positionId: "finance-director-position" }] : [])
+        )
+      },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-director-position", key: "finance_director" }
+        ])
+      },
       paymentRequest: {
         findFirst: jest.fn().mockImplementation(({ select }: { select: Record<string, boolean> }) =>
           Promise.resolve(select.projectId ? { projectId: "project-1" } : { id: "payment-1" }))

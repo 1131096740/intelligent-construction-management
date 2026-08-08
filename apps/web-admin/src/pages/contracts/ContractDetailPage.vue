@@ -1513,8 +1513,9 @@ async function confirmContractFinalFileWithCapability(
   body: Parameters<typeof confirmMutuallySignedContract>[1]
 ) {
   const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
+  // The detail endpoint accepts either the immutable UUID or the display code.
+  // Its `id` is intentionally the display code, so the server-issued version
+  // identity is the stable alias-independent preflight coordinate.
   const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
   if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
   const operationAllowed = capability.availableActionKeys.includes("confirm_final_contract");
@@ -1595,6 +1596,7 @@ interface SensitiveActionState {
   requirePassword: boolean;
   reasonLabel: string;
   targetFileId: string;
+  targetRouteContractId: string;
   targetContractVersionId: string;
   targetFormalFileId: string;
   error: string;
@@ -1733,6 +1735,7 @@ const sensitiveAction = reactive<SensitiveActionState>({
   requirePassword: false,
   reasonLabel: "操作原因",
   targetFileId: "",
+  targetRouteContractId: "",
   targetContractVersionId: "",
   targetFormalFileId: "",
   error: ""
@@ -2366,9 +2369,13 @@ function currentContractVersionId() {
   return requiredText(contractDetail.value?.contractVersionId ?? "", "合同");
 }
 
-function isCurrentSensitiveContractTarget(contractVersionId: string) {
-  return contractDetail.value?.contractVersionId === contractVersionId &&
-    routeContractId() === contractDetail.value?.id;
+function isCurrentSensitiveContractTarget(
+  contractVersionId: string,
+  targetRouteContractId: string
+) {
+  return Boolean(targetRouteContractId) &&
+    routeContractId() === targetRouteContractId &&
+    contractDetail.value?.contractVersionId === contractVersionId;
 }
 
 function returnedId(result: unknown) {
@@ -2408,6 +2415,7 @@ function openSensitiveAction(
     requirePassword: config.requirePassword ?? false,
     reasonLabel: config.reasonLabel ?? "操作原因",
     targetFileId: config.targetFileId ?? "",
+    targetRouteContractId: routeContractId(),
     targetContractVersionId: config.targetContractVersionId ?? currentContractVersionId(),
     targetFormalFileId: config.targetFormalFileId ?? "",
     error: ""
@@ -3063,7 +3071,7 @@ async function confirmFinalContractUpload() {
   try {
     const contractId = routeContractId();
     const contractVersionId = sensitiveAction.targetContractVersionId;
-    if (!isCurrentSensitiveContractTarget(contractVersionId)) {
+    if (!isCurrentSensitiveContractTarget(contractVersionId, sensitiveAction.targetRouteContractId)) {
       throw new Error("合同已切换，已停止关联暂存文件");
     }
     const file = selectedContractFinalFile.value;
@@ -3092,7 +3100,7 @@ async function confirmFinalContractUpload() {
         ...stagedFinalAssociations.value,
         [contractVersionId]: staged
       };
-      if (!isCurrentSensitiveContractTarget(contractVersionId)) {
+      if (!isCurrentSensitiveContractTarget(contractVersionId, sensitiveAction.targetRouteContractId)) {
         throw new Error("合同已切换，已停止关联暂存文件");
       }
     }
@@ -3128,7 +3136,10 @@ async function confirmFinalContractReturn(values: { reason: string }) {
   const key = "finalReturn";
   beginContractLifecycleAction(key);
   try {
-    if (!isCurrentSensitiveContractTarget(sensitiveAction.targetContractVersionId)) {
+    if (!isCurrentSensitiveContractTarget(
+      sensitiveAction.targetContractVersionId,
+      sensitiveAction.targetRouteContractId
+    )) {
       throw new Error("合同已切换，已停止退回补正");
     }
     await returnContractFinalFileWithCapability(
@@ -3151,7 +3162,10 @@ async function confirmFinalContractConfirmation() {
   const key = "finalConfirm";
   beginContractLifecycleAction(key);
   try {
-    if (!isCurrentSensitiveContractTarget(sensitiveAction.targetContractVersionId)) {
+    if (!isCurrentSensitiveContractTarget(
+      sensitiveAction.targetContractVersionId,
+      sensitiveAction.targetRouteContractId
+    )) {
       throw new Error("合同已切换，已停止归档确认");
     }
     await confirmContractFinalFileWithCapability(

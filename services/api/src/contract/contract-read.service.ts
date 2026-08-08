@@ -15,6 +15,7 @@ import {
   canCreatePaymentFromSettlementStatus,
   canUseCurrentContractApprovalForm,
   contractInvoiceTypeLabel,
+  resolveEffectiveRoleKeys,
   type ContractVisibilityLevel,
   type ContractWorkbenchLedgerPage,
   type ContractWorkbenchView,
@@ -34,6 +35,7 @@ import {
   type ApprovalReviewAccess
 } from "../approval/approval-node-access";
 import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
+import type { ApprovalActorRoleScopes } from "../approval/approval-review-identity";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {
@@ -68,6 +70,7 @@ import {
   type ContractDraftLifecycleFacts
 } from "./contract-draft-lifecycle";
 import { loadContractOwnerRisk } from "./contract-owner-risk";
+import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { settlementContractTypeBlockReason } from "../settlement/contract-settlement-capacity";
 
 function emptyApprovalReviewAccess(): ApprovalReviewAccess {
@@ -1200,7 +1203,7 @@ export class ContractReadService {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
 
-    const [project, versions, roleKeys] = await Promise.all([
+    const [project, versions, actorRoles] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: contract.projectId } }),
       this.prisma.contractVersion.findMany({
         where: {
@@ -1209,8 +1212,9 @@ export class ContractReadService {
         },
         orderBy: { versionNo: "desc" }
       }),
-      this.actorRoleKeys(actorUserId, contract.projectId)
+      this.actorRoles(actorUserId, contract.projectId)
     ]);
+    const roleKeys = actorRoles.roleKeys;
 
     const lifecycleByVersion = versions.every((candidate) =>
       typeof candidate.status === "string"
@@ -1324,7 +1328,8 @@ export class ContractReadService {
       version.id,
       contract.projectId,
       roleKeys,
-      actorUserId
+      actorUserId,
+      actorRoles.roleScopes
     );
     const candidateReviewApprovalContext =
       currentApprovalReview.access.canReview &&
@@ -1358,10 +1363,14 @@ export class ContractReadService {
     const approvalReviewAccess = candidateReviewApprovalContext
       ? currentApprovalReview.access
       : { ...currentApprovalReview.access, canReview: false };
-    const canUploadGovernedFinal = await this.canUploadGovernedFinal(
+    const activeFinal = signingFacts.formalFiles.find((item) =>
+      item.purpose === "mutually_signed_final" && item.status === "active"
+    ) ?? null;
+    const governedFinalAccess = await this.governedFinalAccess(
       actorUserId,
       contract.projectId,
-      signingFacts.sealTask
+      signingFacts.sealTask,
+      activeFinal
     );
     const canReportSigningMaterialChange = await this.canReportSigningMaterialChange(
       actorUserId,
@@ -1391,9 +1400,7 @@ export class ContractReadService {
         contractTypeKey: contract.contractTypeKey,
         governed: version.contractGovernanceVersion === 1,
         sealTask: signingFacts.sealTask,
-        activeFinal: signingFacts.formalFiles.find((item) =>
-          item.purpose === "mutually_signed_final" && item.status === "active"
-        ) ?? null,
+        activeFinal,
         approvalFormAvailable: Boolean(
           latestApprovalInstance?.status === "approved" &&
           canUseCurrentContractApprovalForm(version.status)
@@ -1412,7 +1419,9 @@ export class ContractReadService {
             select: { id: true }
           })
         )),
-        canUploadGovernedFinal,
+        canUploadGovernedFinal: governedFinalAccess.canUpload,
+        canConfirmGovernedFinal: governedFinalAccess.canConfirm,
+        canSelfConfirmGovernedFinal: governedFinalAccess.canSelfConfirm,
         canReportSigningMaterialChange,
         genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction),
         withdrawApprovalContext
@@ -1977,12 +1986,30 @@ export class ContractReadService {
     };
   }
 
-  private async actorRoleKeys(actorUserId: string | undefined, projectId: string): Promise<RoleKey[]> {
+  private async actorRoles(actorUserId: string | undefined, projectId: string): Promise<{
+    roleKeys: RoleKey[];
+    roleScopes?: ApprovalActorRoleScopes;
+  }> {
     if (!actorUserId || !this.projectVisibility) {
-      return [];
+      return { roleKeys: [] };
     }
-
-    return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
+    const scopedVisibility = this.projectVisibility as ProjectVisibilityService & {
+      effectiveRoleScopes?: (
+        userId: string,
+        scopedProjectId: string
+      ) => Promise<ApprovalActorRoleScopes>;
+    };
+    if (scopedVisibility.effectiveRoleScopes) {
+      const roleScopes = await scopedVisibility.effectiveRoleScopes(actorUserId, projectId);
+      return {
+        roleKeys: resolveEffectiveRoleKeys(
+          roleScopes.globalRoleKeys,
+          roleScopes.projectRoleKeys
+        ),
+        roleScopes
+      };
+    }
+    return { roleKeys: await this.projectVisibility.effectiveRoleKeys(actorUserId, projectId) };
   }
 
   private canReadContractVersionDraft(
@@ -2003,7 +2030,8 @@ export class ContractReadService {
     businessId: string,
     projectId: string,
     roleKeys: RoleKey[],
-    actorUserId?: string
+    actorUserId?: string,
+    actorRoleScopes?: ApprovalActorRoleScopes
   ): Promise<CurrentContractApprovalReview> {
     if (!actorUserId) {
       return emptyCurrentContractApprovalReview();
@@ -2069,7 +2097,10 @@ export class ContractReadService {
       roleKeys,
       actorUserId,
       instance.applicantUserId,
-      false
+      false,
+      true,
+      actorRoleScopes,
+      true
     );
     if (directOrAssignedAccess.canAct) {
       return {
@@ -2092,7 +2123,10 @@ export class ContractReadService {
       roleKeys,
       actorUserId,
       instance.applicantUserId,
-      activeDelegators
+      activeDelegators,
+      true,
+      actorRoleScopes,
+      true
     );
     return {
       access: delegatedAccess,
@@ -2166,17 +2200,26 @@ export class ContractReadService {
   private async activeDelegatedApprovalIdentities(
     actorUserId: string,
     projectId: string
-  ): Promise<Array<{ userId: string; roleKeys: RoleKey[] }>> {
+  ): Promise<Array<{
+    userId: string;
+    roleKeys: RoleKey[];
+    roleScopes?: ApprovalActorRoleScopes;
+  }>> {
     if (!this.projectVisibility) return [];
 
     const delegatorIds = await activeApprovalDelegatorIds(this.prisma, actorUserId, new Date());
-    const identities: Array<{ userId: string; roleKeys: RoleKey[] }> = [];
+    const identities: Array<{
+      userId: string;
+      roleKeys: RoleKey[];
+      roleScopes?: ApprovalActorRoleScopes;
+    }> = [];
     for (const delegatorId of delegatorIds) {
-      const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
-        delegatorId,
-        projectId
-      );
-      identities.push({ userId: delegatorId, roleKeys: delegatorRoleKeys });
+      const roles = await this.actorRoles(delegatorId, projectId);
+      identities.push({
+        userId: delegatorId,
+        roleKeys: roles.roleKeys,
+        roleScopes: roles.roleScopes
+      });
     }
     return identities;
   }
@@ -2196,6 +2239,8 @@ export class ContractReadService {
       approvalFormAvailable: boolean;
       approvalParticipant: boolean;
       canUploadGovernedFinal: boolean;
+      canConfirmGovernedFinal: boolean;
+      canSelfConfirmGovernedFinal: boolean;
       canReportSigningMaterialChange: boolean;
       genericDraftActionsAllowed: boolean;
       withdrawApprovalContext: ContractDetailReadModel["withdrawApprovalContext"];
@@ -2377,8 +2422,10 @@ export class ContractReadService {
           kind: "danger",
           roleKeys,
           requiredAction: "contract.archive.confirm",
-          enabled: Boolean(context.activeFinal),
-          disabledReason: "暂无可退回补正的双方最终版",
+          enabled: Boolean(context.activeFinal && context.canConfirmGovernedFinal),
+          disabledReason: context.canConfirmGovernedFinal
+            ? "暂无可退回补正的双方最终版"
+            : "仅当前全局合同部主管可退回补正双方最终版",
           requiresComment: true
         })] : []),
         detailAction({
@@ -2388,7 +2435,12 @@ export class ContractReadService {
           roleKeys,
           requiredAction: "contract.archive.confirm",
           enabled: context?.governed
-            ? Boolean(context.activeFinal && context.activeFinal.uploadedByUserId !== context.actorUserId)
+            ? Boolean(
+              context.activeFinal &&
+              context.canConfirmGovernedFinal &&
+              (context.activeFinal.uploadedByUserId !== context.actorUserId ||
+                context.canSelfConfirmGovernedFinal)
+            )
             : true,
           requiresPassword: context?.governed ? false : true
         }),
@@ -2426,37 +2478,26 @@ export class ContractReadService {
     return workflowActions;
   }
 
-  private async canUploadGovernedFinal(
+  private async governedFinalAccess(
     actorUserId: string | undefined,
     projectId: string,
-    sealTask: ContractDetailReadModel["sealTask"]
+    sealTask: ContractDetailReadModel["sealTask"],
+    activeFinal: NonNullable<ContractDetailReadModel["formalFiles"]>[number] | null
   ) {
-    if (!actorUserId || !sealTask) return false;
-    if (sealTask.handlerUserId === actorUserId) return true;
-    const position = await this.prisma.position.findUnique({
-      where: { key: "contract_director" },
-      select: { id: true }
-    });
-    if (!position) return false;
-    const assignments = await this.prisma.userPosition.findMany({
-      where: { projectId: null, positionId: position.id },
-      select: { userId: true }
-    });
-    const activeDirectors = assignments.length ? await this.prisma.user.findMany({
-      where: { id: { in: assignments.map((item) => item.userId) }, isActive: true },
-      select: { id: true }
-    }) : [];
-    if (activeDirectors.length !== 1 || activeDirectors[0].id !== sealTask.handlerUserId) {
-      return false;
+    if (!actorUserId || !sealTask) {
+      return { canUpload: false, canConfirm: false, canSelfConfirm: false };
     }
-    const [member, actor] = await Promise.all([
-      this.prisma.projectMember.findFirst({
-        where: { projectId, userId: actorUserId, positionKey: "contract_staff" },
-        select: { id: true }
-      }),
-      this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } })
-    ]);
-    return Boolean(member && actor?.isActive);
+    const access = await resolveGovernedFinalArchiveAccess(this.prisma, {
+      actorUserId,
+      projectId,
+      handlerUserId: sealTask.handlerUserId,
+      uploadedByUserId: activeFinal?.uploadedByUserId
+    });
+    return {
+      canUpload: access.canUpload,
+      canConfirm: access.canConfirm,
+      canSelfConfirm: access.canSelfConfirm
+    };
   }
 
   private async canReportSigningMaterialChange(

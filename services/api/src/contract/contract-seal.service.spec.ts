@@ -39,6 +39,7 @@ function harness() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       update: jest.fn().mockImplementation(({ data }) => ({ ...task, ...data }))
     },
+    contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
     contractFormalFile: {
       findMany: jest.fn().mockResolvedValue([
         { id: "approval-original-1" },
@@ -386,7 +387,7 @@ describe("ContractSealService", () => {
       .rejects.toThrow("用章任务已被其他人处理");
   });
 
-  it("合同员可上传页数不同的 DOCX 最终归档并进入待确认", async () => {
+  it("合同经办人兼当前合同部主管上传最终归档时记录服务器归因", async () => {
     const { tx, prisma, version, task } = harness();
     version.status = "seal_approved_pending_archive";
     Object.assign(version, { draftRevision: 4, changeType: "original", baseVersionId: null });
@@ -430,11 +431,8 @@ describe("ContractSealService", () => {
       sizeBytes: 100,
       contentSha256: "a".repeat(64)
     }]);
-    const service = new ContractSealService(
-      prisma as never,
-      undefined,
-      formalFiles as never
-    );
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const service = new ContractSealService(prisma as never, audit as never, formalFiles as never);
     await expect(service.uploadFinal("version-1", "handler-1", {
       fileId: "file-final-1",
       sourceRevision: 4,
@@ -456,6 +454,25 @@ describe("ContractSealService", () => {
       },
       data: { status: "pending_archive_confirm" }
     });
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "handler-1",
+      action: "contract.formal_file.final_upload",
+      businessType: "contract_version",
+      businessId: "version-1",
+      metadata: expect.objectContaining({
+        archiveActionAttribution: {
+          actingRoleKey: "contract_director",
+          representedUserId: "handler-1",
+          nodeKey: "contract.final_archive",
+          nodeRoleKey: "contract_director",
+          sealTaskId: "seal-1",
+          handlerUserId: "handler-1",
+          businessType: "contract_version",
+          businessId: "version-1",
+          projectId: "project-1"
+        }
+      })
+    }));
   });
 
   it("在归档确认前替换最终件，仅保留新选定版本为 active", async () => {
@@ -555,10 +572,11 @@ describe("ContractSealService", () => {
     })).rejects.toThrow("上传人与归档确认人不能是同一人");
   });
 
-  it("合同部主管语义确认最终归档时不重试密码，并冻结选定版本和审计", async () => {
+  it("合同经办人兼当前合同部主管时可确认自己的最终归档并明确审计", async () => {
     const { tx, prisma, version, task } = harness();
     version.status = "pending_archive_confirm";
     task.status = "completed";
+    task.handlerUserId = "director-1";
     tx.contractSealTask.findFirst.mockResolvedValue(task);
     const final = {
       id: "final-1",
@@ -566,7 +584,7 @@ describe("ContractSealService", () => {
       contentSha256: "a".repeat(64),
       pageCount: 1,
       sourceRevision: 4,
-      uploadedByUserId: "handler-1"
+      uploadedByUserId: "director-1"
     };
     const original = {
       id: "approval-original-1",
@@ -650,11 +668,26 @@ describe("ContractSealService", () => {
     });
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "contract.archive.confirm",
-      businessId: "version-1"
+      businessId: "version-1",
+      metadata: expect.objectContaining({
+        selfReview: true,
+        selfReviewRoleKey: "contract_director",
+        archiveActionAttribution: {
+          actingRoleKey: "contract_director",
+          representedUserId: "director-1",
+          nodeKey: "contract.final_archive",
+          nodeRoleKey: "contract_director",
+          sealTaskId: "seal-1",
+          handlerUserId: "director-1",
+          businessType: "contract_version",
+          businessId: "version-1",
+          projectId: "project-1"
+        }
+      })
     }));
   });
 
-  it("唯一公司合同主管兼经办人时允许所属项目合同员替代上传", async () => {
+  it("拒绝非冻结经办人的合同部主管上传最终版", async () => {
     const { tx, prisma, version, task } = harness();
     version.status = "seal_approved_pending_archive";
     Object.assign(version, { draftRevision: 4, changeType: "original", baseVersionId: null });
@@ -699,7 +732,7 @@ describe("ContractSealService", () => {
     }]);
     const service = new ContractSealService(prisma as never, undefined, formalFiles as never);
 
-    await expect(service.uploadFinal("version-1", "project-contract-staff", {
+    await expect(service.uploadFinal("version-1", "nonhandler-director-1", {
       fileId: "file-final-2",
       sourceRevision: 4,
       firstPartySignedOrStamped: true,
@@ -708,7 +741,9 @@ describe("ContractSealService", () => {
       signingDateCompleted: true,
       onlyPermittedSignatureChanges: true,
       documentOrderConfirmed: true
-    })).resolves.toMatchObject({ id: "final-2", uploadedByUserId: "project-contract-staff" });
+    })).rejects.toThrow("只有当前冻结经办人可以上传双方最终版合同");
+    expect((tx.contractFormalFile as unknown as { create: jest.Mock }).create)
+      .not.toHaveBeenCalled();
   });
 
   it("通用合同必须存在可计算的非预付款直接付款阶段", async () => {
@@ -860,7 +895,7 @@ describe("ContractSealService", () => {
       signingDateCompleted: true,
       onlyPermittedSignatureChanges: true,
       documentOrderConfirmed: true
-    })).rejects.toThrow("不符合唯一合同主管的替代上传条件");
+    })).rejects.toThrow("只有当前冻结经办人可以上传双方最终版合同");
     expect(formalFiles.inspectOwnedStoredFinalArchive).not.toHaveBeenCalled();
   });
 

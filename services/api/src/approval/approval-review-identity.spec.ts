@@ -15,8 +15,142 @@ describe("resolveApprovalReviewIdentity", () => {
         candidateUserIds: ["finance-1", "chair-1"]
       },
       actorUserId: "finance-1",
-      actorRoleKeys: []
+      actorRoleKeys: ["finance_director"]
     })).toEqual({ approvedRoleKey: "finance_director", representedUserId: "finance-1", viaAssignment: false });
+  });
+
+  it("attributes a multi-position actor to the actual frozen approval role", () => {
+    expect(resolveApprovalReviewIdentity({
+      node: {
+        roleKeys: ["contract_director"],
+        candidateUserIdsByRole: { contract_director: ["multi-role-1"] }
+      },
+      actorUserId: "multi-role-1",
+      actorRoleKeys: ["contract_director", "project_manager"]
+    })).toEqual({
+      approvedRoleKey: "contract_director",
+      representedUserId: "multi-role-1",
+      viaAssignment: false
+    });
+  });
+
+  it("requires the frozen global contract-director node to retain a current global role", () => {
+    expect(resolveApprovalReviewIdentity({
+      node: {
+        roleKeys: ["contract_director"],
+        candidateUserIdsByRole: { contract_director: ["director-1"] },
+        roleScopesByRole: { contract_director: "global" }
+      } as never,
+      actorUserId: "director-1",
+      actorRoleKeys: ["contract_director"],
+      actorRoleScopes: {
+        globalRoleKeys: [],
+        projectRoleKeys: ["contract_director"]
+      },
+      legacyContractRoute: true
+    } as never)).toBeNull();
+  });
+
+  it("infers the original contract route scope for legacy governed nodes", () => {
+    const legacyContractDirectorNode = {
+      name: "合同部主管",
+      roleKeys: ["contract_director"],
+      candidateUserIdsByRole: { contract_director: ["director-1"] }
+    } as const;
+
+    expect(resolveApprovalReviewIdentity({
+      node: legacyContractDirectorNode,
+      actorUserId: "director-1",
+      actorRoleKeys: ["contract_director"],
+      actorRoleScopes: {
+        globalRoleKeys: [],
+        projectRoleKeys: ["contract_director"]
+      },
+      legacyContractRoute: true
+    })).toBeNull();
+    expect(resolveApprovalReviewIdentity({
+      node: legacyContractDirectorNode,
+      actorUserId: "director-1",
+      actorRoleKeys: ["contract_director"],
+      actorRoleScopes: {
+        globalRoleKeys: ["contract_director"],
+        projectRoleKeys: []
+      },
+      legacyContractRoute: true
+    })).toEqual({
+      approvedRoleKey: "contract_director",
+      representedUserId: "director-1",
+      viaAssignment: false
+    });
+
+    expect(resolveApprovalReviewIdentity({
+      node: {
+        name: "项目经理",
+        roleKeys: ["project_manager"],
+        candidateUserIdsByRole: { project_manager: ["manager-1"] }
+      },
+      actorUserId: "manager-1",
+      actorRoleKeys: ["project_manager"],
+      actorRoleScopes: {
+        globalRoleKeys: [],
+        projectRoleKeys: ["project_manager"]
+      },
+      legacyContractRoute: true
+    })).toEqual({
+      approvedRoleKey: "project_manager",
+      representedUserId: "manager-1",
+      viaAssignment: false
+    });
+
+    expect(resolveApprovalReviewIdentity({
+      node: {
+        name: "历史合同审批节点",
+        roleKeys: ["contract_director"],
+        candidateUserIdsByRole: { contract_director: ["director-1"] }
+      },
+      actorUserId: "director-1",
+      actorRoleKeys: ["contract_director"],
+      actorRoleScopes: {
+        globalRoleKeys: ["contract_director"],
+        projectRoleKeys: []
+      },
+      legacyContractRoute: true
+    })).toBeNull();
+  });
+
+  it.each([
+    [
+      "global contract director",
+      "contract_director",
+      "global",
+      { globalRoleKeys: ["contract_director"], projectRoleKeys: [] }
+    ],
+    [
+      "project manager",
+      "project_manager",
+      "project",
+      { globalRoleKeys: [], projectRoleKeys: ["project_manager"] }
+    ]
+  ] as const)("keeps a current %s at the matching frozen role scope", (
+    _label,
+    roleKey,
+    scope,
+    actorRoleScopes
+  ) => {
+    expect(resolveApprovalReviewIdentity({
+      node: {
+        roleKeys: [roleKey],
+        candidateUserIdsByRole: { [roleKey]: ["reviewer-1"] },
+        roleScopesByRole: { [roleKey]: scope }
+      } as never,
+      actorUserId: "reviewer-1",
+      actorRoleKeys: [roleKey],
+      actorRoleScopes
+    } as never)).toEqual({
+      approvedRoleKey: roleKey,
+      representedUserId: "reviewer-1",
+      viaAssignment: false
+    });
   });
 
   it("fails closed when a governed candidate field exists but is empty", () => {
@@ -38,12 +172,12 @@ describe("resolveApprovalReviewIdentity", () => {
     })).toBeNull();
   });
 
-  it("lets a selected frozen candidate act after losing the current role", () => {
+  it("rejects a selected frozen candidate after the current role is removed", () => {
     expect(resolveApprovalReviewIdentity({
       node: { roleKeys: ["project_manager"], selectedUserId: "manager-1" },
       actorUserId: "manager-1",
       actorRoleKeys: []
-    })).toEqual({ approvedRoleKey: "project_manager", representedUserId: "manager-1", viaAssignment: false });
+    })).toBeNull();
   });
 
   it("allows assignment only when it represents a frozen candidate", () => {
@@ -78,7 +212,7 @@ describe("resolveApprovalReviewIdentity", () => {
       node,
       actorUserId: "delegate-1",
       actorRoleKeys: [],
-      activeDelegators: [{ userId: "finance-1", roleKeys: [] }]
+      activeDelegators: [{ userId: "finance-1", roleKeys: ["finance_director"] }]
     })).toEqual({ approvedRoleKey: "finance_director", representedUserId: "finance-1", viaAssignment: false });
     expect(resolveApprovalReviewIdentity({
       node,
@@ -112,7 +246,7 @@ describe("resolveApprovalReviewIdentity", () => {
         }]
       },
       actorUserId: "delegate-1",
-      actorRoleKeys: []
+      actorRoleKeys: ["finance_director"]
     })).toEqual({
       approvedRoleKey: "chairman",
       representedUserId: "leader-1",
@@ -135,7 +269,7 @@ describe("resolveApprovalReviewIdentity", () => {
         }]
       },
       actorUserId: "finance-1",
-      actorRoleKeys: []
+      actorRoleKeys: ["finance_director"]
     })).toEqual({
       approvedRoleKey: "finance_director",
       representedUserId: "finance-1",

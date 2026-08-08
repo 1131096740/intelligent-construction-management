@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "9b2657a9d9eb719d2122cadc52d80b0b14fe36e2c1580a298de7f38a7cb57823",
+      "sha256": "2421462ae322ac000c841c88e8ff0292d2fa646559fd21a705db5716a2211233",
       "status": "ready",
       "summary": {
         "routeCount": 449
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "659aaf2dd5e14459af38bd063e2f282ba9daa68b30b1fab5f5fda0c9adab197f",
+      "sha256": "00855e66e084827efecf024dbefba2c104a7d3e4d2c6459158ab1e55858748f5",
       "status": "ready",
       "summary": {
         "registeredActionCount": 236,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "0717cca8f5aa904aad8c0e1e90a5ff5698e2f2637b350092a677817b2762c314",
+      "sha256": "e92354b43ed909f90079075176341b33a83f8f0dcc8cf69bf4bfe60f8e82c8bf",
       "status": "ready",
       "summary": {
         "routeCount": 449,
@@ -12044,7 +12044,7 @@
         "guardAuthorization": "project_action",
         "isPublic": false,
         "requiredPositions": [],
-        "requiredProjectAction": "contract.archive.upload",
+        "requiredProjectAction": "contract.archive.final.upload",
         "authorizationCombination": null,
         "contractCutoverSurface": false,
         "contractCutoverLegacyWrite": false

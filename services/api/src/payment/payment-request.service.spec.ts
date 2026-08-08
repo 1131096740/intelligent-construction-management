@@ -3302,7 +3302,7 @@ describe("PaymentRequestService", () => {
         .mockResolvedValueOnce([{ id: "pm-1", isActive: true }])
         .mockResolvedValueOnce([{ id: "sig-version-pm", fileId: "sig-pm", contentSha256: "c".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-pm", contentSha256: "c".repeat(64), storageStatus: "active" }]),
-      ...approvalRoleTables("employee")
+      ...approvalRoleTables("comprehensive_director")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))
