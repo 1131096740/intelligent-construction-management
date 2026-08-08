@@ -19,10 +19,10 @@
     "reachableProductionModuleCount": 223,
     "templateEventDirectiveCount": 829,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 226,
-    "candidateProductionMutationConsumerCount": 226,
-    "acceptedProductionMutationConsumerCount": 226,
-    "productionMutationConsumerPairCount": 226,
+    "coveredProductionMutationConsumerCount": 227,
+    "candidateProductionMutationConsumerCount": 227,
+    "acceptedProductionMutationConsumerCount": 227,
+    "productionMutationConsumerPairCount": 227,
     "blockerCount": 0
   },
   "evidence": {
@@ -2108,7 +2108,7 @@
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "executeContractDraftLifecycleAction",
+          "wrapper": "executeAbandonContractDraftAction",
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedKey": "GET /contract-drafts/:param/workbench",
@@ -2137,15 +2137,14 @@
           "causalProof": {
             "localCallChain": [
               "confirmAbandonApplication",
-              "executeContractDraftLifecycleAction"
-            ],
-            "variant": "abandon_application"
+              "executeAbandonContractDraftAction"
+            ]
           },
           "ticketFollowups": []
         },
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "executeContractDraftLifecycleAction",
+          "wrapper": "executeAbandonContractDraftAction",
           "method": "POST",
           "path": "/contracts/:param/abandonment",
           "normalizedKey": "POST /contracts/:param/abandonment",
@@ -2162,7 +2161,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
+            "requiredProjectAction": "contract.draft.delete"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
@@ -2174,9 +2173,8 @@
           "causalProof": {
             "localCallChain": [
               "confirmAbandonApplication",
-              "executeContractDraftLifecycleAction"
-            ],
-            "variant": "abandon_application"
+              "executeAbandonContractDraftAction"
+            ]
           },
           "ticketFollowups": []
         }
@@ -2346,7 +2344,43 @@
       "bindings": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "executeContractDraftLifecycleAction",
+          "wrapper": "executeDeletePristineContractDraftAction",
+          "method": "DELETE",
+          "path": "/contract-drafts/:param",
+          "normalizedKey": "DELETE /contract-drafts/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "DELETE",
+            "path": "/contract-drafts/:contractVersionId",
+            "normalizedKey": "DELETE /contract-drafts/:param",
+            "controller": "ContractDraftController",
+            "handler": "deleteDraft",
+            "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "contract.draft.delete"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmDeletePristineDraft",
+              "executeDeletePristineContractDraftAction"
+            ]
+          },
+          "ticketFollowups": []
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeDeletePristineContractDraftAction",
           "method": "GET",
           "path": "/contract-drafts/:param/workbench",
           "normalizedKey": "GET /contract-drafts/:param/workbench",
@@ -2375,46 +2409,8 @@
           "causalProof": {
             "localCallChain": [
               "confirmDeletePristineDraft",
-              "executeContractDraftLifecycleAction"
-            ],
-            "variant": "delete_pristine_draft"
-          },
-          "ticketFollowups": []
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "executeContractDraftLifecycleAction",
-          "method": "POST",
-          "path": "/contracts/:param/abandonment",
-          "normalizedKey": "POST /contracts/:param/abandonment",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contracts/:contractVersionId/abandonment",
-            "normalizedKey": "POST /contracts/:param/abandonment",
-            "controller": "ContractController",
-            "handler": "abandonDraft",
-            "sourceFile": "services/api/src/contract/contract.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "confirmDeletePristineDraft",
-              "executeContractDraftLifecycleAction"
-            ],
-            "variant": "delete_pristine_draft"
+              "executeDeletePristineContractDraftAction"
+            ]
           },
           "ticketFollowups": []
         }
@@ -2839,7 +2835,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1160,
+        "sourceLine": 1161,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5890,7 +5886,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1136,
+        "sourceLine": 1137,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5956,7 +5952,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1071,
+        "sourceLine": 1072,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6022,7 +6018,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1091,
+        "sourceLine": 1092,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6088,7 +6084,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1112,
+        "sourceLine": 1113,
         "sourceColumn": 0
       },
       "semantic": "business_write",

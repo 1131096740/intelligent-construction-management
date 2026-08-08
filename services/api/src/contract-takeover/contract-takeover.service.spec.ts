@@ -1796,6 +1796,36 @@ describe("ContractTakeoverService", () => {
     expect(tx.contract.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a tombstoned formal code before creating a historical takeover contract", async () => {
+    const tx = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) },
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue({ id: "tombstone-1" })
+      },
+      contract: { create: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    await expect(service.create("project-1", {
+      code: "HT-HIS-TOMBSTONED",
+      name: "已删除编号历史合同",
+      counterparty: "历史供应商",
+      amountCents: "10000",
+      signedAt: "2026-01-10",
+      takeoverLevel: "A",
+      lifecycleStatus: "in_progress",
+      reviewComment: "历史资料完整，确认按A级接管"
+    }, "contract-user")).rejects.toThrow("正式合同编号已永久保留");
+    expect(tx.contractNumberTombstone.findUnique).toHaveBeenCalledWith({
+      where: { formalCode: "HT-HIS-TOMBSTONED" },
+      select: { id: true }
+    });
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
   it("creates a historical contract takeover draft on existing contract tables", async () => {
     const tx = {
       project: {
@@ -3867,6 +3897,40 @@ describe("ContractTakeoverService", () => {
         takeoverLevelAdjustmentReason: null
       })
     });
+  });
+
+  it("rejects a tombstoned formal code before updating a historical takeover contract", async () => {
+    const tx = {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue(takeoverRecord({ takeoverStatus: "draft" }))
+      },
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue({ id: "tombstone-1" })
+      },
+      contract: { update: jest.fn() }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ContractTakeoverService(prisma as never, audit as never);
+
+    await expect(service.updateDraft("project-1", "takeover-1", {
+      code: "HT-HIS-TOMBSTONED",
+      name: "已删除编号历史合同",
+      counterparty: "历史供应商",
+      amountCents: "10000",
+      signedAt: "2026-01-10",
+      takeoverLevel: "A",
+      lifecycleStatus: "in_progress",
+      reviewComment: "历史资料完整，确认按A级接管"
+    }, "contract-user")).rejects.toThrow("正式合同编号已永久保留");
+    expect(tx.contractNumberTombstone.findUnique).toHaveBeenCalledWith({
+      where: { formalCode: "HT-HIS-TOMBSTONED" },
+      select: { id: true }
+    });
+    expect(tx.contract.update).not.toHaveBeenCalled();
   });
 
   it("records takeover level adjustment reason separately from review comment", async () => {

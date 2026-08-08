@@ -1051,8 +1051,9 @@ import {
   applyContractTypeChange,
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
+  executeAbandonContractDraftAction,
   executeContractBillRemainderCancellation,
-  executeContractDraftLifecycleAction,
+  executeDeletePristineContractDraftAction,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftTransferCapabilities,
   fetchContractDraftWorkbench,
@@ -1358,6 +1359,7 @@ const deletePristineDraftVisible = ref(false);
 const abandonApplicationVisible = ref(false);
 const contractDraftLifecycleActionBusy = ref(false);
 const deletePristineDraftError = ref("");
+const deletePristineDraftRetryPending = ref(false);
 const abandonApplicationError = ref("");
 let contractWorkbenchComponentAlive = true;
 let contractBillRemainderOperationSequence = 0;
@@ -1485,7 +1487,7 @@ function contractDraftLifecycleContextCurrent(
 async function finishContractDraftLifecycleAction(
   result: ExecuteContractDraftLifecycleActionResult
 ) {
-  if (result.status === "stale") return;
+  if (result.status !== "completed") return;
   discardLocalState();
   navigationBypass.value = true;
   await router.push({ path: "/contracts", query: { view: "ended" } });
@@ -1511,7 +1513,14 @@ function hideInvalidContractDraftLifecycleCapability(error: unknown) {
 async function finishDeletePristineDraft(
   result: ExecuteContractDraftLifecycleActionResult
 ) {
+  if (result.status === "retryable") {
+    deletePristineDraftRetryPending.value = true;
+    deletePristineDraftError.value =
+      "草稿已进入待删除状态，但对象清理未完成；请保持在本页并再次确认以重试。";
+    return;
+  }
   await finishContractDraftLifecycleAction(result);
+  deletePristineDraftRetryPending.value = false;
   deletePristineDraftVisible.value = false;
 }
 
@@ -1542,16 +1551,16 @@ async function confirmDeletePristineDraft(request: {
 }) {
   contractDraftLifecycleActionBusy.value = true;
   deletePristineDraftError.value = "";
-  await executeContractDraftLifecycleAction({
+  await executeDeletePristineContractDraftAction({
     generation: workbenchLoadRequestId,
     contractId: contractId.value,
     versionId: contractDraftLifecycleVersionId.value,
     expectedRevision: savedRevision.value,
-    action: "delete_pristine_draft",
     reason: request.reason,
     currentPassword: request.password,
     expectedRequiresComment: deletePristineDraftRequiresComment.value,
     expectedRequiresPassword: deletePristineDraftRequiresPassword.value,
+    retryPending: deletePristineDraftRetryPending.value,
     isCurrent: contractDraftLifecycleContextCurrent,
     beforeWrite: suspendAutosaveForLifecycleAction,
     onWriteFailure: resumeAutosaveAfterLifecycleAction,
@@ -1569,12 +1578,11 @@ async function confirmAbandonApplication(request: {
 }) {
   contractDraftLifecycleActionBusy.value = true;
   abandonApplicationError.value = "";
-  await executeContractDraftLifecycleAction({
+  await executeAbandonContractDraftAction({
     generation: workbenchLoadRequestId,
     contractId: contractId.value,
     versionId: contractDraftLifecycleVersionId.value,
     expectedRevision: savedRevision.value,
-    action: "abandon_application",
     reason: request.reason,
     currentPassword: request.password,
     expectedRequiresComment: abandonApplicationRequiresComment.value,
@@ -2079,6 +2087,7 @@ onBeforeUnmount(() => {
   contractDraftAvailableActions.value = null;
   contractDraftOperationAvailableActions.value = [];
   deletePristineDraftVisible.value = false;
+  deletePristineDraftRetryPending.value = false;
   abandonApplicationVisible.value = false;
   clearManualSaveMessage();
   cancelPendingNavigation();
@@ -2977,6 +2986,7 @@ async function loadExpectedWorkbench(id: string) {
   contractDraftAvailableActions.value = null;
   contractDraftOperationAvailableActions.value = [];
   deletePristineDraftVisible.value = false;
+  deletePristineDraftRetryPending.value = false;
   abandonApplicationVisible.value = false;
   deletePristineDraftError.value = "";
   abandonApplicationError.value = "";

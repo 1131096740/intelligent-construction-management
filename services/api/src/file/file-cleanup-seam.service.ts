@@ -16,14 +16,13 @@ import {
 /**
  * 文件清理接缝。
  *
- * 本票只建立只读清单与受严格守卫的删除原语，不暴露任何 HTTP 删除入口，
- * 不实现桶级生命周期/版本控制配置，不连接生产 COS。
+ * 本服务不暴露任何 HTTP 删除入口，不实现桶级生命周期/版本控制配置。
  *
  * - `previewManifest`：只读，`mode: "preview_only"`、`executionAllowed: false`。
  * - `deleteExactObjects`：仅按精确对象键逐个永久删除全部版本与删除标记，
  *   每次调用前必经 `assertExactObjectKeyScope`；收敛失败抛 `PartialDeletionError`，
- *   残留仅暴露对象键指纹与版本数，不暴露完整对象键。实际删除编排由后续票据在
- *   另行授权后调用。
+ *   残留仅暴露对象键指纹与版本数，不暴露完整对象键。实际删除编排由受控领域
+ *   命令调用。
  */
 
 export class CleanupScopeError extends Error {

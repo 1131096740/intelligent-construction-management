@@ -10,7 +10,7 @@
 | Web API 请求 | 已扫描 148 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 449 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 63 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 62 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
@@ -20,8 +20,8 @@
 | frontend_without_backend | 0 |
 | backend_without_frontend | 31 |
 | backend_internal_only | 0 |
-| legacy_candidate | 0 |
-| exit_candidate | 63 |
+| legacy_candidate | 1 |
+| exit_candidate | 62 |
 
 ## 不存在的页面 API wrapper
 
@@ -58,7 +58,7 @@
 | GET | `/contract-business-scenarios/recommendations` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-document-differences/:param/disposition` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-documents/:param/retry` | retryContractDocument | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
-| DELETE | `/contract-drafts/:param` | deletePristineContractDraft |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| DELETE | `/contract-drafts/:param` | deletePristineContractDraft |  | legacy_candidate | 保留 | 否 | production_legacy_route_hits, independent_deletion_authorization |
 | PUT | `/contract-drafts/:param` | saveContractDraftAggregate | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/bills/:param/import-preview` | previewContractDraftBillExcelImport | apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/bills/:param/template` | — |  | backend_without_frontend | 补入口 | 否 | — |

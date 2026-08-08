@@ -1,0 +1,25 @@
+[Unit]
+Description=JiangKong pristine draft deletion receipt retention
+Wants=network-online.target
+After=network-online.target postgresql.service jiangkong-api.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/jiangkong/services/api
+Environment=NODE_ENV=production
+Environment=CONTRACT_PRISTINE_DRAFT_DELETION_RECEIPT_PURGE_ENABLED=true
+EnvironmentFile=/etc/jiangkong/api.env
+ExecStart=/usr/bin/node /opt/jiangkong/services/api/scripts/purge-pristine-draft-deletion-receipts.cjs --timer-approved-receipt-purge
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadOnlyPaths=/opt/jiangkong

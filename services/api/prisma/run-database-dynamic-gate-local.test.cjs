@@ -34,9 +34,9 @@ test("manifest derives all 55 pending tests as executable local coverage", () =>
     coveredTests: 55,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 120,
+    migrationCount: 121,
     terminalMigration:
-      "20260808070000_contract_counterparty_signed_formal_files"
+      "20260808100000_contract_pristine_draft_deletion"
   });
 });
 

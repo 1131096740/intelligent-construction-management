@@ -22,7 +22,7 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_project_expense_execution_concurrency";
-const EXPECTED_MIGRATION_COUNT = 120;
+const EXPECTED_MIGRATION_COUNT = 121;
 const LATEST_MIGRATION =
   "20260728140000_project_expense_execution_idempotency";
 const PRE140_TEMPLATE_DATABASE =

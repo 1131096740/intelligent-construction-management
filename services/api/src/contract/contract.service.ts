@@ -31,6 +31,7 @@ import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
+import { assertFormalContractCodeNotTombstoned } from "../contract-workbench/contract-formal-code-tombstone";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
 import { lockBusinessTemplateVersion } from "../contract-template/contract-template-locks";
 import { PrismaService } from "../database/prisma.service";
@@ -2035,6 +2036,7 @@ export class ContractService {
           }
           formalCode = await this.businessNumbers.allocateDaily(tx, "HT");
         }
+        await assertFormalContractCodeNotTombstoned(tx, formalCode);
         if (requiresReadiness) {
           const existingTemplate = templateSnapshot as Prisma.JsonObject;
           templateSnapshot = {

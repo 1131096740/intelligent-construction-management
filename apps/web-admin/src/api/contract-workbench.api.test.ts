@@ -26,7 +26,8 @@ import {
   discardStandardClauseVersion,
   downloadBillExcelTemplate,
   downloadContractDraftBillExcelTemplate,
-  executeContractDraftLifecycleAction,
+  executeAbandonContractDraftAction,
+  executeDeletePristineContractDraftAction,
   executeContractBillRemainderCancellation,
   fetchContractBillTransitionOptions,
   fetchContractBillTransitions,
@@ -80,7 +81,8 @@ import {
   updateContractNumberRule,
   updateContractTemplateVersion,
   updateBillRow,
-  voidContractDraft
+  voidContractDraft,
+  type ExecuteContractDraftLifecycleActionInput
 } from "./contract-workbench.api";
 
 vi.mock("./api-fetch", () => ({
@@ -156,7 +158,7 @@ function contractDraftLifecycleWorkbench(
 }
 
 function contractDraftLifecycleInput(
-  overrides: Partial<Parameters<typeof executeContractDraftLifecycleAction>[0]> = {}
+  overrides: Partial<ExecuteContractDraftLifecycleActionInput> = {}
 ) {
   return {
     generation: 7,
@@ -173,6 +175,27 @@ function contractDraftLifecycleInput(
     onWriteFailure: vi.fn(),
     onResult: vi.fn(),
     onCapabilityFailure: vi.fn(),
+    ...overrides
+  };
+}
+
+function executeContractDraftLifecycleAction(
+  input: ExecuteContractDraftLifecycleActionInput
+) {
+  const { action, ...specificInput } = input;
+  return action === "abandon_application"
+    ? executeAbandonContractDraftAction(specificInput)
+    : executeDeletePristineContractDraftAction(specificInput);
+}
+
+function pristineDraftDeletionResponse(
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    contractVersionId: "version-1",
+    status: "deleting",
+    lifecycleKind: "pristine_draft",
+    retryable: true,
     ...overrides
   };
 }
@@ -528,24 +551,51 @@ describe("contract workbench API client", () => {
 
     await expect(abandonContractDraft("version-1", {
       expectedRevision: 6,
-      action: "delete_pristine_draft"
+      action: "abandon_application"
     })).rejects.toThrow("合同草稿已被更新，请刷新后再处理");
+  });
+
+  it("executes an approval-draft abandonment only through its POST response contract", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench({
+        action: "abandon_application",
+        requiresComment: true
+      })))
+      .mockReturnValueOnce(makeOkJson({
+        contractVersionId: "version-1",
+        status: "abandoned",
+        lifecycleKind: "approval_draft",
+        action: "abandon_application",
+        abandonedAt: "2026-08-09T00:00:00.000Z",
+        abandonedByUserId: "user-1",
+        reason: "不再继续签订",
+        idempotent: false
+      }));
+
+    await executeContractDraftLifecycleAction(contractDraftLifecycleInput({
+      action: "abandon_application",
+      expectedRequiresComment: true
+    }));
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      2,
+      "/contracts/version-1/abandonment",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: 12,
+          action: "abandon_application",
+          reason: "用户确认结束"
+        })
+      })
+    );
   });
 
   it("coalesces one governed lifecycle operation without persisting the password in its fingerprint", async () => {
     const pendingRead = deferred<Response>();
     mockApiFetch
       .mockReturnValueOnce(pendingRead.promise)
-      .mockReturnValueOnce(makeOkJson({
-        contractVersionId: "version-1",
-        status: "abandoned",
-        lifecycleKind: "pristine_draft",
-        action: "delete_pristine_draft",
-        abandonedAt: "2026-07-30T00:00:00.000Z",
-        abandonedByUserId: "user-1",
-        reason: "用户确认结束",
-        idempotent: false
-      }));
+      .mockReturnValueOnce(makeOkJson(pristineDraftDeletionResponse()));
 
     const onResult = vi.fn();
     const duplicateOnResult = vi.fn();
@@ -567,18 +617,18 @@ describe("contract workbench API client", () => {
     pendingRead.resolve(await makeOkJson(contractDraftLifecycleWorkbench()));
     await expect(first).resolves.toBeUndefined();
     expect(onResult).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "completed" })
+      expect.objectContaining({ status: "retryable" })
     );
     expect(duplicateOnResult).not.toHaveBeenCalled();
 
     expect(mockApiFetch).toHaveBeenCalledTimes(2);
     expect(mockApiFetch).toHaveBeenNthCalledWith(
       2,
-      "/contracts/version-1/abandonment",
+      "/contract-drafts/version-1",
       expect.objectContaining({
+        method: "DELETE",
         body: JSON.stringify({
           expectedRevision: 12,
-          action: "delete_pristine_draft",
           reason: "用户确认结束",
           currentPassword: "first-password"
         })
@@ -589,20 +639,51 @@ describe("contract workbench API client", () => {
     );
   });
 
+  it("retries a persisted deletion without re-reading an intentionally hidden deleting draft", async () => {
+    mockApiFetch
+      .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
+      .mockReturnValueOnce(makeOkJson(pristineDraftDeletionResponse()))
+      .mockReturnValueOnce(makeOkJson(pristineDraftDeletionResponse({
+        status: "deleted",
+        retryable: undefined
+      })));
+    const firstResult = vi.fn();
+    const retryResult = vi.fn();
+    const firstInput = contractDraftLifecycleInput({
+      onResult: firstResult
+    });
+    const retryInput = contractDraftLifecycleInput({
+      onResult: retryResult
+    });
+
+    await executeDeletePristineContractDraftAction(firstInput);
+    await executeDeletePristineContractDraftAction({
+      ...retryInput,
+      retryPending: true
+    });
+
+    expect(firstResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "retryable" })
+    );
+    expect(retryResult).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed" })
+    );
+    expect(mockApiFetch).toHaveBeenCalledTimes(3);
+    expect(mockApiFetch).toHaveBeenNthCalledWith(
+      3,
+      "/contract-drafts/version-1",
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({ expectedRevision: 12, reason: "用户确认结束" })
+      })
+    );
+  });
+
   it("rejects a different lifecycle operation while one owner is active", async () => {
     const pendingRead = deferred<Response>();
     mockApiFetch
       .mockReturnValueOnce(pendingRead.promise)
-      .mockReturnValueOnce(makeOkJson({
-        contractVersionId: "version-1",
-        status: "abandoned",
-        lifecycleKind: "pristine_draft",
-        action: "delete_pristine_draft",
-        abandonedAt: null,
-        abandonedByUserId: null,
-        reason: "用户确认结束",
-        idempotent: false
-      }));
+      .mockReturnValueOnce(makeOkJson(pristineDraftDeletionResponse()));
     const first = executeContractDraftLifecycleAction(
       contractDraftLifecycleInput()
     );
@@ -622,16 +703,7 @@ describe("contract workbench API client", () => {
     const pendingRead = deferred<Response>();
     mockApiFetch
       .mockReturnValueOnce(pendingRead.promise)
-      .mockReturnValueOnce(makeOkJson({
-        contractVersionId: "version-1",
-        status: "abandoned",
-        lifecycleKind: "pristine_draft",
-        action: "delete_pristine_draft",
-        abandonedAt: null,
-        abandonedByUserId: null,
-        reason: "用户确认结束",
-        idempotent: false
-      }));
+      .mockReturnValueOnce(makeOkJson(pristineDraftDeletionResponse()));
     const ownerSettled = vi.fn();
     const rejectedSettled = vi.fn();
     const rejectedFailure = vi.fn();
@@ -769,16 +841,7 @@ describe("contract workbench API client", () => {
         headers: { "Content-Type": "application/json" }
       }))
       .mockReturnValueOnce(makeOkJson(contractDraftLifecycleWorkbench()))
-      .mockReturnValueOnce(makeOkJson({
-        contractVersionId: "version-1",
-        status: "abandoned",
-        lifecycleKind: "pristine_draft",
-        action: "delete_pristine_draft",
-        abandonedAt: null,
-        abandonedByUserId: null,
-        reason: null,
-        idempotent: false
-      }));
+      .mockReturnValueOnce(makeOkJson(pristineDraftDeletionResponse()));
     const onWriteFailure = vi.fn();
 
     await expect(executeContractDraftLifecycleAction(

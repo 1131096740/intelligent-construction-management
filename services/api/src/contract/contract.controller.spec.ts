@@ -803,7 +803,7 @@ describe("ContractController authorization wiring", () => {
     ["create", "contract.create"],
     ["createCapability", "contract.create"],
     ["createChangeDraft", "contract.create"],
-    ["abandonDraft", "contract.create"],
+    ["abandonDraft", "contract.draft.delete"],
     ["changeEligibility", "contract.create"],
     ["settlementCreateOptions", "settlement.create"],
     ["paymentCreateOptions", "payment.create"],
@@ -916,6 +916,41 @@ describe("ContractController authorization wiring", () => {
       "owner-1",
       {}
     );
+  });
+
+  it("delegates the legacy pristine-delete action to the aggregate cleanup service", async () => {
+    const contracts = { abandonDraft: jest.fn() };
+    const deletion = {
+      deletePristineDraft: jest.fn().mockResolvedValue({
+        contractVersionId: "version-1",
+        status: "deleted"
+      })
+    };
+    const controller = new ContractController(
+      contracts as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      undefined,
+      deletion as never
+    );
+
+    await expect(controller.abandonDraft(
+      "version-1",
+      { action: "delete_pristine_draft", expectedRevision: 7 },
+      { id: "owner-1" } as never
+    )).resolves.toEqual({
+      contractVersionId: "version-1",
+      status: "deleted"
+    });
+    expect(deletion.deletePristineDraft).toHaveBeenCalledWith(
+      "version-1",
+      "owner-1",
+      { expectedRevision: 7 }
+    );
+    expect(contracts.abandonDraft).not.toHaveBeenCalled();
   });
 
   it("forwards visible project ids to contract detail reads", async () => {

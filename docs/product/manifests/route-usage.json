@@ -13,29 +13,29 @@
     "routeCount": 449,
     "exactRouteCount": 449,
     "normalizedRouteCount": 449,
-    "classificationOverrideCount": 174,
+    "classificationOverrideCount": 173,
     "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "937534be125d812ad5d3a7a47c84facbe4367b72d9634f502bb49987d16a4559",
+    "classificationOverrideSha256": "3acd4ec0b16634bfe9fee7a9858033cb789193236e84382f89193b02f685cf6d",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 275,
-    "pageRouteCount": 276,
+    "derivedProductionPageCount": 276,
+    "pageRouteCount": 277,
     "externalTakeoverCount": 61,
-    "exitCandidateCount": 109,
+    "exitCandidateCount": 108,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 325,
+      "web_api_wrapper": 326,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 115
+      "none": 114
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 325,
+    "productionWrapperRouteCount": 326,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -114,18 +114,29 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "usage": "exit_candidate",
-      "classificationSource": "registry_override",
-      "classificationReason": "contract_workbench_task_12_candidate_only_no_deletion_authorization",
-      "consumerSurface": "none",
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
-        "webApiWrappers": [],
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "executeDeletePristineContractDraftAction",
+            "method": "DELETE",
+            "normalizedPath": "/contract-drafts/:param",
+            "normalizedKey": "DELETE /contract-drafts/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          }
+        ],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
+      "exitCandidateSemantics": null
     },
     {
       "method": "DELETE",
@@ -926,6 +937,16 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+            "wrapper": "executeAbandonContractDraftAction",
+            "method": "GET",
+            "normalizedPath": "/contract-drafts/:param/workbench",
+            "normalizedKey": "GET /contract-drafts/:param/workbench",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
             "wrapper": "executeContractBillRemainderCancellation",
             "method": "GET",
             "normalizedPath": "/contract-drafts/:param/workbench",
@@ -936,7 +957,7 @@
           },
           {
             "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "executeContractDraftLifecycleAction",
+            "wrapper": "executeDeletePristineContractDraftAction",
             "method": "GET",
             "normalizedPath": "/contract-drafts/:param/workbench",
             "normalizedKey": "GET /contract-drafts/:param/workbench",
@@ -8724,7 +8745,7 @@
       "guardAuthorization": "project_action",
       "isPublic": false,
       "requiredPositions": [],
-      "requiredProjectAction": "contract.create",
+      "requiredProjectAction": "contract.draft.delete",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
@@ -8736,7 +8757,7 @@
         "webApiWrappers": [
           {
             "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "executeContractDraftLifecycleAction",
+            "wrapper": "executeAbandonContractDraftAction",
             "method": "POST",
             "normalizedPath": "/contracts/:param/abandonment",
             "normalizedKey": "POST /contracts/:param/abandonment",

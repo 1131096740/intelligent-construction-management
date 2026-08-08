@@ -26,6 +26,7 @@ import {
 import { UploadPrivateFileDto } from "../file/dto/upload-private-file.dto";
 import { ContractDraftAggregateService } from "./contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "./contract-draft-edit-lease.service";
+import { PristineDraftDeletionService } from "./pristine-draft-deletion.service";
 import {
   DeleteContractDraftDto,
   GenerateContractDraftPreviewDto,
@@ -41,6 +42,7 @@ export class ContractDraftController {
     private readonly editLease: ContractDraftEditLeaseService,
     @Inject(forwardRef(() => ContractService))
     private readonly contracts: ContractService,
+    private readonly deletion: PristineDraftDeletionService,
     private readonly documents: ContractDocumentService
   ) {}
 
@@ -76,10 +78,7 @@ export class ContractDraftController {
     @Body() body: DeleteContractDraftDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.contracts.abandonDraft(contractVersionId, user.id, {
-      ...body,
-      action: "delete_pristine_draft"
-    });
+    return this.deletion.deletePristineDraft(contractVersionId, user.id, body);
   }
 
   @Post(":contractVersionId/files")

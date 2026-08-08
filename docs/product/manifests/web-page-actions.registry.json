@@ -173,8 +173,7 @@
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "executeContractDraftLifecycleAction",
-          "variant": "abandon_application"
+          "name": "executeAbandonContractDraftAction"
         }
       ]
     },
@@ -200,8 +199,7 @@
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "executeContractDraftLifecycleAction",
-          "variant": "delete_pristine_draft"
+          "name": "executeDeletePristineContractDraftAction"
         }
       ]
     },

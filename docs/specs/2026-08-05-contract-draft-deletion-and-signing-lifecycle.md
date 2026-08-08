@@ -27,7 +27,7 @@
 
 系统为新建合同建立清晰、领域化的生命周期，而不是用一个通用 `deletedAt` 或 COS 前缀规则处理所有数据。
 
-从未提交审批的 `draft` 由当前合同经办人、合同部主管或 Super Admin 执行普通确认后立即进入 `deleting`。记录马上从业务台账隐藏并停止编辑。系统先基于统一文件绑定事实区分独占文件与共享文件：共享文件只解除本草稿绑定；独占文件按精确对象键删除全部 COS 历史版本和删除标记。文件清理完成后再物理删除合同草稿及其子记录。失败任务保持 `deleting` 并自动重试，不向用户重新开放编辑。删除收据只保留三个自然月；如已分配正式合同编号，永久保留一个不含业务信息的编号占位，确保编号永不复用。
+从未提交审批的 `draft` 由当前合同经办人或全局合同部主管执行普通确认后立即进入 `deleting`。记录马上从业务台账隐藏并停止编辑。系统先基于统一文件绑定事实区分独占文件与共享文件：共享文件只解除本草稿绑定；独占文件按精确对象键删除全部 COS 历史版本和删除标记。文件清理完成后再物理删除合同草稿及其子记录。失败任务保持 `deleting` 并自动重试，不向用户重新开放编辑。删除收据只保留三个自然月；如已分配正式合同编号，永久保留一个不含业务信息的编号占位，确保编号永不复用。
 
 合同申请一旦创建过审批实例，就不再属于可即时删除的纯草稿。退回申请人或主动撤回后可以修改并重新提交；最终驳回或经办人/合同部主管明确选择放弃后进入“已结束/历史”，完整只读保留三个自然月。到期前 30 天进入合同部主管待清理列表；没有争议、调查或人工保留标记时整项物理删除，包括业务记录、审批记录、审计记录和文件，仅保留最小编号占位。保留标记解除时若已经超过保留期，再给予 30 天缓冲期。
 
@@ -44,13 +44,13 @@
 3. As a 合同经办人, I want a deleted never-submitted draft to disappear immediately from normal ledgers, so that I do not confuse it with active or historical contracts.
 4. As a 合同经办人, I want deletion to require an explicit confirmation but no reason or current password, so that the action is clear without unnecessary ceremony.
 5. As a 合同部主管, I want to delete any never-submitted contract draft in the company, so that abandoned work can be cleaned when the original handler cannot act.
-6. As a Super Admin, I want to perform the technical deletion of any never-submitted contract draft, so that technical recovery and exceptional cleanup are possible without granting business approval authority.
+6. As a Super Admin, I want technical administration to remain separate from contract deletion, so that exceptional cleanup does not become an untracked business-authority bypass.
 7. As a contract user, I want only the current handler, contract director, and Super Admin to see an unsubmitted draft, so that other staff cannot inspect unfinished contract content.
 8. As a file owner, I want a shared file to remain available to other business records when one draft is deleted, so that deleting a draft cannot destroy another record's evidence.
 9. As a company, I want an exclusive draft file to have every COS object version and delete marker removed, so that “physical deletion” is not merely a hidden current version.
 10. As a company, I want object deletion to target exact object keys rather than the shared `uploads/` prefix, so that formal contracts, settlements, payments, and archives cannot be deleted accidentally.
 11. As a contract user, I want a draft in `deleting` to be hidden and locked, so that partial cross-system cleanup cannot reopen stale editable content.
-12. As a Super Admin, I want failed cleanup jobs to expose safe technical diagnostics and support idempotent retry, so that COS or database failures can be resolved without duplicate deletion.
+12. As a current handler or global contract director, I want failed cleanup jobs to expose safe diagnostics and support idempotent retry, so that COS or database failures can be resolved without duplicate deletion.
 13. As a 合同部主管, I want to see only the business summary and retry status of cleanup failures, so that I can govern the business outcome without receiving storage secrets.
 14. As a company, I want deletion to become final only after exclusive COS objects and database records are both gone, so that the system does not report false success.
 15. As a contract auditor, I want a never-submitted draft deletion receipt to remain for three natural months, so that recent deletion disputes can be checked without retaining the deleted contract content.
@@ -129,10 +129,10 @@
 - The cleanup workflow is an idempotent saga rather than an impossible cross-system transaction.
 - The workflow computes the complete business binding set before deleting files. Shared files are unbound only; an object becomes deletable only when no other current or historical protected business binding remains.
 - Exclusive COS objects are deleted before the database aggregate is physically purged. All versions and delete markers for the exact object key must be removed.
-- A draft remains `deleting` while any required object version or database child remains. Failed work is retried automatically and can be retried manually by Super Admin.
+- A draft remains `deleting` while any required object version or database child remains. Failed work is retried automatically and can be retried manually by the original handler or a global contract director.
 - The user-facing success state means both object storage and database cleanup have completed.
 - The ordinary delete confirmation requires no reason and no current-password challenge.
-- Eligible actors are the current contract handler, the global contract director, and Super Admin. All actions record the actual actor and original handler while the receipt exists.
+- Eligible actors are the current contract handler and the global contract director. All actions record the actual actor and original handler while the receipt exists.
 
 ### 3. Immediate-deletion receipt and number tombstone
 
@@ -270,7 +270,7 @@
 
 ### API route-level acceptance
 
-- Prove a current handler, contract director, and Super Admin can request deletion of an eligible never-submitted draft.
+- Prove a current handler and global contract director can request deletion of an eligible never-submitted draft, while Super Admin is denied the business action.
 - Prove an unrelated user, project-scoped full-view user, ordinary employee, and future unconfigured role cannot delete or read the draft.
 - Prove a `draft` with any prior submission/approval fact is rejected by immediate deletion.
 - Prove a never-submitted draft remains eligible when it has attachments, counterparty-signed files, structured bills/terms, or an allocated formal code.

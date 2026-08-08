@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { assertFormalContractCodeNotTombstoned } from "./contract-formal-code-tombstone";
 import type {
   CreateContractNumberRuleDto,
   UpdateContractNumberRuleDto
@@ -44,6 +45,9 @@ type NumberingClient = {
   };
   contract: {
     findFirst(input: unknown): Promise<{ id: string } | null>;
+  };
+  contractNumberTombstone: {
+    findUnique(input: unknown): Promise<{ formalCode: string } | null>;
   };
   project?: {
     findUnique(input: unknown): Promise<{ id: string; code: string } | null>;
@@ -269,7 +273,9 @@ export class ContractNumberingService {
   }
 
   private async assertCodeAvailable(tx: NumberingClient, code: string) {
-    if (await tx.contract.findFirst({ where: { code } })) {
+    const contract = await tx.contract.findFirst({ where: { code } });
+    await assertFormalContractCodeNotTombstoned(tx, code);
+    if (contract) {
       throw new BadRequestException("正式合同编号已存在，请刷新后重新提交或选择其他编号");
     }
   }

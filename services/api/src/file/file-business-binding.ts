@@ -127,7 +127,8 @@ export const NON_RECEIPT_FILE_BINDINGS = [
   { table: "PdfDocument", columns: ["fileId"] },
   {
     table: "ApprovalFormGenerationClaim",
-    columns: ["uploadedFileId"]
+    columns: ["uploadedFileId"],
+    rowIdColumn: "approvalInstanceId"
   },
   {
     table: "ContractLayoutTemplateVersion",

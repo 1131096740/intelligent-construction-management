@@ -345,6 +345,35 @@ model ContractDraftSubmissionRequest {
   @@index([applicantUserId])
 }
 
+model ContractPristineDraftDeletionReceipt {
+  id                 String    @id @default(uuid())
+  projectId          String
+  contractId         String
+  contractVersionId  String    @unique
+  contractName       String
+  formalCode         String?
+  ownerUserId        String?
+  deletedByUserId    String
+  requestedRevision  Int
+  status             String    @default("deleting")
+  exclusiveFileCount Int       @default(0)
+  sharedFileCount    Int       @default(0)
+  aggregateHash      String?
+  failureCode        String?
+  completedAt        DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, expiresAt])
+}
+
+model ContractNumberTombstone {
+  id         String   @id @default(uuid())
+  formalCode String   @unique
+  createdAt  DateTime @default(now())
+}
+
 model ContractTaxFactRevision {
   id                      String    @id @default(uuid())
   projectId               String

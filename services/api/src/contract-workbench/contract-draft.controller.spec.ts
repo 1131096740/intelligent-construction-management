@@ -21,16 +21,18 @@ describe("ContractDraftController", () => {
       release: jest.fn().mockResolvedValue({ released: true })
     };
     const contracts = {
-      abandonDraft: jest.fn().mockResolvedValue({
-        contractVersionId: "cv-1",
-        status: "deleting",
-        lifecycleKind: "pristine_draft"
-      }),
       submitApproval: jest.fn().mockResolvedValue({
         contractVersionId: "cv-1",
         approvalInstanceId: "approval-1",
         formalCode: "HT-20260728-001",
         status: "in_approval"
+      })
+    };
+    const deletion = {
+      deletePristineDraft: jest.fn().mockResolvedValue({
+        contractVersionId: "cv-1",
+        status: "deleted",
+        lifecycleKind: "pristine_draft"
       })
     };
     const documents = {
@@ -44,11 +46,13 @@ describe("ContractDraftController", () => {
       aggregate,
       editLease,
       contracts,
+      deletion,
       documents,
       controller: new ContractDraftController(
         aggregate as never,
         editLease as never,
         contracts as never,
+        deletion as never,
         documents as never
       )
     };
@@ -263,23 +267,20 @@ describe("ContractDraftController", () => {
     ).toBe("contract.draft.delete");
   });
 
-  it("delegates daily deletion to the existing logical draft lifecycle", async () => {
-    const { contracts, controller } = makeController();
+  it("delegates confirmed deletion to the pristine-draft deletion command", async () => {
+    const { deletion, controller } = makeController();
     const body = { expectedRevision: 7 };
 
     await expect(
       controller.deleteDraft("cv-1", body, { id: "director-1" } as never)
     ).resolves.toMatchObject({
-      status: "deleting",
+      status: "deleted",
       lifecycleKind: "pristine_draft"
     });
-    expect(contracts.abandonDraft).toHaveBeenCalledWith(
+    expect(deletion.deletePristineDraft).toHaveBeenCalledWith(
       "cv-1",
       "director-1",
-      {
-        ...body,
-        action: "delete_pristine_draft"
-      }
+      body
     );
   });
 

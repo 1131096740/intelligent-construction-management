@@ -158,6 +158,30 @@ describe("buildFileBindingManifest", () => {
     expect(manifest.summary).toEqual({ exclusiveCount: 1, sharedCount: 0, blockedCount: 0, totalObjectCount: 1 });
   });
 
+  it("treats another FileObject for the same bucket and object key as shared", async () => {
+    const applicationBindings = [ownedRef("ContractFormalFile", "fileId", "formal-1", "file-a")];
+    const { tx } = fakeTx({
+      refs: [...applicationBindings],
+      fileObjects: [
+        fileObjectLite("file-a", { objectKey: "uploads/shared-object.pdf" }),
+        fileObjectLite("file-b", { objectKey: "uploads/shared-object.pdf" })
+      ]
+    });
+
+    const manifest = await buildFileBindingManifest({
+      tx,
+      target: { contractVersionIds: ["v1"] },
+      applicationBindings
+    });
+
+    expect(manifest.rows[0]).toMatchObject({
+      fileId: "file-a",
+      bindingType: "shared",
+      blockedReason: expect.stringMatching(/永不执行对象删除/)
+    });
+    expect(manifest.rows[0].sharedReason).toContain("FileObject:physicalObject:file-b");
+  });
+
   it("flags a file shared when an external settlement binding references it", async () => {
     const applicationBindings = [ownedRef("ContractFormalFile", "fileId", "formal-1", "file-a")];
     const external = ref("SettlementLineAttachment", "fileId", "settlement-9", "file-a");
