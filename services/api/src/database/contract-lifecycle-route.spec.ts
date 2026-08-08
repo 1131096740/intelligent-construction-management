@@ -581,7 +581,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               contractId,
               contractVersionId: versionId,
               versionNo: 1,
-              status: "active",
+              status: "draft",
               originalText: "验收后支付"
             }
           });
