@@ -181,7 +181,10 @@
               theme="primary"
               @click="isHistoricalTakeoverLedgerRow(row)
                 ? openHistoricalTakeoverRow(row)
-                : openDetail(row.id)"
+                : openDetail(
+                  row.id,
+                  activeTab === 'ended' ? row.contractVersionId : undefined
+                )"
             >
               {{ isHistoricalTakeoverLedgerRow(row)
                 ? historicalTakeoverLedgerOperationLabel(row)
@@ -503,8 +506,11 @@ function goNewContract() {
   void router.push("/合同工作台/新建");
 }
 
-function openDetail(contractId: string) {
-  void router.push(`/合同管理/${contractId}`);
+function openDetail(contractId: string, versionId?: string) {
+  void router.push({
+    path: `/合同管理/${contractId}`,
+    query: versionId ? { versionId } : undefined
+  });
 }
 
 function openLifecycleRow(row: ContractLedgerRow & ContractLifecycleLedgerRow) {

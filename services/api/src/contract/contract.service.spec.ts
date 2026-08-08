@@ -20,8 +20,22 @@ const contractReviewCoordinates = (expectedNodeIndex = 0) => ({
 });
 const contractWithdrawalCoordinates = contractReviewCoordinates();
 
+function contractLifecycleReadStubs() {
+  return {
+    approvalInstance: { findMany: jest.fn().mockResolvedValue([]) },
+    approvalActionLog: { count: jest.fn().mockResolvedValue(0) },
+    contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+    contractAuthorization: { count: jest.fn().mockResolvedValue(0) },
+    contractVersionAuthorizationLink: { count: jest.fn().mockResolvedValue(0) },
+    contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+    contractArchiveFile: { count: jest.fn().mockResolvedValue(0) },
+    settlement: { count: jest.fn().mockResolvedValue(0) },
+    paymentRequest: { count: jest.fn().mockResolvedValue(0) }
+  };
+}
+
 describe("ContractService", () => {
-  it("copies an abandoned original contract into a new draft identity without workflow evidence", async () => {
+  it("copies a non-ended technical abandoned draft into a new draft identity", async () => {
     const updatedAt = new Date("2026-07-20T02:00:00.000Z");
     const sourceVersion = {
       id: "source-version",
@@ -50,10 +64,17 @@ describe("ContractService", () => {
       templateSnapshot: { fieldSchema: [] },
       clauseSnapshot: [],
       updatedAt,
+      firstSubmittedAt: null,
+      endedAt: null,
+      abandonedAt: updatedAt,
+      abandonedByUserId: "owner-1",
+      abandonReason: null,
+      ownerUserId: "owner-1",
       hasHistoricalTakeoverRelation: false
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([sourceVersion]),
+      ...contractLifecycleReadStubs(),
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "source-contract",
@@ -93,7 +114,6 @@ describe("ContractService", () => {
       "owner-1",
       { expectedUpdatedAt: updatedAt.toISOString() }
     );
-
     expect(tx.contractVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         contractId: "new-contract",
@@ -108,6 +128,108 @@ describe("ContractService", () => {
     }));
   });
 
+  it.each([
+    ["abandoned", {
+      firstSubmittedAt: new Date("2026-07-19T02:00:00.000Z"),
+      endedAt: new Date("2026-07-20T02:00:00.000Z"),
+      abandonedAt: new Date("2026-07-20T02:00:00.000Z"),
+      abandonedByUserId: "owner-1",
+      abandonReason: "不再继续"
+    }],
+    ["approval_rejected", {
+      firstSubmittedAt: new Date("2026-07-19T02:00:00.000Z"),
+      endedAt: new Date("2026-07-20T02:00:00.000Z"),
+      abandonedAt: null,
+      abandonedByUserId: null,
+      abandonReason: null
+    }]
+  ] as const)("rejects copying an ended %s application before creating a new draft", async (status, lifecycleFacts) => {
+    const updatedAt = new Date("2026-07-20T02:00:00.000Z");
+    const sourceVersion = {
+      id: "source-version",
+      contractId: "source-contract",
+      versionNo: 1,
+      changeType: "original",
+      status,
+      updatedAt,
+      ownerUserId: "owner-1",
+      hasHistoricalTakeoverRelation: false,
+      ...lifecycleFacts
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([sourceVersion]),
+      ...contractLifecycleReadStubs(),
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "source-contract",
+          projectId: "project-1",
+          ownerUserId: "owner-1"
+        }),
+        create: jest.fn()
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue(sourceVersion),
+        create: jest.fn()
+      }
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const audit = { record: jest.fn() };
+    const service = new ContractService(prisma as never, audit as never);
+
+    await expect(service.copyAbandonedDraft(
+      "source-version",
+      "owner-1",
+      { expectedUpdatedAt: updatedAt.toISOString() }
+    )).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "CONTRACT_ENDED_APPLICATION_READ_ONLY"
+      }
+    });
+    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(tx.contractVersion.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it.each(["abandoned", "approval_rejected"] as const)(
+    "rejects a non-owner before exposing the %s source lifecycle",
+    async (status) => {
+      const updatedAt = new Date("2026-07-20T02:00:00.000Z");
+      const sourceVersion = {
+        id: "source-version",
+        contractId: "source-contract",
+        versionNo: 1,
+        changeType: "original",
+        status,
+        updatedAt,
+        ownerUserId: "owner-1",
+        hasHistoricalTakeoverRelation: false,
+        firstSubmittedAt: updatedAt,
+        endedAt: updatedAt,
+        abandonedAt: status === "abandoned" ? updatedAt : null,
+        abandonedByUserId: status === "abandoned" ? "owner-1" : null,
+        abandonReason: status === "abandoned" ? "不再继续" : null
+      };
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([sourceVersion]),
+        contract: { findUnique: jest.fn(), create: jest.fn() },
+        contractVersion: { create: jest.fn() }
+      };
+      const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+      const audit = { record: jest.fn() };
+      const service = new ContractService(prisma as never, audit as never);
+
+      await expect(service.copyAbandonedDraft(
+        "source-version",
+        "other-user",
+        { expectedUpdatedAt: updatedAt.toISOString() }
+      )).rejects.toThrow("只能复制本人已放弃的合同草稿");
+      expect(tx.contract.create).not.toHaveBeenCalled();
+      expect(tx.contractVersion.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    }
+  );
+
   it("blocks copying an abandoned relation-only takeover before creating a contract", async () => {
     const updatedAt = new Date("2026-08-01T02:00:00.000Z");
     const sourceVersion = {
@@ -117,6 +239,7 @@ describe("ContractService", () => {
       changeType: "original",
       status: "abandoned",
       updatedAt,
+      ownerUserId: "owner-1",
       hasHistoricalTakeoverRelation: true
     };
     const tx = {
@@ -991,8 +1114,8 @@ describe("ContractService", () => {
         expect(outcomes[1]).toMatchObject({
           reason: expect.objectContaining({
             response: expect.objectContaining({
-              statusCode: 409,
-              code: "DRAFT_NOT_EDITABLE"
+              statusCode: 400,
+              code: "CONTRACT_ENDED_APPLICATION_READ_ONLY"
             })
           })
         });

@@ -14,7 +14,7 @@ import { contractDocumentCandidateMatchesLedger } from "./contract-document-ledg
 
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const EDITABLE_VERSION_STATUSES = ["draft", "approval_rejected"];
+const EDITABLE_VERSION_STATUSES = ["draft"];
 const DISPOSITIONS = new Set([
   "confirmed",
   "rejected",

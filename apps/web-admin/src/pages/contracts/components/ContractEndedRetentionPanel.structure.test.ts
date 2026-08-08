@@ -12,6 +12,10 @@ describe("contract ended retention panel", () => {
     expect(panel).toContain("fetchContractEndedApplicationRetentionPreview");
     expect(panel).toContain("createContractEndedApplicationRetentionHold");
     expect(panel).toContain("releaseContractEndedApplicationRetentionHold");
+    expect(panel).toContain("t-pagination");
+    expect(panel).toContain("changePreviewPage");
+    expect(panel).toContain("preview.total");
+    expect(panel).not.toContain("preview.truncated");
     expect(panel).toContain("executionAllowed");
     expect(panel).toContain("不执行物理删除");
     expect(listPage).toContain("ContractEndedRetentionPanel");

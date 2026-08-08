@@ -953,6 +953,31 @@ describe("ContractController authorization wiring", () => {
     expect(contracts.abandonDraft).not.toHaveBeenCalled();
   });
 
+  it("forwards direct copy requests to the ended-application service guard", async () => {
+    const blocked = new BadRequestException({
+      statusCode: 400,
+      code: "CONTRACT_ENDED_APPLICATION_READ_ONLY"
+    });
+    const contracts = { copyAbandonedDraft: jest.fn().mockRejectedValue(blocked) };
+    const controller = new ContractController(
+      contracts as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+
+    await expect(controller.copyAbandonedDraft(
+      "ended-version",
+      { expectedUpdatedAt: "2026-08-08T00:00:00.000Z" },
+      { id: "owner-1" } as never
+    )).rejects.toBe(blocked);
+    expect(contracts.copyAbandonedDraft).toHaveBeenCalledWith(
+      "ended-version",
+      "owner-1",
+      { expectedUpdatedAt: "2026-08-08T00:00:00.000Z" }
+    );
+  });
+
   it("forwards visible project ids to contract detail reads", async () => {
     const contractRead = { getDetail: jest.fn().mockResolvedValue({ id: "contract-1" }) };
     const projectVisibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
@@ -963,10 +988,15 @@ describe("ContractController authorization wiring", () => {
       projectVisibility as never
     );
 
-    await controller.detail("HT-2026-009", { id: "user-1" } as never);
+    await controller.detail("HT-2026-009", { id: "user-1" } as never, "version-ended");
 
     expect(projectVisibility.visibleProjectIds).toHaveBeenCalledWith("user-1");
-    expect(contractRead.getDetail).toHaveBeenCalledWith("HT-2026-009", ["project-1"], "user-1");
+    expect(contractRead.getDetail).toHaveBeenCalledWith(
+      "HT-2026-009",
+      ["project-1"],
+      "user-1",
+      "version-ended"
+    );
   });
 
   it("forwards number-rule maintenance bodies to runtime-validating service methods", () => {

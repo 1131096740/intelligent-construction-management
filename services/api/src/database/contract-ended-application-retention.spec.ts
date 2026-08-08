@@ -100,9 +100,21 @@ describe("contract ended application retention PostgreSQL evidence", () => {
 
       const service = new ContractEndedApplicationRetentionService(
         prisma as never,
-        new AuditService()
+        new AuditService(),
+        {
+          effectiveRoleKeysByProject: jest.fn().mockImplementation(
+            async (_actorUserId: string, projectIds: string[]) => new Map(
+              projectIds.map((currentProjectId) => [currentProjectId, ["contract_director"]])
+            )
+          )
+        } as never
       );
-      const beforeExpiry = await service.preview(new Date("2026-10-31T10:15:00.000Z"));
+      const beforeExpiry = await service.preview(
+        directorId,
+        undefined,
+        undefined,
+        new Date("2026-10-31T10:15:00.000Z")
+      );
       expect(beforeExpiry.candidates).toEqual([
         expect.objectContaining({
           contractVersionId: endedVersionId,
@@ -123,7 +135,12 @@ describe("contract ended application retention PostgreSQL evidence", () => {
         new Date("2026-12-02T10:15:00.000Z")
       );
       expect(created).toMatchObject({ holdCreated: true, idempotent: false });
-      const heldPreview = await service.preview(new Date("2026-12-02T10:15:00.000Z"));
+      const heldPreview = await service.preview(
+        directorId,
+        undefined,
+        undefined,
+        new Date("2026-12-02T10:15:00.000Z")
+      );
       expect(heldPreview.candidates).toHaveLength(0);
       expect(heldPreview.heldRecords).toEqual([
         expect.objectContaining({

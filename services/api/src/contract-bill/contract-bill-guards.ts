@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from "@nes
 import { Prisma } from "@prisma/client";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 
-export const EDITABLE_STATUSES = ["draft", "approval_rejected"];
+export const EDITABLE_STATUSES = ["draft"];
 
 // 共享的“清单所有者 + 草稿可编辑状态 + 未作废”校验，供行 CRUD 与 Excel 导入复用，避免并行实现。
 export async function loadOwnedEditableBill(

@@ -574,7 +574,7 @@ describe("ContractFormalFileService.counterparty", () => {
     await expect(service.uploadCounterpartySigned("version-1", "owner-1", {
       fileIds: ["file-1"],
       sourceRevision: 3
-    })).rejects.toThrow("当前合同不在可编辑状态");
+    })).rejects.toThrow("已结束的合同申请仅可查看历史");
 
     expect(tx.contractFormalFile.updateMany).not.toHaveBeenCalled();
     expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
@@ -595,7 +595,7 @@ describe("ContractFormalFileService.counterparty", () => {
     await expect(service.confirmCounterpartySigned("version-1", "owner-1", {
       formalFileId: "preview-1",
       expectedDraftRevision: 3
-    })).rejects.toThrow("当前合同不在可编辑状态");
+    })).rejects.toThrow("已结束的合同申请仅可查看历史");
 
     expect(tx.contractFormalFile.update).not.toHaveBeenCalled();
   });

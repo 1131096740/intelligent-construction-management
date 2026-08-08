@@ -27,11 +27,13 @@ describe("ContractEndedApplicationRetentionController", () => {
   });
 
   it("forwards the authenticated director and reason to hold mutations", async () => {
+    retention.preview.mockResolvedValue({ page: 2 });
     retention.createHold.mockResolvedValue({ holdCreated: true });
     retention.releaseHold.mockResolvedValue({ holdReleased: true });
     const user = { id: "director-1" };
     const body = { reason: "存在争议" };
 
+    await expect(controller.preview(user as never, "2", "20")).resolves.toEqual({ page: 2 });
     await expect(controller.createHold("version-1", body, user as never)).resolves.toEqual({
       holdCreated: true
     });
@@ -40,5 +42,6 @@ describe("ContractEndedApplicationRetentionController", () => {
     });
     expect(retention.createHold).toHaveBeenCalledWith("version-1", "director-1", body);
     expect(retention.releaseHold).toHaveBeenCalledWith("version-1", "director-1", body);
+    expect(retention.preview).toHaveBeenCalledWith("director-1", "2", "20");
   });
 });

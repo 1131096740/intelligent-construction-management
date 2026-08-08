@@ -264,6 +264,8 @@ export interface ContractDetailReadModel {
   withdrawApprovalContext: ContractApprovalWithdrawalContextReadModel | null;
   contractLifecycleStage?: ContractLifecycleStage;
   contractLifecycleCapabilities?: ContractLifecycleCapabilities;
+  /** An ended application is retained for history and deliberately has no write actions. */
+  historyReadOnly?: boolean;
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;

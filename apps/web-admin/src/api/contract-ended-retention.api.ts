@@ -35,14 +35,20 @@ export interface ContractEndedApplicationRetentionPreview {
     calendarMonths: number;
     previewWindowDays: number;
   };
-  truncated: boolean;
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
   candidates: ContractEndedApplicationRetentionRecord[];
   heldRecords: ContractEndedApplicationRetentionRecord[];
   notice: string;
 }
 
-export function fetchContractEndedApplicationRetentionPreview() {
-  return readJson<ContractEndedApplicationRetentionPreview>("/contract-ended-retention/preview");
+export function fetchContractEndedApplicationRetentionPreview(page = 1, limit = 50) {
+  const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return readJson<ContractEndedApplicationRetentionPreview>(
+    `/contract-ended-retention/preview?${query.toString()}`
+  );
 }
 
 export function createContractEndedApplicationRetentionHold(

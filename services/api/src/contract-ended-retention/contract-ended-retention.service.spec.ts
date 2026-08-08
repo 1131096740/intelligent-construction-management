@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ContractEndedApplicationRetentionService } from "./contract-ended-retention.service";
 
 describe("ContractEndedApplicationRetentionService", () => {
@@ -6,7 +6,11 @@ describe("ContractEndedApplicationRetentionService", () => {
 
   function prisma(overrides: Record<string, unknown> = {}) {
     const client = {
+      project: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1" }])
+      },
       contractVersion: {
+        count: jest.fn().mockResolvedValue(1),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "version-ended",
@@ -34,6 +38,10 @@ describe("ContractEndedApplicationRetentionService", () => {
         findUnique: jest.fn()
       },
       contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-ended",
+          projectId: "project-1"
+        }),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "contract-ended",
@@ -65,13 +73,28 @@ describe("ContractEndedApplicationRetentionService", () => {
     };
   }
 
+  function projectVisibility() {
+    return {
+      effectiveRoleKeysByProject: jest.fn().mockImplementation(
+        async (_actorUserId: string, projectIds: string[]) => new Map(
+          projectIds.map((projectId) => [projectId, ["contract_director"]])
+        )
+      )
+    };
+  }
+
   it("previews only terminal applications that expire within thirty days using three calendar months", async () => {
     const client = prisma();
     const service = new ContractEndedApplicationRetentionService(client as never, {
       record: jest.fn()
-    } as never);
+    } as never, projectVisibility() as never);
 
-    const result = await service.preview(new Date("2026-10-31T10:15:00.000Z"));
+    const result = await service.preview(
+      "director-1",
+      undefined,
+      undefined,
+      new Date("2026-10-31T10:15:00.000Z")
+    );
 
     expect(result).toMatchObject({
       mode: "preview_only",
@@ -92,10 +115,16 @@ describe("ContractEndedApplicationRetentionService", () => {
     ]);
     expect(client.contractVersion.findMany).toHaveBeenCalledWith({
       where: {
-        status: { in: ["abandoned", "approval_rejected"] }
+        status: { in: ["abandoned", "approval_rejected"] },
+        OR: [
+          { endedAt: { not: null } },
+          { firstSubmittedAt: { not: null } }
+        ],
+        contract: { projectId: { in: ["project-1"] } }
       },
       orderBy: [{ endedAt: "asc" }, { id: "asc" }],
-      take: 501
+      skip: 0,
+      take: 50
     });
   });
 
@@ -133,7 +162,11 @@ describe("ContractEndedApplicationRetentionService", () => {
       }
     });
     const audit = { record: jest.fn() };
-    const service = new ContractEndedApplicationRetentionService(client as never, audit as never);
+    const service = new ContractEndedApplicationRetentionService(
+      client as never,
+      audit as never,
+      projectVisibility() as never
+    );
 
     const result = await service.releaseHold(
       "version-ended",
@@ -194,7 +227,7 @@ describe("ContractEndedApplicationRetentionService", () => {
     });
     const service = new ContractEndedApplicationRetentionService(client as never, {
       record: jest.fn()
-    } as never);
+    } as never, projectVisibility() as never);
 
     const result = await service.releaseHold(
       "version-ended",
@@ -244,7 +277,11 @@ describe("ContractEndedApplicationRetentionService", () => {
       }
     });
     const audit = { record: jest.fn() };
-    const service = new ContractEndedApplicationRetentionService(client as never, audit as never);
+    const service = new ContractEndedApplicationRetentionService(
+      client as never,
+      audit as never,
+      projectVisibility() as never
+    );
 
     const result = await service.createHold(
       "version-ended",
@@ -282,7 +319,7 @@ describe("ContractEndedApplicationRetentionService", () => {
     });
     const service = new ContractEndedApplicationRetentionService(client as never, {
       record: jest.fn()
-    } as never);
+    } as never, projectVisibility() as never);
 
     await expect(
       service.createHold("version-effective", "director-1", { reason: "不应允许" })
@@ -301,6 +338,7 @@ describe("ContractEndedApplicationRetentionService", () => {
     };
     const client = prisma({
       contractVersion: {
+        count: jest.fn().mockResolvedValue(2),
         findMany: jest.fn().mockResolvedValue([
           {
             id: "version-ended",
@@ -336,9 +374,14 @@ describe("ContractEndedApplicationRetentionService", () => {
     });
     const service = new ContractEndedApplicationRetentionService(client as never, {
       record: jest.fn()
-    } as never);
+    } as never, projectVisibility() as never);
 
-    const preview = await service.preview(new Date("2026-10-31T10:15:00.000Z"));
+    const preview = await service.preview(
+      "director-1",
+      undefined,
+      undefined,
+      new Date("2026-10-31T10:15:00.000Z")
+    );
 
     expect(preview.candidates).toEqual([
       expect.objectContaining({ contractVersionId: "version-ended" })
@@ -346,6 +389,93 @@ describe("ContractEndedApplicationRetentionService", () => {
     await expect(
       service.createHold("version-cleanup", "director-1", { reason: "不应允许" })
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(client.contractEndedApplicationRetentionHold.create).not.toHaveBeenCalled();
+  });
+
+  it("pages only the current director's project records and denies a cross-project hold", async () => {
+    const crossProjectVersion = {
+      id: "version-project-2",
+      contractId: "contract-project-2",
+      status: "approval_rejected",
+      endedAt: terminalAt,
+      firstSubmittedAt: terminalAt,
+      abandonReason: null,
+      abandonedAt: null
+    };
+    const client = prisma({
+      project: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-1" },
+          { id: "project-2" }
+        ])
+      },
+      contractVersion: {
+        count: jest.fn().mockResolvedValue(501),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "version-ended",
+            contractId: "contract-ended",
+            status: "approval_rejected",
+            endedAt: terminalAt,
+            firstSubmittedAt: terminalAt,
+            abandonReason: null,
+            abandonedAt: null
+          }
+        ]),
+        findUnique: jest.fn().mockResolvedValue(crossProjectVersion)
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "contract-ended",
+            projectId: "project-1",
+            code: "HT-ENDED",
+            name: "结束申请",
+            counterparty: "测试相对方"
+          }
+        ]),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-project-2",
+          projectId: "project-2"
+        })
+      }
+    });
+    const projectVisibility = {
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(new Map([
+        ["project-1", ["contract_director"]],
+        ["project-2", []]
+      ]))
+    };
+    const service = new ContractEndedApplicationRetentionService(
+      client as never,
+      { record: jest.fn() } as never,
+      projectVisibility as never
+    );
+
+    const preview = await service.preview(
+      "project-director-1",
+      "501",
+      "1",
+      new Date("2026-10-31T10:15:00.000Z")
+    );
+
+    expect(preview).toMatchObject({
+      page: 501,
+      limit: 1,
+      total: 501,
+      hasMore: false,
+      candidates: [expect.objectContaining({ contractVersionId: "version-ended" })]
+    });
+    expect(client.contractVersion.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        contract: { projectId: { in: ["project-1"] } }
+      }),
+      skip: 500,
+      take: 1
+    }));
+    await expect(
+      service.createHold("version-project-2", "project-director-1", { reason: "越权保留" })
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(client.contractEndedApplicationRetentionHold.create).not.toHaveBeenCalled();
   });
 });

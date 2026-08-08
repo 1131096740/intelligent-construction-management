@@ -515,6 +515,63 @@ describe("contract draft lifecycle fact loading", () => {
 });
 
 describe("contract draft mutation boundary", () => {
+  it("rejects a final rejected application before any generic write can proceed", async () => {
+    const client = {
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-ended",
+            contractId: "contract-1",
+            status: "approval_rejected",
+            changeType: "original",
+            hasHistoricalTakeoverRelation: false
+          }];
+        }
+        return [{ id: "contract-1" }];
+      })
+    };
+
+    await expect(
+      lockContractDraftMutationBoundary(client as never, "version-ended")
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 400,
+        code: "CONTRACT_ENDED_APPLICATION_READ_ONLY"
+      }
+    });
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps returned and withdrawn applications editable after their status returns to draft", async () => {
+    const client = {
+      $queryRaw: jest.fn(async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-draft",
+            contractId: "contract-1",
+            status: "draft",
+            changeType: "original",
+            hasHistoricalTakeoverRelation: false
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) return [{ id: "contract-1" }];
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      })
+    };
+
+    await expect(
+      lockContractDraftMutationBoundary(client as never, "version-draft")
+    ).resolves.toMatchObject({ version: { status: "draft" } });
+  });
+
   it("rejects an exact historical takeover relation even when the version marker drifted", async () => {
     const client = {
       $queryRaw: jest.fn(async (query: { strings?: string[] }) => {

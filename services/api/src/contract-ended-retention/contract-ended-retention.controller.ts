@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -13,8 +13,12 @@ export class ContractEndedApplicationRetentionController {
   ) {}
 
   @Get("preview")
-  preview() {
-    return this.retention.preview();
+  preview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string
+  ) {
+    return this.retention.preview(user.id, page, limit);
   }
 
   @Post(":contractVersionId/holds")

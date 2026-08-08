@@ -56,9 +56,10 @@ export interface ContractDraftLifecycleClassification {
 }
 
 export interface LockedContractDraftMutationBoundary<
-  TVersion extends { id: string; contractId: string } = {
+  TVersion extends { id: string; contractId: string; status?: string | null } = {
     id: string;
     contractId: string;
+    status?: string | null;
   },
   TContract extends { id: string } = {
     id: string;
@@ -81,6 +82,11 @@ export interface ContractDraftMutationBoundaryOptions {
    * their own obsolete job stale may bypass the generic-write rejection.
    */
   allowHistoricalTakeoverInspection?: boolean;
+  /**
+   * Background processors may inspect an ended application only to mark their
+   * own queued work stale. It never permits a business mutation.
+   */
+  allowEndedApplicationInspection?: boolean;
 }
 
 export function assertGenericContractDraftVersion(
@@ -102,6 +108,16 @@ export function assertGenericContractDraftVersion(
 }
 
 const ENDED_STATUSES = new Set(["approval_rejected", "abandoned"]);
+
+export function assertEndedContractApplicationReadOnly(version: { status?: string | null }) {
+  if (!ENDED_STATUSES.has(version.status ?? "")) return;
+  throw new BadRequestException({
+    statusCode: 400,
+    code: "CONTRACT_ENDED_APPLICATION_READ_ONLY",
+    message: "已结束的合同申请仅可查看历史，不能再修改、提交或重新处理"
+  });
+}
+
 const PERMANENT_FORMAL_STATUSES = new Set([
   "effective",
   "superseded",
@@ -302,9 +318,10 @@ export async function loadContractDraftLifecycle(
  * version that has already reached signing, seal, archive or downstream use.
  */
 export async function lockContractDraftMutationBoundary<
-  TVersion extends { id: string; contractId: string } = {
+  TVersion extends { id: string; contractId: string; status?: string | null } = {
     id: string;
     contractId: string;
+    status?: string | null;
   },
   TContract extends { id: string } = {
     id: string;
@@ -345,6 +362,9 @@ export async function lockContractDraftMutationBoundary<
   if (!versionLock) return null;
   if (!options.allowHistoricalTakeoverInspection) {
     assertGenericContractDraftVersion(versionLock);
+  }
+  if (!options.allowEndedApplicationInspection) {
+    assertEndedContractApplicationReadOnly(versionLock);
   }
 
   // This must be a separate statement after the version lock. Under

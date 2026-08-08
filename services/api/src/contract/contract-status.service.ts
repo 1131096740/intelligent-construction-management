@@ -4,7 +4,7 @@ import type { ContractVersionStatus } from "@jiangkong/shared-domain";
 const ALLOWED: Record<ContractVersionStatus, ContractVersionStatus[]> = {
   draft: ["in_approval", "voided"],
   in_approval: ["approval_rejected", "approved_pending_seal"],
-  approval_rejected: ["draft", "voided"],
+  approval_rejected: [],
   approved_pending_seal: ["in_seal"],
   in_seal: ["seal_approved_pending_archive"],
   seal_approved_pending_archive: ["pending_archive_confirm"],

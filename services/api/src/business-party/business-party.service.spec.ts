@@ -569,7 +569,7 @@ describe("BusinessPartyService", () => {
       where: {
         id: "contract-version-1",
         draftRevision: 4,
-        status: { in: ["draft", "approval_rejected"] }
+        status: { in: ["draft"] }
       },
       data: {
         draftRevision: { increment: 1 },

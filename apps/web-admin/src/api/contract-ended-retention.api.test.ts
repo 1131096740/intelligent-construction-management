@@ -22,12 +22,12 @@ describe("contract ended application retention API", () => {
   });
 
   it("uses the preview-only endpoint and exact director hold routes", async () => {
-    await fetchContractEndedApplicationRetentionPreview();
+    await fetchContractEndedApplicationRetentionPreview(2, 20);
     await createContractEndedApplicationRetentionHold("version/1", { reason: "等待争议解决" });
     await releaseContractEndedApplicationRetentionHold("version/1", { reason: "争议已结" });
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/contract-ended-retention/preview",
+      "/contract-ended-retention/preview?page=2&limit=20",
       "/contract-ended-retention/version%2F1/holds",
       "/contract-ended-retention/version%2F1/hold-release"
     ]);

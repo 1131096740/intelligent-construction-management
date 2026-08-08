@@ -11,7 +11,7 @@
       :requested-amount="contractDetailHeaderView.amount"
       amount-label="合同金额"
       :primary-action-label="contractHeaderPrimaryActionLabel"
-      :primary-action-disabled="detailLoading"
+      :primary-action-disabled="detailLoading || Boolean(contractDetail?.historyReadOnly)"
       @primary-action="openPrimaryAction"
     >
       <template #actions>
@@ -92,6 +92,13 @@
     />
 
     <template v-if="contractDetail">
+      <t-alert
+        v-if="contractDetail.historyReadOnly"
+        theme="info"
+        title="已结束申请的只读历史"
+        message="此申请保留审批、文件和审计历史；不能修改、提交、重新生成文件或重新办理。"
+      />
+
       <JgDetailTabs
         v-model="activeTab"
         :tabs="contractDetailTabs"
@@ -2149,7 +2156,9 @@ async function reloadContractDetail() {
   contractWithdrawalResultUnknown = false;
   detailLoading.value = true;
   try {
-    const serverDetail = await fetchContractDetail(contractId);
+    const serverDetail = await fetchContractDetail(contractId, {
+      versionId: routeVersionId() || undefined
+    });
     if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
     const detail = structuredClone(serverDetail);
     const versions = normalizeContractChangeVersions(
@@ -2162,7 +2171,10 @@ async function reloadContractDetail() {
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
     changeEligibility.value = null;
-    if (canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])) {
+    if (
+      !serverDetail.historyReadOnly &&
+      canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])
+    ) {
       changeEligibilityLoading.value = true;
       const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
       if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
@@ -2204,9 +2216,9 @@ async function reloadContractDetail() {
 }
 
 watch(
-  () => route.params.contractId,
+  () => [route.params.contractId, route.query.versionId],
   (next, previous) => {
-    if (next === previous) return;
+    if (next[0] === previous[0] && next[1] === previous[1]) return;
     clearChangeTransientState();
     clearContractActionTransientState();
     activeTab.value = "overview";
@@ -2219,6 +2231,11 @@ watch(
 
 function routeContractId() {
   const value = route.params.contractId;
+  return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+}
+
+function routeVersionId() {
+  const value = route.query.versionId;
   return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
 }
 

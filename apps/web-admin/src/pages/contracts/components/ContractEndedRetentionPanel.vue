@@ -34,12 +34,6 @@
         到期前 {{ preview.retention.previewWindowDays }} 天仅供预览，不执行物理删除。
       </p>
 
-      <t-alert
-        v-if="preview.truncated"
-        theme="error"
-        message="当前结束申请数量超出本次安全预览上限，未返回候选记录；请先缩小范围或联系技术管理员。"
-      />
-
       <section>
         <h4>30 天内到期候选</h4>
         <t-table
@@ -92,6 +86,15 @@
           </template>
         </t-table>
       </section>
+
+      <t-pagination
+        v-if="preview.total > preview.limit"
+        :current="preview.page"
+        :page-size="preview.limit"
+        :total="preview.total"
+        show-page-size="false"
+        @current-change="changePreviewPage"
+      />
     </div>
   </t-card>
 
@@ -161,6 +164,8 @@ const dialogVisible = ref(false);
 const dialogMode = ref<"create" | "release">("create");
 const selectedRecord = ref<ContractEndedApplicationRetentionRecord | null>(null);
 const reason = ref("");
+const previewPage = ref(1);
+const previewLimit = 50;
 
 const notice = computed(() =>
   preview.value?.notice ?? "仅合同部主管可预览并设置或解除结束申请保留；本功能不执行任何删除。"
@@ -190,7 +195,10 @@ async function loadPreview() {
   loading.value = true;
   message.value = "";
   try {
-    const nextPreview = await fetchContractEndedApplicationRetentionPreview();
+    const nextPreview = await fetchContractEndedApplicationRetentionPreview(
+      previewPage.value,
+      previewLimit
+    );
     if (nextPreview.executionAllowed) {
       throw new Error("结束申请保留接口返回了非预览状态，已按安全策略停止展示。");
     }
@@ -202,6 +210,11 @@ async function loadPreview() {
   } finally {
     loading.value = false;
   }
+}
+
+function changePreviewPage(page: number) {
+  previewPage.value = page;
+  void loadPreview();
 }
 
 function openHoldDialog(record: ContractEndedApplicationRetentionRecord) {

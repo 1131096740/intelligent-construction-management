@@ -52,7 +52,7 @@ describe("contract ledger page configuration", () => {
     const source = readFileSync(new URL("./ContractListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("activeTab === 'ended'");
     expect(source).toContain("fetchContractLifecycleLedger(");
-    expect(source).toContain("openDetail(row.id)");
+    expect(source).toContain("activeTab === 'ended' ? row.contractVersionId : undefined");
     expect(source).not.toContain("row.copyAvailable");
     expect(source).not.toContain("copyEndedContract");
     expect(source).not.toContain("copyAbandonedContractDraft");

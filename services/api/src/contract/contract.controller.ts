@@ -232,11 +232,16 @@ export class ContractController {
   }
 
   @Get(":contractId")
-  async detail(@Param("contractId") contractId: string, @CurrentUser() user: AuthenticatedUser) {
+  async detail(
+    @Param("contractId") contractId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("versionId") versionId?: string
+  ) {
     return this.contractRead.getDetail(
       contractId,
       await this.projectVisibility.visibleProjectIds(user.id),
-      user.id
+      user.id,
+      versionId
     );
   }
 

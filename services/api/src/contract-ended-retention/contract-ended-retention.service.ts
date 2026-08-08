@@ -1,6 +1,12 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
 
 const DAY_MS = 86_400_000;
@@ -72,26 +78,47 @@ function isRetainedEndedApplication(version: EndedVersion) {
 export class ContractEndedApplicationRetentionService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly projectVisibility: ProjectVisibilityService
   ) {}
 
-  async preview(now = new Date()) {
-    const [policy, versions] = await Promise.all([
+  async preview(
+    actorUserId: string,
+    rawPage?: string | number,
+    rawLimit?: string | number,
+    now = new Date()
+  ) {
+    const page = this.page(rawPage);
+    const limit = this.limit(rawLimit);
+    const [policy, projectIds] = await Promise.all([
       this.prisma.contractEndedApplicationRetentionPolicy.findUnique({
         where: { id: ENDED_RETENTION_POLICY_ID }
       }),
-      this.prisma.contractVersion.findMany({
-        where: { status: { in: [...TERMINAL_STATUSES] } },
-        orderBy: [{ endedAt: "asc" }, { id: "asc" }],
-        take: 501
-      })
+      this.retentionProjectIds(actorUserId)
     ]);
     if (!policy) {
       throw new ConflictException("结束申请保留策略尚未初始化，拒绝生成清理预览");
     }
-    const truncated = versions.length > 500;
-    const endedVersions = (truncated ? [] : (versions as EndedVersion[]))
-      .filter(isRetainedEndedApplication);
+    const where = {
+      status: { in: [...TERMINAL_STATUSES] },
+      OR: [
+        { endedAt: { not: null } },
+        { firstSubmittedAt: { not: null } }
+      ],
+      contract: { projectId: { in: projectIds } }
+    };
+    const [total, versions] = projectIds.length
+      ? await Promise.all([
+          this.prisma.contractVersion.count({ where }),
+          this.prisma.contractVersion.findMany({
+            where,
+            orderBy: [{ endedAt: "asc" }, { id: "asc" }],
+            skip: (page - 1) * limit,
+            take: limit
+          })
+        ])
+      : [0, []] as const;
+    const endedVersions = (versions as EndedVersion[]).filter(isRetainedEndedApplication);
     const contractIds = [...new Set(endedVersions.map((version) => version.contractId))];
     const versionIds = endedVersions.map((version) => version.id);
     const [contracts, holds] = await Promise.all([
@@ -175,7 +202,10 @@ export class ContractEndedApplicationRetentionService {
         calendarMonths: RETENTION_MONTHS,
         previewWindowDays: PREVIEW_WINDOW_DAYS
       },
-      truncated,
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
       candidates: previewable,
       heldRecords: records.filter((record) => record.activeHold != null),
       notice: "仅生成结束申请的只读保留预览；本接口不删除合同、审批、审计或文件。"
@@ -194,6 +224,7 @@ export class ContractEndedApplicationRetentionService {
         where: { id: contractVersionId }
       });
       this.assertRetainedEndedApplication(version);
+      await this.assertCanManageRetention(tx, version, actorUserId);
       const existing = await tx.contractEndedApplicationRetentionHold.findFirst({
         where: { contractVersionId, releasedAt: null },
         orderBy: { createdAt: "desc" }
@@ -242,6 +273,7 @@ export class ContractEndedApplicationRetentionService {
         })
       ]);
       this.assertRetainedEndedApplication(version);
+      await this.assertCanManageRetention(tx, version, actorUserId);
       if (!policy) {
         throw new ConflictException("结束申请保留策略尚未初始化，拒绝解除保留");
       }
@@ -298,6 +330,50 @@ export class ContractEndedApplicationRetentionService {
     const reason = value?.trim() ?? "";
     if (!reason) throw new BadRequestException("结束申请保留操作必须填写原因");
     return reason;
+  }
+
+  private page(value: string | number | undefined) {
+    const parsed = typeof value === "number" ? value : Number(value ?? 1);
+    return Number.isInteger(parsed) && parsed >= 1 ? Math.min(parsed, 100_000) : 1;
+  }
+
+  private limit(value: string | number | undefined) {
+    const parsed = typeof value === "number" ? value : Number(value ?? 50);
+    return Number.isInteger(parsed) && parsed >= 1 ? Math.min(parsed, 100) : 50;
+  }
+
+  private async retentionProjectIds(actorUserId: string) {
+    const projects = await this.prisma.project.findMany({ select: { id: true } });
+    const projectIds = projects.map((project) => project.id);
+    if (!projectIds.length) return [];
+    const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
+      actorUserId,
+      projectIds
+    );
+    return projectIds.filter((projectId) =>
+      roleKeysByProject.get(projectId)?.includes("contract_director")
+    );
+  }
+
+  private async assertCanManageRetention(
+    tx: Pick<Prisma.TransactionClient, "contract">,
+    version: EndedVersion,
+    actorUserId: string
+  ) {
+    const contract = await tx.contract.findUnique({
+      where: { id: version.contractId },
+      select: { projectId: true }
+    });
+    if (!contract) {
+      throw new BadRequestException("结束申请所属合同不存在，拒绝维护保留标记");
+    }
+    const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
+      actorUserId,
+      [contract.projectId]
+    );
+    if (!roleKeysByProject.get(contract.projectId)?.includes("contract_director")) {
+      throw new ForbiddenException("仅全局合同部主管或该合同项目范围内的合同部主管可维护保留标记");
+    }
   }
 
   private assertRetainedEndedApplication(
