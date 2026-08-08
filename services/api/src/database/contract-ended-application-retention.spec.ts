@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { ContractEndedApplicationRetentionService } from "../contract-ended-retention/contract-ended-retention.service";
@@ -170,6 +170,17 @@ describe("contract ended application retention PostgreSQL evidence", () => {
       expect(beforeExpiry.candidates).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ contractVersionId: inactiveVersionId })])
       );
+      await expect(service.createHold(
+        inactiveVersionId,
+        directorId,
+        { reason: "停用项目不可维护保留" }
+      )).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(prisma.contractEndedApplicationRetentionHold.count({
+        where: { contractVersionId: inactiveVersionId }
+      })).resolves.toBe(0);
+      await expect(prisma.auditLog.count({
+        where: { businessId: inactiveVersionId }
+      })).resolves.toBe(0);
       expect(beforeExpiry.executionAllowed).toBe(false);
 
       const created = await service.createHold(

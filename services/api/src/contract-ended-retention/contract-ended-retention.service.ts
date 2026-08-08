@@ -418,7 +418,7 @@ export class ContractEndedApplicationRetentionService {
   }
 
   private async assertCanManageRetention(
-    tx: Pick<Prisma.TransactionClient, "contract">,
+    tx: Pick<Prisma.TransactionClient, "contract" | "project">,
     version: EndedVersion,
     actorUserId: string
   ) {
@@ -428,6 +428,13 @@ export class ContractEndedApplicationRetentionService {
     });
     if (!contract) {
       throw new BadRequestException("结束申请所属合同不存在，拒绝维护保留标记");
+    }
+    const project = await tx.project.findUnique({
+      where: { id: contract.projectId },
+      select: { isActive: true }
+    });
+    if (!project?.isActive) {
+      throw new ForbiddenException("项目已停用，拒绝维护结束申请保留标记");
     }
     const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
       actorUserId,

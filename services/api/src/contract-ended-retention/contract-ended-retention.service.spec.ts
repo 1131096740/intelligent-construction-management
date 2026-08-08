@@ -40,7 +40,8 @@ describe("ContractEndedApplicationRetentionService", () => {
     ];
     const client = {
       project: {
-        findMany: jest.fn().mockResolvedValue([{ id: "project-1" }])
+        findMany: jest.fn().mockResolvedValue([{ id: "project-1" }]),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true })
       },
       userPosition: {
         findMany: jest.fn().mockImplementation(({ where }) => (
@@ -379,6 +380,44 @@ describe("ContractEndedApplicationRetentionService", () => {
       holdId: "hold-active",
       reason: "等待仲裁"
     });
+    expect(client.contractEndedApplicationRetentionHold.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("rejects an inactive project hold before creating a retention record or audit", async () => {
+    const client = prisma({
+      project: {
+        findMany: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: false })
+      },
+      contractVersion: {
+        findMany: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "version-ended",
+          contractId: "contract-ended",
+          status: "approval_rejected",
+          endedAt: terminalAt,
+          firstSubmittedAt: terminalAt,
+          abandonedAt: null
+        })
+      },
+      contractEndedApplicationRetentionHold: {
+        findMany: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "unexpected-inactive-hold" }),
+        updateMany: jest.fn()
+      }
+    });
+    const audit = { record: jest.fn() };
+    const service = new ContractEndedApplicationRetentionService(
+      client as never,
+      audit as never,
+      projectVisibility() as never
+    );
+
+    await expect(
+      service.createHold("version-ended", "director-1", { reason: "停用项目不可维护" })
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(client.contractEndedApplicationRetentionHold.create).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
   });
