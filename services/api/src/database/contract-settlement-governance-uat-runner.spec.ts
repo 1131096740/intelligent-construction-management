@@ -27,14 +27,15 @@ const settlementSignatureSource = trialRunVerifier.slice(
 );
 
 describe("contract settlement governance UAT runners", () => {
-  it("keeps the governed runner fail-closed and covers the exact 20 release cases", () => {
+  it("keeps the governed runner fail-closed and covers the exact 21 release cases", () => {
     const caseIds = [
       "contract_material_purchase",
       "contract_equipment_rental",
       "contract_labor_subcontract",
       "contract_professional_subcontract",
       "contract_generic",
-      "contract_director_initiator_skip",
+      "contract_director_initiator_self_review",
+      "contract_director_handler_self_archive",
       "contract_final_or_sign",
       "contract_authorization_none_none",
       "contract_authorization_first_only",
@@ -51,7 +52,7 @@ describe("contract settlement governance UAT runners", () => {
       "readonly_cross_domain_negative"
     ];
 
-    expect(caseIds).toHaveLength(20);
+    expect(caseIds).toHaveLength(21);
     for (const caseId of caseIds) {
       expect(governedRunner).toContain(`"${caseId}"`);
     }

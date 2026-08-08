@@ -3,14 +3,14 @@ import type { ExecutionContext } from "@nestjs/common";
 import { SpotProcurementAccessService } from "../../spot-procurement/spot-procurement-access.service";
 import { PermissionGuard } from "./permission.guard";
 
-function contextWithRequest(request: unknown): ExecutionContext {
+function contextWithRequest(request: unknown, handler: () => void = () => undefined): ExecutionContext {
   return {
-    getHandler: () => ({}),
+    getHandler: () => handler,
     getClass: () => ({}),
     switchToHttp: () => ({
       getRequest: () => request
     })
-  } as ExecutionContext;
+  } as unknown as ExecutionContext;
 }
 
 describe("PermissionGuard", () => {
@@ -127,6 +127,47 @@ describe("PermissionGuard", () => {
       }
     });
   }
+
+  it("blocks a project-scoped director from the governed final-file routes before the service, without tightening ordinary archive-file confirmation", async () => {
+    const prisma = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1", contractGovernanceVersion: 1 }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      contractSealTask: { findFirst: jest.fn().mockResolvedValue({ handlerUserId: "project-director-1" }) },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { projectId?: string | null } }) =>
+          Promise.resolve(where.projectId === null ? [] : [{ positionId: "project-director-position" }])
+        ),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null)
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ id: "project-director-position", key: "contract_director" }]),
+        findUnique: jest.fn().mockResolvedValue({ id: "project-director-position" })
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) }
+    };
+    const guard = (action: "contract.archive.final.upload" | "contract.archive.confirm") => new PermissionGuard(
+      {
+        getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce(action)
+      } as never,
+      prisma as never
+    );
+    const request = {
+      user: { id: "project-director-1" },
+      params: { contractVersionId: "version-1" }
+    };
+
+    await expect(guard("contract.archive.final.upload").canActivate(
+      contextWithRequest(request, function uploadMutuallySignedFinal() {})
+    )).rejects.toThrow("当前账号无权处理双方最终版合同归档");
+
+    await expect(guard("contract.archive.confirm").canActivate(
+      contextWithRequest(request, function confirmArchiveFile() {})
+    )).resolves.toBe(true);
+  });
 
   it.each([
     ["contract.tax_fact.supplement", "contract_staff"],

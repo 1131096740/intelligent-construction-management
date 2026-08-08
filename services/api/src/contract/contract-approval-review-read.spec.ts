@@ -9,7 +9,14 @@ const REVIEW_CONTEXT = {
   expectedApprovalUpdatedAt: APPROVAL_UPDATED_AT.toISOString()
 };
 
-function detailFixture(activeInstanceCount = 1) {
+function detailFixture(
+  activeInstanceCount = 1,
+  actorRoleScopes: { globalRoleKeys: readonly string[]; projectRoleKeys: readonly string[] } = {
+    globalRoleKeys: ["contract_director"],
+    projectRoleKeys: []
+  },
+  frozenNode?: Record<string, unknown>
+) {
   const version = {
     id: "contract-version-1",
     contractId: "contract-1",
@@ -35,12 +42,13 @@ function detailFixture(activeInstanceCount = 1) {
     status: "in_progress",
     applicantUserId: "applicant-1",
     currentNodeIndex: 0,
-    frozenNodes: [{
+    frozenNodes: [frozenNode ?? {
       name: "合同部主管",
       mode: "any",
       roleKeys: ["contract_director"],
       candidateUserIdsByRole: { contract_director: ["reviewer-1"] },
-      candidateUserIds: ["reviewer-1"]
+      candidateUserIds: ["reviewer-1"],
+      roleScopesByRole: { contract_director: "global" }
     }],
     updatedAt: APPROVAL_UPDATED_AT
   };
@@ -90,7 +98,11 @@ function detailFixture(activeInstanceCount = 1) {
     }
   };
   const projectVisibility = {
-    effectiveRoleKeys: jest.fn().mockResolvedValue(["contract_director"])
+    effectiveRoleKeys: jest.fn().mockResolvedValue(Array.from(new Set([
+      ...actorRoleScopes.globalRoleKeys,
+      ...actorRoleScopes.projectRoleKeys
+    ]))),
+    effectiveRoleScopes: jest.fn().mockResolvedValue(actorRoleScopes)
   };
   return {
     service: new ContractReadService(prisma as never, projectVisibility as never)
@@ -124,6 +136,69 @@ describe("Contract approval review read coordinates", () => {
     expect(detail.reviewApprovalContext).toBeNull();
     expect(detail.availableActions.filter((action) => action.key === "review_approval"))
       .toEqual([expect.objectContaining({ enabled: false })]);
+  });
+
+  it("does not expose a frozen global contract-director node after the reviewer only retains the same project-scoped role", async () => {
+    const { service } = detailFixture(1, {
+      globalRoleKeys: [],
+      projectRoleKeys: ["contract_director"]
+    });
+
+    const detail = await service.getDetail(
+      "HT-2026-001",
+      ["project-1"],
+      "reviewer-1"
+    );
+
+    expect(detail.reviewApprovalContext).toBeNull();
+    expect(detail.availableActions.filter((action) => action.key === "review_approval"))
+      .toEqual([expect.objectContaining({ enabled: false })]);
+  });
+
+  it("does not expose a legacy global contract-director node after a project-scoped transfer", async () => {
+    const { service } = detailFixture(1, {
+      globalRoleKeys: [],
+      projectRoleKeys: ["contract_director"]
+    }, legacyFrozenNode("合同部主管", "contract_director"));
+
+    const detail = await service.getDetail(
+      "HT-2026-001",
+      ["project-1"],
+      "reviewer-1"
+    );
+
+    expect(detail.reviewApprovalContext).toBeNull();
+    expect(detail.availableActions.filter((action) => action.key === "review_approval"))
+      .toEqual([expect.objectContaining({ enabled: false })]);
+  });
+
+  it.each([
+    [
+      "global contract director",
+      { globalRoleKeys: ["contract_director"], projectRoleKeys: [] },
+      legacyFrozenNode("合同部主管", "contract_director")
+    ],
+    [
+      "project manager",
+      { globalRoleKeys: [], projectRoleKeys: ["project_manager"] },
+      legacyFrozenNode("项目经理", "project_manager")
+    ]
+  ] as const)("keeps the legacy %s capability at its inferred scope", async (
+    _label,
+    actorRoleScopes,
+    frozenNode
+  ) => {
+    const { service } = detailFixture(1, actorRoleScopes, frozenNode);
+
+    const detail = await service.getDetail(
+      "HT-2026-001",
+      ["project-1"],
+      "reviewer-1"
+    );
+
+    expect(detail.reviewApprovalContext).toEqual(REVIEW_CONTEXT);
+    expect(detail.availableActions.filter((action) => action.key === "review_approval"))
+      .toEqual([expect.objectContaining({ enabled: true })]);
   });
 
   it("publishes withdrawal coordinates and one enabled action only to the applicant", async () => {
@@ -160,3 +235,16 @@ describe("Contract approval review read coordinates", () => {
     )).toEqual([]);
   });
 });
+
+function legacyFrozenNode(
+  name: "合同部主管" | "项目经理",
+  roleKey: "contract_director" | "project_manager"
+) {
+  return {
+    name,
+    mode: "any",
+    roleKeys: [roleKey],
+    candidateUserIdsByRole: { [roleKey]: ["reviewer-1"] },
+    candidateUserIds: ["reviewer-1"]
+  };
+}

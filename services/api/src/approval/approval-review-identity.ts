@@ -14,6 +14,7 @@ export interface FrozenApprovalNode {
   approvedRoleKeys?: unknown;
   candidateUserIds?: unknown;
   candidateUserIdsByRole?: unknown;
+  roleScopesByRole?: unknown;
   selectedUserId?: unknown;
   assignments?: unknown;
 }
@@ -27,6 +28,12 @@ export interface ApprovalReviewIdentity {
 export interface ActiveApprovalDelegatorIdentity {
   userId: string;
   roleKeys: readonly RoleKey[];
+  roleScopes?: ApprovalActorRoleScopes;
+}
+
+export interface ApprovalActorRoleScopes {
+  globalRoleKeys: readonly RoleKey[];
+  projectRoleKeys: readonly RoleKey[];
 }
 
 export function isGovernedFrozenApprovalNode(node: unknown): node is FrozenApprovalNode {
@@ -40,7 +47,9 @@ export function resolveApprovalReviewIdentity(input: {
   node: FrozenApprovalNode;
   actorUserId: string;
   actorRoleKeys: readonly RoleKey[];
+  actorRoleScopes?: ApprovalActorRoleScopes;
   activeDelegators?: readonly ActiveApprovalDelegatorIdentity[];
+  legacyContractRoute?: boolean;
 }): ApprovalReviewIdentity | null {
   const pendingRoles = pendingRoleKeys(input.node);
   if (!pendingRoles.length) return null;
@@ -49,7 +58,9 @@ export function resolveApprovalReviewIdentity(input: {
     input.node,
     input.actorUserId,
     pendingRoles,
-    input.actorRoleKeys
+    input.actorRoleKeys,
+    input.actorRoleScopes,
+    input.legacyContractRoute
   );
   if (directRole) {
     return { approvedRoleKey: directRole, representedUserId: input.actorUserId, viaAssignment: false };
@@ -85,7 +96,13 @@ export function resolveApprovalReviewIdentity(input: {
     const delegatedRole = isGovernedFrozenApprovalNode(input.node)
       ? uniqueFrozenRole(input.node, delegatorUserId, pendingRoles)
       : pendingRoles.find((role) => delegator.roleKeys.includes(role));
-    if (delegatedRole && delegator.roleKeys.includes(delegatedRole)) {
+    if (delegatedRole && hasRoleAtFrozenScope(
+      input.node,
+      delegatedRole,
+      delegator.roleKeys,
+      delegator.roleScopes,
+      input.legacyContractRoute
+    )) {
       return { approvedRoleKey: delegatedRole, representedUserId: delegatorUserId, viaAssignment: false };
     }
   }
@@ -121,14 +138,22 @@ function directFrozenRole(
   node: FrozenApprovalNode,
   userId: string,
   pendingRoles: RoleKey[],
-  actorRoleKeys: readonly RoleKey[]
+  actorRoleKeys: readonly RoleKey[],
+  actorRoleScopes?: ApprovalActorRoleScopes,
+  legacyContractRoute = false
 ): RoleKey | null {
   if (!isGovernedFrozenApprovalNode(node)) return null;
   if (Object.prototype.hasOwnProperty.call(node, "selectedUserId") && node.selectedUserId !== userId) {
     return null;
   }
   const role = uniqueFrozenRole(node, userId, pendingRoles);
-  return role && actorRoleKeys.includes(role) ? role : null;
+  return role && hasRoleAtFrozenScope(
+    node,
+    role,
+    actorRoleKeys,
+    actorRoleScopes,
+    legacyContractRoute
+  ) ? role : null;
 }
 
 function uniqueFrozenRole(
@@ -181,6 +206,69 @@ function candidateMap(value: unknown): Partial<Record<RoleKey, string[]>> {
   return Object.fromEntries(
     Object.entries(value).map(([key, ids]) => [key, stringArray(ids)])
   ) as Partial<Record<RoleKey, string[]>>;
+}
+
+function hasRoleAtFrozenScope(
+  node: FrozenApprovalNode,
+  role: RoleKey,
+  actorRoleKeys: readonly RoleKey[],
+  actorRoleScopes?: ApprovalActorRoleScopes,
+  legacyContractRoute = false
+) {
+  const explicitScopes = roleScopeMap(node.roleScopesByRole);
+  const scope = explicitScopes[role] ?? (
+    legacyContractRoute && !Object.keys(explicitScopes).length
+      ? legacyContractFrozenRoleScope(node, role)
+      : undefined
+  );
+  if (legacyContractRoute && !scope && !Object.keys(explicitScopes).length) return false;
+  if (!scope || !actorRoleScopes) return actorRoleKeys.includes(role);
+  return (scope === "global"
+    ? actorRoleScopes.globalRoleKeys
+    : actorRoleScopes.projectRoleKeys
+  ).includes(role);
+}
+
+const LEGACY_CONTRACT_FROZEN_NODE_SCOPES: ReadonlyArray<{
+  name: string;
+  roleScopes: Partial<Record<RoleKey, "global" | "project">>;
+}> = [
+  { name: "合同部主管", roleScopes: { contract_director: "global" } },
+  { name: "物资主管", roleScopes: { material_director: "global" } },
+  { name: "所属项目总工", roleScopes: { engineering_director: "project" } },
+  { name: "项目经理", roleScopes: { project_manager: "project" } },
+  { name: "综合部主管", roleScopes: { comprehensive_director: "global" } },
+  { name: "财务主管", roleScopes: { finance_director: "global" } },
+  { name: "董事长/总经理", roleScopes: { chairman: "global", general_manager: "global" } }
+];
+
+function legacyContractFrozenRoleScope(
+  node: FrozenApprovalNode,
+  role: RoleKey
+): "global" | "project" | undefined {
+  if (typeof node.name !== "string") return undefined;
+  const definition = LEGACY_CONTRACT_FROZEN_NODE_SCOPES.find(
+    (candidate) => candidate.name === node.name
+  );
+  if (!definition) return undefined;
+  const expectedRoleKeys = Object.keys(definition.roleScopes);
+  const nodeRoleKeys = stringArray(node.roleKeys);
+  if (
+    nodeRoleKeys.length !== expectedRoleKeys.length ||
+    !nodeRoleKeys.every((roleKey) => expectedRoleKeys.includes(roleKey))
+  ) {
+    return undefined;
+  }
+  return definition.roleScopes[role];
+}
+
+function roleScopeMap(value: unknown): Partial<Record<RoleKey, "global" | "project">> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, "global" | "project"] =>
+      entry[1] === "global" || entry[1] === "project"
+    )
+  ) as Partial<Record<RoleKey, "global" | "project">>;
 }
 
 function stringArray(value: unknown): string[] {

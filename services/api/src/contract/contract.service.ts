@@ -23,7 +23,8 @@ import { activeApprovalDelegatorIds } from "../approval/active-approval-delegati
 import {
   isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
-  assertActiveApprovalRecipient
+  assertActiveApprovalRecipient,
+  type ApprovalActorRoleScopes
 } from "../approval/approval-review-identity";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
@@ -101,22 +102,49 @@ interface ContractApprovalNode {
   assignments?: ContractApprovalAssignment[];
   candidateUserIds?: string[];
   candidateUserIdsByRole?: Partial<Record<RoleKey, string[]>>;
+  roleScopesByRole?: Partial<Record<RoleKey, "global" | "project">>;
   selectedUserId?: string;
+}
+
+interface ContractApprovalActorRoles {
+  roleKeys: RoleKey[];
+  roleScopes: ApprovalActorRoleScopes;
 }
 
 const CONTRACT_APPROVAL_NODES = [
   {
     name: "董事长/总经理",
     mode: "any",
-    roleKeys: ["chairman", "general_manager"]
+    roleKeys: ["chairman", "general_manager"],
+    roleScopesByRole: { chairman: "global", general_manager: "global" }
   }
 ] satisfies ContractApprovalNode[];
 
 const ENHANCED_CONTRACT_CHANGE_APPROVAL_NODES = [
-  { name: "合同部主管", mode: "any", roleKeys: ["contract_director"] },
-  { name: "项目经理", mode: "any", roleKeys: ["project_manager"] },
-  { name: "财务主管", mode: "any", roleKeys: ["finance_director"] },
-  { name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"] }
+  {
+    name: "合同部主管",
+    mode: "any",
+    roleKeys: ["contract_director"],
+    roleScopesByRole: { contract_director: "global" }
+  },
+  {
+    name: "项目经理",
+    mode: "any",
+    roleKeys: ["project_manager"],
+    roleScopesByRole: { project_manager: "project" }
+  },
+  {
+    name: "财务主管",
+    mode: "any",
+    roleKeys: ["finance_director"],
+    roleScopesByRole: { finance_director: "global" }
+  },
+  {
+    name: "董事长/总经理",
+    mode: "any",
+    roleKeys: ["chairman", "general_manager"],
+    roleScopesByRole: { chairman: "global", general_manager: "global" }
+  }
 ] satisfies ContractApprovalNode[];
 
 const PAYMENT_STAGE_TYPES = new Set(["advance", "progress", "final", "retention", "other"]);
@@ -2568,24 +2596,38 @@ export class ContractService {
         throw new ForbiddenException("当前账号无权处理该合同审批节点");
       }
 
-      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
+      const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
+      const actorRoleKeys = actorRoles.roleKeys;
       const identityNode = input.decision === "approve"
         ? currentNode
         : { ...currentNode, approvedRoleKeys: [] };
       let identity = resolveApprovalReviewIdentity({
         node: identityNode,
         actorUserId,
-        actorRoleKeys
+        actorRoleKeys,
+        actorRoleScopes: actorRoles.roleScopes,
+        legacyContractRoute: true
       });
       if (!identity) {
         const delegatorIds = this.delegations
           ? await this.delegations.activeDelegatorIds(tx, actorUserId)
           : await activeApprovalDelegatorIds(tx, actorUserId);
-        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
-          userId,
-          roleKeys: await this.loadActorRoleKeys(tx, userId, version.contractId)
-        })));
-        identity = resolveApprovalReviewIdentity({ node: identityNode, actorUserId, actorRoleKeys, activeDelegators });
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => {
+          const delegatorRoles = await this.loadActorRoleKeys(tx, userId, version.contractId);
+          return {
+            userId,
+            roleKeys: delegatorRoles.roleKeys,
+            roleScopes: delegatorRoles.roleScopes
+          };
+        }));
+        identity = resolveApprovalReviewIdentity({
+          node: identityNode,
+          actorUserId,
+          actorRoleKeys,
+          actorRoleScopes: actorRoles.roleScopes,
+          activeDelegators,
+          legacyContractRoute: true
+        });
       }
       if (!identity) {
         throw new ForbiddenException("当前账号无权处理该合同审批节点");
@@ -3623,7 +3665,7 @@ export class ContractService {
     },
     actorUserId: string,
     contractId: string
-  ): Promise<RoleKey[]> {
+  ): Promise<ContractApprovalActorRoles> {
     const [actor, contract] = await Promise.all([
       tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } }),
       tx.contract.findUnique({ where: { id: contractId } })
@@ -3641,16 +3683,37 @@ export class ContractService {
       tx.userPosition.findMany({ where: { userId: actorUserId, projectId: contract.projectId } }),
       tx.projectMember.findMany({ where: { userId: actorUserId, projectId: contract.projectId } })
     ]);
-    const positionIds = Array.from(
-      new Set([...globalPositions, ...projectPositions].map((position) => position.positionId))
-    );
+    const positionIds = Array.from(new Set([
+      ...globalPositions,
+      ...projectPositions
+    ].map((position) => position.positionId)));
     const positions = positionIds.length
       ? await tx.position.findMany({ where: { id: { in: positionIds } } })
       : [];
-    const positionKeys = positions.map((position) => position.key as RoleKey);
-    const memberKeys = projectMembers.map((member) => member.positionKey as RoleKey);
+    const positionKeyById = new Map(
+      positions.map((position) => [position.id, position.key as RoleKey])
+    );
+    const globalRoleKeys = globalPositions
+      .map((position) => positionKeyById.get(position.positionId))
+      .filter((roleKey): roleKey is RoleKey => Boolean(roleKey));
+    const projectRoleKeys = [
+      ...projectPositions
+        .map((position) => positionKeyById.get(position.positionId))
+        .filter((roleKey): roleKey is RoleKey => Boolean(roleKey)),
+      ...projectMembers.map((member) => member.positionKey as RoleKey)
+    ];
+    const roleScopes = {
+      globalRoleKeys: Array.from(new Set(globalRoleKeys)),
+      projectRoleKeys: Array.from(new Set(projectRoleKeys))
+    };
 
-    return Array.from(new Set([...positionKeys, ...memberKeys]));
+    return {
+      roleKeys: Array.from(new Set([
+        ...roleScopes.globalRoleKeys,
+        ...roleScopes.projectRoleKeys
+      ])),
+      roleScopes
+    };
   }
 
   private formatCents(value: bigint) {
@@ -3711,17 +3774,35 @@ export class ContractService {
         throw new Error("当前合同审批节点异常，请刷新后重试");
       }
 
-      const actorRoleKeys = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
-      let identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys });
+      const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
+      const actorRoleKeys = actorRoles.roleKeys;
+      let identity = resolveApprovalReviewIdentity({
+        node: currentNode,
+        actorUserId,
+        actorRoleKeys,
+        actorRoleScopes: actorRoles.roleScopes,
+        legacyContractRoute: true
+      });
       if (!identity) {
         const delegatorIds = this.delegations
           ? await this.delegations.activeDelegatorIds(tx, actorUserId)
           : await activeApprovalDelegatorIds(tx, actorUserId);
-        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => ({
-          userId,
-          roleKeys: await this.loadActorRoleKeys(tx, userId, version.contractId)
-        })));
-        identity = resolveApprovalReviewIdentity({ node: currentNode, actorUserId, actorRoleKeys, activeDelegators });
+        const activeDelegators = await Promise.all(delegatorIds.map(async (userId) => {
+          const delegatorRoles = await this.loadActorRoleKeys(tx, userId, version.contractId);
+          return {
+            userId,
+            roleKeys: delegatorRoles.roleKeys,
+            roleScopes: delegatorRoles.roleScopes
+          };
+        }));
+        identity = resolveApprovalReviewIdentity({
+          node: currentNode,
+          actorUserId,
+          actorRoleKeys,
+          actorRoleScopes: actorRoles.roleScopes,
+          activeDelegators,
+          legacyContractRoute: true
+        });
       }
       if (!identity) {
         throw new Error("当前账号无权转交或委托该合同审批节点");

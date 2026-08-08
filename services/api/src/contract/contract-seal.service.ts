@@ -10,6 +10,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { ContractFormalFileService } from "./contract-formal-file.service";
+import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { ContractVersionActivationService } from "./contract-version-activation.service";
 import type {
   ApproveContractSealDto,
@@ -382,11 +383,21 @@ export class ContractSealService {
     input: ReturnContractFormalFileDto
   ) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_director");
       const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
       this.assertGoverned(version);
       if (version.status !== "pending_archive_confirm" || task.status !== "completed") {
         throw new BadRequestException("当前合同没有待确认的双方最终版");
+      }
+      const contract = await tx.contract.findUnique({
+        where: { id: version.contractId },
+        select: { projectId: true }
+      });
+      if (!contract || !(await resolveGovernedFinalArchiveAccess(tx, {
+        actorUserId,
+        projectId: contract.projectId,
+        handlerUserId: task.handlerUserId
+      })).canConfirm) {
+        throw new ForbiddenException("只有当前全局合同部主管可以退回补正双方最终版");
       }
       const formal = await tx.contractFormalFile.findFirst({
         where: {
@@ -426,11 +437,6 @@ export class ContractSealService {
     if (!this.formalFiles) {
       throw new BadRequestException("合同正式文件校验服务暂不可用，请稍后重试");
     }
-    await this.assertGlobalRole(
-      this.prisma as unknown as Prisma.TransactionClient,
-      actorUserId,
-      "contract_director"
-    );
     const preflightVersion = await this.prisma.contractVersion.findUnique({
       where: { id: contractVersionId },
       select: {
@@ -451,6 +457,20 @@ export class ContractSealService {
       where: { contractVersionId, status: { not: "cancelled" } },
       orderBy: { createdAt: "desc" }
     });
+    const preflightContract = preflightVersion ? await this.prisma.contract.findUnique({
+      where: { id: preflightVersion.contractId },
+      select: { projectId: true }
+    }) : null;
+    if (!preflightContract || !(await resolveGovernedFinalArchiveAccess(
+      this.prisma as unknown as Prisma.TransactionClient,
+      {
+        actorUserId,
+        projectId: preflightContract.projectId,
+        handlerUserId: preflightTask?.handlerUserId ?? ""
+      }
+    )).canConfirm) {
+      throw new ForbiddenException("当前账号无权处理该合同用章任务");
+    }
     if (preflightVersion?.status !== "pending_archive_confirm" || preflightTask?.status !== "completed") {
       throw new BadRequestException("当前合同最终版尚不能确认归档");
     }
@@ -465,11 +485,15 @@ export class ContractSealService {
     if (!preflightFormal) throw new BadRequestException("未找到待确认的双方最终版合同");
     if (
       preflightFormal.uploadedByUserId === actorUserId &&
-      !(await this.canSelfConfirmFinalArchive(
+      !(await resolveGovernedFinalArchiveAccess(
         this.prisma as unknown as Prisma.TransactionClient,
-        preflightTask,
-        actorUserId
-      ))
+        {
+          actorUserId,
+          projectId: preflightContract.projectId,
+          handlerUserId: preflightTask.handlerUserId,
+          uploadedByUserId: preflightFormal.uploadedByUserId
+        }
+      )).canSelfConfirm
     ) {
       throw new ForbiddenException("上传人与归档确认人不能是同一人");
     }
@@ -496,7 +520,6 @@ export class ContractSealService {
       preflightOriginal.pageCount
     );
     return this.prisma.$transaction(async (tx) => {
-      await this.assertGlobalRole(tx, actorUserId, "contract_director");
       const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
       this.assertGoverned(version);
       if (version.status !== "pending_archive_confirm" || task.status !== "completed") {
@@ -507,6 +530,13 @@ export class ContractSealService {
         select: { projectId: true }
       });
       if (!contract) throw new BadRequestException("未找到合同主信息，不能确认归档");
+      if (!(await resolveGovernedFinalArchiveAccess(tx, {
+        actorUserId,
+        projectId: contract.projectId,
+        handlerUserId: task.handlerUserId
+      })).canConfirm) {
+        throw new ForbiddenException("只有当前全局合同部主管可以确认双方最终版合同");
+      }
       const archiveActionAttribution = await this.finalArchiveActionAttribution(
         tx,
         version.id,
@@ -531,7 +561,12 @@ export class ContractSealService {
       }
       const selfConfirmedByCurrentDirectorHandler =
         formal.uploadedByUserId === actorUserId &&
-        await this.canSelfConfirmFinalArchive(tx, task, actorUserId);
+        (await resolveGovernedFinalArchiveAccess(tx, {
+          actorUserId,
+          projectId: contract.projectId,
+          handlerUserId: task.handlerUserId,
+          uploadedByUserId: formal.uploadedByUserId
+        })).canSelfConfirm;
       if (formal.uploadedByUserId === actorUserId && !selfConfirmedByCurrentDirectorHandler) {
         throw new ForbiddenException("上传人与归档确认人不能是同一人");
       }
@@ -781,8 +816,11 @@ export class ContractSealService {
     task: SealTask,
     actorUserId: string
   ) {
-    if (task.handlerUserId !== actorUserId) return false;
-    return (await this.finalArchiveActingRoleKey(tx, projectId, actorUserId)) !== null;
+    return (await resolveGovernedFinalArchiveAccess(tx, {
+      actorUserId,
+      projectId,
+      handlerUserId: task.handlerUserId
+    })).canUpload;
   }
 
   private async finalArchiveActionAttribution(
@@ -792,7 +830,11 @@ export class ContractSealService {
     task: SealTask,
     actorUserId: string
   ) {
-    const actingRoleKey = await this.finalArchiveActingRoleKey(tx, projectId, actorUserId);
+    const { actingRoleKey } = await resolveGovernedFinalArchiveAccess(tx, {
+      actorUserId,
+      projectId,
+      handlerUserId: task.handlerUserId
+    });
     if (!actingRoleKey) {
       throw new ForbiddenException("当前账号无权归档双方最终版合同");
     }
@@ -807,33 +849,6 @@ export class ContractSealService {
       businessId: contractVersionId,
       projectId
     };
-  }
-
-  private async finalArchiveActingRoleKey(
-    tx: Prisma.TransactionClient,
-    projectId: string,
-    actorUserId: string
-  ): Promise<"contract_director" | "contract_staff" | null> {
-    if (await this.hasGlobalRole(tx, actorUserId, "contract_director")) {
-      return "contract_director";
-    }
-    const [member, user] = await Promise.all([
-      tx.projectMember.findFirst({
-        where: { projectId, userId: actorUserId, positionKey: "contract_staff" },
-        select: { id: true }
-      }),
-      tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } })
-    ]);
-    return member && user?.isActive ? "contract_staff" : null;
-  }
-
-  private async canSelfConfirmFinalArchive(
-    tx: Prisma.TransactionClient,
-    task: SealTask,
-    actorUserId: string
-  ) {
-    return task.handlerUserId === actorUserId &&
-      this.hasGlobalRole(tx, actorUserId, "contract_director");
   }
 
   private async assertStructuredPaymentStage(tx: Prisma.TransactionClient, contractVersionId: string) {

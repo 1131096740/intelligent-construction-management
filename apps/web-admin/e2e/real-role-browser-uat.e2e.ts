@@ -244,6 +244,49 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     await context.close();
   });
 
+  test("current global director handler self-confirms final archive after the real UAT contract-director self-review", async ({ browser }, testInfo) => {
+    test.skip(
+      testInfo.project.name.includes("webkit"),
+      "该隔离夹具在 Chromium 真实浏览器旅程中一次性归档，避免跨浏览器共享写入状态"
+    );
+    const viewport = { width: 1366, height: 768 };
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    await captureApiResponses(page, "contract_director_self_archive");
+    const director = roleCases.find((role) => role.key === "contract_director");
+    expect(director).toBeDefined();
+    await login(page, director!);
+
+    const trialRunId = process.env.TRIAL_RUN_ID;
+    expect(trialRunId, "隔离治理 UAT 必须注入 TRIAL_RUN_ID").toBeTruthy();
+    const contractCode = `UAT-${trialRunId}-contract_director_handler_self_archive-001`;
+    await page.goto(`/contracts/${encodeURIComponent(contractCode)}`, { waitUntil: "domcontentloaded" });
+    await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
+
+    const finalReviewGroup = page.locator(".action-group").filter({ hasText: "双方最终版复核" });
+    await expect(finalReviewGroup.getByRole("button", { name: "确认归档" })).toBeVisible();
+    await expect(finalReviewGroup.getByRole("button", { name: "上传双方最终版" })).toHaveCount(0);
+    const declarations = finalReviewGroup.locator(".t-checkbox");
+    await expect(declarations).toHaveCount(6);
+    for (let index = 0; index < 6; index += 1) await declarations.nth(index).click();
+    await finalReviewGroup.getByRole("button", { name: "确认归档" }).click();
+    await expect(page.getByText("确认双方最终版并归档？", { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("用于确认当前操作者身份")).toHaveCount(0);
+    await page.getByRole("button", { name: "确认归档" }).last().click();
+
+    await expect(page.getByRole("button", { name: "确认归档" })).toHaveCount(0);
+    expect(
+      ledger.some((entry) =>
+        entry.role === "contract_director_self_archive" &&
+        entry.method === "POST" &&
+        /\/contracts\/[^/]+\/formal-files\/final\/confirmation$/u.test(entry.path) &&
+        entry.status === 201
+      ),
+      "浏览器未完成真实最终版归档确认请求"
+    ).toBeTruthy();
+    await context.close();
+  });
+
   test("records stable 503 write-freeze behavior and browser file idempotency/download", async ({ browser }, testInfo) => {
     const viewport = testInfo.project.name.includes("webkit")
       ? { width: 390, height: 844 }

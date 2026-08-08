@@ -16,6 +16,8 @@ import { ContractService } from "./contract.service";
 const contractVersionId = "contract-version-self-review-1";
 const projectId = "project-self-review-1";
 const directorId = "director-handler-1";
+const projectDirectorId = "project-director-1";
+const projectManagerId = "project-manager-1";
 
 describe("Issue #15 contract self-review routes", () => {
   let app: INestApplication | undefined;
@@ -24,10 +26,13 @@ describe("Issue #15 contract self-review routes", () => {
     uploadFinal: jest.fn().mockResolvedValue({ id: "formal-file-1" }),
     confirmArchive: jest.fn().mockResolvedValue({ status: "effective" })
   };
-  const roleKeysByUser: Record<string, string[]> = {
-    [directorId]: ["contract_director", "project_manager"],
-    "project-manager-1": ["project_manager"],
+  const globalRoleKeysByUser: Record<string, string[]> = {
+    [directorId]: ["contract_director"],
     "super-admin-1": ["super_admin"]
+  };
+  const projectRoleKeysByUser: Record<string, string[]> = {
+    [projectDirectorId]: ["contract_director"],
+    [projectManagerId]: ["project_manager"]
   };
   const positionByKey = new Map([
     ["contract_director", { id: "position-contract-director", key: "contract_director" }],
@@ -43,8 +48,10 @@ describe("Issue #15 contract self-review routes", () => {
     },
     userPosition: {
       findMany: jest.fn().mockImplementation(({ where }: { where: { userId: string; projectId: string | null } }) => {
-        if (where.projectId !== null) return [];
-        return (roleKeysByUser[where.userId] ?? []).map((roleKey) => ({
+        const roleKeys = where.projectId === null
+          ? globalRoleKeysByUser[where.userId] ?? []
+          : projectRoleKeysByUser[where.userId] ?? [];
+        return roleKeys.map((roleKey) => ({
           positionId: positionByKey.get(roleKey)?.id
         }));
       })
@@ -55,16 +62,22 @@ describe("Issue #15 contract self-review routes", () => {
         [...positionByKey.values()].filter((position) => where.id.in.includes(position.id))
       )
     },
-    approvalInstance: {
-      findFirst: jest.fn().mockResolvedValue({
-        frozenNodes: [{
-          roleKeys: ["contract_director"],
-          candidateUserIdsByRole: { contract_director: [directorId] }
-        }],
-        currentNodeIndex: 0
-      })
-    }
+    approvalInstance: { findFirst: jest.fn() }
   };
+  let currentFrozenNode: Record<string, unknown>;
+
+  beforeEach(() => {
+    currentFrozenNode = {
+      name: "合同部主管",
+      roleKeys: ["contract_director"],
+      candidateUserIdsByRole: { contract_director: [directorId, projectDirectorId] }
+    };
+    prisma.approvalInstance.findFirst.mockImplementation(() => Promise.resolve({
+      frozenNodes: [currentFrozenNode],
+      currentNodeIndex: 0
+    }));
+    contracts.reviewApproval.mockClear();
+  });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -109,10 +122,30 @@ describe("Issue #15 contract self-review routes", () => {
     expect(allowed.status).toBe(201);
     expect(contracts.reviewApproval).toHaveBeenCalledWith(contractVersionId, directorId, body);
 
-    const otherRequiredRole = await post(url, "project-manager-1", body);
+    const otherRequiredRole = await post(url, projectManagerId, body);
     expect(otherRequiredRole.status).toBe(403);
     const superAdmin = await post(url, "super-admin-1", body);
     expect(superAdmin.status).toBe(403);
+  });
+
+  it("enforces inferred scopes for a legacy governed contract route through HTTP", async () => {
+    const url = `${await app!.getUrl()}/contracts/${contractVersionId}/approval`;
+    const body = reviewBody();
+
+    const globalDirector = await post(url, directorId, body);
+    expect(globalDirector.status).toBe(201);
+
+    const transferredToProjectRole = await post(url, projectDirectorId, body);
+    expect(transferredToProjectRole.status).toBe(403);
+
+    currentFrozenNode = {
+      name: "项目经理",
+      roleKeys: ["project_manager"],
+      candidateUserIdsByRole: { project_manager: [projectManagerId] }
+    };
+    const projectManager = await post(url, projectManagerId, body);
+    expect(projectManager.status).toBe(201);
+    expect(contracts.reviewApproval).toHaveBeenCalledTimes(2);
   });
 
   it("allows the narrowed final-upload route for a contract director but not super_admin", async () => {

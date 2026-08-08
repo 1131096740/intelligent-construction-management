@@ -21,6 +21,7 @@ export interface FrozenNewContractApprovalNode {
   roleKeys: RoleKey[];
   candidateUserIds: string[];
   candidateUserIdsByRole: Partial<Record<RoleKey, string[]>>;
+  roleScopesByRole: Partial<Record<RoleKey, "global" | "project">>;
 }
 
 interface RouteNodeDefinition {
@@ -111,6 +112,12 @@ const CONTRACT_CHANGE_ROUTE: RouteNodeDefinition[] = [
 
 function stableUnique(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function frozenRoleScopes(definition: RouteNodeDefinition) {
+  const scope = definition.source === "global" ? "global" : "project";
+  return Object.fromEntries(definition.roleKeys.map((roleKey) => [roleKey, scope])) as
+    Partial<Record<RoleKey, "global" | "project">>;
 }
 
 function roleCandidates(
@@ -206,7 +213,8 @@ export class ContractApprovalRouteService {
         mode: "any" as const,
         roleKeys: [...definition.roleKeys],
         candidateUserIds,
-        candidateUserIdsByRole
+        candidateUserIdsByRole,
+        roleScopesByRole: frozenRoleScopes(definition)
       };
     });
   }
@@ -334,7 +342,8 @@ export class ContractApprovalRouteService {
         mode: "any" as const,
         roleKeys: [...definition.roleKeys],
         candidateUserIds,
-        candidateUserIdsByRole
+        candidateUserIdsByRole,
+        roleScopesByRole: frozenRoleScopes(definition)
       };
     });
   }

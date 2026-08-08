@@ -87,11 +87,19 @@ function finalApprovalTransaction(ownerContractAmounts: bigint[] = []) {
     },
     approvalActionLog: { create: jest.fn() },
     user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
-    userPosition: { findMany: jest.fn().mockResolvedValue([]) },
-    projectMember: {
-      findMany: jest.fn().mockResolvedValue([{ positionKey: "chairman" }])
+    userPosition: {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { projectId: string | null } }) =>
+        Promise.resolve(where.projectId === null ? [{ positionId: "position-chairman" }] : [])
+      )
     },
-    position: { findMany: jest.fn().mockResolvedValue([]) },
+    projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    position: {
+      findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.includes("position-chairman")
+          ? [{ id: "position-chairman", key: "chairman" }]
+          : [])
+      )
+    },
     auditLog: { create: jest.fn() }
   };
   return tx;

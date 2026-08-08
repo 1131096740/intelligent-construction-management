@@ -83,6 +83,12 @@ describe("ContractApprovalRouteService", () => {
       "finance_director",
       "chairman|general_manager"
     ]);
+    expect(result.map((node) => node.roleScopesByRole)).toEqual([
+      { contract_director: "global" },
+      { project_manager: "project" },
+      { finance_director: "global" },
+      { chairman: "global", general_manager: "global" }
+    ]);
     expect(result.at(-1)?.candidateUserIds).toEqual(["chairman-1", "gm-1"]);
   });
 

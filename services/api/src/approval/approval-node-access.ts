@@ -3,6 +3,7 @@ import { requiresApprovalSelfReviewConfirmation } from "./approval-self-review";
 import {
   isGovernedFrozenApprovalNode,
   resolveApprovalReviewIdentity,
+  type ApprovalActorRoleScopes,
   type ActiveApprovalDelegatorIdentity,
   type FrozenApprovalNode
 } from "./approval-review-identity";
@@ -26,7 +27,9 @@ export function approvalReviewAccessOnFrozenNode(
   userId: string,
   applicantUserId: string,
   activeDelegatorsOrLegacyAccess: readonly ActiveApprovalDelegatorIdentity[] | boolean,
-  allowContractDirectorSelfReview = false
+  allowContractDirectorSelfReview = false,
+  actorRoleScopes?: ApprovalActorRoleScopes,
+  legacyContractRoute = false
 ): ApprovalReviewAccess {
   const node = approvalNodeAt(frozenNodes, currentNodeIndex);
   const identity = node
@@ -34,6 +37,8 @@ export function approvalReviewAccessOnFrozenNode(
         node,
         actorUserId: userId,
         actorRoleKeys: roleKeys,
+        actorRoleScopes,
+        legacyContractRoute,
         activeDelegators: Array.isArray(activeDelegatorsOrLegacyAccess)
           ? activeDelegatorsOrLegacyAccess
           : []
@@ -66,7 +71,8 @@ export function canActOnFrozenApprovalNode(
   frozenNodes: unknown,
   currentNodeIndex: number,
   roleKeys: RoleKey[],
-  userId: string
+  userId: string,
+  actorRoleScopes?: ApprovalActorRoleScopes
 ) {
   if (!Array.isArray(frozenNodes)) {
     return false;
@@ -80,7 +86,8 @@ export function canActOnFrozenApprovalNode(
   return Boolean(resolveApprovalReviewIdentity({
     node,
     actorUserId: userId,
-    actorRoleKeys: roleKeys
+    actorRoleKeys: roleKeys,
+    actorRoleScopes
   }));
 }
 
