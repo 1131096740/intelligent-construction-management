@@ -562,6 +562,44 @@ describe("ContractFormalFileService.counterparty", () => {
     })).rejects.toThrow("只能关联本人本次上传的乙方签章文件");
   });
 
+  it("最终驳回的结束申请不能上传或替代乙方签章文件", async () => {
+    const bytes = await pdfBytes();
+    const { version, tx, prisma, files } = counterpartyHarness();
+    version.status = "approval_rejected";
+    const file = makeFile("file-1", "乙方签章.pdf", "application/pdf", bytes);
+    prisma.fileObject.findUnique.mockResolvedValue(file);
+    files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await expect(service.uploadCounterpartySigned("version-1", "owner-1", {
+      fileIds: ["file-1"],
+      sourceRevision: 3
+    })).rejects.toThrow("当前合同不在可编辑状态");
+
+    expect(tx.contractFormalFile.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
+  });
+
+  it("最终驳回的结束申请不能确认乙方签章预览", async () => {
+    const { version, tx, prisma } = counterpartyHarness();
+    version.status = "approval_rejected";
+    tx.contractFormalFile.findFirst.mockResolvedValue({
+      id: "preview-1",
+      contractVersionId: "version-1",
+      purpose: "counterparty_signed_preview",
+      status: "active",
+      sourceRevision: 3
+    });
+    const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
+
+    await expect(service.confirmCounterpartySigned("version-1", "owner-1", {
+      formalFileId: "preview-1",
+      expectedDraftRevision: 3
+    })).rejects.toThrow("当前合同不在可编辑状态");
+
+    expect(tx.contractFormalFile.update).not.toHaveBeenCalled();
+  });
+
   it("草稿修订已变更时拒绝确认，并拒绝以旧修订上传", async () => {
     const { tx, prisma } = counterpartyHarness();
     const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);

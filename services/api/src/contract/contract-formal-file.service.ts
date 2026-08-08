@@ -16,7 +16,7 @@ import type {
   UploadCounterpartySignedFileDto
 } from "./dto/contract-formal-file.dto";
 
-const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
+const EDITABLE_STATUSES = new Set(["draft"]);
 const PDF_MIME = "application/pdf";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const COUNTERPARTY_SIGNED_PURPOSE = "counterparty_signed";
