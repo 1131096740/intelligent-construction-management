@@ -27,6 +27,7 @@ import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { XLSX_MIME } from "../core-flow/ledger-excel";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
+import { PristineDraftDeletionService } from "../contract-workbench/pristine-draft-deletion.service";
 import {
   ContractCutoverLegacyWrite,
   ContractCutoverSurface
@@ -75,7 +76,8 @@ export class ContractController {
     private readonly projectVisibility: ProjectVisibilityService,
     @Optional() private readonly formalFiles?: ContractFormalFileService,
     @Optional() private readonly authorizations?: ContractAuthorizationService,
-    @Optional() private readonly seals?: ContractSealService
+    @Optional() private readonly seals?: ContractSealService,
+    @Optional() private readonly pristineDeletion?: PristineDraftDeletionService
   ) {}
 
   // 创建合同草稿：合同员或合同部主管从已发布模板快照初始化工作台草稿。
@@ -123,12 +125,22 @@ export class ContractController {
 
   @Post(":contractVersionId/abandonment")
   @ContractCutoverSurface()
-  @RequireProjectRole("contract.create")
+  @RequireProjectRole("contract.draft.delete")
   abandonDraft(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: AbandonContractDraftDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
+    if (body.action === "delete_pristine_draft") {
+      if (!this.pristineDeletion) {
+        throw new InternalServerErrorException("合同草稿删除服务不可用");
+      }
+      return this.pristineDeletion.deletePristineDraft(contractVersionId, user.id, {
+        expectedRevision: body.expectedRevision,
+        ...(body.reason ? { reason: body.reason } : {}),
+        ...(body.currentPassword ? { currentPassword: body.currentPassword } : {})
+      });
+    }
     return this.contracts.abandonDraft(contractVersionId, user.id, body);
   }
 

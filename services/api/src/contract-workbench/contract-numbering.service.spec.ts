@@ -19,6 +19,14 @@ describe("ContractNumberingService", () => {
     };
   }
 
+  function availableNumberTombstones() {
+    return {
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    };
+  }
+
   it("allows only global contract staff to list active rules", async () => {
     const prisma = {
       ...roleTx("contract_staff"),
@@ -98,7 +106,8 @@ describe("ContractNumberingService", () => {
         {
           $queryRaw: jest.fn().mockResolvedValue([]),
           contractNumberRule: { update: jest.fn() },
-          contract: { findFirst: jest.fn() }
+          contract: { findFirst: jest.fn() },
+          ...availableNumberTombstones()
         } as never,
         "rule-missing",
         contract,
@@ -112,7 +121,8 @@ describe("ContractNumberingService", () => {
         {
           $queryRaw: jest.fn().mockResolvedValue([{ ...activeRule, isActive: false }]),
           contractNumberRule: { update: jest.fn() },
-          contract: { findFirst: jest.fn() }
+          contract: { findFirst: jest.fn() },
+          ...availableNumberTombstones()
         } as never,
         "rule-1",
         contract,
@@ -127,7 +137,8 @@ describe("ContractNumberingService", () => {
           $queryRaw: jest.fn().mockResolvedValue([activeRule]),
           ...roleTx("contract_director"),
           contractNumberRule: { update: jest.fn() },
-          contract: { findFirst: jest.fn().mockResolvedValue(null) }
+          contract: { findFirst: jest.fn().mockResolvedValue(null) },
+          ...availableNumberTombstones()
         } as never,
         "rule-1",
         contract,
@@ -141,7 +152,8 @@ describe("ContractNumberingService", () => {
         {
           $queryRaw: jest.fn().mockResolvedValue([activeRule]),
           contractNumberRule: { update: jest.fn() },
-          contract: { findFirst: jest.fn().mockResolvedValue(null) }
+          contract: { findFirst: jest.fn().mockResolvedValue(null) },
+          ...availableNumberTombstones()
         } as never,
         "rule-1",
         contract,
@@ -155,7 +167,8 @@ describe("ContractNumberingService", () => {
         {
           $queryRaw: jest.fn().mockResolvedValue([activeRule]),
           contractNumberRule: { update: jest.fn() },
-          contract: { findFirst: jest.fn().mockResolvedValue({ id: "contract-1" }) }
+          contract: { findFirst: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+          ...availableNumberTombstones()
         } as never,
         "rule-1",
         contract,
@@ -197,7 +210,8 @@ describe("ContractNumberingService", () => {
       project: {
         findUnique: jest.fn().mockResolvedValue({ id: "project-1", code: "JGXM" })
       },
-      contract: { findFirst: jest.fn().mockResolvedValue(null) }
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      ...availableNumberTombstones()
     };
     const service = new ContractNumberingService({} as never, audit as never);
     const contract = {
@@ -237,7 +251,8 @@ describe("ContractNumberingService", () => {
       ]),
       ...roleTx("contract_director"),
       contract: { findFirst: jest.fn().mockResolvedValue(null) },
-      contractNumberRule: { update: jest.fn() }
+      contractNumberRule: { update: jest.fn() },
+      ...availableNumberTombstones()
     };
     const service = new ContractNumberingService({} as never, audit as never);
 
@@ -275,7 +290,8 @@ describe("ContractNumberingService", () => {
       ]),
       ...roleTx("contract_staff"),
       contract: { findFirst: jest.fn().mockResolvedValue(null) },
-      contractNumberRule: { update: jest.fn() }
+      contractNumberRule: { update: jest.fn() },
+      ...availableNumberTombstones()
     };
     const service = new ContractNumberingService({} as never, audit as never);
 
@@ -293,6 +309,49 @@ describe("ContractNumberingService", () => {
         { formalCodeOverride: "HT-MANUAL-001", overrideReason: "历史编号衔接" }
       )
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  it("permanently reserves deleted formal codes for generated and manual allocation", async () => {
+    const tombstone = { formalCode: "HT-007" };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "rule-1",
+          name: "材料合同",
+          pattern: "HT-{sequence}",
+          companyEntityId: null,
+          projectId: null,
+          contractTypeKey: null,
+          nextSequence: 7,
+          sequenceWidth: 3,
+          isActive: true
+        }
+      ]),
+      ...roleTx("contract_director"),
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(tombstone)
+      },
+      contractNumberRule: { update: jest.fn() }
+    };
+    const service = new ContractNumberingService({} as never, audit as never);
+    const contract = {
+      projectId: "project-1",
+      contractTypeKey: "material_purchase",
+      companyEntityId: null,
+      companyEntityName: null
+    };
+
+    await expect(
+      service.allocate(tx as never, "rule-1", contract, "staff-1", {})
+    ).rejects.toThrow("正式合同编号已永久保留");
+    await expect(
+      service.allocate(tx as never, "rule-1", contract, "director-1", {
+        formalCodeOverride: "HT-007",
+        overrideReason: "历史编号衔接"
+      })
+    ).rejects.toThrow("正式合同编号已永久保留");
+    expect(tx.contractNumberRule.update).not.toHaveBeenCalled();
   });
 
   it("uses a Chinese fallback label for an unknown contract type token", async () => {
@@ -313,7 +372,8 @@ describe("ContractNumberingService", () => {
       contractNumberRule: {
         update: jest.fn().mockResolvedValue({ nextSequence: 2 })
       },
-      contract: { findFirst: jest.fn().mockResolvedValue(null) }
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      ...availableNumberTombstones()
     };
     const service = new ContractNumberingService({} as never, audit as never);
     const contract = {
@@ -349,7 +409,8 @@ describe("ContractNumberingService", () => {
           nextSequence += 1;
         })
       },
-      contract: { findFirst: jest.fn().mockResolvedValue(null) }
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      ...availableNumberTombstones()
     };
     const service = new ContractNumberingService({} as never, audit as never);
     const contract = {

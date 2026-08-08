@@ -86,7 +86,8 @@ describe("contract ledger page configuration", () => {
       "const capability = await fetchContractDraftWorkbench(expectedVersionId)"
     );
     expect(source).toContain("contractDraftLifecycleContextCurrent");
-    expect(source).toContain("executeContractDraftLifecycleAction({");
+    expect(source).toContain("executeDeletePristineContractDraftAction({");
+    expect(source).toContain("executeAbandonContractDraftAction({");
     expect(source).toContain("expectedRevision: savedRevision.value");
     expect(source).toContain(
       "contractDraftAvailableActions.value = capability.availableActions!"
@@ -102,8 +103,8 @@ describe("contract ledger page configuration", () => {
       source.indexOf("async function confirmAbandonApplication"),
       source.indexOf("// Sections are presentational")
     );
-    expect(deleteActionSource).toContain('action: "delete_pristine_draft"');
-    expect(abandonActionSource).toContain('action: "abandon_application"');
+    expect(deleteActionSource).not.toContain('action: "delete_pristine_draft"');
+    expect(abandonActionSource).not.toContain('action: "abandon_application"');
     expect(deleteActionSource).not.toContain("saveNow()");
     expect(abandonActionSource).not.toContain("saveNow()");
     expect(source).not.toContain("enabled: true");

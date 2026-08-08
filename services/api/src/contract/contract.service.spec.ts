@@ -277,6 +277,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: { findUnique: jest.fn() }
     };
     const routes = { freezeNewContractRoute: jest.fn() };
@@ -309,6 +312,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: { findUnique: jest.fn() }
     };
     const service = new ContractService(
@@ -392,6 +398,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -421,6 +430,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -567,10 +579,11 @@ describe("ContractService", () => {
 
   function submissionTransactionHarness(options: {
     failApproval?: boolean;
+    initialCode?: string | null;
   } = {}) {
     const state = {
       status: "draft",
-      code: null as string | null,
+      code: options.initialCode ?? null,
       firstSubmittedAt: null as Date | null,
       sequence: 0,
       approvalCount: 0
@@ -638,6 +651,9 @@ describe("ContractService", () => {
         }
         return [];
       }),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractDraftSubmissionRequest: {
         findUnique: jest.fn(async ({ where }) =>
           receipts.get(where.idempotencyKey) ?? null
@@ -859,6 +875,70 @@ describe("ContractService", () => {
     expect(receipts.size).toBe(1);
     expect(businessNumbers.allocateDaily).toHaveBeenCalledTimes(1);
     expect(tx.approvalInstance.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a tombstoned formal code in the actual approval submission path", async () => {
+    const { service, state, tx, businessNumbers } = submissionTransactionHarness();
+    tx.contractNumberTombstone.findUnique.mockResolvedValue({ id: "tombstone-1" });
+
+    await expect(
+      service.submitApproval(
+        "version-concurrent",
+        "owner-1",
+        {
+          expectedRevision: 8,
+          idempotencyKey: "b441ad7e-dd0c-4c29-b267-cf1344333115"
+        },
+        "opaque-lease-token"
+      )
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        statusCode: 409,
+        code: "CONTRACT_FORMAL_CODE_TOMBSTONED"
+      })
+    });
+
+    expect(businessNumbers.allocateDaily).toHaveBeenCalledWith(tx, "HT");
+    expect(tx.contractNumberTombstone.findUnique).toHaveBeenCalledWith({
+      where: { formalCode: "HT-20260728-001" },
+      select: { id: true }
+    });
+    expect(state).toMatchObject({ status: "draft", code: null, approvalCount: 0 });
+  });
+
+  it("rejects a tombstoned preallocated formal code without allocating another", async () => {
+    const { service, state, tx, businessNumbers } = submissionTransactionHarness({
+      initialCode: "HT-REUSED-001"
+    });
+    tx.contractNumberTombstone.findUnique.mockResolvedValue({ id: "tombstone-1" });
+
+    await expect(
+      service.submitApproval(
+        "version-concurrent",
+        "owner-1",
+        {
+          expectedRevision: 8,
+          idempotencyKey: "3d288503-7308-4554-90bc-671043b3252d"
+        },
+        "opaque-lease-token"
+      )
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        statusCode: 409,
+        code: "CONTRACT_FORMAL_CODE_TOMBSTONED"
+      })
+    });
+
+    expect(businessNumbers.allocateDaily).not.toHaveBeenCalled();
+    expect(tx.contractNumberTombstone.findUnique).toHaveBeenCalledWith({
+      where: { formalCode: "HT-REUSED-001" },
+      select: { id: true }
+    });
+    expect(state).toMatchObject({
+      status: "draft",
+      code: "HT-REUSED-001",
+      approvalCount: 0
+    });
   });
 
   it.each(["submission", "abandonment"] as const)(
@@ -1817,6 +1897,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -2078,6 +2161,10 @@ describe("ContractService", () => {
       }
     });
     expect(numbering.allocateDaily).toHaveBeenCalledWith(tx, "HT");
+    expect(tx.contractNumberTombstone.findUnique).toHaveBeenCalledWith({
+      where: { formalCode: "HT-20260728-001" },
+      select: { id: true }
+    });
     expect(tx.contractDraftSubmissionRequest.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457125",
@@ -2132,6 +2219,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
@@ -2340,6 +2430,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractDraftSubmissionRequest: {
         findUnique: jest.fn().mockResolvedValue({
           contractVersionId: "version-1",
@@ -2395,6 +2488,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-governed",
@@ -2905,6 +3001,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       projectOwnerContract: { findMany: jest.fn() },
       contractVersion: {
         findMany: jest.fn(),
@@ -3025,6 +3124,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         findUnique: jest.fn().mockImplementation(async () => version),
         findMany: jest.fn(),
@@ -3302,6 +3404,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -3390,6 +3495,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       projectOwnerContract: {
         findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(10000000) }])
       },
@@ -3493,6 +3601,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         updateMany: jest.fn()
       },
@@ -3560,6 +3671,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contract: {
         findUnique: jest.fn().mockResolvedValue({
           id: "contract-1",
@@ -3601,6 +3715,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         updateMany: jest.fn()
       },
@@ -3638,6 +3755,9 @@ describe("ContractService", () => {
       };
       const tx = {
         $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
         contractDraftSubmissionRequest: {
           findUnique: jest.fn().mockResolvedValue(null)
         },
@@ -3684,6 +3804,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractDraftSubmissionRequest: {
         findUnique: jest.fn().mockResolvedValue(null)
       },
@@ -3735,6 +3858,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractDraftSubmissionRequest: {
         findUnique: jest.fn().mockResolvedValue({
           idempotencyKey,
@@ -3785,6 +3911,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
@@ -3833,6 +3962,9 @@ describe("ContractService", () => {
     };
     const tx = {
       $queryRaw: submitQueryLocks(version),
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      },
       contractVersion: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })

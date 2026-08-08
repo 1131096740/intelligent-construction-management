@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 456,
-    "transportWrapperCount": 436,
+    "exportedFunctionCount": 457,
+    "transportWrapperCount": 437,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 457,
+    "mainRequestBindingCount": 459,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 457,
-    "productionConsumerCount": 334,
+    "requestEdgeCount": 459,
+    "productionConsumerCount": 335,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -1596,7 +1596,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1974,
+          "sourceLine": 2140,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1626,7 +1626,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 1974,
+          "sourceLine": 2140,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1645,6 +1645,56 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "executeAbandonContractDraftAction",
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 73,
+          "method": "GET",
+          "path": "/contract-drafts/:param/workbench",
+          "normalizedPath": "/contract-drafts/:param/workbench",
+          "normalizedKey": "GET /contract-drafts/:param/workbench",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "executeAbandonContractDraftAction",
+              "runAbandonContractDraftLifecycleOperation",
+              "preflightContractDraftLifecycleOperation",
+              "fetchContractDraftWorkbench",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "POST",
+          "path": "/contracts/:param/abandonment",
+          "normalizedPath": "/contracts/:param/abandonment",
+          "normalizedKey": "POST /contracts/:param/abandonment",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeAbandonContractDraftAction",
+              "runAbandonContractDraftLifecycleOperation",
+              "abandonContractDraft",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/contract-workbench.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -1672,7 +1722,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1539,
+          "sourceLine": 1705,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -1695,11 +1745,28 @@
       "unreachableConsumers": []
     },
     {
-      "name": "executeContractDraftLifecycleAction",
+      "name": "executeDeletePristineContractDraftAction",
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "kind": "transport",
       "returnProvenance": "unverified",
       "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 146,
+          "method": "DELETE",
+          "path": "/contract-drafts/:param",
+          "normalizedPath": "/contract-drafts/:param",
+          "normalizedKey": "DELETE /contract-drafts/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "executeDeletePristineContractDraftAction",
+              "runDeletePristineContractDraftLifecycleOperation",
+              "deletePristineContractDraft",
+              "deleteJson"
+            ]
+          ]
+        },
         {
           "kind": "main",
           "sourceLine": 73,
@@ -1710,27 +1777,11 @@
           "bodyKind": "none",
           "localCallChains": [
             [
-              "executeContractDraftLifecycleAction",
-              "runContractDraftLifecycleOperation",
+              "executeDeletePristineContractDraftAction",
+              "runDeletePristineContractDraftLifecycleOperation",
+              "preflightContractDraftLifecycleOperation",
               "fetchContractDraftWorkbench",
               "readJson"
-            ]
-          ]
-        },
-        {
-          "kind": "main",
-          "sourceLine": 79,
-          "method": "POST",
-          "path": "/contracts/:param/abandonment",
-          "normalizedPath": "/contracts/:param/abandonment",
-          "normalizedKey": "POST /contracts/:param/abandonment",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "executeContractDraftLifecycleAction",
-              "runContractDraftLifecycleOperation",
-              "abandonContractDraft",
-              "postJson"
             ]
           ]
         }
@@ -14340,11 +14391,15 @@
       "wrappers": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+          "wrapper": "executeAbandonContractDraftAction"
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
           "wrapper": "executeContractBillRemainderCancellation"
         },
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "executeContractDraftLifecycleAction"
+          "wrapper": "executeDeletePristineContractDraftAction"
         },
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",

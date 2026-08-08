@@ -16,6 +16,7 @@ import { AuditService } from "../audit/audit.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
+import { assertFormalContractCodeNotTombstoned } from "../contract-workbench/contract-formal-code-tombstone";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { deriveSixDecimalUnitPriceFromAmountCents } from "../money/decimal-money";
@@ -207,6 +208,7 @@ export class ContractDocumentService {
             throw new Error("外发合同文件生成需要正式编号服务");
           }
           const formalCode = await this.businessNumbers.allocateDaily(tx, "HT");
+          await assertFormalContractCodeNotTombstoned(tx, formalCode);
           const claimed = await tx.contract.updateMany({
             where: { id: contract.id, code: null, voidedAt: null },
             data: { code: formalCode }

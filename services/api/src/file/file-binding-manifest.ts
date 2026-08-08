@@ -128,15 +128,17 @@ export async function fileBusinessBindingRefs(
     uniqueIds.map((fileId) => Prisma.sql`(${fileId})`)
   );
   const registryQueries = NON_RECEIPT_FILE_BINDINGS.flatMap(
-    ({ table, columns }) =>
-      columns.map((column) => {
-        const tableId = sqlIdentifier(table);
+    (binding) =>
+      binding.columns.map((column) => {
+        const tableId = sqlIdentifier(binding.table);
         const columnId = sqlIdentifier(column);
+        const rowIdColumn =
+          "rowIdColumn" in binding ? binding.rowIdColumn : "id"
         return Prisma.sql`
           SELECT x.${columnId} AS "fileId",
-                 ${table} AS "table",
+                 ${binding.table} AS "table",
                  ${column} AS "column",
-                 x."id" AS "rowId"
+                 to_jsonb(x) ->> ${rowIdColumn} AS "rowId"
           FROM ${tableId} x
           JOIN candidates c ON c."id" = x.${columnId}
         `;
@@ -282,6 +284,10 @@ interface FileObjectLite {
   contentSha256: string | null;
 }
 
+function physicalObjectKey(fileObject: Pick<FileObjectLite, "bucket" | "objectKey">): string {
+  return `${fileObject.bucket}\u0000${fileObject.objectKey}`;
+}
+
 function dedupeBindings(
   bindings: readonly ResolvedFileBinding[]
 ): ResolvedFileBinding[] {
@@ -384,6 +390,21 @@ export async function buildFileBindingManifest(
       fileObject as FileObjectLite
     ])
   );
+  const physicalObjectRows = fileObjects.length
+    ? await tx.fileObject.findMany({
+        where: {
+          OR: fileObjects.map(({ bucket, objectKey }) => ({ bucket, objectKey }))
+        },
+        select: { id: true, bucket: true, objectKey: true }
+      })
+    : [];
+  const physicalObjectIdsByKey = new Map<string, string[]>();
+  for (const physicalObject of physicalObjectRows) {
+    const key = physicalObjectKey(physicalObject);
+    const ids = physicalObjectIdsByKey.get(key) ?? [];
+    ids.push(physicalObject.id);
+    physicalObjectIdsByKey.set(key, ids);
+  }
   const ownedRefKeys = new Set(ownedBindings.map(bindingKey));
 
   // 3. 组装清单行。
@@ -391,7 +412,25 @@ export async function buildFileBindingManifest(
   for (const fileId of candidateIds) {
     const fileObject = fileObjectById.get(fileId);
     const refs = refsByFile.get(fileId) ?? [];
-    const classification = classifyFileBinding(refs, ownedRefKeys, candidates);
+    const baseClassification = classifyFileBinding(refs, ownedRefKeys, candidates);
+    const physicalObjectSharedIds = fileObject
+      ? (physicalObjectIdsByKey.get(physicalObjectKey(fileObject)) ?? []).filter(
+          (physicalFileId) => !candidates.has(physicalFileId)
+        )
+      : [];
+    const classification: FileBindingClassification = physicalObjectSharedIds.length
+      ? {
+          bindingType: "shared",
+          sharedReason: [
+            baseClassification.sharedReason,
+            ...physicalObjectSharedIds.map(
+              (physicalFileId) => `FileObject:physicalObject:${physicalFileId}`
+            )
+          ]
+            .filter(Boolean)
+            .join(",")
+        }
+      : baseClassification;
     const blockedReason = deriveBlockedReason(fileObject, classification);
     const row: FileBindingManifestRow = {
       fileId,

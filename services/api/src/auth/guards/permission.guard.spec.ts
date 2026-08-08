@@ -211,6 +211,35 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
+  it("does not grant a global super admin the contract draft deletion business action", async () => {
+    const guard = new PermissionGuard(
+      {
+        getAllAndOverride: jest
+          .fn()
+          .mockReturnValueOnce(undefined)
+          .mockReturnValueOnce("contract.draft.delete")
+      } as never,
+      {
+        ...buildPrisma("super_admin"),
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" })
+        }
+      } as never
+    );
+
+    await expect(
+      guard.canActivate(
+        contextWithRequest({
+          user: { id: "super-admin-1" },
+          params: { contractVersionId: "contract-version-1" }
+        })
+      )
+    ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
+  });
+
   it("allows a project-scoped position to open a filtered aggregate ledger", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

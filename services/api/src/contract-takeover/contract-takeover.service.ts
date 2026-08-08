@@ -13,6 +13,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { assertFormalContractCodeNotTombstoned } from "../contract-workbench/contract-formal-code-tombstone";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
@@ -761,6 +762,7 @@ export class ContractTakeoverService {
     }
 
     await this.assertCompanyEntityExists(tx, data.companyEntityId);
+    await assertFormalContractCodeNotTombstoned(tx, data.code);
 
       const contract = await tx.contract.create({
         data: {
@@ -933,6 +935,7 @@ export class ContractTakeoverService {
       }
 
       await this.assertCompanyEntityExists(tx, data.companyEntityId);
+      await assertFormalContractCodeNotTombstoned(tx, data.code);
 
       await tx.contract.update({
         where: { id: takeover.contractId },

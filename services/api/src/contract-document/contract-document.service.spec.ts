@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
 import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-document.service";
 
@@ -103,6 +103,9 @@ describe("ContractDocumentService", () => {
           code: null
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue(null)
       },
       companyEntity: {
         findUnique: jest.fn().mockResolvedValue({
@@ -296,6 +299,28 @@ describe("ContractDocumentService", () => {
         })
       })
     });
+  });
+
+  it("refuses a tombstoned formal code before external-file generation writes it", async () => {
+    const tx = makeTx({
+      contractNumberTombstone: {
+        findUnique: jest.fn().mockResolvedValue({ id: "tombstone-1" })
+      }
+    });
+    const { service, businessNumbers } = makeService(tx);
+
+    const failure = await service.queue("version-1", "owner-1", {
+      layoutTemplateVersionId: "layout-1",
+      purpose: "external",
+      attachmentFileIds: []
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ConflictException);
+    expect((failure as ConflictException).getResponse()).toMatchObject({
+      code: "CONTRACT_FORMAL_CODE_TOMBSTONED"
+    });
+    expect(businessNumbers.allocateDaily).toHaveBeenCalledWith(tx, "HT");
+    expect(tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
   });
 
   it("reuses the locked formal code on repeated external-file generation", async () => {

@@ -1046,10 +1046,10 @@ test("P0 项目支出 A 路由迟到响应不能覆盖 B 详情", async ({
   ).toHaveCount(0);
 });
 
-test("合同工作台丢弃未保存修改后直接删除服务端草稿", async ({ page }) => {
+test("合同工作台直接删除服务端纯净草稿", async ({ page }) => {
   await installSession(page);
   let saveCalls = 0;
-  let abandonBody: Record<string, unknown> | null = null;
+  const deleteBodies: Array<Record<string, unknown>> = [];
   await page.route("**/api/projects/contract-create-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
@@ -1062,7 +1062,10 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
   await page.route("**/api/contract-layout-templates*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
-  await page.route("**/api/company-entities?*", (route) =>
+  await page.route("**/api/company-entities*", (route) =>
+    route.fulfill({ contentType: "application/json", body: "[]" })
+  );
+  await page.route("**/api/standard-clauses*", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
   await page.route("**/api/contract-workbench/version-delete/negotiation-rounds", (route) =>
@@ -1072,27 +1075,30 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
     saveCalls += 1;
     return route.fulfill({ contentType: "application/json", body: "{}" });
   });
-  await page.route("**/api/contracts/version-delete/abandonment", (route) => {
-    abandonBody = route.request().postDataJSON() as Record<string, unknown>;
+  await page.route(/\/api\/contract-drafts\/version-delete$/, (route) => {
+    deleteBodies.push(route.request().postDataJSON() as Record<string, unknown>);
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         contractVersionId: "version-delete",
-        status: "abandoned",
+        status: deleteBodies.length === 1 ? "deleting" : "deleted",
         lifecycleKind: "pristine_draft",
-        action: "delete_pristine_draft",
-        abandonedAt: savedAt,
-        abandonedByUserId: "draft-governance-user",
-        reason: null,
-        idempotent: false
+        ...(deleteBodies.length === 1 ? { retryable: true } : {})
       })
     });
   });
-  await page.route("**/api/contract-workbench/contract-delete", (route) => route.fulfill({
+  await page.route("**/api/contract-drafts/version-delete/workbench", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       lifecycleKind: "pristine_draft",
       availableLifecycleActions: ["delete_pristine_draft"],
+      draftOperationAvailableActions: [],
+      lease: {
+        state: "available",
+        holderDisplayName: null,
+        expiresAt: null,
+        canTakeOver: false
+      },
       availableActions: [{
         key: "delete_pristine_draft",
         label: "删除草稿",
@@ -1120,6 +1126,8 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
         changeType: "original",
         draftRevision: 7,
         amountCents: "0",
+        estimatedAmountCents: null,
+        amountLimitType: "capped",
         pricingNature: "fixed_total",
         amountSource: "manual",
         taxFacts: {
@@ -1144,6 +1152,16 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
       parties: [],
       bills: [],
       paymentTerms: { originalText: "", stages: [] },
+      draft: {},
+      attachments: [],
+      settlementMode: {
+        value: null,
+        source: null,
+        confirmedAt: null,
+        confirmedByUserId: null,
+        confirmationRequired: false,
+        canConfirm: false
+      },
       checkpoints: [],
       documents: [],
       readiness: { ready: false, blockingMessages: [], warningMessages: [] }
@@ -1157,23 +1175,36 @@ test("合同工作台丢弃未保存修改后直接删除服务端草稿", async
       meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 }
     })
   }));
+  await page.route("**/api/contracts/lifecycle-ledger?*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      rows: [],
+      summary: { formal_ledger: 0, my_drafts: 0, returned_for_revision: 0, ended: 0 },
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 }
+    })
+  }));
 
   await login(page);
-  await page.goto("/contracts/contract-delete/workbench");
-  await page.getByText("信息", { exact: true }).click();
-  await page.getByPlaceholder("请输入合同名称").fill("不会保存的本地修改");
+  await page.goto("/合同工作台/contract-delete?versionId=version-delete");
   await expect(page.getByRole("button", { name: "删除草稿" })).toBeVisible();
   await page.getByRole("button", { name: "删除草稿" }).click();
   await page.getByRole("button", { name: "确认删除草稿" }).click();
 
-  await expect.poll(() => abandonBody).toEqual({
-    expectedRevision: 7,
-    action: "delete_pristine_draft"
-  });
+  await expect.poll(() => deleteBodies).toEqual([{ expectedRevision: 7 }]);
   expect(saveCalls).toBe(0);
+  await expect(page.getByText("草稿已进入待删除状态，但对象清理未完成")).toBeVisible();
+  expect(
+    decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search)
+  ).toBe("/合同工作台/contract-delete?versionId=version-delete");
+
+  await page.getByRole("button", { name: "确认删除草稿" }).click();
+  await expect.poll(() => deleteBodies).toEqual([
+    { expectedRevision: 7 },
+    { expectedRevision: 7 }
+  ]);
   await expect
     .poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/合同工作台?view=all");
+    .toBe("/合同工作台?view=ended");
 });
 
 test("合同已放弃记录保持只读且不开放复制", async ({ page }, testInfo) => {

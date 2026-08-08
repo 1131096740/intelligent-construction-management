@@ -27,6 +27,8 @@ RUNTIME_HEALTH_SCRIPT="${RUNTIME_HEALTH_SCRIPT:-$REPO_ROOT/scripts/ops/check-run
 SYSTEMD_UNIT_DIR="${SYSTEMD_UNIT_DIR:-/etc/systemd/system}"
 DRAFT_RETENTION_SERVICE_SOURCE="${DRAFT_RETENTION_SERVICE_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-draft-retention.service}"
 DRAFT_RETENTION_TIMER_SOURCE="${DRAFT_RETENTION_TIMER_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-draft-retention.timer}"
+PRISTINE_DRAFT_RECEIPT_PURGE_SERVICE_SOURCE="${PRISTINE_DRAFT_RECEIPT_PURGE_SERVICE_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-pristine-draft-deletion-receipt-purge.service}"
+PRISTINE_DRAFT_RECEIPT_PURGE_TIMER_SOURCE="${PRISTINE_DRAFT_RECEIPT_PURGE_TIMER_SOURCE:-$REPO_ROOT/scripts/ops/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer}"
 STAGING_DIR=""
 ROLLBACK_DIR=""
 STOP_ATTEMPTED=false
@@ -147,6 +149,21 @@ install_draft_retention_units() {
     "$SYSTEMD_UNIT_DIR/jiangkong-draft-retention.timer"
   sudo --non-interactive systemctl daemon-reload
   echo "Installed contract draft retention units without enabling or starting the timer."
+}
+
+install_pristine_draft_receipt_purge_units() {
+  if [[ ! -f "$PRISTINE_DRAFT_RECEIPT_PURGE_SERVICE_SOURCE" || ! -f "$PRISTINE_DRAFT_RECEIPT_PURGE_TIMER_SOURCE" ]]; then
+    echo "Pristine draft deletion receipt purge systemd units are missing" >&2
+    return 1
+  fi
+  sudo --non-interactive install -m 0644 \
+    "$PRISTINE_DRAFT_RECEIPT_PURGE_SERVICE_SOURCE" \
+    "$SYSTEMD_UNIT_DIR/jiangkong-pristine-draft-deletion-receipt-purge.service"
+  sudo --non-interactive install -m 0644 \
+    "$PRISTINE_DRAFT_RECEIPT_PURGE_TIMER_SOURCE" \
+    "$SYSTEMD_UNIT_DIR/jiangkong-pristine-draft-deletion-receipt-purge.timer"
+  sudo --non-interactive systemctl daemon-reload
+  echo "Installed pristine draft deletion receipt purge units without enabling or starting the timer."
 }
 
 verified_backup_artifacts_exist() {
@@ -424,5 +441,6 @@ if ! await_deployment_confirmation; then
 fi
 
 install_draft_retention_units
+install_pristine_draft_receipt_purge_units
 
 DEPLOY_SUCCEEDED=true

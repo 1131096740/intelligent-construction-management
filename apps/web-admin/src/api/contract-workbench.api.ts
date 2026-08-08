@@ -455,7 +455,7 @@ export function deletePristineContractDraft(
   expectedRevision: number,
   confirmation: { reason?: string; currentPassword?: string } = {}
 ) {
-  return deleteJson<AbandonContractDraftReadModel>(
+  return deleteJson<DeletePristineContractDraftReadModel>(
     `/contract-drafts/${encodeURIComponent(contractVersionId)}`,
     { expectedRevision, ...confirmation }
   );
@@ -463,7 +463,7 @@ export function deletePristineContractDraft(
 
 export interface AbandonContractDraftPayload {
   expectedRevision: number;
-  action: "delete_pristine_draft" | "abandon_application";
+  action: "abandon_application";
   reason?: string;
   currentPassword?: string;
 }
@@ -471,13 +471,25 @@ export interface AbandonContractDraftPayload {
 export interface AbandonContractDraftReadModel {
   contractVersionId: string;
   status: "abandoned";
-  lifecycleKind: "pristine_draft" | "approval_draft";
-  action: "delete_pristine_draft" | "abandon_application";
+  lifecycleKind: "approval_draft";
+  action: "abandon_application";
   abandonedAt: string | null;
   abandonedByUserId: string | null;
   reason: string | null;
   idempotent: boolean;
 }
+
+export interface DeletePristineContractDraftReadModel {
+  contractVersionId: string;
+  status: "deleting" | "deleted";
+  lifecycleKind: "pristine_draft";
+  retryable?: boolean;
+  idempotent?: boolean;
+}
+
+type ContractDraftLifecycleResponse =
+  | AbandonContractDraftReadModel
+  | DeletePristineContractDraftReadModel;
 
 export function abandonContractDraft(
   contractVersionId: string,
@@ -514,6 +526,7 @@ export interface ExecuteContractDraftLifecycleActionInput {
   currentPassword: string;
   expectedRequiresComment: boolean;
   expectedRequiresPassword: boolean;
+  retryPending?: boolean;
   isCurrent: (context: ContractDraftLifecycleOperationContext) => boolean;
   beforeWrite: () => boolean;
   onWriteFailure: () => void;
@@ -526,12 +539,23 @@ export interface ExecuteContractDraftLifecycleActionInput {
   swallowOperationFailure?: boolean;
 }
 
+export type ExecuteSpecificContractDraftLifecycleActionInput = Omit<
+  ExecuteContractDraftLifecycleActionInput,
+  "action"
+>;
+
 export type ExecuteContractDraftLifecycleActionResult =
   | {
       status: "completed";
       context: ContractDraftLifecycleOperationContext;
-      preflight: ContractDraftWorkbenchReadModel;
-      response: AbandonContractDraftReadModel;
+      preflight: ContractDraftWorkbenchReadModel | null;
+      response: ContractDraftLifecycleResponse;
+    }
+  | {
+      status: "retryable";
+      context: ContractDraftLifecycleOperationContext;
+      preflight: ContractDraftWorkbenchReadModel | null;
+      response: DeletePristineContractDraftReadModel;
     }
   | {
       status: "stale";
@@ -627,16 +651,28 @@ function assertContractDraftLifecyclePreflight(
 
 function assertContractDraftLifecycleResponse(
   context: ContractDraftLifecycleOperationContext,
-  response: AbandonContractDraftReadModel
+  response: ContractDraftLifecycleResponse
 ) {
-  const expectedLifecycleKind = context.action === "delete_pristine_draft"
-    ? "pristine_draft"
-    : "approval_draft";
+  if (context.action === "delete_pristine_draft") {
+    const deletion = response as DeletePristineContractDraftReadModel;
+    if (
+      deletion.contractVersionId !== context.versionId ||
+      deletion.lifecycleKind !== "pristine_draft" ||
+      !["deleting", "deleted"].includes(deletion.status)
+    ) {
+      throw contractDraftLifecycleOperationError(
+        "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH",
+        "合同草稿结束操作响应与请求坐标不一致，已暂停编辑，请刷新页面核对"
+      );
+    }
+    return;
+  }
+  const abandonment = response as AbandonContractDraftReadModel;
   if (
-    response.contractVersionId !== context.versionId ||
-    response.status !== "abandoned" ||
-    response.action !== context.action ||
-    response.lifecycleKind !== expectedLifecycleKind
+    abandonment.contractVersionId !== context.versionId ||
+    abandonment.status !== "abandoned" ||
+    abandonment.action !== "abandon_application" ||
+    abandonment.lifecycleKind !== "approval_draft"
   ) {
     throw contractDraftLifecycleOperationError(
       "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH",
@@ -650,28 +686,75 @@ let activeContractDraftLifecycleOperation: {
   promise: Promise<void>;
 } | null = null;
 
-async function runContractDraftLifecycleOperation(
+async function preflightContractDraftLifecycleOperation(
   context: ContractDraftLifecycleOperationContext,
   input: ExecuteContractDraftLifecycleActionInput
-): Promise<ExecuteContractDraftLifecycleActionResult> {
+): Promise<ContractDraftWorkbenchReadModel | null> {
   let preflight: ContractDraftWorkbenchReadModel;
   try {
     preflight = await fetchContractDraftWorkbench(context.versionId);
   } catch (error) {
-    if (!input.isCurrent(context)) return { status: "stale", context };
+    if (!input.isCurrent(context)) return null;
     throw error;
   }
-  if (!input.isCurrent(context)) return { status: "stale", context };
+  if (!input.isCurrent(context)) return null;
   assertContractDraftLifecyclePreflight(context, preflight);
   if (!input.beforeWrite()) {
     throw new Error("合同草稿正在保存，请等待保存完成后再结束草稿");
   }
+  return preflight;
+}
 
+async function runDeletePristineContractDraftLifecycleOperation(
+  context: ContractDraftLifecycleOperationContext,
+  input: ExecuteContractDraftLifecycleActionInput
+): Promise<ExecuteContractDraftLifecycleActionResult> {
+  const preflight = input.retryPending
+    ? null
+    : await preflightContractDraftLifecycleOperation(context, input);
+  if (!input.retryPending && !preflight) return { status: "stale", context };
+  if (input.retryPending && !input.isCurrent(context)) {
+    return { status: "stale", context };
+  }
+  let response: DeletePristineContractDraftReadModel;
+  try {
+    response = await deletePristineContractDraft(
+      context.versionId,
+      context.expectedRevision,
+      {
+        ...(context.reason ? { reason: context.reason } : {}),
+        ...(input.currentPassword ? { currentPassword: input.currentPassword } : {})
+      }
+    );
+  } catch (error) {
+    if (!input.isCurrent(context)) return { status: "stale", context };
+    input.onWriteFailure();
+    throw error;
+  }
+  if (!input.isCurrent(context)) return { status: "stale", context };
+  assertContractDraftLifecycleResponse(context, response);
+  if (response.status === "deleting" && response.retryable) {
+    return {
+      status: "retryable",
+      context,
+      preflight,
+      response
+    };
+  }
+  return { status: "completed", context, preflight, response };
+}
+
+async function runAbandonContractDraftLifecycleOperation(
+  context: ContractDraftLifecycleOperationContext,
+  input: ExecuteContractDraftLifecycleActionInput
+): Promise<ExecuteContractDraftLifecycleActionResult> {
+  const preflight = await preflightContractDraftLifecycleOperation(context, input);
+  if (!preflight) return { status: "stale", context };
   let response: AbandonContractDraftReadModel;
   try {
     response = await abandonContractDraft(context.versionId, {
       expectedRevision: context.expectedRevision,
-      action: context.action,
+      action: "abandon_application",
       ...(context.reason ? { reason: context.reason } : {}),
       ...(input.currentPassword ? { currentPassword: input.currentPassword } : {})
     });
@@ -685,17 +768,21 @@ async function runContractDraftLifecycleOperation(
   return { status: "completed", context, preflight, response };
 }
 
-export function executeContractDraftLifecycleAction(
-  input: ExecuteContractDraftLifecycleActionInput
+export function executeAbandonContractDraftAction(
+  input: ExecuteSpecificContractDraftLifecycleActionInput
 ) {
+  const lifecycleInput: ExecuteContractDraftLifecycleActionInput = {
+    ...input,
+    action: "abandon_application"
+  };
   let context: ContractDraftLifecycleOperationContext;
   try {
-    context = normalizeContractDraftLifecycleOperation(input);
+    context = normalizeContractDraftLifecycleOperation(lifecycleInput);
   } catch (error) {
-    input.onCapabilityFailure(error);
-    input.onOperationFailure?.(error);
-    input.onOperationSettled?.();
-    return input.swallowOperationFailure
+    lifecycleInput.onCapabilityFailure(error);
+    lifecycleInput.onOperationFailure?.(error);
+    lifecycleInput.onOperationSettled?.();
+    return lifecycleInput.swallowOperationFailure
       ? Promise.resolve()
       : Promise.reject(error);
   }
@@ -717,14 +804,17 @@ export function executeContractDraftLifecycleAction(
       "CONTRACT_DRAFT_LIFECYCLE_BUSY",
       "另一项合同草稿结束操作正在确认，请等待完成后重试"
     );
-    input.onOperationFailure?.(error);
-    return input.swallowOperationFailure
+    lifecycleInput.onOperationFailure?.(error);
+    return lifecycleInput.swallowOperationFailure
       ? Promise.resolve()
       : Promise.reject(error);
   }
-  const resultPromise = runContractDraftLifecycleOperation(context, input);
+  const resultPromise = runAbandonContractDraftLifecycleOperation(
+    context,
+    lifecycleInput
+  );
   const operation = resultPromise
-    .then(input.onResult)
+    .then(lifecycleInput.onResult)
     .catch((error: unknown) => {
       const code =
         error && typeof error === "object" && "code" in error
@@ -734,13 +824,89 @@ export function executeContractDraftLifecycleAction(
         code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
         code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
       ) {
-        input.onCapabilityFailure(error);
+        lifecycleInput.onCapabilityFailure(error);
       }
-      input.onOperationFailure?.(error);
-      if (!input.swallowOperationFailure) throw error;
+      lifecycleInput.onOperationFailure?.(error);
+      if (!lifecycleInput.swallowOperationFailure) throw error;
     })
     .finally(() => {
-      input.onOperationSettled?.();
+      lifecycleInput.onOperationSettled?.();
+    });
+  const ownedPromise = operation.finally(() => {
+    if (activeContractDraftLifecycleOperation?.promise === ownedPromise) {
+      activeContractDraftLifecycleOperation = null;
+    }
+  });
+  activeContractDraftLifecycleOperation = {
+    fingerprint,
+    promise: ownedPromise
+  };
+  return ownedPromise;
+}
+
+export function executeDeletePristineContractDraftAction(
+  input: ExecuteSpecificContractDraftLifecycleActionInput
+) {
+  const lifecycleInput: ExecuteContractDraftLifecycleActionInput = {
+    ...input,
+    action: "delete_pristine_draft"
+  };
+  let context: ContractDraftLifecycleOperationContext;
+  try {
+    context = normalizeContractDraftLifecycleOperation(lifecycleInput);
+  } catch (error) {
+    lifecycleInput.onCapabilityFailure(error);
+    lifecycleInput.onOperationFailure?.(error);
+    lifecycleInput.onOperationSettled?.();
+    return lifecycleInput.swallowOperationFailure
+      ? Promise.resolve()
+      : Promise.reject(error);
+  }
+  const fingerprint = [
+    context.generation,
+    context.contractId,
+    context.versionId,
+    context.expectedRevision,
+    context.action,
+    context.reason,
+    Number(context.expectedRequiresComment),
+    Number(context.expectedRequiresPassword)
+  ].join("\u0000");
+  if (activeContractDraftLifecycleOperation) {
+    if (activeContractDraftLifecycleOperation.fingerprint === fingerprint) {
+      return activeContractDraftLifecycleOperation.promise;
+    }
+    const error = contractDraftLifecycleOperationError(
+      "CONTRACT_DRAFT_LIFECYCLE_BUSY",
+      "另一项合同草稿结束操作正在确认，请等待完成后重试"
+    );
+    lifecycleInput.onOperationFailure?.(error);
+    return lifecycleInput.swallowOperationFailure
+      ? Promise.resolve()
+      : Promise.reject(error);
+  }
+  const resultPromise = runDeletePristineContractDraftLifecycleOperation(
+    context,
+    lifecycleInput
+  );
+  const operation = resultPromise
+    .then(lifecycleInput.onResult)
+    .catch((error: unknown) => {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "";
+      if (
+        code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
+        code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
+      ) {
+        lifecycleInput.onCapabilityFailure(error);
+      }
+      lifecycleInput.onOperationFailure?.(error);
+      if (!lifecycleInput.swallowOperationFailure) throw error;
+    })
+    .finally(() => {
+      lifecycleInput.onOperationSettled?.();
     });
   const ownedPromise = operation.finally(() => {
     if (activeContractDraftLifecycleOperation?.promise === ownedPromise) {

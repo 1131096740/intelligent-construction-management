@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 449,
-    "classificationOverrideCount": 174,
-    "derivedProductionPageCount": 275,
-    "classificationOverrideSha256": "937534be125d812ad5d3a7a47c84facbe4367b72d9634f502bb49987d16a4559",
+    "classificationOverrideCount": 173,
+    "derivedProductionPageCount": 276,
+    "classificationOverrideSha256": "3acd4ec0b16634bfe9fee7a9858033cb789193236e84382f89193b02f685cf6d",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
-      "page": 276,
+      "page": 277,
       "external_takeover": 61,
-      "exit_candidate": 109,
+      "exit_candidate": 108,
       "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 325,
+      "web_api_wrapper": 326,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 115
+      "none": 114
     }
   },
   "overrides": [
@@ -34,12 +34,6 @@
     {
       "method": "DELETE",
       "path": "/contract-bills/:billId/rows/:rowKey",
-      "usage": "exit_candidate",
-      "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
-    },
-    {
-      "method": "DELETE",
-      "path": "/contract-drafts/:contractVersionId",
       "usage": "exit_candidate",
       "reason": "contract_workbench_task_12_candidate_only_no_deletion_authorization"
     },

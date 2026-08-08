@@ -4,6 +4,8 @@ import { Reflector } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PermissionGuard } from "../auth/guards/permission.guard";
@@ -12,6 +14,10 @@ import { AuditService } from "../audit/audit.service";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
 import { ContractDraftAggregateService } from "../contract-workbench/contract-draft-aggregate.service";
 import { ContractDraftEditLeaseService } from "../contract-workbench/contract-draft-edit-lease.service";
+import {
+  PristineDraftDeletionService,
+  threeCalendarMonthsAfter
+} from "../contract-workbench/pristine-draft-deletion.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
 import { ContractController } from "../contract/contract.controller";
@@ -21,9 +27,20 @@ import { ContractFormalFileService } from "../contract/contract-formal-file.serv
 import { ContractReadService } from "../contract/contract-read.service";
 import { ContractService } from "../contract/contract.service";
 import { ContractReadinessService } from "../contract-workbench/contract-readiness.service";
+import { FileCleanupSeamService } from "../file/file-cleanup-seam.service";
+import { InMemoryVersionedObjectStorage } from "../file/versioned-object-storage";
 import { PrismaService } from "./prisma.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
+const requireFromHere = createRequire(__filename);
+const receiptPurge = requireFromHere(
+  resolve(__dirname, "../../scripts/purge-pristine-draft-deletion-receipts.cjs")
+) as {
+  purgeExpiredPristineDraftDeletionReceipts: (
+    prisma: PrismaClient,
+    now: Date
+  ) => Promise<{ scannedCount: number; deletedCount: number }>;
+};
 
 function localLifecycleDatabaseUrl(value: string | undefined) {
   if (!value || process.env.NODE_ENV === "production") {
@@ -89,6 +106,21 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
       const contractIds = stages.map(([stage]) =>
         `lifecycle-route-contract-${stage}-${suffix}`
       );
+      const lifecycleVersionIds = contractIds.map(
+        (contractId) => `${contractId}-v1`
+      );
+      const deletionFormalCode = `HT-DELETE-${suffix}`;
+      const tombstoneRaceFormalCode = `HT-RACE-${suffix}`;
+      const tombstoneRaceSourceVersionId =
+        `lifecycle-route-tombstone-race-source-${suffix}-submission-v1`;
+      const deletionExclusiveFileId = `lifecycle-route-delete-exclusive-file-${suffix}`;
+      const deletionSharedFileId = `lifecycle-route-delete-shared-file-${suffix}`;
+      const deletionExclusiveObjectKey = `uploads/${deletionExclusiveFileId}.pdf`;
+      const deletionSharedObjectKey = `uploads/${deletionSharedFileId}.pdf`;
+      const formalDraftContractId = `lifecycle-route-formal-draft-${suffix}`;
+      const formalDraftVersionId = `${formalDraftContractId}-v1`;
+      const retryableReceiptVersionId = `lifecycle-route-delete-retryable-receipt-${suffix}`;
+      const deletionStorage = new InMemoryVersionedObjectStorage();
       let app: INestApplication | undefined;
 
       try {
@@ -219,7 +251,8 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               name: `合同生命周期 ${label}`,
               counterparty: "测试相对方",
               ownerUserId: ownerId,
-              temporaryCode: `TMP-${label}-${suffix}`
+              temporaryCode: `TMP-${label}-${suffix}`,
+              ...(stage === "unsubmitted_draft" ? { code: deletionFormalCode } : {})
             }
           });
           await prisma.contractVersion.create({
@@ -247,6 +280,75 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             }
           });
         }
+        const draftVersionId = `${contractIds[0]}-v1`;
+        const protectedVersionId = `${contractIds[4]}-v1`;
+        await prisma.fileObject.createMany({
+          data: [
+            {
+              id: deletionExclusiveFileId,
+              bucket: "test-private-bucket",
+              objectKey: deletionExclusiveObjectKey,
+              originalName: "仅草稿附件.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 128,
+              uploadedByUserId: ownerId,
+              contentSha256: "a".repeat(64)
+            },
+            {
+              id: deletionSharedFileId,
+              bucket: "test-private-bucket",
+              objectKey: deletionSharedObjectKey,
+              originalName: "共享正式文件.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 256,
+              uploadedByUserId: ownerId,
+              contentSha256: "b".repeat(64)
+            }
+          ]
+        });
+        await prisma.contractDraftAttachment.createMany({
+          data: [
+            {
+              id: `lifecycle-route-delete-exclusive-attachment-${suffix}`,
+              contractVersionId: draftVersionId,
+              slotKey: "exclusive",
+              fileId: deletionExclusiveFileId,
+              displayOrder: 0,
+              createdByUserId: ownerId
+            },
+            {
+              id: `lifecycle-route-delete-shared-attachment-${suffix}`,
+              contractVersionId: draftVersionId,
+              slotKey: "shared",
+              fileId: deletionSharedFileId,
+              displayOrder: 0,
+              createdByUserId: ownerId
+            }
+          ]
+        });
+        await prisma.contractFormalFile.create({
+          data: {
+            id: `lifecycle-route-delete-shared-formal-${suffix}`,
+            contractVersionId: protectedVersionId,
+            purpose: "approval_original",
+            fileId: deletionSharedFileId,
+            contentSha256: "b".repeat(64),
+            pageCount: 1,
+            sourceRevision: 1,
+            status: "active",
+            uploadedByUserId: ownerId,
+            declarationSnapshot: {},
+            declaredByUserId: ownerId,
+            declaredAt: new Date()
+          }
+        });
+        deletionStorage.seed(deletionExclusiveObjectKey, [
+          { versionId: "v1", isLatest: false },
+          { versionId: "m1", isLatest: true, isDeleteMarker: true }
+        ]);
+        deletionStorage.seed(deletionSharedObjectKey, [
+          { versionId: "shared-v1", isLatest: true }
+        ]);
 
         const projectVisibility = {
           visibleProjectIds: jest.fn().mockResolvedValue([projectId]),
@@ -293,10 +395,17 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           undefined,
           undefined,
           new ContractReadinessService(prisma as never),
-          undefined,
+          {
+            allocateDaily: jest.fn().mockResolvedValue(tombstoneRaceFormalCode)
+          } as never,
           new ContractApprovalRouteService(),
           formalFiles,
           authorizations
+        );
+        const deletion = new PristineDraftDeletionService(
+          prisma as never,
+          new FileCleanupSeamService(prisma as never),
+          deletionStorage
         );
         const moduleRef = await Test.createTestingModule({
           controllers: [ContractController, ContractDraftController],
@@ -308,6 +417,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             { provide: ContractDraftAggregateService, useValue: {} },
             { provide: ContractDraftEditLeaseService, useValue: {} },
             { provide: ContractDocumentService, useValue: {} },
+            { provide: PristineDraftDeletionService, useValue: deletion },
             { provide: PrismaService, useValue: prisma }
           ]
         }).compile();
@@ -415,7 +525,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             }
           });
 
-        const draftVersionId = `${contractIds[0]}-v1`;
         const forbiddenDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
           {
@@ -439,30 +548,144 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         );
         expect(invalidDelete.status).toBe(400);
 
-        const ownerDelete = await fetch(
+        const staleDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedRevision: 2 })
+          }
+        );
+        expect(staleDelete.status).toBe(409);
+
+        const submittedDraftDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${contractIds[1]}-v1`,
           {
             method: "DELETE",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ expectedRevision: 1 })
           }
         );
-        expect(ownerDelete.status).toBe(200);
+        expect(submittedDraftDelete.status).toBe(409);
+
+        const endedDraftDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${contractIds[2]}-v1`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(endedDraftDelete.status).toBe(409);
+
+        const effectiveDraftDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${contractIds[4]}-v1`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(effectiveDraftDelete.status).toBe(409);
+
+        await prisma.contract.create({
+          data: {
+            id: formalDraftContractId,
+            projectId,
+            name: "合同生命周期正式文件草稿",
+            counterparty: "测试相对方",
+            ownerUserId: ownerId,
+            temporaryCode: `TMP-FORMAL-DRAFT-${suffix}`
+          }
+        });
+        await prisma.contractVersion.create({
+          data: {
+            id: formalDraftVersionId,
+            contractId: formalDraftContractId,
+            versionNo: 1,
+            changeType: "original",
+            status: "draft",
+            amountCents: 100n,
+            draftData: {},
+            templateSnapshot: {},
+            clauseSnapshot: []
+          }
+        });
+        await prisma.contractFormalFile.create({
+          data: {
+            id: `lifecycle-route-formal-draft-file-${suffix}`,
+            contractVersionId: formalDraftVersionId,
+            purpose: "approval_original",
+            fileId: deletionSharedFileId,
+            contentSha256: "b".repeat(64),
+            pageCount: 1,
+            sourceRevision: 1,
+            status: "active",
+            uploadedByUserId: ownerId,
+            declarationSnapshot: {},
+            declaredByUserId: ownerId,
+            declaredAt: new Date()
+          }
+        });
+        const formalDraftDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${formalDraftVersionId}`,
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(formalDraftDelete.status).toBe(409);
+
+        deletionStorage.simulateNextDeleteFailure();
+        deletionStorage.simulateNextDeleteFailure();
+        deletionStorage.simulateNextDeleteFailure();
+
+        const ownerDelete = await fetch(
+          `${await app.getUrl()}/contracts/${draftVersionId}/abandonment`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "delete_pristine_draft",
+              expectedRevision: 1
+            })
+          }
+        );
+        expect(ownerDelete.status).toBe(201);
         expect(await ownerDelete.json()).toMatchObject({
-          status: "abandoned",
-          action: "delete_pristine_draft",
-          abandonedAt: expect.any(String),
-          abandonedByUserId: ownerId,
-          idempotent: false
+          status: "deleting",
+          lifecycleKind: "pristine_draft",
+          retryable: true
         });
         const ownerDeleteVersion = await prisma.contractVersion.findUnique({
           where: { id: draftVersionId },
-          select: { status: true, abandonedAt: true, abandonedByUserId: true }
+          select: { status: true }
         });
         expect(ownerDeleteVersion).toEqual({
-          status: "abandoned",
-          abandonedAt: expect.any(Date),
-          abandonedByUserId: ownerId
+          status: "deleting"
+        });
+        const afterFailedDeletionLedger = await fetch(
+          `${await app.getUrl()}/contracts/workbench?view=all&pageSize=20`
+        );
+        expect(afterFailedDeletionLedger.status).toBe(200);
+        const afterFailedDeletionBody = await afterFailedDeletionLedger.json() as {
+          rows: Array<{ contractVersionId: string }>;
+        };
+        expect(afterFailedDeletionBody.rows.map((row) => row.contractVersionId))
+          .not.toContain(draftVersionId);
+        const retryableReceipt = await prisma.contractPristineDraftDeletionReceipt.findUnique({
+          where: { contractVersionId: draftVersionId },
+          select: {
+            status: true,
+            failureCode: true,
+            deletedByUserId: true
+          }
+        });
+        expect(retryableReceipt).toEqual({
+          status: "retryable",
+          failureCode: "cleanup_retryable",
+          deletedByUserId: ownerId
         });
         const ownerDeleteAuditCount = await prisma.auditLog.count({
           where: {
@@ -470,9 +693,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             businessId: draftVersionId
           }
         });
-        expect(ownerDeleteAuditCount).toBe(1);
+        expect(ownerDeleteAuditCount).toBe(0);
 
-        const adminDelete = await fetch(
+        const superAdminRetry = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
           {
             method: "DELETE",
@@ -483,13 +706,13 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             body: JSON.stringify({ expectedRevision: 1 })
           }
         );
-        expect(adminDelete.status).toBe(403);
-        expect(await adminDelete.json()).toMatchObject({
+        expect(superAdminRetry.status).toBe(403);
+        expect(await superAdminRetry.json()).toMatchObject({
           statusCode: 403
         });
         await expect(prisma.contractVersion.findUnique({
           where: { id: draftVersionId },
-          select: { status: true, abandonedAt: true, abandonedByUserId: true }
+          select: { status: true }
         })).resolves.toEqual(ownerDeleteVersion);
         await expect(prisma.auditLog.count({
           where: {
@@ -497,23 +720,165 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             businessId: draftVersionId
           }
         })).resolves.toBe(ownerDeleteAuditCount);
+        await expect(prisma.contractPristineDraftDeletionReceipt.findUnique({
+          where: { contractVersionId: draftVersionId },
+          select: {
+            status: true,
+            failureCode: true,
+            deletedByUserId: true
+          }
+        })).resolves.toEqual(retryableReceipt);
+
+        const retryDelete = await fetch(
+          `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              "x-test-user": contractDirectorId
+            },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(retryDelete.status).toBe(200);
+        expect(await retryDelete.json()).toMatchObject({
+          status: "deleted",
+          lifecycleKind: "pristine_draft",
+          idempotent: false
+        });
+        await expect(prisma.contractVersion.findUnique({
+          where: { id: draftVersionId },
+          select: { id: true }
+        })).resolves.toBeNull();
+        await expect(prisma.contract.findUnique({
+          where: { id: contractIds[0] },
+          select: { id: true }
+        })).resolves.toBeNull();
+        await expect(prisma.contractDraftAttachment.count({
+          where: { contractVersionId: draftVersionId }
+        })).resolves.toBe(0);
+        await expect(prisma.fileObject.findUnique({
+          where: { id: deletionExclusiveFileId },
+          select: { id: true }
+        })).resolves.toBeNull();
+        await expect(prisma.fileObject.findUnique({
+          where: { id: deletionSharedFileId },
+          select: { id: true }
+        })).resolves.toEqual({ id: deletionSharedFileId });
+        const completedDeletionReceipt = await prisma.contractPristineDraftDeletionReceipt.findUnique({
+          where: { contractVersionId: draftVersionId },
+          select: {
+            status: true,
+            exclusiveFileCount: true,
+            sharedFileCount: true,
+            aggregateHash: true,
+            completedAt: true,
+            expiresAt: true
+          }
+        });
+        expect(completedDeletionReceipt).toEqual({
+          status: "completed",
+          exclusiveFileCount: 1,
+          sharedFileCount: 1,
+          aggregateHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          completedAt: expect.any(Date),
+          expiresAt: expect.any(Date)
+        });
+        expect(completedDeletionReceipt?.expiresAt).toEqual(
+          threeCalendarMonthsAfter(completedDeletionReceipt!.completedAt!)
+        );
+        await expect(prisma.contractNumberTombstone.findUnique({
+          where: { formalCode: deletionFormalCode },
+          select: { formalCode: true }
+        })).resolves.toEqual({ formalCode: deletionFormalCode });
+        await expect(deletionStorage.isConverged(deletionExclusiveObjectKey)).resolves.toBe(true);
+        await expect(deletionStorage.listObjectVersions(deletionSharedObjectKey)).resolves.toEqual([
+          expect.objectContaining({ versionId: "shared-v1", isLatest: true })
+        ]);
+        const afterDeletionLedger = await fetch(
+          `${await app.getUrl()}/contracts/workbench?view=all&pageSize=20`
+        );
+        expect(afterDeletionLedger.status).toBe(200);
+        const afterDeletionBody = await afterDeletionLedger.json() as {
+          rows: Array<{ contractVersionId: string }>;
+        };
+        expect(afterDeletionBody.rows.map((row) => row.contractVersionId))
+          .not.toContain(draftVersionId);
+
+        const completedRepeat = await fetch(
+          `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "content-type": "application/json",
+              "x-test-user": ownerId
+            },
+            body: JSON.stringify({ expectedRevision: 1 })
+          }
+        );
+        expect(completedRepeat.status).toBe(200);
+        expect(await completedRepeat.json()).toMatchObject({
+          status: "deleted",
+          idempotent: true
+        });
+
+        const receiptPurgeNow = new Date("2026-08-08T00:00:00.000Z");
+        await prisma.contractPristineDraftDeletionReceipt.update({
+          where: { contractVersionId: draftVersionId },
+          data: { expiresAt: new Date("2026-08-07T23:59:59.999Z") }
+        });
+        await prisma.contractPristineDraftDeletionReceipt.create({
+          data: {
+            projectId,
+            contractId: `lifecycle-route-delete-retryable-contract-${suffix}`,
+            contractVersionId: retryableReceiptVersionId,
+            contractName: "未完成删除收据",
+            deletedByUserId: ownerId,
+            requestedRevision: 1,
+            status: "retryable",
+            expiresAt: new Date("2026-08-07T23:59:59.999Z")
+          }
+        });
+        await expect(
+          receiptPurge.purgeExpiredPristineDraftDeletionReceipts(
+            prisma,
+            receiptPurgeNow
+          )
+        ).resolves.toEqual({ scannedCount: 1, deletedCount: 1 });
+        await expect(prisma.contractPristineDraftDeletionReceipt.findUnique({
+          where: { contractVersionId: draftVersionId },
+          select: { id: true }
+        })).resolves.toBeNull();
+        await expect(prisma.contractPristineDraftDeletionReceipt.findUnique({
+          where: { contractVersionId: retryableReceiptVersionId },
+          select: { status: true }
+        })).resolves.toEqual({ status: "retryable" });
 
         const submissionSuffix = `${suffix}-submission`;
         const submittedContractId = `lifecycle-route-submit-${submissionSuffix}`;
         const conflictedContractId = `lifecycle-route-conflict-${submissionSuffix}`;
         const rollbackContractId = `lifecycle-route-rollback-${submissionSuffix}`;
+        const tombstonedContractId = `lifecycle-route-tombstoned-${submissionSuffix}`;
+        const tombstoneRaceSourceContractId = `lifecycle-route-tombstone-race-source-${submissionSuffix}`;
+        const tombstoneRaceTargetContractId = `lifecycle-route-tombstone-race-target-${submissionSuffix}`;
         const submittedVersionId = `${submittedContractId}-v1`;
         const conflictedVersionId = `${conflictedContractId}-v1`;
         const rollbackVersionId = `${rollbackContractId}-v1`;
+        const tombstonedVersionId = `${tombstonedContractId}-v1`;
+        const tombstoneRaceTargetVersionId = `${tombstoneRaceTargetContractId}-v1`;
         const submissionContractIds = [
           submittedContractId,
           conflictedContractId,
-          rollbackContractId
+          rollbackContractId,
+          tombstonedContractId,
+          tombstoneRaceTargetContractId
         ];
         const submissionVersionIds = [
           submittedVersionId,
           conflictedVersionId,
-          rollbackVersionId
+          rollbackVersionId,
+          tombstonedVersionId,
+          tombstoneRaceTargetVersionId
         ];
         const companyEntityId = `lifecycle-route-company-${submissionSuffix}`;
         const companyEntityVersionId = `${companyEntityId}-v1`;
@@ -537,7 +902,8 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const seedGovernedSubmissionDraft = async (
           contractId: string,
           versionId: string,
-          index: number
+          index: number,
+          formalCode?: string | null
         ) => {
           const originalFileId = `lifecycle-route-counterparty-original-file-${index}-${submissionSuffix}`;
           const secondOriginalFileId = `lifecycle-route-counterparty-original-file-${index}-second-${submissionSuffix}`;
@@ -550,7 +916,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             data: {
               id: contractId,
               projectId,
-              code: `SUBMIT-${index}-${submissionSuffix}`,
+              ...(formalCode === null
+                ? {}
+                : { code: formalCode ?? `SUBMIT-${index}-${submissionSuffix}` }),
               name: `合同提交路由验收 ${index + 1}`,
               counterparty: "合同提交路由验收相对方",
               ownerUserId: ownerId,
@@ -764,11 +1132,52 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               publishedAt: new Date()
             }
           });
-          const [submittedFixture, conflictedFixture, rollbackFixture] = await Promise.all([
+          const [
+            submittedFixture,
+            conflictedFixture,
+            rollbackFixture,
+            tombstonedFixture,
+            tombstoneRaceFixture
+          ] = await Promise.all([
             seedGovernedSubmissionDraft(submittedContractId, submittedVersionId, 0),
             seedGovernedSubmissionDraft(conflictedContractId, conflictedVersionId, 1),
-            seedGovernedSubmissionDraft(rollbackContractId, rollbackVersionId, 2)
+            seedGovernedSubmissionDraft(rollbackContractId, rollbackVersionId, 2),
+            seedGovernedSubmissionDraft(tombstonedContractId, tombstonedVersionId, 3),
+            seedGovernedSubmissionDraft(
+              tombstoneRaceTargetContractId,
+              tombstoneRaceTargetVersionId,
+              4,
+              null
+            )
           ]);
+          await prisma.contract.create({
+            data: {
+              id: tombstoneRaceSourceContractId,
+              projectId,
+              code: tombstoneRaceFormalCode,
+              name: "合同编号 tombstone 并发清理源草稿",
+              counterparty: "测试相对方",
+              ownerUserId: ownerId,
+              temporaryCode: `TMP-RACE-${submissionSuffix}`
+            }
+          });
+          await prisma.contractVersion.create({
+            data: {
+              id: tombstoneRaceSourceVersionId,
+              contractId: tombstoneRaceSourceContractId,
+              versionNo: 1,
+              changeType: "original",
+              status: "draft",
+              amountCents: 100n,
+              draftData: {},
+              templateSnapshot: {},
+              clauseSnapshot: []
+            }
+          });
+          await prisma.contract.update({
+            where: { id: tombstonedContractId },
+            data: { code: deletionFormalCode }
+          });
           const conflictedFinalFileId = `lifecycle-route-final-file-${submissionSuffix}`;
           await prisma.fileObject.create({
             data: {
@@ -966,6 +1375,48 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             code: "DRAFT_NOT_EDITABLE"
           });
 
+          const tombstonedSubmission = await submit(tombstonedFixture, randomUUID());
+          expect(tombstonedSubmission.status).toBe(409);
+          expect(await tombstonedSubmission.json()).toMatchObject({
+            code: "CONTRACT_FORMAL_CODE_TOMBSTONED"
+          });
+          await expect(prisma.contractVersion.findUnique({
+            where: { id: tombstonedVersionId },
+            select: { status: true }
+          })).resolves.toEqual({ status: "draft" });
+
+          const [raceDeletion, raceSubmission] = await Promise.allSettled([
+            deletion.deletePristineDraft(
+              tombstoneRaceSourceVersionId,
+              ownerId,
+              { expectedRevision: 1 }
+            ),
+            submit(tombstoneRaceFixture, randomUUID()).then(async (response) => ({
+              status: response.status,
+              body: await response.json()
+            }))
+          ]);
+          expect(raceDeletion).toMatchObject({ status: "fulfilled" });
+          expect(raceSubmission).toMatchObject({
+            status: "fulfilled",
+            value: expect.objectContaining({ status: expect.any(Number) })
+          });
+          if (raceSubmission.status === "fulfilled") {
+            expect([400, 409]).toContain(raceSubmission.value.status);
+          }
+          await expect(prisma.contractNumberTombstone.findUnique({
+            where: { formalCode: tombstoneRaceFormalCode },
+            select: { formalCode: true }
+          })).resolves.toEqual({ formalCode: tombstoneRaceFormalCode });
+          await expect(prisma.contract.findUnique({
+            where: { id: tombstoneRaceTargetContractId },
+            select: { code: true }
+          })).resolves.toEqual({ code: null });
+          await expect(prisma.contractVersion.findUnique({
+            where: { id: tombstoneRaceTargetVersionId },
+            select: { status: true }
+          })).resolves.toEqual({ status: "draft" });
+
           const originalRecord = audit.record.bind(audit);
           const auditFailure = jest.spyOn(audit, "record").mockImplementation((client, input) => {
             if (
@@ -1083,10 +1534,53 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         await prisma.userPosition.deleteMany({
           where: { userId: { in: submissionUserIds } }
         });
-        await prisma.contractVersion.deleteMany({
-          where: { contractId: { in: contractIds } }
+        await prisma.contractPristineDraftDeletionReceipt.deleteMany({
+          where: {
+            contractVersionId: {
+              in: [
+                `${contractIds[0]}-v1`,
+                retryableReceiptVersionId,
+                tombstoneRaceSourceVersionId
+              ]
+            }
+          }
         });
-        await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+        await prisma.contractNumberTombstone.deleteMany({
+          where: { formalCode: { in: [deletionFormalCode, tombstoneRaceFormalCode] } }
+        });
+        await prisma.contractFormalFile.deleteMany({
+          where: {
+            OR: [
+              {
+                contractVersionId: {
+                  in: [...lifecycleVersionIds, formalDraftVersionId]
+                }
+              },
+              { fileId: deletionSharedFileId }
+            ]
+          }
+        });
+        await prisma.contractDraftAttachment.deleteMany({
+          where: {
+            OR: [
+              {
+                contractVersionId: {
+                  in: [...lifecycleVersionIds, formalDraftVersionId]
+                }
+              },
+              { fileId: deletionSharedFileId }
+            ]
+          }
+        });
+        await prisma.fileObject.deleteMany({
+          where: { id: deletionSharedFileId }
+        });
+        await prisma.contractVersion.deleteMany({
+          where: { contractId: { in: [...contractIds, formalDraftContractId] } }
+        });
+        await prisma.contract.deleteMany({
+          where: { id: { in: [...contractIds, formalDraftContractId] } }
+        });
         await prisma.project.deleteMany({ where: { id: projectId } });
         await prisma.position.deleteMany({
           where: {

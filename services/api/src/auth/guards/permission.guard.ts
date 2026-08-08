@@ -66,7 +66,7 @@ export class PermissionGuard implements CanActivate {
     );
     const projectId = anyProjectPositionScope
       ? undefined
-      : await this.extractProjectId(request);
+      : await this.extractProjectId(request, requiredAction);
     const includeAnyProjectRole =
       !projectId &&
       (Boolean(requiredPositions?.length) && !requiredAction ||
@@ -374,7 +374,10 @@ export class PermissionGuard implements CanActivate {
     return false;
   }
 
-  private async extractProjectId(request: AuthenticatedRequest) {
+  private async extractProjectId(
+    request: AuthenticatedRequest,
+    requiredAction?: BusinessAction
+  ) {
     const expenseClaimId = request.params?.claimId;
     if (expenseClaimId) {
       const claim = await this.prisma.expenseClaim.findUnique({
@@ -472,7 +475,15 @@ export class PermissionGuard implements CanActivate {
 
     const contractVersionIdFromParams = request.params?.contractVersionId;
     if (contractVersionIdFromParams) {
-      return this.extractProjectIdFromContractVersion(contractVersionIdFromParams);
+      const projectId = await this.extractProjectIdFromContractVersion(contractVersionIdFromParams);
+      if (projectId || requiredAction !== "contract.draft.delete") {
+        return projectId;
+      }
+      const receipt = await this.prisma.contractPristineDraftDeletionReceipt.findUnique({
+        where: { contractVersionId: contractVersionIdFromParams },
+        select: { projectId: true }
+      });
+      return receipt?.projectId;
     }
 
     const contractIdFromParams = request.params?.contractId;
