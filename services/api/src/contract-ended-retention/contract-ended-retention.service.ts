@@ -88,32 +88,37 @@ export class ContractEndedApplicationRetentionService {
     if (!policy) {
       throw new ConflictException("结束申请保留策略尚未初始化，拒绝生成清理预览");
     }
-    const visibleContracts = projectIds.length
-      ? await this.prisma.contract.findMany({
-          where: { projectId: { in: projectIds } },
-          select: { id: true }
-        })
-      : [];
-    const visibleContractIds = visibleContracts.map((contract) => contract.id);
-    const where = {
-      status: { in: [...TERMINAL_STATUSES] },
-      OR: [
-        { endedAt: { not: null } },
-        { firstSubmittedAt: { not: null } }
-      ],
-      contractId: { in: visibleContractIds }
-    };
-    const [total, versions] = visibleContractIds.length
+    const terminalScope = projectIds.length
+      ? Prisma.sql`
+          FROM "ContractVersion" AS version
+          INNER JOIN "Contract" AS contract ON contract."id" = version."contractId"
+          WHERE contract."projectId" IN (${Prisma.join(projectIds)})
+            AND version."status" IN (${Prisma.join(TERMINAL_STATUSES)})
+            AND (version."endedAt" IS NOT NULL OR version."firstSubmittedAt" IS NOT NULL)
+        `
+      : null;
+    const [totalRows, versions] = terminalScope
       ? await Promise.all([
-          this.prisma.contractVersion.count({ where }),
-          this.prisma.contractVersion.findMany({
-            where,
-            orderBy: [{ endedAt: "asc" }, { id: "asc" }],
-            skip: (page - 1) * limit,
-            take: limit
-          })
+          this.prisma.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
+            SELECT COUNT(*)::bigint AS "total"
+            ${terminalScope}
+          `),
+          this.prisma.$queryRaw<EndedVersion[]>(Prisma.sql`
+            SELECT
+              version."id",
+              version."contractId",
+              version."status",
+              version."endedAt",
+              version."firstSubmittedAt",
+              version."abandonedAt"
+            ${terminalScope}
+            ORDER BY version."endedAt" ASC NULLS LAST, version."id" ASC
+            OFFSET ${(page - 1) * limit}
+            LIMIT ${limit}
+          `)
         ])
-      : [0, []] as const;
+      : [[{ total: 0n }], []] as const;
+    const total = Number(totalRows[0]?.total ?? 0n);
     const endedVersions = (versions as EndedVersion[]).filter(isRetainedEndedApplication);
     const contractIds = [...new Set(endedVersions.map((version) => version.contractId))];
     const versionIds = endedVersions.map((version) => version.id);

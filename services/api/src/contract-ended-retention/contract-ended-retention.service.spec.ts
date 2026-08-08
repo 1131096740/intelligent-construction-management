@@ -14,36 +14,37 @@ describe("ContractEndedApplicationRetentionService", () => {
   });
 
   function prisma(overrides: Record<string, unknown> = {}) {
+    const previewVersions = [
+      {
+        id: "version-ended",
+        contractId: "contract-ended",
+        status: "approval_rejected",
+        changeType: "original",
+        versionNo: 1,
+        endedAt: terminalAt,
+        firstSubmittedAt: terminalAt,
+        abandonReason: null,
+        abandonedAt: null
+      },
+      {
+        id: "version-effective",
+        contractId: "contract-effective",
+        status: "effective",
+        changeType: "original",
+        versionNo: 1,
+        endedAt: terminalAt,
+        firstSubmittedAt: terminalAt,
+        abandonReason: null,
+        abandonedAt: null
+      }
+    ];
     const client = {
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }])
       },
       contractVersion: {
         count: jest.fn().mockResolvedValue(1),
-        findMany: jest.fn().mockResolvedValue([
-          {
-            id: "version-ended",
-            contractId: "contract-ended",
-            status: "approval_rejected",
-            changeType: "original",
-            versionNo: 1,
-            endedAt: terminalAt,
-            firstSubmittedAt: terminalAt,
-            abandonReason: null,
-            abandonedAt: null
-          },
-          {
-            id: "version-effective",
-            contractId: "contract-effective",
-            status: "effective",
-            changeType: "original",
-            versionNo: 1,
-            endedAt: terminalAt,
-            firstSubmittedAt: terminalAt,
-            abandonReason: null,
-            abandonedAt: null
-          }
-        ]),
+        findMany: jest.fn().mockResolvedValue(previewVersions),
         findUnique: jest.fn()
       },
       contract: {
@@ -73,6 +74,9 @@ describe("ContractEndedApplicationRetentionService", () => {
           activatedAt: new Date("2026-08-01T00:00:00.000Z")
         })
       },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ total: 1n }])
+        .mockResolvedValueOnce(previewVersions),
       auditLog: { create: jest.fn() },
       ...overrides
     };
@@ -122,19 +126,37 @@ describe("ContractEndedApplicationRetentionService", () => {
         remainingDays: 30
       })
     ]);
-    expect(client.contractVersion.findMany).toHaveBeenCalledWith({
-      where: {
-        status: { in: ["abandoned", "approval_rejected"] },
-        OR: [
-          { endedAt: { not: null } },
-          { firstSubmittedAt: { not: null } }
-        ],
-        contractId: { in: ["contract-ended"] }
-      },
-      orderBy: [{ endedAt: "asc" }, { id: "asc" }],
-      skip: 0,
-      take: 50
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(client.contract.findMany).toHaveBeenCalledTimes(1);
+    expect(client.contract.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["contract-ended"] } },
+      select: {
+        id: true,
+        projectId: true,
+        code: true,
+        name: true,
+        counterparty: true
+      }
     });
+  });
+
+  it("returns an empty preview without querying terminal records outside the director's project scope", async () => {
+    const client = prisma();
+    const service = new ContractEndedApplicationRetentionService(client as never, {
+      record: jest.fn()
+    } as never, {
+      effectiveRoleKeysByProject: jest.fn().mockResolvedValue(new Map([
+        ["project-1", []]
+      ]))
+    } as never);
+
+    await expect(service.preview("director-1")).resolves.toMatchObject({
+      total: 0,
+      candidates: [],
+      heldRecords: []
+    });
+    expect(client.$queryRaw).not.toHaveBeenCalled();
+    expect(client.contract.findMany).not.toHaveBeenCalled();
   });
 
   it("records a director hold and gives an overdue release a thirty-day buffer", async () => {
@@ -433,6 +455,19 @@ describe("ContractEndedApplicationRetentionService", () => {
         ]),
         findUnique: jest.fn().mockResolvedValue(crossProjectVersion)
       },
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{ total: 501n }])
+        .mockResolvedValueOnce([
+          {
+            id: "version-ended",
+            contractId: "contract-ended",
+            status: "approval_rejected",
+            endedAt: terminalAt,
+            firstSubmittedAt: terminalAt,
+            abandonReason: null,
+            abandonedAt: null
+          }
+        ]),
       contract: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -475,13 +510,8 @@ describe("ContractEndedApplicationRetentionService", () => {
       hasMore: false,
       candidates: [expect.objectContaining({ contractVersionId: "version-ended" })]
     });
-    expect(client.contractVersion.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        contractId: { in: ["contract-ended"] }
-      }),
-      skip: 500,
-      take: 1
-    }));
+    expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(client.contract.findMany).toHaveBeenCalledTimes(1);
     await expect(
       service.createHold("version-project-2", "project-director-1", { reason: "越权保留" })
     ).rejects.toBeInstanceOf(ForbiddenException);
