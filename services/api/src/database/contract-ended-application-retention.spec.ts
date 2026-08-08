@@ -32,8 +32,11 @@ describe("contract ended application retention PostgreSQL evidence", () => {
     const suffix = `${process.pid}-${Date.now()}`;
     const directorId = `ended-retention-director-${suffix}`;
     const projectId = `ended-retention-project-${suffix}`;
+    const inactiveProjectId = `ended-retention-inactive-project-${suffix}`;
     const contractId = `ended-retention-contract-${suffix}`;
     const endedVersionId = `${contractId}-ended-v1`;
+    const inactiveContractId = `ended-retention-inactive-contract-${suffix}`;
+    const inactiveVersionId = `${inactiveContractId}-ended-v1`;
     const effectiveContractId = `ended-retention-effective-contract-${suffix}`;
     const effectiveVersionId = `${effectiveContractId}-v1`;
     const terminalAt = new Date("2026-08-31T10:15:00.000Z");
@@ -42,11 +45,27 @@ describe("contract ended application retention PostgreSQL evidence", () => {
       await prisma.user.create({
         data: { id: directorId, name: "结束申请保留测试合同部主管", mustChangePassword: false }
       });
+      const contractDirectorPosition = await prisma.position.upsert({
+        where: { key: "contract_director" },
+        update: {},
+        create: { key: "contract_director", name: "合同部主管" }
+      });
+      await prisma.userPosition.create({
+        data: { userId: directorId, positionId: contractDirectorPosition.id }
+      });
       await prisma.project.create({
         data: {
           id: projectId,
           code: `ENDED-RETENTION-${suffix}`,
           name: "结束申请保留 PostgreSQL 测试项目"
+        }
+      });
+      await prisma.project.create({
+        data: {
+          id: inactiveProjectId,
+          code: `ENDED-RETENTION-INACTIVE-${suffix}`,
+          name: "结束申请保留停用项目",
+          isActive: false
         }
       });
       await prisma.contract.create({
@@ -69,11 +88,33 @@ describe("contract ended application retention PostgreSQL evidence", () => {
           ownerUserId: directorId
         }
       });
+      await prisma.contract.create({
+        data: {
+          id: inactiveContractId,
+          projectId: inactiveProjectId,
+          temporaryCode: `TMP-INACTIVE-RETENTION-${suffix}`,
+          name: "停用项目结束申请",
+          counterparty: "测试相对方",
+          ownerUserId: directorId
+        }
+      });
       await prisma.contractVersion.createMany({
         data: [
           {
             id: endedVersionId,
             contractId,
+            versionNo: 1,
+            changeType: "original",
+            status: "approval_rejected",
+            endedAt: terminalAt,
+            amountCents: 100n,
+            draftData: {},
+            templateSnapshot: {},
+            clauseSnapshot: []
+          },
+          {
+            id: inactiveVersionId,
+            contractId: inactiveContractId,
             versionNo: 1,
             changeType: "original",
             status: "approval_rejected",
@@ -125,6 +166,9 @@ describe("contract ended application retention PostgreSQL evidence", () => {
       ]);
       expect(beforeExpiry.candidates).not.toEqual(
         expect.arrayContaining([expect.objectContaining({ contractVersionId: effectiveVersionId })])
+      );
+      expect(beforeExpiry.candidates).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ contractVersionId: inactiveVersionId })])
       );
       expect(beforeExpiry.executionAllowed).toBe(false);
 
@@ -179,18 +223,19 @@ describe("contract ended application retention PostgreSQL evidence", () => {
       })).resolves.toEqual({ status: "approval_rejected" });
     } finally {
       await prisma.auditLog.deleteMany({
-        where: { businessId: { in: [endedVersionId, effectiveVersionId] } }
+        where: { businessId: { in: [endedVersionId, inactiveVersionId, effectiveVersionId] } }
       });
       await prisma.contractEndedApplicationRetentionHold.deleteMany({
-        where: { contractVersionId: { in: [endedVersionId, effectiveVersionId] } }
+        where: { contractVersionId: { in: [endedVersionId, inactiveVersionId, effectiveVersionId] } }
       });
       await prisma.contractVersion.deleteMany({
-        where: { id: { in: [endedVersionId, effectiveVersionId] } }
+        where: { id: { in: [endedVersionId, inactiveVersionId, effectiveVersionId] } }
       });
       await prisma.contract.deleteMany({
-        where: { id: { in: [contractId, effectiveContractId] } }
+        where: { id: { in: [contractId, inactiveContractId, effectiveContractId] } }
       });
-      await prisma.project.deleteMany({ where: { id: projectId } });
+      await prisma.project.deleteMany({ where: { id: { in: [projectId, inactiveProjectId] } } });
+      await prisma.userPosition.deleteMany({ where: { userId: directorId } });
       await prisma.user.deleteMany({ where: { id: directorId } });
       await prisma.$disconnect();
     }
