@@ -5,6 +5,13 @@ const migrationsPath = join(process.cwd(), "prisma/migrations");
 const m54Name = "20260717120000_approval_assignee_and_signature_snapshots";
 const m55Name = "20260717130000_contract_formal_documents_authorizations_and_seal_tasks";
 const migrationPath = join(migrationsPath, m55Name, "migration.sql");
+const counterpartyFormalFilesMigrationName =
+  "20260808070000_contract_counterparty_signed_formal_files";
+const counterpartyFormalFilesMigrationPath = join(
+  migrationsPath,
+  counterpartyFormalFilesMigrationName,
+  "migration.sql"
+);
 
 function validateM55(sql: string) {
   expect(sql.trimStart()).toMatch(/^BEGIN;/u);
@@ -232,6 +239,20 @@ describe("M55 contract governance evidence schema", () => {
       /model ApprovalFormGenerationClaim[\s\S]*?approvalInstanceId\s+String\s+@id[\s\S]*?uploadedFileId\s+String\?\s+@unique[\s\S]*?pdfDocumentId\s+String\?\s+@unique/u
     );
     expect(schema).not.toMatch(/model ContractSealTask[\s\S]*?contractVersionId\s+String\s+@unique/u);
+  });
+
+  it("extends formal file purposes for counterparty originals and previews without data writes", () => {
+    expect(existsSync(counterpartyFormalFilesMigrationPath)).toBe(true);
+    const sql = readFileSync(counterpartyFormalFilesMigrationPath, "utf8");
+    expect(sql.trimStart()).toMatch(/^BEGIN;/u);
+    expect(sql.trimEnd()).toMatch(/COMMIT;$/u);
+    expect(sql).toMatch(
+      /DROP CONSTRAINT "ContractFormalFile_purpose_check"[\s\S]*?ADD CONSTRAINT "ContractFormalFile_purpose_check"[\s\S]*?'approval_original'[\s\S]*?'counterparty_signed'[\s\S]*?'counterparty_signed_preview'[\s\S]*?'mutually_signed_final'[\s\S]*?NOT VALID;/u
+    );
+    expect(sql).toMatch(
+      /DROP INDEX "ContractFormalFile_active_purpose_key"[\s\S]*?CREATE UNIQUE INDEX "ContractFormalFile_active_purpose_key"[\s\S]*?WHERE "status" = 'active'[\s\S]*?AND "purpose" IN \([\s\S]*?'approval_original'[\s\S]*?'counterparty_signed_preview'[\s\S]*?'mutually_signed_final'[\s\S]*?\);/u
+    );
+    expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/iu);
   });
 
   it.each([

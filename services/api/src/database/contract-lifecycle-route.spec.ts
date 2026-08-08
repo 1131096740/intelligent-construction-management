@@ -5,6 +5,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { PDFDocument } from "pdf-lib";
+import { apiJsonReplacer } from "../api-json-replacer";
 import { PermissionGuard } from "../auth/guards/permission.guard";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { AuditService } from "../audit/audit.service";
@@ -311,6 +312,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           ]
         }).compile();
         app = moduleRef.createNestApplication();
+        app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
         app.useGlobalGuards(new PermissionGuard(new Reflector(), prisma as never));
         app.useGlobalPipes(
           new ValidationPipe({
@@ -521,8 +523,10 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           index: number
         ) => {
           const originalFileId = `lifecycle-route-counterparty-original-file-${index}-${submissionSuffix}`;
+          const secondOriginalFileId = `lifecycle-route-counterparty-original-file-${index}-second-${submissionSuffix}`;
           const previewFileId = `lifecycle-route-counterparty-preview-file-${index}-${submissionSuffix}`;
           const originalFormalFileId = `lifecycle-route-counterparty-original-${index}-${submissionSuffix}`;
+          const secondOriginalFormalFileId = `lifecycle-route-counterparty-original-${index}-second-${submissionSuffix}`;
           const previewFormalFileId = `lifecycle-route-counterparty-preview-${index}-${submissionSuffix}`;
           const leaseToken = `lifecycle-route-lease-${index}-${submissionSuffix}`;
           await prisma.contract.create({
@@ -547,6 +551,10 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               status: "draft",
               amountCents: 100n,
               amountLimitType: "capped",
+              settlementMode: "settlement_required",
+              settlementModeSource: "rule",
+              settlementModeConfirmedByUserId: contractDirectorId,
+              settlementModeConfirmedAt: new Date(),
               pricingNature: "fixed_total",
               amountSource: "manual",
               invoiceType: "vat_special",
@@ -607,7 +615,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               expiresAt: new Date(Date.now() + 120_000)
             }
           });
-          for (const fileId of [originalFileId, previewFileId]) {
+          for (const fileId of [originalFileId, secondOriginalFileId, previewFileId]) {
             await prisma.fileObject.create({
               data: {
                 id: fileId,
@@ -649,6 +657,20 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                 declaredAt: new Date()
               },
               {
+                id: secondOriginalFormalFileId,
+                contractVersionId: versionId,
+                purpose: "counterparty_signed",
+                fileId: secondOriginalFileId,
+                contentSha256: sourcePdfSha256,
+                pageCount: 1,
+                sourceRevision: 1,
+                status: "active",
+                uploadedByUserId: ownerId,
+                declarationSnapshot: { kind: "counterparty_signed_original" },
+                declaredByUserId: ownerId,
+                declaredAt: new Date()
+              },
+              {
                 id: previewFormalFileId,
                 contractVersionId: versionId,
                 purpose: "counterparty_signed_preview",
@@ -671,8 +693,10 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             contractId,
             versionId,
             originalFileId,
+            secondOriginalFileId,
             previewFileId,
             originalFormalFileId,
+            secondOriginalFormalFileId,
             previewFormalFileId,
             leaseToken
           };
@@ -728,12 +752,26 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             seedGovernedSubmissionDraft(conflictedContractId, conflictedVersionId, 1),
             seedGovernedSubmissionDraft(rollbackContractId, rollbackVersionId, 2)
           ]);
+          const conflictedFinalFileId = `lifecycle-route-final-file-${submissionSuffix}`;
+          await prisma.fileObject.create({
+            data: {
+              id: conflictedFinalFileId,
+              bucket: "local-contract-lifecycle-test",
+              objectKey: `contract-lifecycle/${conflictedFinalFileId}.pdf`,
+              originalName: "合同双方签署测试文件.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: sourcePdfBuffer.length,
+              uploadedByUserId: ownerId,
+              contentSha256: sourcePdfSha256,
+              storageStatus: "active"
+            }
+          });
           await prisma.contractFormalFile.create({
             data: {
               contractVersionId: conflictedVersionId,
               purpose: "mutually_signed_final",
-              fileId: `lifecycle-route-final-file-${submissionSuffix}`,
-              contentSha256: "a".repeat(64),
+              fileId: conflictedFinalFileId,
+              contentSha256: sourcePdfSha256,
               pageCount: 1,
               sourceRevision: 1,
               status: "active",
@@ -850,6 +888,12 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                   {
                     formalFileId: submittedFixture.originalFormalFileId,
                     fileId: submittedFixture.originalFileId,
+                    contentSha256: sourcePdfSha256,
+                    sourceRevision: 1
+                  },
+                  {
+                    formalFileId: submittedFixture.secondOriginalFormalFileId,
+                    fileId: submittedFixture.secondOriginalFileId,
                     contentSha256: sourcePdfSha256,
                     sourceRevision: 1
                   }
@@ -993,8 +1037,9 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               id: {
                 in: submissionVersionIds.flatMap((_versionId, index) => [
                   `lifecycle-route-counterparty-original-file-${index}-${submissionSuffix}`,
+                  `lifecycle-route-counterparty-original-file-${index}-second-${submissionSuffix}`,
                   `lifecycle-route-counterparty-preview-file-${index}-${submissionSuffix}`
-                ])
+                ]).concat(`lifecycle-route-final-file-${submissionSuffix}`)
               }
             }
           });
