@@ -120,7 +120,7 @@ describe("ContractReadService", () => {
         approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
         archiveFiles: [],
         context: Record<string, unknown>
-      ): Array<{ key: string; enabled: boolean }>;
+      ): Array<{ key: string; enabled: boolean; requiresPassword: boolean }>;
     }).contractActions(
       "pending_archive_confirm",
       ["contract_director"],
@@ -140,7 +140,11 @@ describe("ContractReadService", () => {
 
     expect(actions).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "return_final_contract", enabled: true }),
-      expect.objectContaining({ key: "confirm_final_contract", enabled: true })
+      expect.objectContaining({
+        key: "confirm_final_contract",
+        enabled: true,
+        requiresPassword: false
+      })
     ]));
   });
 

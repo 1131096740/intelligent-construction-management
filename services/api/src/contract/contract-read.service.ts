@@ -2390,7 +2390,7 @@ export class ContractReadService {
           enabled: context?.governed
             ? Boolean(context.activeFinal && context.activeFinal.uploadedByUserId !== context.actorUserId)
             : true,
-          requiresPassword: true
+          requiresPassword: context?.governed ? false : true
         }),
         ...signingMaterialChangeActions,
         ...workflowActions
