@@ -616,6 +616,26 @@ export class ContractFormalFileService {
     };
   }
 
+  async inspectOwnedStoredFinalArchive(fileId: string, actorUserId: string) {
+    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    if (!file || file.storageStatus !== "active") {
+      throw this.deny("所选合同最终归档文件不存在或当前不可用，请重新上传", "contract.formal_file.file_denied");
+    }
+    if (file.uploadedByUserId !== actorUserId) {
+      throw this.deny("只能关联本人本次上传的合同最终归档文件", "contract.formal_file.file_denied");
+    }
+    const inspected = await this.inspectLockedFinalArchive(fileId, file);
+    return {
+      ...inspected,
+      fileSnapshot: {
+        storageStatus: file.storageStatus,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        contentSha256: file.contentSha256
+      }
+    };
+  }
+
   async inspectLinkedStoredPdf(
     fileId: string,
     expectedSha256: string,
@@ -628,6 +648,30 @@ export class ContractFormalFileService {
     const inspected = await this.inspectLockedPdf(fileId, file);
     if (inspected.sha256 !== expectedSha256 || inspected.pageCount !== expectedPageCount) {
       throw this.deny("已关联的合同文件完整性校验失败，请重新上传", "contract.formal_file.file_denied");
+    }
+    return {
+      ...inspected,
+      fileSnapshot: {
+        storageStatus: file.storageStatus,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        contentSha256: file.contentSha256
+      }
+    };
+  }
+
+  async inspectLinkedStoredFinalArchive(
+    fileId: string,
+    expectedSha256: string,
+    expectedPageCount: number
+  ) {
+    const file = await this.prisma.fileObject.findUnique({ where: { id: fileId } });
+    if (!file || file.storageStatus !== "active") {
+      throw this.deny("已关联的合同最终归档文件当前不可用，请重新上传", "contract.formal_file.file_denied");
+    }
+    const inspected = await this.inspectLockedFinalArchive(fileId, file);
+    if (inspected.sha256 !== expectedSha256 || inspected.pageCount !== expectedPageCount) {
+      throw this.deny("已关联的合同最终归档文件完整性校验失败，请重新上传", "contract.formal_file.file_denied");
     }
     return {
       ...inspected,
@@ -718,6 +762,74 @@ export class ContractFormalFileService {
         ? error.message
         : "无法读取合同 PDF 原件，请确认文件未损坏、未加密后重新上传";
       throw this.deny(message, "contract.formal_file.file_denied");
+    }
+  }
+
+  private async inspectLockedFinalArchive(
+    fileId: string,
+    locked: {
+      id: string;
+      originalName?: string;
+      uploadedByUserId: string;
+      storageStatus: string;
+      mimeType: string;
+      sizeBytes: number;
+      contentSha256: string | null;
+    }
+  ) {
+    if (!ALLOWED_COUNTERPARTY_MIME.has(locked.mimeType)) {
+      throw this.deny(
+        "合同最终归档文件仅支持 PDF、DOCX、PNG 或 JPEG 格式",
+        "contract.formal_file.file_denied"
+      );
+    }
+    if (locked.sizeBytes <= 0 || locked.sizeBytes > Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600)) {
+      throw this.deny("合同最终归档文件为空或超过系统允许大小，请重新上传", "contract.formal_file.file_denied");
+    }
+    if (!locked.contentSha256 || !SHA256_PATTERN.test(locked.contentSha256)) {
+      throw this.deny("合同最终归档文件缺少完整性摘要，请重新上传", "contract.formal_file.file_denied");
+    }
+    let loaded: Awaited<ReturnType<FileService["getFileBuffer"]>>;
+    try {
+      loaded = await this.files!.getFileBuffer(fileId);
+    } catch {
+      throw this.deny("合同最终归档文件暂时无法读取，请重新上传或稍后重试", "contract.formal_file.file_denied");
+    }
+    if (
+      loaded.file.id !== locked.id ||
+      loaded.file.storageStatus !== locked.storageStatus ||
+      loaded.file.mimeType !== locked.mimeType ||
+      loaded.file.sizeBytes !== locked.sizeBytes ||
+      loaded.file.contentSha256 !== locked.contentSha256 ||
+      loaded.buffer.length !== locked.sizeBytes
+    ) {
+      throw this.deny("合同最终归档文件在校验期间发生变化，请重新上传", "contract.formal_file.file_denied");
+    }
+    const sha256 = createHash("sha256").update(loaded.buffer).digest("hex");
+    if (sha256 !== locked.contentSha256) {
+      throw this.deny("合同最终归档文件完整性校验失败，请重新上传", "contract.formal_file.file_denied");
+    }
+    try {
+      if (locked.mimeType === PDF_MIME) {
+        return { sha256, pageCount: (await inspectSignedPdf(loaded.buffer)).pageCount };
+      }
+      if (locked.mimeType === DOCX_MIME) {
+        const preview = await convertDocxToPdf(Buffer.from(loaded.buffer));
+        return { sha256, pageCount: (await inspectSignedPdf(preview)).pageCount };
+      }
+      const preview = await mergeCounterpartyImagesToPdf([
+        { buffer: loaded.buffer, name: locked.originalName ?? fileId }
+      ]);
+      return { sha256, pageCount: preview.pageCount };
+    } catch {
+      throw this.deny(
+        locked.mimeType === DOCX_MIME
+          ? "合同最终归档 DOCX 转换失败，请上传 PDF 或图片格式"
+          : locked.mimeType === PDF_MIME
+            ? "无法读取合同最终归档 PDF，请确认文件未损坏、未加密后重新上传"
+            : "合同最终归档图片无法读取，请上传 PNG 或 JPEG 格式",
+        "contract.formal_file.file_denied"
+      );
     }
   }
 

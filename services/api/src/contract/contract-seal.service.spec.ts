@@ -386,7 +386,7 @@ describe("ContractSealService", () => {
       .rejects.toThrow("用章任务已被其他人处理");
   });
 
-  it("冻结经办人上传双方最终 PDF 后进入待归档确认", async () => {
+  it("合同员可上传页数不同的 DOCX 最终归档并进入待确认", async () => {
     const { tx, prisma, version, task } = harness();
     version.status = "seal_approved_pending_archive";
     Object.assign(version, { draftRevision: 4, changeType: "original", baseVersionId: null });
@@ -400,17 +400,18 @@ describe("ContractSealService", () => {
           .mockResolvedValueOnce({ id: "approval-original-1", pageCount: 3 })
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         create: jest.fn().mockImplementation(({ data }) => ({ id: "final-1", ...data }))
       },
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) }
     });
     const formalFiles = {
-      inspectOwnedStoredPdf: jest.fn().mockResolvedValue({
+      inspectOwnedStoredFinalArchive: jest.fn().mockResolvedValue({
         sha256: "a".repeat(64),
-        pageCount: 3,
+        pageCount: 7,
         fileSnapshot: {
           storageStatus: "active",
-          mimeType: "application/pdf",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           sizeBytes: 100,
           contentSha256: "a".repeat(64)
         }
@@ -425,7 +426,7 @@ describe("ContractSealService", () => {
       id: "file-final-1",
       uploadedByUserId: "handler-1",
       storageStatus: "active",
-      mimeType: "application/pdf",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       sizeBytes: 100,
       contentSha256: "a".repeat(64)
     }]);
@@ -449,8 +450,71 @@ describe("ContractSealService", () => {
       status: "active"
     });
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith({
-      where: { id: "version-1", status: "seal_approved_pending_archive" },
+      where: {
+        id: "version-1",
+        status: { in: ["seal_approved_pending_archive", "pending_archive_confirm"] }
+      },
       data: { status: "pending_archive_confirm" }
+    });
+  });
+
+  it("在归档确认前替换最终件，仅保留新选定版本为 active", async () => {
+    const { tx, prisma, version, task } = harness();
+    version.status = "pending_archive_confirm";
+    task.status = "completed";
+    tx.contractSealTask.findFirst.mockResolvedValue(task);
+    Object.assign(tx, {
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      contractFormalFile: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({ id: "approval-original-1", pageCount: 3 })
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: "final-old-1", fileId: "file-old" }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        create: jest.fn().mockImplementation(({ data }) => ({ id: "final-new-1", ...data }))
+      },
+      contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) }
+    });
+    const formalFiles = {
+      inspectOwnedStoredFinalArchive: jest.fn().mockResolvedValue({
+        sha256: "d".repeat(64),
+        pageCount: 1,
+        fileSnapshot: {
+          storageStatus: "active",
+          mimeType: "image/png",
+          sizeBytes: 100,
+          contentSha256: "d".repeat(64)
+        }
+      })
+    };
+    tx.$queryRaw.mockResolvedValueOnce([{
+      id: "file-final-new",
+      uploadedByUserId: "handler-1",
+      storageStatus: "active",
+      mimeType: "image/png",
+      sizeBytes: 100,
+      contentSha256: "d".repeat(64)
+    }]);
+    const service = new ContractSealService(prisma as never, undefined, formalFiles as never);
+
+    await expect(service.uploadFinal("version-1", "handler-1", {
+      fileId: "file-final-new",
+      sourceRevision: 4,
+      firstPartySignedOrStamped: true,
+      companySealCompleted: true,
+      crossPageSealCompleted: true,
+      signingDateCompleted: true,
+      onlyPermittedSignatureChanges: true,
+      documentOrderConfirmed: true
+    })).resolves.toMatchObject({
+      id: "final-new-1",
+      supersedesId: "final-old-1",
+      status: "active"
+    });
+
+    expect(tx.contractFormalFile.updateMany).toHaveBeenCalledWith({
+      where: { id: "final-old-1", status: "active" },
+      data: expect.objectContaining({ status: "superseded" })
     });
   });
 
@@ -473,7 +537,7 @@ describe("ContractSealService", () => {
       }
     });
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
-    const formalFiles = { inspectLinkedStoredPdf: jest.fn().mockResolvedValue({}) };
+    const formalFiles = { inspectLinkedStoredFinalArchive: jest.fn().mockResolvedValue({}) };
     const service = new ContractSealService(
       prisma as never,
       undefined,
@@ -482,7 +546,6 @@ describe("ContractSealService", () => {
     );
     await expect(service.confirmArchive("version-1", "director-1", {
       formalFileId: "final-1",
-      confirmationPassword: "password",
       firstPartySignedOrStamped: true,
       companySealCompleted: true,
       crossPageSealCompleted: true,
@@ -490,6 +553,105 @@ describe("ContractSealService", () => {
       onlyPermittedSignatureChanges: true,
       documentOrderConfirmed: true
     })).rejects.toThrow("上传人与归档确认人不能是同一人");
+  });
+
+  it("合同部主管语义确认最终归档时不重试密码，并冻结选定版本和审计", async () => {
+    const { tx, prisma, version, task } = harness();
+    version.status = "pending_archive_confirm";
+    task.status = "completed";
+    tx.contractSealTask.findFirst.mockResolvedValue(task);
+    const final = {
+      id: "final-1",
+      fileId: "file-final-1",
+      contentSha256: "a".repeat(64),
+      pageCount: 1,
+      sourceRevision: 4,
+      uploadedByUserId: "handler-1"
+    };
+    const original = {
+      id: "approval-original-1",
+      fileId: "file-original-1",
+      contentSha256: "b".repeat(64),
+      pageCount: 3,
+      sourceRevision: 4
+    };
+    Object.assign(tx, {
+      contractFormalFile: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce(final)
+          .mockResolvedValueOnce(original)
+          .mockResolvedValueOnce(final)
+          .mockResolvedValueOnce(original),
+        update: jest.fn().mockImplementation(({ data }) => ({ ...final, ...data }))
+      }
+    });
+    tx.$queryRaw.mockResolvedValueOnce([
+      {
+        id: "file-final-1",
+        storageStatus: "active",
+        mimeType: "image/png",
+        sizeBytes: 100,
+        contentSha256: "a".repeat(64)
+      },
+      {
+        id: "file-original-1",
+        storageStatus: "active",
+        mimeType: "application/pdf",
+        sizeBytes: 300,
+        contentSha256: "b".repeat(64)
+      }
+    ]);
+    const inspected = (sha256: string, mimeType: string, sizeBytes: number, pageCount: number) => ({
+      sha256,
+      pageCount,
+      fileSnapshot: { storageStatus: "active", mimeType, sizeBytes, contentSha256: sha256 }
+    });
+    const formalFiles = {
+      inspectLinkedStoredFinalArchive: jest.fn().mockResolvedValue(
+        inspected("a".repeat(64), "image/png", 100, 1)
+      ),
+      inspectLinkedStoredPdf: jest.fn().mockResolvedValue(
+        inspected("b".repeat(64), "application/pdf", 300, 3)
+      )
+    };
+    const auth = { confirmPassword: jest.fn() };
+    const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+    const activation = {
+      activate: jest.fn().mockResolvedValue({
+        effectiveVersion: { id: "version-1", status: "effective" },
+        supersededVersionId: null
+      })
+    };
+    const service = new ContractSealService(
+      prisma as never,
+      audit as never,
+      formalFiles as never,
+      auth as never,
+      activation as never
+    );
+    (service as unknown as {
+      assertStructuredPaymentStage: jest.Mock;
+    }).assertStructuredPaymentStage = jest.fn().mockResolvedValue(undefined);
+
+    await expect(service.confirmArchive("version-1", "director-1", {
+      formalFileId: "final-1",
+      firstPartySignedOrStamped: true,
+      companySealCompleted: true,
+      crossPageSealCompleted: true,
+      signingDateCompleted: true,
+      onlyPermittedSignatureChanges: true,
+      documentOrderConfirmed: true
+    } as never)).resolves.toMatchObject({ status: "effective" });
+
+    expect(auth.confirmPassword).not.toHaveBeenCalled();
+    expect((tx.contractFormalFile as unknown as { update: jest.Mock }).update).toHaveBeenCalledWith({
+      where: { id: "final-1" },
+      data: expect.objectContaining({ confirmedByUserId: "director-1" })
+    });
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "contract.archive.confirm",
+      businessId: "version-1"
+    }));
   });
 
   it("唯一公司合同主管兼经办人时允许所属项目合同员替代上传", async () => {
@@ -511,7 +673,7 @@ describe("ContractSealService", () => {
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) }
     });
     const formalFiles = {
-      inspectOwnedStoredPdf: jest.fn().mockResolvedValue({
+      inspectOwnedStoredFinalArchive: jest.fn().mockResolvedValue({
         sha256: "b".repeat(64),
         pageCount: 2,
         fileSnapshot: {
@@ -547,56 +709,6 @@ describe("ContractSealService", () => {
       onlyPermittedSignatureChanges: true,
       documentOrderConfirmed: true
     })).resolves.toMatchObject({ id: "final-2", uploadedByUserId: "project-contract-staff" });
-  });
-
-  it("双方最终版页数与审批原件不一致时拒绝上传", async () => {
-    const { tx, prisma, version, task } = harness();
-    version.status = "seal_approved_pending_archive";
-    task.status = "completed";
-    tx.contractSealTask.findFirst.mockResolvedValue(task);
-    Object.assign(tx, {
-      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
-      contractFormalFile: {
-        findFirst: jest.fn().mockResolvedValueOnce({ id: "approval-original-1", pageCount: 4 })
-      }
-    });
-    const formalFiles = {
-      inspectOwnedStoredPdf: jest.fn().mockResolvedValue({
-        sha256: "c".repeat(64),
-        pageCount: 3,
-        fileSnapshot: {
-          storageStatus: "active",
-          mimeType: "application/pdf",
-          sizeBytes: 100,
-          contentSha256: "c".repeat(64)
-        }
-      })
-    };
-    tx.fileObject.findUnique.mockResolvedValue({
-      storageStatus: "active",
-      uploadedByUserId: "handler-1",
-      contentSha256: "c".repeat(64)
-    });
-    tx.$queryRaw.mockResolvedValueOnce([{
-      id: "file-final-missing-page",
-      uploadedByUserId: "handler-1",
-      storageStatus: "active",
-      mimeType: "application/pdf",
-      sizeBytes: 100,
-      contentSha256: "c".repeat(64)
-    }]);
-    const service = new ContractSealService(prisma as never, undefined, formalFiles as never);
-
-    await expect(service.uploadFinal("version-1", "handler-1", {
-      fileId: "file-final-missing-page",
-      sourceRevision: 4,
-      firstPartySignedOrStamped: true,
-      companySealCompleted: true,
-      crossPageSealCompleted: true,
-      signingDateCompleted: true,
-      onlyPermittedSignatureChanges: true,
-      documentOrderConfirmed: true
-    })).rejects.toThrow("双方最终版页数与审批原件不一致");
   });
 
   it("通用合同必须存在可计算的非预付款直接付款阶段", async () => {
@@ -727,7 +839,7 @@ describe("ContractSealService", () => {
     }
   );
 
-  it("无上传权限时在读取 COS/PDF 前拒绝", async () => {
+  it("无上传权限时在读取 COS/最终归档文件前拒绝", async () => {
     const { tx, prisma, version, task } = harness();
     version.status = "seal_approved_pending_archive";
     task.status = "completed";
@@ -736,7 +848,7 @@ describe("ContractSealService", () => {
       contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) }
     });
     tx.position.findUnique.mockResolvedValue(null);
-    const formalFiles = { inspectOwnedStoredPdf: jest.fn() };
+    const formalFiles = { inspectOwnedStoredFinalArchive: jest.fn() };
     const service = new ContractSealService(prisma as never, undefined, formalFiles as never);
 
     await expect(service.uploadFinal("version-1", "outsider-1", {
@@ -749,13 +861,13 @@ describe("ContractSealService", () => {
       onlyPermittedSignatureChanges: true,
       documentOrderConfirmed: true
     })).rejects.toThrow("不符合唯一合同主管的替代上传条件");
-    expect(formalFiles.inspectOwnedStoredPdf).not.toHaveBeenCalled();
+    expect(formalFiles.inspectOwnedStoredFinalArchive).not.toHaveBeenCalled();
   });
 
-  it("无归档确认权限时在读取 COS/PDF 和校验密码前拒绝", async () => {
+  it("无归档确认权限时在读取 COS/最终归档文件前拒绝", async () => {
     const { tx, prisma } = harness();
     tx.position.findUnique.mockResolvedValue(null);
-    const formalFiles = { inspectLinkedStoredPdf: jest.fn() };
+    const formalFiles = { inspectLinkedStoredFinalArchive: jest.fn() };
     const auth = { confirmPassword: jest.fn() };
     const service = new ContractSealService(
       prisma as never,
@@ -766,7 +878,6 @@ describe("ContractSealService", () => {
 
     await expect(service.confirmArchive("version-1", "outsider-1", {
       formalFileId: "final-1",
-      confirmationPassword: "password",
       firstPartySignedOrStamped: true,
       companySealCompleted: true,
       crossPageSealCompleted: true,
@@ -774,7 +885,7 @@ describe("ContractSealService", () => {
       onlyPermittedSignatureChanges: true,
       documentOrderConfirmed: true
     })).rejects.toThrow("当前账号无权处理该合同用章任务");
-    expect(formalFiles.inspectLinkedStoredPdf).not.toHaveBeenCalled();
+    expect(formalFiles.inspectLinkedStoredFinalArchive).not.toHaveBeenCalled();
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
@@ -841,9 +952,9 @@ describe("ContractSealService", () => {
       }
     });
     const formalFiles = {
-      inspectLinkedStoredPdf: jest.fn()
-        .mockResolvedValueOnce(snapshot("a".repeat(64)))
-        .mockResolvedValueOnce(snapshot("b".repeat(64)))
+      inspectLinkedStoredFinalArchive: jest.fn()
+        .mockResolvedValueOnce(snapshot("a".repeat(64))),
+      inspectLinkedStoredPdf: jest.fn().mockResolvedValue(snapshot("b".repeat(64)))
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ContractSealService(
@@ -855,7 +966,6 @@ describe("ContractSealService", () => {
 
     await expect(service.confirmArchive("version-1", "director-1", {
       formalFileId: "final-1",
-      confirmationPassword: "password",
       firstPartySignedOrStamped: true,
       companySealCompleted: true,
       crossPageSealCompleted: true,

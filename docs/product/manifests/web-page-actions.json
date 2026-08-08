@@ -278,7 +278,7 @@
         "event": "call",
         "handler": "delegateContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1346,
+        "sourceLine": 1345,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -343,7 +343,7 @@
         "event": "call",
         "handler": "downloadContractApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1302,
+        "sourceLine": 1301,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -408,7 +408,7 @@
         "event": "call",
         "handler": "remindContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1317,
+        "sourceLine": 1316,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -605,7 +605,7 @@
         "event": "call",
         "handler": "transferContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1331,
+        "sourceLine": 1330,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -735,7 +735,7 @@
         "event": "call",
         "handler": "associateContractArchiveFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1421,
+        "sourceLine": 1420,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -800,7 +800,7 @@
         "event": "call",
         "handler": "confirmContractArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1436,
+        "sourceLine": 1435,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -865,7 +865,7 @@
         "event": "call",
         "handler": "generateContractPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1451,
+        "sourceLine": 1450,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -930,7 +930,7 @@
         "event": "call",
         "handler": "uploadContractArchivePrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1405,
+        "sourceLine": 1404,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1565,7 +1565,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1526,
+        "sourceLine": 1525,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2904,7 +2904,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1559,
+        "sourceLine": 1558,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3021,7 +3021,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1547,
+        "sourceLine": 1546,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3086,7 +3086,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1481,
+        "sourceLine": 1480,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3151,7 +3151,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1511,
+        "sourceLine": 1510,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3216,7 +3216,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1496,
+        "sourceLine": 1495,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3281,7 +3281,7 @@
         "event": "call",
         "handler": "uploadContractFinalPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1465,
+        "sourceLine": 1464,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3417,7 +3417,7 @@
         "event": "call",
         "handler": "approveGovernedContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1375,
+        "sourceLine": 1374,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3482,7 +3482,7 @@
         "event": "call",
         "handler": "approveLegacyContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1361,
+        "sourceLine": 1360,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3547,7 +3547,7 @@
         "event": "call",
         "handler": "completeContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1390,
+        "sourceLine": 1389,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6220,7 +6220,7 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1142,
+        "sourceLine": 1141,
         "sourceColumn": 6
       },
       "semantic": "business_write",

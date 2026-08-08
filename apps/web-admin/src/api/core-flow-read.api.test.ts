@@ -548,8 +548,7 @@ describe("core flow read API client", () => {
       crossPageSealCompleted: true,
       signingDateCompleted: true,
       onlyPermittedSignatureChanges: true,
-      documentOrderConfirmed: true,
-      confirmationPassword: "password"
+      documentOrderConfirmed: true
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([

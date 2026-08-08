@@ -48,10 +48,6 @@ export class ConfirmMutuallySignedContractDto extends CompleteContractSealDto {
 
   @IsBoolean()
   documentOrderConfirmed!: boolean;
-
-  @IsString()
-  @IsNotEmpty()
-  confirmationPassword!: string;
 }
 
 export class ReturnContractFormalFileDto {

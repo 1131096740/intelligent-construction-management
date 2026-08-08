@@ -244,7 +244,7 @@ export class DraftRetentionService {
         candidateCount: abandonedDrafts,
         oldestCandidateAt: iso(abandonedDraftOldest._min.abandonedAt),
         applyScope: "business_purge",
-        rule: "至少 7 天宽限且执行前重新锁定证明全程纯净；默认永远只预览"
+        rule: "至少 7 天宽限且执行前重新锁定证明全程纯净；仅 abandoned 原始草稿可候选，effective/superseded（含历史生效版本）永久排除；默认永远只预览"
       },
       {
         key: "contract_draft_checkpoint",

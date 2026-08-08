@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CORE_ARCHIVE_UPLOAD_POLICY,
+  FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY,
   PDF_ARCHIVE_UPLOAD_POLICY,
   PRIVATE_FILE_UPLOAD_MAX_BYTES,
   SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY,
@@ -23,6 +24,15 @@ describe("file upload policy config", () => {
     expect(PDF_ARCHIVE_UPLOAD_POLICY).toEqual({
       acceptAttribute: "application/pdf",
       acceptText: "归档文件",
+      limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
+      limitText: "不超过 100 MB"
+    });
+  });
+
+  it("allows final contract archives as PDF, DOCX, or common images", () => {
+    expect(FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY).toEqual({
+      acceptAttribute: ".pdf,.docx,.png,.jpg,.jpeg",
+      acceptText: "合同最终归档（PDF、Word 或常见图片）",
       limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
       limitText: "不超过 100 MB"
     });

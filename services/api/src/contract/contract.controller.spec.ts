@@ -135,7 +135,6 @@ const validContractRouteBodies = [
   }],
   ["contract.confirmMutuallySignedFinal", ContractController, "confirmMutuallySignedFinal", 2, {
     formalFileId: "formal-final",
-    confirmationPassword: "current password",
     firstPartySignedOrStamped: true,
     companySealCompleted: true,
     crossPageSealCompleted: true,
@@ -818,6 +817,7 @@ describe("ContractController authorization wiring", () => {
     ["delegateApproval", "contract.approve"],
     ["approveSeal", "contract.seal"],
     ["approveGovernedSeal", "contract.seal"],
+    ["uploadMutuallySignedFinal", "contract.archive.upload"],
     ["uploadArchiveFile", "contract.archive.upload"],
     ["confirmArchiveFile", "contract.archive.confirm"],
     ["returnMutuallySignedFinal", "contract.archive.confirm"],
@@ -840,7 +840,6 @@ describe("ContractController authorization wiring", () => {
 
   it.each([
     "completeGovernedSeal",
-    "uploadMutuallySignedFinal",
     "invalidateSigningForMaterialChange"
   ])("lets %s reach exact frozen-handler service authorization", (method) => {
     const handler = (ContractController.prototype as unknown as Record<string, object>)[method];
