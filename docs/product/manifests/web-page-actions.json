@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 244,
+    "registeredActionCount": 236,
     "pageActionCount": 44,
-    "backgroundActionCount": 200,
-    "reachableVueFileCount": 128,
+    "backgroundActionCount": 192,
+    "reachableVueFileCount": 125,
     "routeRootCount": 47,
     "totalVueFileCount": 143,
     "parsedVueFileCount": 143,
-    "reachableProductionModuleCount": 228,
-    "templateEventDirectiveCount": 843,
+    "reachableProductionModuleCount": 223,
+    "templateEventDirectiveCount": 829,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 234,
-    "candidateProductionMutationConsumerCount": 234,
-    "acceptedProductionMutationConsumerCount": 234,
-    "productionMutationConsumerPairCount": 234,
+    "coveredProductionMutationConsumerCount": 226,
+    "candidateProductionMutationConsumerCount": 226,
+    "acceptedProductionMutationConsumerCount": 226,
+    "productionMutationConsumerPairCount": 226,
     "blockerCount": 0
   },
   "evidence": {
     "totalProductionModuleCount": 249,
-    "reachableProductionModuleCount": 228,
+    "reachableProductionModuleCount": 223,
     "totalVueFileCount": 143,
     "parsedVueFileCount": 143
   },
@@ -278,7 +278,7 @@
         "event": "call",
         "handler": "delegateContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1345,
+        "sourceLine": 1346,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -343,7 +343,7 @@
         "event": "call",
         "handler": "downloadContractApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1301,
+        "sourceLine": 1302,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -408,7 +408,7 @@
         "event": "call",
         "handler": "remindContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1316,
+        "sourceLine": 1317,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -605,7 +605,7 @@
         "event": "call",
         "handler": "transferContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1330,
+        "sourceLine": 1331,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -735,7 +735,7 @@
         "event": "call",
         "handler": "associateContractArchiveFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1420,
+        "sourceLine": 1421,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -800,7 +800,7 @@
         "event": "call",
         "handler": "confirmContractArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1435,
+        "sourceLine": 1436,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -865,7 +865,7 @@
         "event": "call",
         "handler": "generateContractPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1450,
+        "sourceLine": 1451,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -930,7 +930,7 @@
         "event": "call",
         "handler": "uploadContractArchivePrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1404,
+        "sourceLine": 1405,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1565,7 +1565,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1525,
+        "sourceLine": 1526,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1631,7 +1631,7 @@
         "event": "call",
         "handler": "confirmCounterpartySignedFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 217,
+        "sourceLine": 245,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1697,7 +1697,7 @@
         "event": "call",
         "handler": "uploadCounterpartySignedFilesWithCapability",
         "kind": "background_call",
-        "sourceLine": 199,
+        "sourceLine": 227,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1763,7 +1763,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 180,
+        "sourceLine": 208,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1829,7 +1829,7 @@
         "event": "confirm",
         "handler": "confirmContractDocumentDownload",
         "kind": "event",
-        "sourceLine": 191,
+        "sourceLine": 183,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -1895,7 +1895,7 @@
         "event": "call",
         "handler": "queueContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 252,
+        "sourceLine": 238,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1961,7 +1961,7 @@
         "event": "call",
         "handler": "retryContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 289,
+        "sourceLine": 275,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2027,7 +2027,7 @@
         "event": "call",
         "handler": "uploadContractDocumentFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 270,
+        "sourceLine": 256,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2061,12 +2061,10 @@
             "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+            "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -2096,7 +2094,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 975,
+        "sourceLine": 956,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2334,7 +2332,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 942,
+        "sourceLine": 923,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2841,7 +2839,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1179,
+        "sourceLine": 1160,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2892,6 +2890,123 @@
       ]
     },
     {
+      "id": "contract-file.download-private-file-by-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "ownerRoutePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadContractPrivateFileByTicket",
+        "kind": "background_call",
+        "sourceLine": 1559,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "GET",
+            "path": "/files/:fileId/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "controller": "FileController",
+            "handler": "downloadTicketCapability",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadContractPrivateFileByTicket",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5241,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        },
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPrivateFileByTicket",
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/files/:fileId/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "controller": "FileController",
+            "handler": "createDownloadTicket",
+            "sourceFile": "services/api/src/file/file.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "downloadContractPrivateFileByTicket",
+              "downloadPrivateFileByTicket"
+            ]
+          },
+          "ticketFollowups": [
+            {
+              "kind": "ticket_followup",
+              "sourceLine": 5241,
+              "method": "GET",
+              "ticketField": "downloadUrl",
+              "bodyKind": "none"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "contract-file.download-ticket",
       "usage": "background",
       "routePaths": [
@@ -2906,7 +3021,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1546,
+        "sourceLine": 1547,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2971,7 +3086,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1480,
+        "sourceLine": 1481,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3036,7 +3151,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1510,
+        "sourceLine": 1511,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3101,7 +3216,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1495,
+        "sourceLine": 1496,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3166,7 +3281,7 @@
         "event": "call",
         "handler": "uploadContractFinalPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1464,
+        "sourceLine": 1465,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3215,608 +3330,6 @@
             "localCallChain": [
               "uploadContractFinalPrivateFileWithCapability",
               "uploadPrivateFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-formal-document.associate-approval",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadContractFormalApprovalFileWithCapability",
-        "kind": "background_call",
-        "sourceLine": 135,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "upload_contract_formal_approval_file",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "uploadContractFormalApprovalFile",
-          "method": "POST",
-          "path": "/contracts/:param/formal-files/approval",
-          "normalizedKey": "POST /contracts/:param/formal-files/approval",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contracts/:contractVersionId/formal-files/approval",
-            "normalizedKey": "POST /contracts/:param/formal-files/approval",
-            "controller": "ContractController",
-            "handler": "uploadFormalApprovalFile",
-            "sourceFile": "services/api/src/contract/contract.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.submit"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadContractFormalApprovalFileWithCapability",
-              "uploadContractFormalApprovalFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-formal-document.upload-file",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadContractFormalFileWithCapability",
-        "kind": "background_call",
-        "sourceLine": 116,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "upload_contract_workbench_private_file",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "uploadContractWorkbenchPrivateFile",
-          "method": "POST",
-          "path": "/contract-drafts/:param/files",
-          "normalizedKey": "POST /contract-drafts/:param/files",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-drafts/:contractVersionId/files",
-            "normalizedKey": "POST /contract-drafts/:param/files",
-            "controller": "ContractDraftController",
-            "handler": "uploadPrivateFile",
-            "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadContractFormalFileWithCapability",
-              "uploadContractWorkbenchPrivateFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.close-round",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "closeContractNegotiationRoundWithCapability",
-        "kind": "background_call",
-        "sourceLine": 302,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "close_contract_negotiation_round",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-          "wrapper": "closeContractNegotiationRound",
-          "method": "POST",
-          "path": "/contract-negotiation-rounds/:param/close",
-          "normalizedKey": "POST /contract-negotiation-rounds/:param/close",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-negotiation-rounds/:roundId/close",
-            "normalizedKey": "POST /contract-negotiation-rounds/:param/close",
-            "controller": "ContractDocumentController",
-            "handler": "closeNegotiationRound",
-            "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "closeContractNegotiationRoundWithCapability",
-              "closeContractNegotiationRound"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.dispose-difference",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "disposeContractDocumentDifferenceWithCapability",
-        "kind": "background_call",
-        "sourceLine": 229,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "dispose_contract_document_difference",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-          "wrapper": "disposeContractDocumentDifference",
-          "method": "POST",
-          "path": "/contract-document-differences/:param/disposition",
-          "normalizedKey": "POST /contract-document-differences/:param/disposition",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-document-differences/:differenceId/disposition",
-            "normalizedKey": "POST /contract-document-differences/:param/disposition",
-            "controller": "ContractDocumentController",
-            "handler": "disposeDifference",
-            "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "disposeContractDocumentDifferenceWithCapability",
-              "disposeContractDocumentDifference"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.open-revision-preview",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "openContractRevisionPreviewWithCapability",
-        "kind": "background_call",
-        "sourceLine": 248,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "open_contract_revision_preview",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-          "wrapper": "openContractRevisionPreview",
-          "method": "POST",
-          "path": "/contract-offline-revisions/:param/preview-download-ticket",
-          "normalizedKey": "POST /contract-offline-revisions/:param/preview-download-ticket",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-offline-revisions/:revisionId/preview-download-ticket",
-            "normalizedKey": "POST /contract-offline-revisions/:param/preview-download-ticket",
-            "controller": "ContractDocumentController",
-            "handler": "createOfflineRevisionPreviewDownloadTicket",
-            "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "openContractRevisionPreviewWithCapability",
-              "openContractRevisionPreview"
-            ]
-          },
-          "ticketFollowups": [
-            {
-              "kind": "ticket_followup",
-              "sourceLine": 170,
-              "method": "GET",
-              "ticketField": "downloadPath",
-              "bodyKind": "none"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.open-round",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "openContractNegotiationRoundWithCapability",
-        "kind": "background_call",
-        "sourceLine": 247,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "open_contract_negotiation_round",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-          "wrapper": "openContractNegotiationRound",
-          "method": "POST",
-          "path": "/contract-workbench/:param/negotiation-rounds",
-          "normalizedKey": "POST /contract-workbench/:param/negotiation-rounds",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-workbench/:contractVersionId/negotiation-rounds",
-            "normalizedKey": "POST /contract-workbench/:param/negotiation-rounds",
-            "controller": "ContractDocumentController",
-            "handler": "openNegotiationRound",
-            "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "openContractNegotiationRoundWithCapability",
-              "openContractNegotiationRound"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.retry-revision",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "retryContractOfflineRevisionWithCapability",
-        "kind": "background_call",
-        "sourceLine": 320,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "retry_contract_offline_revision",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-          "wrapper": "retryContractOfflineRevision",
-          "method": "POST",
-          "path": "/contract-offline-revisions/:param/retry",
-          "normalizedKey": "POST /contract-offline-revisions/:param/retry",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-offline-revisions/:revisionId/retry",
-            "normalizedKey": "POST /contract-offline-revisions/:param/retry",
-            "controller": "ContractDocumentController",
-            "handler": "retryOfflineRevision",
-            "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "retryContractOfflineRevisionWithCapability",
-              "retryContractOfflineRevision"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.upload-file",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadNegotiationFileWithCapability",
-        "kind": "background_call",
-        "sourceLine": 265,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "upload_contract_workbench_private_file",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "uploadContractWorkbenchPrivateFile",
-          "method": "POST",
-          "path": "/contract-drafts/:param/files",
-          "normalizedKey": "POST /contract-drafts/:param/files",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-drafts/:contractVersionId/files",
-            "normalizedKey": "POST /contract-drafts/:param/files",
-            "controller": "ContractDraftController",
-            "handler": "uploadPrivateFile",
-            "sourceFile": "services/api/src/contract-workbench/contract-draft.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadNegotiationFileWithCapability",
-              "uploadContractWorkbenchPrivateFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-negotiation.upload-revision",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同工作台/:contractId",
-        "/合同工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadContractNegotiationRevisionWithCapability",
-        "kind": "background_call",
-        "sourceLine": 284,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.draftOperationAvailableActions",
-        "key": "upload_contract_negotiation_revision",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-          "wrapper": "uploadContractNegotiationRevision",
-          "method": "POST",
-          "path": "/contract-workbench/:param/offline-revisions",
-          "normalizedKey": "POST /contract-workbench/:param/offline-revisions",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contract-workbench/:contractVersionId/offline-revisions",
-            "normalizedKey": "POST /contract-workbench/:param/offline-revisions",
-            "controller": "ContractDocumentController",
-            "handler": "uploadOfflineRevision",
-            "sourceFile": "services/api/src/contract-document/contract-document.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadContractNegotiationRevisionWithCapability",
-              "uploadContractNegotiationRevision"
             ]
           },
           "ticketFollowups": []
@@ -3904,7 +3417,7 @@
         "event": "call",
         "handler": "approveGovernedContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1374,
+        "sourceLine": 1375,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3969,7 +3482,7 @@
         "event": "call",
         "handler": "approveLegacyContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1360,
+        "sourceLine": 1361,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4034,7 +3547,7 @@
         "event": "call",
         "handler": "completeContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1389,
+        "sourceLine": 1390,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6377,7 +5890,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1155,
+        "sourceLine": 1136,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6443,7 +5956,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1090,
+        "sourceLine": 1071,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6509,7 +6022,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1110,
+        "sourceLine": 1091,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6575,7 +6088,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1131,
+        "sourceLine": 1112,
         "sourceColumn": 0
       },
       "semantic": "business_write",

@@ -687,3 +687,156 @@ describe("ContractFormalFileService.counterparty", () => {
     );
   });
 });
+
+describe("ContractFormalFileService.bridgeFromCounterparty", () => {
+  it("从已确认的乙方签章预览桥接创建审批文件，并使旧 approval_original 失效", async () => {
+    const bytes = await pdfBytes();
+    const pdf = await PDFDocument.load(bytes);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const preview = {
+      id: "preview-1",
+      fileId: "file-1",
+      contentSha256: sha256,
+      pageCount: pdf.getPageCount(),
+      sourceRevision: 3,
+      status: "active",
+      confirmedByUserId: "owner-1",
+      uploadedByUserId: "owner-1",
+      confirmationSnapshot: { confirmedAtRevision: 3 }
+    };
+    const { version, file, tx, prisma, files } = harness();
+    file.sizeBytes = bytes.length;
+    file.contentSha256 = sha256;
+    files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
+    tx.contractFormalFile.findFirst
+      .mockResolvedValueOnce(preview)
+      .mockResolvedValueOnce({
+        id: "old-formal-1",
+        fileId: "file-old",
+        contentSha256: "a".repeat(64),
+        pageCount: 1,
+        sourceRevision: 2,
+        status: "active",
+        declarationSnapshot: {}
+      });
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new ContractFormalFileService(prisma as never, audit as never, files as never);
+
+    const result = await service.freezeFromCounterparty(tx as never, version as never);
+
+    expect(result).toEqual(expect.objectContaining({
+      fileId: "file-1",
+      contentSha256: sha256,
+      pageCount: pdf.getPageCount(),
+      sourceRevision: 3
+    }));
+    const createData = tx.contractFormalFile.create.mock.calls[0][0].data;
+    expect(createData.purpose).toBe("approval_original");
+    expect(createData.fileId).toBe("file-1");
+    expect(createData.sourceRevision).toBe(3);
+    expect(createData.uploadedByUserId).toBe("owner-1");
+    expect(createData.declaredByUserId).toBe("owner-1");
+    expect(createData.supersedesId).toBe("old-formal-1");
+    expect(createData.declarationSnapshot).toMatchObject({
+      kind: "counterparty_bridge",
+      counterpartySigned: true,
+      counterpartyStamped: true,
+      crossPageSealCompleted: true,
+      documentOrderConfirmed: true,
+      authorizationsBeforeSignaturePageConfirmed: true
+    });
+    expect(createData.declarationSnapshot._counterparty_confirmed).toMatchObject({
+      confirmedAtRevision: 3,
+      formalFileId: "preview-1"
+    });
+    expect(tx.contractFormalFile.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          contractVersionId: "version-1",
+          purpose: "approval_original",
+          status: "active"
+        }),
+        data: expect.objectContaining({
+          status: "superseded",
+          invalidationReason: "已按乙方签章文件确认重新生成审批文件"
+        })
+      })
+    );
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.formal_file.approval_bridge_from_counterparty"
+    }));
+  });
+
+  it("预览未确认时桥接返回 null，由调用方回退旧审批文件路径", async () => {
+    const { version, tx, prisma, files } = harness();
+    tx.contractFormalFile.findFirst.mockResolvedValueOnce({
+      id: "preview-1",
+      fileId: "file-1",
+      contentSha256: "a".repeat(64),
+      pageCount: 1,
+      sourceRevision: 3,
+      status: "active",
+      confirmedByUserId: null,
+      confirmationSnapshot: null
+    });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    const result = await service.freezeFromCounterparty(tx as never, version as never);
+
+    expect(result).toBeNull();
+    expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
+  });
+
+  it("预览已过期时桥接返回 null", async () => {
+    const { version, tx, prisma, files } = harness();
+    tx.contractFormalFile.findFirst.mockResolvedValueOnce({
+      id: "preview-1",
+      fileId: "file-1",
+      contentSha256: "a".repeat(64),
+      pageCount: 1,
+      sourceRevision: 2,
+      status: "active",
+      confirmedByUserId: "owner-1",
+      confirmationSnapshot: { confirmedAtRevision: 2 }
+    });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    const result = await service.freezeFromCounterparty(tx as never, version as never);
+
+    expect(result).toBeNull();
+    expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
+  });
+
+  it("确认快照未落到当前修订时桥接返回 null", async () => {
+    const { version, tx, prisma, files } = harness();
+    tx.contractFormalFile.findFirst.mockResolvedValueOnce({
+      id: "preview-1",
+      fileId: "file-1",
+      contentSha256: "a".repeat(64),
+      pageCount: 1,
+      sourceRevision: 3,
+      status: "active",
+      confirmedByUserId: "owner-1",
+      confirmationSnapshot: { confirmedAtRevision: 2 }
+    });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    const result = await service.freezeFromCounterparty(tx as never, version as never);
+
+    expect(result).toBeNull();
+    expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
+  });
+
+  it("非治理版草稿直接返回 null，不查询预览", async () => {
+    const { version, tx, prisma, files } = harness();
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    const result = await service.freezeFromCounterparty(
+      tx as never,
+      { ...version, contractGovernanceVersion: 0 } as never
+    );
+
+    expect(result).toBeNull();
+    expect(tx.contractFormalFile.findFirst).not.toHaveBeenCalled();
+  });
+});

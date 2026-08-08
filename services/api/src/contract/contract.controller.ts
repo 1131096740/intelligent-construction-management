@@ -27,7 +27,10 @@ import { LEDGER_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { XLSX_MIME } from "../core-flow/ledger-excel";
 import { ContractNumberingService } from "../contract-workbench/contract-numbering.service";
 import { ContractWorkbenchService } from "../contract-workbench/contract-workbench.service";
-import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import {
+  ContractCutoverLegacyWrite,
+  ContractCutoverSurface
+} from "../contract-cutover/contract-cutover.decorators";
 import { ContractReadService } from "./contract-read.service";
 import { ContractService } from "./contract.service";
 import { AssignContractApprovalDto } from "./dto/assign-contract-approval.dto";
@@ -246,6 +249,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/formal-files/approval")
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.submit")
   uploadFormalApprovalFile(
     @Param("contractVersionId") contractVersionId: string,

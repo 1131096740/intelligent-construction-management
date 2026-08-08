@@ -40,8 +40,7 @@ describe("contract workspace responsive governance", () => {
       ["./workbench/ContractPartySection.vue", "contract-party"],
       ["./workbench/ContractClausesSection.vue", "contract-clauses"],
       ["./workbench/ContractDocumentsSection.vue", "contract-documents"],
-      ["./workbench/ContractDocumentCanvas.vue", "contract-document-canvas"],
-      ["./workbench/ContractNegotiationCanvas.vue", "contract-negotiation"]
+      ["./workbench/ContractDocumentCanvas.vue", "contract-document-canvas"]
     ] as const;
 
     for (const [relative, container] of components) {

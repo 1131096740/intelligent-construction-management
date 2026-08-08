@@ -173,14 +173,6 @@
       </div>
     </div>
 
-    <ContractNegotiationSection
-      :version-id="versionId"
-      :disabled="disabled"
-      :refresh-token="negotiationRefreshToken"
-      @selection="emit('negotiation-selection', $event)"
-      @changed="onNegotiationChanged"
-    />
-
     <t-dialog
       v-if="contractDocumentDownloadAction && contractDocumentDownloadAction.enabled"
       v-model:visible="downloadDialogVisible"
@@ -243,12 +235,6 @@ import {
   documentsWithStaleFlag,
   type WorkbenchDocument
 } from "./contract-bill-editor";
-import type {
-  ContractNegotiationRoundReadModel,
-  ContractOfflineRevisionReadModel
-} from "../../../api/contract-negotiation.api";
-import ContractNegotiationSection from "./ContractNegotiationSection.vue";
-
 async function queueContractDocumentWithCapability(
   contractVersionId: string,
   body: Parameters<typeof queueContractDocument>[1]
@@ -307,18 +293,12 @@ async function retryContractDocumentWithCapability(
 const props = defineProps<{
   workbench: ContractWorkbenchReadModel | null;
   disabled: boolean;
-  negotiationRefreshToken: number;
   prepareMutation?: () => Promise<ContractWorkbenchReadModel | null>;
   completeMutation?: (reload: boolean) => Promise<void>;
 }>();
 
 const emit = defineEmits<{
   (event: "reload"): void;
-  (event: "negotiation-changed"): void;
-  (event: "negotiation-selection", value: {
-    round: ContractNegotiationRoundReadModel;
-    revision: ContractOfflineRevisionReadModel;
-  } | null): void;
 }>();
 
 const purposeLabelMap: Record<string, string> = {
@@ -620,10 +600,6 @@ function documentStatusLabel(value: string) {
 
 function timeText(value: unknown): string {
   return typeof value === "string" && value ? new Date(value).toLocaleString() : "未完成";
-}
-
-function onNegotiationChanged() {
-  emit("negotiation-changed");
 }
 
 function warningsFor(document: WorkbenchDocument) {

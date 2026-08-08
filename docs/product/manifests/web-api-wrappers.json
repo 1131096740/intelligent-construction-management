@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 15,
-    "exportedFunctionCount": 455,
-    "transportWrapperCount": 435,
+    "exportedFunctionCount": 456,
+    "transportWrapperCount": 436,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 455,
-    "ticketFollowupCount": 2,
-    "requestEdgeCount": 454,
-    "productionConsumerCount": 342,
+    "mainRequestBindingCount": 457,
+    "ticketFollowupCount": 3,
+    "requestEdgeCount": 457,
+    "productionConsumerCount": 334,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -23,7 +23,7 @@
   },
   "evidence": {
     "productionModuleCount": 249,
-    "reachableProductionModuleCount": 228
+    "reachableProductionModuleCount": 223
   },
   "wrappers": [
     {
@@ -229,10 +229,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "disposeContractDocumentDifference",
@@ -259,10 +259,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "listContractNegotiationRounds",
@@ -289,10 +289,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "listContractOfflineRevisionHistory",
@@ -319,10 +319,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "openContractNegotiationRound",
@@ -349,10 +349,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "openContractRevisionPreview",
@@ -391,10 +391,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "retryContractOfflineRevision",
@@ -421,10 +421,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "uploadContractNegotiationRevision",
@@ -451,10 +451,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-negotiation.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createContractBusinessScenario",
@@ -1862,16 +1862,17 @@
         "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+      ],
       "testConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
-      ],
-      "unreachableConsumers": []
+      ]
     },
     {
       "name": "fetchContractDraftTransferCapabilities",
@@ -3397,10 +3398,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "uploadContractWorkbenchPrivateFile",
@@ -3432,11 +3433,12 @@
         "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
       ],
-      "unreachableConsumers": []
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
+        "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
+      ]
     },
     {
       "name": "uploadCounterpartySignedFiles",
@@ -4816,7 +4818,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6923,
+          "sourceLine": 6950,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4846,7 +4848,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6907,
+          "sourceLine": 6934,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -4876,7 +4878,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6907,
+          "sourceLine": 6934,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -4906,7 +4908,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5324,
+          "sourceLine": 5351,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -4935,7 +4937,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6907,
+          "sourceLine": 6934,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -4955,6 +4957,63 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadPrivateFileByTicket",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "none",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 76,
+          "method": "GET",
+          "path": "/files/:param/download-ticket-capability",
+          "normalizedPath": "/files/:param/download-ticket-capability",
+          "normalizedKey": "GET /files/:param/download-ticket-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadPrivateFileByTicket",
+              "getPrivateFileDownloadTicketCapability",
+              "readJson"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 82,
+          "method": "POST",
+          "path": "/files/:param/download-ticket",
+          "normalizedPath": "/files/:param/download-ticket",
+          "normalizedKey": "POST /files/:param/download-ticket",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "downloadPrivateFileByTicket",
+              "createPrivateFileDownloadTicket",
+              "postJson"
+            ]
+          ]
+        },
+        {
+          "kind": "ticket_followup",
+          "sourceLine": 5241,
+          "method": "GET",
+          "ticketField": "downloadUrl",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadPrivateFileByTicket"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -5025,7 +5084,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6950,
+          "sourceLine": 6977,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -5054,7 +5113,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6937,
+          "sourceLine": 6964,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5083,7 +5142,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6965,
+          "sourceLine": 6992,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5112,7 +5171,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6907,
+          "sourceLine": 6934,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -13668,6 +13727,54 @@
       "reason": "No production consumer; retained only by API unit tests."
     },
     {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "closeContractNegotiationRound",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "disposeContractDocumentDifference",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "listContractNegotiationRounds",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "listContractOfflineRevisionHistory",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "openContractNegotiationRound",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "openContractRevisionPreview",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "retryContractOfflineRevision",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "wrapper": "uploadContractNegotiationRevision",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "abandonContractDraft",
       "classification": "test_only",
@@ -13904,6 +14011,12 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "wrapper": "updateLayoutTemplateVersion",
+      "classification": "test_only",
+      "reason": "No production consumer; retained only by API unit tests."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "uploadContractFormalApprovalFile",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests."
     },

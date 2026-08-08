@@ -3,72 +3,13 @@ import { describe, expect, it } from "vitest";
 
 const page = readFileSync(new URL("../ContractWorkbenchPage.vue", import.meta.url), "utf8");
 const documents = readFileSync(new URL("./ContractDocumentsSection.vue", import.meta.url), "utf8");
-const section = readFileSync(new URL("./ContractNegotiationSection.vue", import.meta.url), "utf8");
-const canvas = readFileSync(new URL("./ContractNegotiationCanvas.vue", import.meta.url), "utf8");
-const api = readFileSync(new URL("../../../api/contract-negotiation.api.ts", import.meta.url), "utf8");
 
-describe("contract negotiation workbench structure", () => {
-  it("keeps negotiation comparison in the central canvas and readiness in the sidebar", () => {
-    expect(page).toContain("ContractNegotiationCanvas");
-    expect(page).toMatch(/document-canvas-slot[\s\S]*ContractNegotiationCanvas/u);
-    expect(page).toMatch(/business-sidebar[\s\S]*ContractWorkbenchIssueList/u);
-    expect(documents).toContain("ContractNegotiationSection");
-  });
-
-  it("uses TDesign controls for rounds, DOCX upload, disposition and secure preview", () => {
-    expect(section).toContain("<t-timeline");
-    expect(section).toContain("<t-upload");
-    expect(section).toContain('accept=".docx');
-    expect(canvas).toContain("<t-radio-group");
-    expect(canvas).toContain("<t-popconfirm");
-    expect(canvas).toContain("安全打开修订 PDF");
-    expect(canvas).not.toContain("window.prompt");
-    expect(canvas).not.toContain("<iframe");
-  });
-
-  it("keeps ledger candidates read-only and private file details out of the page", () => {
-    expect(canvas).toContain("此处不会修改合同账本");
-    expect(canvas).not.toContain("应用到合同");
-    expect(section).not.toContain("sourceGeneratedDocumentId");
-    expect(section).not.toContain("sourceRevision");
-    expect(canvas).not.toContain("previewPdfFileId");
-    expect(canvas).not.toContain(":href=");
-    expect(canvas).not.toContain("downloadUrl");
-    expect(canvas).not.toContain("window.open");
-    expect(api).toContain("/preview-download-ticket");
-    expect(api).toContain('startsWith("/files/")');
-    expect(api).toContain("response.blob()");
-  });
-
-  it("invalidates uploads, preview credentials and disposition drafts when selection changes", () => {
-    expect(section).toMatch(
-      /await uploadNegotiationFileWithCapability[\s\S]*isActionCurrent[\s\S]*uploadContractNegotiationRevisionWithCapability/u
-    );
-    expect(section).toContain("resetVersionState");
-    expect(section).toContain("clearUploadState");
-    expect(canvas).toContain("clearPreviewCredentials");
-    expect(canvas).toContain("clearDispositionDrafts");
-    expect(canvas).toContain("canApplyContractNegotiationSelectionResponse");
-    expect(canvas).toContain("onBeforeUnmount");
-  });
-
-  it("loads old-process revisions in the same guarded refresh without adding them to disposition selection", () => {
-    expect(section).toContain("listContractOfflineRevisionHistory");
-    expect(section).toMatch(
-      /Promise\.all\(\[[\s\S]*listContractNegotiationRounds\(versionId\)[\s\S]*listContractOfflineRevisionHistory\(versionId\)[\s\S]*\]\)/u
-    );
-    expect(section).toContain("旧流程修订记录");
-    expect(section).toContain("仅供查阅，不进入当前磋商差异处置");
-    expect(section).toContain("revision.negotiationRound === null");
-    expect(section).toMatch(/resetVersionState\(\)[\s\S]*offlineRevisionHistory\.value = \[\]/u);
-    expect(section).toMatch(/onBeforeUnmount\([\s\S]*offlineRevisionHistory\.value = \[\]/u);
-
-    const legacyStart = section.indexOf('class="legacy-revision-history"');
-    const legacyEnd = section.indexOf("<t-dialog", legacyStart);
-    const legacyMarkup = section.slice(legacyStart, legacyEnd);
-    expect(legacyStart).toBeGreaterThan(-1);
-    expect(legacyEnd).toBeGreaterThan(legacyStart);
-    expect(legacyMarkup).not.toContain("selectRevision");
-    expect(legacyMarkup).not.toContain("selectedRevisionId");
+describe("contract negotiation retirement structure", () => {
+  it("removes negotiation UI from the active workbench while keeping the document flow", () => {
+    expect(page).toContain("ContractDocumentCanvas");
+    expect(page).not.toContain("ContractNegotiationCanvas");
+    expect(page).not.toContain("ContractNegotiationSection");
+    expect(documents).not.toContain("ContractNegotiationSection");
+    expect(page).toContain("ContractCounterpartySignedFilesPanel");
   });
 });

@@ -105,6 +105,18 @@ describe("ContractAuthorizationService", () => {
     expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ draftRevision: { increment: 1 }, readinessSnapshot: expect.anything() })
     }));
+    // 授权选择变化使同一版本上已确认的乙方签章事实（含桥接预览）一并失效（#13）。
+    expect(tx.contractFormalFile.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        contractVersionId: "version-1",
+        purpose: { in: ["approval_original", "counterparty_signed", "counterparty_signed_preview"] },
+        status: "active"
+      }),
+      data: expect.objectContaining({
+        status: "superseded",
+        invalidationReason: "授权选择已变化，请重新上传完整审批文件"
+      })
+    }));
 
     version.draftRevision = 3;
     tx.contractVersionAuthorizationLink.findUnique.mockResolvedValue({

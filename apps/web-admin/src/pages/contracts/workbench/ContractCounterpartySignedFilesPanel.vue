@@ -27,6 +27,11 @@
       theme="warning"
       message="草稿内容已修改，原乙方签章确认已失效。请重新上传当前修订的乙方签章文件并再次确认。"
     />
+    <t-alert
+      v-if="submissionHint"
+      :theme="submissionHint.theme"
+      :message="submissionHint.text"
+    />
 
     <t-upload
       v-model="files"
@@ -152,6 +157,29 @@ const status = computed(() => {
   if (!preview.confirmedByUserId) return { label: "已上传待确认", tone: "warning" as const };
   if (revisionDrift.value) return { label: "已过期", tone: "danger" as const };
   return { label: "已确认", tone: "success" as const };
+});
+const submissionHint = computed<{
+  theme: "warning" | "success";
+  text: string;
+} | null>(() => {
+  const preview = record.value?.preview;
+  if (!preview) return null;
+  if (!preview.confirmedByUserId) {
+    return {
+      theme: "warning",
+      text: "请完成乙方签章文件整体确认后才能提交审批。"
+    };
+  }
+  if (revisionDrift.value) {
+    return {
+      theme: "warning",
+      text: "乙方签章文件已过期，重新上传并确认当前修订后才能提交审批。"
+    };
+  }
+  return {
+    theme: "success",
+    text: "乙方签章文件已确认到当前修订，可以提交审批。"
+  };
 });
 
 function modeText(mode: string) {

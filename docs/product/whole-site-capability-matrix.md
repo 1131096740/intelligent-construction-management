@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f9fe443c4ac9db0d6b6dad817a1148895e64252feb9ddc4f45e6ec116291a127` |
-| webApiWrappers | ready | `6f57e5f32b9a3ed99f4da2e1ecc04e6f6f28fecdbd7a6b3129627a2379be006a` |
-| webPageActions | ready | `893086727df7df4ac928899e543b446e1344104b780fcb92bd86b288cf8f19ce` |
-| routeUsage | ready | `f316b0cb3888f15313076392a4fff9c69a27556247526089eebfdb5d1adeb5b3` |
+| nestRoutes | ready | `bb40032db556272620aed6ccee10326c8aaf8f89e28598df10c8d4b38ffa88fd` |
+| webApiWrappers | ready | `c610c24110df7ffdf4c7deca9ffd87386fff54add76e38af342b0663fd15c827` |
+| webPageActions | ready | `e5fa05c6f8ac80b9bc7e3961762867921cf995e911e5af2433768571fa4ff03f` |
+| routeUsage | ready | `bdf0275d41f516fb4628077c0e03c68868d6089bbe4db62bbce39ba8596e3ba1` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 449 |
-| pageRouteCount | 285 |
+| pageRouteCount | 276 |
 | externalTakeoverRouteCount | 61 |
-| exitCandidateRouteCount | 100 |
+| exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 455 |
+| mainRequestBindingCount | 457 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 244 |
-| actionBindingCount | 274 |
-| acceptedActionBindingCount | 255 |
+| registeredActionCount | 236 |
+| actionBindingCount | 267 |
+| acceptedActionBindingCount | 247 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 234 |
-| coveredProductionMutationConsumerPairCount | 234 |
+| productionMutationConsumerPairCount | 226 |
+| coveredProductionMutationConsumerPairCount | 226 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -72,8 +72,8 @@
 | GET | /contract-versions/:toContractVersionId/bill-transitions/options | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractBillTransitionOptions | — | not_applicable | — |
 | GET | /contract-workbench/:contractId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractWorkbench | — | not_applicable | — |
 | GET | /contract-workbench/:contractVersionId/documents | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listContractDocuments | — | not_applicable | — |
-| GET | /contract-workbench/:contractVersionId/negotiation-rounds | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractNegotiationRounds | — | not_applicable | — |
-| GET | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#listContractOfflineRevisionHistory | — | not_applicable | — |
+| GET | /contract-workbench/:contractVersionId/negotiation-rounds | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#listContractNegotiationRounds | — | not_applicable | — |
+| GET | /contract-workbench/:contractVersionId/offline-revisions | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#listContractOfflineRevisionHistory | — | not_applicable | — |
 | GET | /contract-workbench/:contractId/transfer-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftTransferCapabilities | — | not_applicable | — |
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
@@ -93,7 +93,7 @@
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
-| GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | — | not_applicable | — |
+| GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | contract-file.download-private-file-by-ticket | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
 | GET | /health | internal_task | machine_probe | — | — | not_applicable | — |
@@ -213,13 +213,13 @@
 | POST | /contract-bills/:billId/rows/reorder | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#reorderBillRows | — | not_applicable | — |
 | POST | /contract-business-scenarios/:scenarioId/template-mappings | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#createContractScenarioMapping | — | not_applicable | — |
 | POST | /contract-business-scenarios | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#createContractBusinessScenario | — | not_applicable | — |
-| POST | /contract-document-differences/:differenceId/disposition | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#disposeContractDocumentDifference | contract-negotiation.dispose-difference | covered | — |
+| POST | /contract-document-differences/:differenceId/disposition | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#disposeContractDocumentDifference | — | not_applicable | — |
 | POST | /contract-documents/:documentId/retry | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#retryContractDocument | contract-document.retry | covered | — |
 | POST | /contract-drafts/:contractVersionId/bills/:billKey/import-preview | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#previewContractDraftBillExcelImport | contract-bill-import.preview | covered | — |
 | POST | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#acquireContractDraftEditLease | contract-draft.lease-acquire | covered | — |
 | POST | /contract-drafts/:contractVersionId/edit-lease/heartbeat | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#heartbeatContractDraftEditLease | contract-draft.lease-heartbeat | covered | — |
 | POST | /contract-drafts/:contractVersionId/edit-lease/takeover | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#takeOverContractDraftEditLease | contract-draft.lease-takeover | covered | — |
-| POST | /contract-drafts/:contractVersionId/files | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractWorkbenchPrivateFile | contract-authorization.upload-file<br>contract-bill-import.upload-file<br>contract-counterparty-signed.upload-private-file<br>contract-document.upload-file<br>contract-formal-document.upload-file<br>contract-negotiation.upload-file<br>contract-party.upload-file | covered | — |
+| POST | /contract-drafts/:contractVersionId/files | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractWorkbenchPrivateFile | contract-authorization.upload-file<br>contract-bill-import.upload-file<br>contract-counterparty-signed.upload-private-file<br>contract-document.upload-file<br>contract-party.upload-file | covered | — |
 | POST | /contract-drafts/:contractVersionId/preview-generation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDraftPreview | contract-draft.preview-queue | covered | — |
 | POST | /contract-drafts/:contractVersionId/submission | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#submitContractDraft | contract-workbench.submit | covered | — |
 | POST | /contract-layout-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#cloneLayoutTemplateVersion | — | not_applicable | — |
@@ -231,11 +231,11 @@
 | POST | /contract-layout-template-versions/:versionId/stop | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#stopLayoutTemplateVersion | — | not_applicable | — |
 | POST | /contract-layout-template-versions/:versionId/submission | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#submitLayoutTemplateVersion | — | not_applicable | — |
 | POST | /contract-layout-templates | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createLayoutTemplate | — | not_applicable | — |
-| POST | /contract-negotiation-rounds/:roundId/close | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#closeContractNegotiationRound | contract-negotiation.close-round | covered | — |
+| POST | /contract-negotiation-rounds/:roundId/close | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#closeContractNegotiationRound | — | not_applicable | — |
 | POST | /contract-number-rules/:ruleId/stop | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#stopContractNumberRule | — | not_applicable | — |
 | POST | /contract-number-rules | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createContractNumberRule | — | not_applicable | — |
-| POST | /contract-offline-revisions/:revisionId/preview-download-ticket | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#openContractRevisionPreview | contract-negotiation.open-revision-preview | covered | — |
-| POST | /contract-offline-revisions/:revisionId/retry | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#retryContractOfflineRevision | contract-negotiation.retry-revision | covered | — |
+| POST | /contract-offline-revisions/:revisionId/preview-download-ticket | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#openContractRevisionPreview | — | not_applicable | — |
+| POST | /contract-offline-revisions/:revisionId/retry | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#retryContractOfflineRevision | — | not_applicable | — |
 | POST | /contract-template-versions/:versionId/clone | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#cloneContractTemplateVersion | — | not_applicable | — |
 | POST | /contract-template-versions/:versionId/discard | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#discardContractTemplateVersion | — | not_applicable | — |
 | POST | /contract-template-versions/:versionId/publication | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#publishContractTemplateVersion | — | not_applicable | — |
@@ -247,8 +247,8 @@
 | POST | /contract-workbench/:contractVersionId/checkpoints/:checkpointId/restore | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#restoreDraftCheckpoint | — | not_applicable | — |
 | POST | /contract-workbench/:contractVersionId/checkpoints | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createDraftCheckpoint | — | not_applicable | — |
 | POST | /contract-workbench/:contractVersionId/documents | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#queueContractDocument | contract-document.queue | covered | — |
-| POST | /contract-workbench/:contractVersionId/negotiation-rounds | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#openContractNegotiationRound | contract-negotiation.open-round | covered | — |
-| POST | /contract-workbench/:contractVersionId/offline-revisions | page | web_api_wrapper | apps/web-admin/src/api/contract-negotiation.api.ts#uploadContractNegotiationRevision | contract-negotiation.upload-revision | covered | — |
+| POST | /contract-workbench/:contractVersionId/negotiation-rounds | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#openContractNegotiationRound | — | not_applicable | — |
+| POST | /contract-workbench/:contractVersionId/offline-revisions | exit_candidate | none | apps/web-admin/src/api/contract-negotiation.api.ts#uploadContractNegotiationRevision | — | not_applicable | — |
 | POST | /contract-workbench/:contractVersionId/parties | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contract-workbench/:contractId/restore | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#restoreContractDraft | — | not_applicable | — |
 | POST | /contract-workbench/:contractVersionId/settlement-mode/confirm | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmContractSettlementMode | contract-workbench.confirm-settlement-mode | covered | — |
@@ -268,7 +268,7 @@
 | POST | /contracts/:contractVersionId/authorizations | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization | contract-authorization.set | covered | — |
 | POST | /contracts/:contractVersionId/change-drafts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | contract-change.create-draft | covered | — |
 | POST | /contracts/:contractVersionId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | not_applicable | — |
-| POST | /contracts/:contractVersionId/formal-files/approval | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | contract-formal-document.associate-approval | covered | — |
+| POST | /contracts/:contractVersionId/formal-files/approval | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/formal-files/counterparty/confirmation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmCounterpartySignedFile | contract-counterparty-signed.confirm | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadCounterpartySignedFiles | contract-counterparty-signed.submit-files | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final/confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmMutuallySignedContract | contract-final.confirm | covered | — |
@@ -301,7 +301,7 @@
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file | covered | — |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |

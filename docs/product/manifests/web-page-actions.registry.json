@@ -565,76 +565,6 @@
       ]
     },
     {
-      "id": "contract-negotiation.open-round",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "openContractNegotiationRoundWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "open_contract_negotiation_round" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "openContractNegotiationRound" }]
-    },
-    {
-      "id": "contract-negotiation.upload-file",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "uploadNegotiationFileWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
-    },
-    {
-      "id": "contract-negotiation.upload-revision",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "uploadContractNegotiationRevisionWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_negotiation_revision" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "uploadContractNegotiationRevision" }]
-    },
-    {
-      "id": "contract-negotiation.close-round",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "closeContractNegotiationRoundWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "close_contract_negotiation_round" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "closeContractNegotiationRound" }]
-    },
-    {
-      "id": "contract-negotiation.retry-revision",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "retryContractOfflineRevisionWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "retry_contract_offline_revision" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "retryContractOfflineRevision" }]
-    },
-    {
-      "id": "contract-negotiation.dispose-difference",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "disposeContractDocumentDifferenceWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "dispose_contract_document_difference" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "disposeContractDocumentDifference" }]
-    },
-    {
-      "id": "contract-negotiation.open-revision-preview",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "openContractRevisionPreviewWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "open_contract_revision_preview" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts", "name": "openContractRevisionPreview" }]
-    },
-    {
       "id": "contract-bill-transition.save",
       "usage": "background",
       "routePaths": ["/合同工作台/:contractId"],
@@ -743,26 +673,6 @@
       "semantic": "business_write",
       "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "set_contract_authorization" },
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "setContractAuthorization" }]
-    },
-    {
-      "id": "contract-formal-document.upload-file",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "uploadContractFormalFileWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_workbench_private_file" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractWorkbenchPrivateFile" }]
-    },
-    {
-      "id": "contract-formal-document.associate-approval",
-      "usage": "background",
-      "routePaths": ["/合同工作台/:contractId"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "uploadContractFormalApprovalFileWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.draftOperationAvailableActions", "key": "upload_contract_formal_approval_file" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts", "name": "uploadContractFormalApprovalFile" }]
     },
     {
       "id": "contract-counterparty-signed.upload-private-file",
@@ -1328,6 +1238,32 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "createPrivateFileDownloadTicket"
+        }
+      ]
+    },
+
+    {
+      "id": "contract-file.download-private-file-by-ticket",
+      "usage": "background",
+      "routePaths": [
+        "/合同管理/:contractId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "downloadContractPrivateFileByTicket"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "create_private_file_download_ticket"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "downloadPrivateFileByTicket"
         }
       ]
     },

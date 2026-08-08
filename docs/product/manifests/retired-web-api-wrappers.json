@@ -24,6 +24,21 @@
       ]
     },
     {
+      "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
+      "classification": "test_only",
+      "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history.",
+      "wrappers": [
+        "closeContractNegotiationRound",
+        "disposeContractDocumentDifference",
+        "listContractNegotiationRounds",
+        "listContractOfflineRevisionHistory",
+        "openContractNegotiationRound",
+        "openContractRevisionPreview",
+        "retryContractOfflineRevision",
+        "uploadContractNegotiationRevision"
+      ]
+    },
+    {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests.",
@@ -68,6 +83,7 @@
         "updateContractNumberRule",
         "updateContractTemplateVersion",
         "updateLayoutTemplateVersion",
+        "uploadContractFormalApprovalFile",
         "voidContractDraft"
       ]
     },

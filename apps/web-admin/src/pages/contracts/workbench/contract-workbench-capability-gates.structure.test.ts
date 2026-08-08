@@ -6,13 +6,6 @@ const read = (name: string) =>
 
 describe("contract workbench mutation capability gates", () => {
   it.each([
-    ["ContractNegotiationSection.vue", "openContractNegotiationRoundWithCapability"],
-    ["ContractNegotiationSection.vue", "uploadNegotiationFileWithCapability"],
-    ["ContractNegotiationSection.vue", "uploadContractNegotiationRevisionWithCapability"],
-    ["ContractNegotiationSection.vue", "closeContractNegotiationRoundWithCapability"],
-    ["ContractNegotiationSection.vue", "retryContractOfflineRevisionWithCapability"],
-    ["ContractNegotiationCanvas.vue", "disposeContractDocumentDifferenceWithCapability"],
-    ["ContractNegotiationCanvas.vue", "openContractRevisionPreviewWithCapability"],
     ["ContractBillTransitionsSection.vue", "saveContractBillTransitionsWithCapability"],
     ["ContractBillTransitionsSection.vue", "discardContractBillTransitionsWithCapability"],
     ["ContractBillTransitionsSection.vue", "confirmContractBillTransitionsWithCapability"],
@@ -24,8 +17,6 @@ describe("contract workbench mutation capability gates", () => {
     ["ContractDocumentsSection.vue", "confirmContractDocumentDownload"],
     ["ContractAuthorizationSection.vue", "uploadContractAuthorizationFileWithCapability"],
     ["ContractAuthorizationSection.vue", "setContractAuthorizationWithCapability"],
-    ["ContractFormalDocumentSection.vue", "uploadContractFormalFileWithCapability"],
-    ["ContractFormalDocumentSection.vue", "uploadContractFormalApprovalFileWithCapability"],
     ["ContractCounterpartySignedFilesPanel.vue", "uploadPrivateFileWithCapability"],
     ["ContractPartySection.vue", "uploadContractPartyFileWithCapability"]
   ])("uses %s helper %s", (file, helper) => {
@@ -34,9 +25,8 @@ describe("contract workbench mutation capability gates", () => {
     expect(source).toContain(helper);
   });
 
-  it("passes exact contract version coordinates into nested negotiation, bill and party controls", () => {
+  it("passes exact contract version coordinates into nested bill, document and party controls", () => {
     const page = readFileSync(new URL("../ContractWorkbenchPage.vue", import.meta.url), "utf8");
-    expect(page).toContain(':version-id="workbench?.version.id ?? \'\'"');
     expect(page).toContain(':contract-version-id="workbench?.version.id ?? \'\'"');
   });
 
@@ -45,8 +35,6 @@ describe("contract workbench mutation capability gates", () => {
     "ContractBillFocusEditor.vue",
     "ContractCounterpartySignedFilesPanel.vue",
     "ContractDocumentsSection.vue",
-    "ContractFormalDocumentSection.vue",
-    "ContractNegotiationSection.vue",
     "ContractPartySection.vue"
   ])("uploads from %s through the version-scoped workbench route", (file) => {
     const source = read(file);
