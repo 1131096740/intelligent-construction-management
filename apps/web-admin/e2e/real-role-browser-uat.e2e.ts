@@ -12,6 +12,7 @@ type RoleCase = {
 const initialPassword = process.env.REAL_ROLE_PASSWORD;
 const evidencePath = process.env.REAL_BROWSER_EVIDENCE_PATH;
 const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL;
+const selfArchiveContractId = process.env.REAL_BROWSER_SELF_ARCHIVE_CONTRACT_ID;
 
 const roleCases: RoleCase[] = [
   {
@@ -78,6 +79,10 @@ function assertRuntimeConfiguration() {
   expect(freezeApiBaseUrl, "REAL_FREEZE_API_BASE_URL 必须由隔离 UAT runner 注入").toMatch(
     /^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u
   );
+  expect(
+    selfArchiveContractId,
+    "REAL_BROWSER_SELF_ARCHIVE_CONTRACT_ID 必须由治理证据解析后注入"
+  ).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
 }
 
 function normalizedPath(url: string) {
@@ -257,10 +262,7 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     expect(director).toBeDefined();
     await login(page, director!);
 
-    const trialRunId = process.env.TRIAL_RUN_ID;
-    expect(trialRunId, "隔离治理 UAT 必须注入 TRIAL_RUN_ID").toBeTruthy();
-    const contractCode = `UAT-${trialRunId}-contract_director_handler_self_archive-001`;
-    await page.goto(`/contracts/${encodeURIComponent(contractCode)}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`/contracts/${encodeURIComponent(selfArchiveContractId!)}`, { waitUntil: "domcontentloaded" });
     await page.locator(".detail-navigation").getByText("凭证资料", { exact: true }).click();
 
     const finalReviewGroup = page.locator(".action-group").filter({ hasText: "双方最终版复核" });
@@ -401,14 +403,10 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
       counts[String(entry.status)] = (counts[String(entry.status)] ?? 0) + 1;
       return counts;
     }, {});
-    const badStatuses = ledger.filter((entry) => {
-      const expectedWriteFreeze = entry.role === "rc06-freeze" && entry.status === 503;
-      return (!expectedWriteFreeze && entry.status >= 500) || entry.status === 404;
-    });
     const evidence = {
       schemaVersion: 1,
       gate: "rc06-real-api-backed-browser",
-      status: badStatuses.length === 0 && browserErrors.length === 0 && failedRequests.length === 0 && testFailures.length === 0 ? "passed" : "failed",
+      status: "pending",
       candidateSha: process.env.REAL_BROWSER_CANDIDATE_SHA ?? null,
       browsers: [testInfo.project.name],
       roles: roleCases.map(({ key, routes }) => ({ key, routes })),
