@@ -206,6 +206,53 @@ test("attributes a private transport helper route to its exported orchestrator",
   );
 });
 
+test("attributes an exported transport route to its exported production action", async () => {
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contract-drafts")
+        export class ExampleController {
+          @Delete(":contractVersionId")
+          deletePristine() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": `
+        export function deletePristineContractDraft(id, body) {
+          return deleteJson(\`/contract-drafts/\${id}\`, body);
+        }
+        export function executeDeletePristineContractDraftAction(id, body) {
+          return deletePristineContractDraft(id, body);
+        }
+      `,
+      "apps/web-admin/src/api/core-flow-read.api.ts": "",
+      "apps/web-admin/src/pages/contracts/Page.vue": `
+        <script setup>
+        import { executeDeletePristineContractDraftAction } from "../../api/contract-workbench.api";
+        const remove = () => executeDeletePristineContractDraftAction("draft-1", {});
+        </script>
+      `
+    },
+    async (root) => {
+      const report = await inspectCapabilityProject({
+        root,
+        legacyRoutes: ["DELETE /contract-drafts/:param"]
+      });
+      const route = report.capabilities.filter(
+        (item) => item.route === "/contract-drafts/:param"
+      );
+      assert.equal(route.length, 1);
+      assert.equal(
+        route[0]?.wrapper,
+        "executeDeletePristineContractDraftAction"
+      );
+      assert.deepEqual(route[0]?.consumers, [
+        "apps/web-admin/src/pages/contracts/Page.vue"
+      ]);
+      assert.equal(route[0]?.classification, "matched");
+    }
+  );
+});
+
 test("finds a page import that points to no API wrapper", async () => {
   await withFixture(
     {

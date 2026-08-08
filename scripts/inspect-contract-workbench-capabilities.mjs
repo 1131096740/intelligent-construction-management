@@ -45,7 +45,6 @@ export const DEFAULT_LEGACY_ROUTES = [
   "POST /contract-workbench/:param/checkpoints/:param/restore",
   "POST /contract-workbench/:param/void",
   "POST /contract-workbench/:param/restore",
-  "DELETE /contract-drafts/:param",
   "POST /contract-bills/:param/rows",
   "PATCH /contract-bills/:param/rows/:param",
   "DELETE /contract-bills/:param/rows/:param",
@@ -556,11 +555,7 @@ function wrapperRoutes(relativePath, source) {
           }
         }
         const localHelper = definitionsByName.get(helper);
-        if (
-          localHelper &&
-          !localHelper.exported &&
-          !visitedHelpers.has(localHelper.name)
-        ) {
+        if (localHelper && !visitedHelpers.has(localHelper.name)) {
           visitedHelpers.add(localHelper.name);
           visit(localHelper.node);
         }
@@ -964,21 +959,38 @@ export async function inspectCapabilityProject({
       apiFile: wrapper.apiFile
     }))
   );
+  const wrapperRequestsByRoute = new Map();
+  for (const request of wrapperRequests) {
+    const requests = wrapperRequestsByRoute.get(request.key) ?? [];
+    requests.push(request);
+    wrapperRequestsByRoute.set(request.key, requests);
+  }
   const capabilities = [];
 
-  for (const request of wrapperRequests) {
-    const liveConsumerKey = `${request.apiFile}\0${request.wrapper}`;
-    const routeConsumers = liveProductionConsumers
-      ? [...requireLiveProductionConsumers(
-          liveProductionConsumers,
-          liveConsumerKey
-        )]
-      : consumers
-          .filter(
-            (consumer) => consumer.wrapper === request.wrapper
-          )
-          .map((consumer) => consumer.consumer)
-          .sort();
+  for (const requests of wrapperRequestsByRoute.values()) {
+    const requestsWithConsumers = requests.map((request) => {
+      const liveConsumerKey = `${request.apiFile}\0${request.wrapper}`;
+      const requestConsumers = liveProductionConsumers
+        ? [...requireLiveProductionConsumers(
+            liveProductionConsumers,
+            liveConsumerKey
+          )]
+        : consumers
+            .filter(
+              (consumer) => consumer.wrapper === request.wrapper
+            )
+            .map((consumer) => consumer.consumer)
+            .sort();
+      return { request, consumers: requestConsumers };
+    });
+    const selected =
+      requestsWithConsumers.find((candidate) => candidate.consumers.length > 0) ??
+      requestsWithConsumers[0];
+    const request = selected.request;
+    const routeConsumers = dedupe(
+      requestsWithConsumers.flatMap((candidate) => candidate.consumers),
+      (consumer) => consumer
+    ).sort();
     const backend = backendByKey.get(request.key);
     let classification;
     if (!backend) classification = "frontend_without_backend";
@@ -990,7 +1002,7 @@ export async function inspectCapabilityProject({
         );
       }
       classification = "exit_candidate";
-    } else if (normalizedLegacy.has(request.key)) {
+    } else if (normalizedLegacy.has(request.key) && routeConsumers.length === 0) {
       classification = "legacy_candidate";
     } else if (
       normalizedInternal.has(request.key) &&
