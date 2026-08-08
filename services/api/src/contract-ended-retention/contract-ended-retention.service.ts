@@ -88,15 +88,22 @@ export class ContractEndedApplicationRetentionService {
     if (!policy) {
       throw new ConflictException("结束申请保留策略尚未初始化，拒绝生成清理预览");
     }
+    const visibleContracts = projectIds.length
+      ? await this.prisma.contract.findMany({
+          where: { projectId: { in: projectIds } },
+          select: { id: true }
+        })
+      : [];
+    const visibleContractIds = visibleContracts.map((contract) => contract.id);
     const where = {
       status: { in: [...TERMINAL_STATUSES] },
       OR: [
         { endedAt: { not: null } },
         { firstSubmittedAt: { not: null } }
       ],
-      contract: { projectId: { in: projectIds } }
+      contractId: { in: visibleContractIds }
     };
-    const [total, versions] = projectIds.length
+    const [total, versions] = visibleContractIds.length
       ? await Promise.all([
           this.prisma.contractVersion.count({ where }),
           this.prisma.contractVersion.findMany({

@@ -129,7 +129,7 @@ describe("ContractEndedApplicationRetentionService", () => {
           { endedAt: { not: null } },
           { firstSubmittedAt: { not: null } }
         ],
-        contract: { projectId: { in: ["project-1"] } }
+        contractId: { in: ["contract-ended"] }
       },
       orderBy: [{ endedAt: "asc" }, { id: "asc" }],
       skip: 0,
@@ -477,7 +477,7 @@ describe("ContractEndedApplicationRetentionService", () => {
     });
     expect(client.contractVersion.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        contract: { projectId: { in: ["project-1"] } }
+        contractId: { in: ["contract-ended"] }
       }),
       skip: 500,
       take: 1
