@@ -30,8 +30,8 @@ const authorizationSource = fs.readFileSync(
   path.resolve(__dirname, "workbench/ContractAuthorizationSection.vue"),
   "utf8"
 );
-const formalSource = fs.readFileSync(
-  path.resolve(__dirname, "workbench/ContractFormalDocumentSection.vue"),
+const counterpartySource = fs.readFileSync(
+  path.resolve(__dirname, "workbench/ContractCounterpartySignedFilesPanel.vue"),
   "utf8"
 );
 const draftSource = fs.readFileSync(
@@ -55,7 +55,7 @@ describe("contract workbench document canvas structure", () => {
 
   it("uses a central document canvas and one TDesign business sidebar", () => {
     expect(pageSource).toContain("ContractDocumentCanvas");
-    expect(pageSource).toContain("ContractNegotiationCanvas");
+    expect(pageSource).not.toContain("ContractNegotiationCanvas");
     expect(pageSource).toContain('class="document-canvas-slot"');
     expect(pageSource).toContain('class="business-sidebar"');
     expect(pageSource).toContain("<ContractWorkbenchSectionNav");
@@ -193,11 +193,13 @@ describe("contract workbench document canvas structure", () => {
 
   it("keeps signing facts in the document flow and uses only TDesign upload", () => {
     expect(pageSource).toContain("ContractAuthorizationSection");
-    expect(pageSource).toContain("ContractFormalDocumentSection");
-    expect(pageSource).toMatch(/ContractDocumentsSection[\s\S]*ContractAuthorizationSection[\s\S]*ContractFormalDocumentSection/u);
-    expect(formalSource).toContain("<t-upload");
-    expect(formalSource).toContain(':request-method="uploadApprovalPdf"');
-    expect(formalSource).not.toContain('type="file"');
+    expect(pageSource).toContain("ContractCounterpartySignedFilesPanel");
+    expect(pageSource).toContain("ContractDocumentsSection");
+    expect(pageSource).not.toContain("ContractFormalDocumentSection");
+    expect(pageSource).not.toContain("ContractNegotiationCanvas");
+    expect(counterpartySource).toContain("<t-upload");
+    expect(counterpartySource).toContain('accept=".pdf,.docx,.png,.jpg,.jpeg');
+    expect(counterpartySource).not.toContain('type="file"');
     expect(authorizationSource).toContain("<t-upload");
     expect(authorizationSource).toContain("uploadContractWorkbenchPrivateFile");
     expect(authorizationSource).toContain("尚未选择");

@@ -5224,6 +5224,33 @@ export function createPrivateFileDownloadTicket(
   return postJson<PrivateFileDownloadTicketReadModel>(`/files/${fileId}/download-ticket`, body);
 }
 
+/**
+ * 为私有文件创建短时下载票据并受控下载（blob）。
+ * 内部完成能力检查、票据创建与下载，页面无需直接导航原始下载端点。
+ */
+export async function downloadPrivateFileByTicket(
+  fileId: string,
+  body: CreatePrivateFileDownloadTicketPayload
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能访问该文件");
+  const ticket = await createPrivateFileDownloadTicket(fileId, body);
+  const response = await apiFetch(ticket.downloadUrl);
+  await ensureOk(response, "下载文件失败");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = ticket.fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function listContractTakeovers(projectId: string) {
   return readJson<ContractTakeoverReadModel[]>(
     `/projects/${encodeURIComponent(projectId)}/contract-takeovers`

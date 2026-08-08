@@ -1919,6 +1919,7 @@ describe("ContractService", () => {
     ];
     const routes = { freezeNewContractRoute: jest.fn().mockResolvedValue(frozenRoute) };
     const formalFiles = {
+      freezeFromCounterparty: jest.fn().mockResolvedValue(null),
       freeze: jest.fn().mockResolvedValue({
         id: "formal-1",
         fileId: "file-formal-1",
@@ -2088,6 +2089,224 @@ describe("ContractService", () => {
       .toBeLessThan(authorizations.freeze.mock.invocationCallOrder[0]);
   });
 
+  it("prefers the confirmed counterparty bridge over the legacy approval PDF freeze", async () => {
+    const version = {
+      id: "contract-version-1",
+      contractId: "contract-1",
+      changeType: "original",
+      status: "draft",
+      contractGovernanceVersion: 1,
+      draftRevision: 4,
+      amountCents: BigInt(5000000),
+      pricingNature: "fixed_total",
+      amountLimitType: "capped",
+      readinessSnapshot: null,
+      templateSnapshot: { fieldSchema: [] },
+      clauseSnapshot: [],
+      draftData: {
+        companyEntitySelection: {
+          id: "entity-1",
+          versionId: "entity-version-3",
+          versionNo: 3,
+          name: "旧名称",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "旧地址"
+        }
+      }
+    };
+    const tx = {
+      $queryRaw: submitQueryLocks(version),
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-1",
+          ownerUserId: "user-contract-staff",
+          voidedAt: null,
+          code: null,
+          projectId: "project-1",
+          contractTypeKey: "material_purchase",
+          companyEntityId: "entity-1",
+          companyEntityName: "旧名称"
+        }),
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      projectOwnerContract: {
+        findMany: jest.fn().mockResolvedValue([{ amountCents: BigInt(200000000) }])
+      },
+      companyEntity: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-1",
+          isActive: true,
+          dataStatus: "complete",
+          currentVersionNo: 3
+        })
+      },
+      companyEntityVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "entity-version-3",
+          companyEntityId: "entity-1",
+          versionNo: 3,
+          name: "云南某建设有限公司",
+          unifiedSocialCreditCode: "91350211M000100Y46",
+          registeredAddress: "昆明市"
+        })
+      },
+      approvalInstance: {
+        create: jest.fn().mockResolvedValue({ id: "approval-1" })
+      },
+      contractDraftEditLease: {
+        findUnique: jest.fn().mockResolvedValue({
+          holderUserId: "user-contract-staff",
+          tokenHash: createHash("sha256")
+            .update("opaque-lease-token")
+            .digest("hex"),
+          expiresAt: new Date(Date.now() + 120_000)
+        })
+      },
+      contractDraftSubmissionRequest: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn()
+      },
+      auditLog: {
+        create: jest.fn()
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const readiness = {
+      check: jest.fn().mockResolvedValue({
+        blocking: [],
+        warnings: [],
+        checkedRevision: 4
+      }),
+      freeze: jest.fn().mockResolvedValue({
+        draftRevision: 4,
+        layoutTemplateVersionId: "layout-1",
+        counterpartySignedPreview: { id: "preview-1" }
+      })
+    };
+    const numbering = {
+      allocateDaily: jest.fn().mockResolvedValue("HT-20260728-001")
+    };
+    const frozenRoute = [
+      {
+        name: "合同部主管",
+        mode: "any",
+        roleKeys: ["contract_director"],
+        candidateUserIds: ["director-1"],
+        candidateUserIdsByRole: { contract_director: ["director-1"] }
+      },
+      {
+        name: "物资主管",
+        mode: "any",
+        roleKeys: ["material_director"],
+        candidateUserIds: ["material-1"],
+        candidateUserIdsByRole: { material_director: ["material-1"] }
+      },
+      {
+        name: "项目经理",
+        mode: "any",
+        roleKeys: ["project_manager"],
+        candidateUserIds: ["manager-1"],
+        candidateUserIdsByRole: { project_manager: ["manager-1"] }
+      },
+      {
+        name: "财务主管",
+        mode: "any",
+        roleKeys: ["finance_director"],
+        candidateUserIds: ["finance-1"],
+        candidateUserIdsByRole: { finance_director: ["finance-1"] }
+      },
+      {
+        name: "董事长/总经理",
+        mode: "any",
+        roleKeys: ["chairman", "general_manager"],
+        candidateUserIds: ["chairman-1"],
+        candidateUserIdsByRole: { chairman: ["chairman-1"], general_manager: [] }
+      }
+    ];
+    const routes = { freezeNewContractRoute: jest.fn().mockResolvedValue(frozenRoute) };
+    const bridgeSnapshot = {
+      id: "formal-bridge",
+      fileId: "file-preview",
+      contentSha256: "b".repeat(64),
+      pageCount: 2,
+      sourceRevision: 4,
+      declarationSnapshot: { kind: "counterparty_bridge" }
+    };
+    const formalFiles = {
+      freezeFromCounterparty: jest.fn().mockResolvedValue(bridgeSnapshot),
+      freeze: jest.fn().mockResolvedValue({
+        id: "formal-1",
+        fileId: "file-formal-1",
+        contentSha256: "a".repeat(64),
+        pageCount: 3,
+        sourceRevision: 4
+      })
+    };
+    const authorizations = {
+      freeze: jest.fn().mockResolvedValue([
+        { side: "first_party", required: false, authorization: null },
+        { side: "counterparty", required: false, authorization: null }
+      ])
+    };
+    const service = new ContractService(
+      prisma,
+      audit as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      readiness as never,
+      numbering as never,
+      routes as never,
+      formalFiles as never,
+      authorizations as never
+    );
+
+    const result = await service.submitApproval(
+      "contract-version-1",
+      "user-contract-staff",
+      {
+        expectedRevision: 4,
+        idempotencyKey: "7ea6e68d-18cd-4ca7-83b8-99e7d1457126"
+      },
+      "opaque-lease-token"
+    );
+
+    expect(result).toMatchObject({
+      contractVersionId: "contract-version-1",
+      approvalInstanceId: "approval-1",
+      status: "in_approval",
+      formalCode: "HT-20260728-001"
+    });
+    expect(formalFiles.freezeFromCounterparty).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining(version)
+    );
+    expect(formalFiles.freeze).not.toHaveBeenCalled();
+    expect(authorizations.freeze).toHaveBeenCalled();
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "contract-version-1" }),
+        data: expect.objectContaining({
+          templateSnapshot: expect.objectContaining({
+            submissionSnapshot: expect.objectContaining({
+              governance: expect.objectContaining({ formalFile: bridgeSnapshot })
+            })
+          })
+        })
+      })
+    );
+  });
+
   it("replays the first authoritative submission receipt before current status or lease checks", async () => {
     const responseSnapshot = {
       contractVersionId: "version-1",
@@ -2200,7 +2419,10 @@ describe("ContractService", () => {
       undefined,
       undefined,
       undefined,
-      { freeze: jest.fn() } as never,
+      {
+        freeze: jest.fn(),
+        freezeFromCounterparty: jest.fn().mockResolvedValue(null)
+      } as never,
       authorizations as never
     );
 
@@ -2989,8 +3211,7 @@ describe("ContractService", () => {
         }
       } as never,
       { ...version, defaultTaxRatePercent: null, clauseSnapshot: [] } as never,
-      { contractTypeKey: "material_purchase" },
-      true
+      { contractTypeKey: "material_purchase" }
     );
     expect(invalidReadiness.blocking.map((item) => item.key)).toEqual(
       expect.arrayContaining([
@@ -3006,8 +3227,7 @@ describe("ContractService", () => {
     const savedReadiness = await readiness.check(
       tx as never,
       version as never,
-      { contractTypeKey: "material_purchase" },
-      true
+      { contractTypeKey: "material_purchase" }
     );
     expect(savedReadiness.blocking).toEqual([]);
 

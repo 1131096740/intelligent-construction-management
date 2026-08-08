@@ -2,7 +2,10 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
-import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import {
+  ContractCutoverLegacyWrite,
+  ContractCutoverSurface
+} from "../contract-cutover/contract-cutover.decorators";
 import {
   ContractDocumentService,
   type QueueContractDocumentInput
@@ -42,7 +45,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-workbench/:contractVersionId/offline-revisions")
-  @ContractCutoverSurface()
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.create")
   uploadOfflineRevision(
     @Param("contractVersionId") contractVersionId: string,
@@ -61,7 +64,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-workbench/:contractVersionId/negotiation-rounds")
-  @ContractCutoverSurface()
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.create")
   openNegotiationRound(
     @Param("contractVersionId") contractVersionId: string,
@@ -80,7 +83,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-negotiation-rounds/:roundId/close")
-  @ContractCutoverSurface()
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.create")
   closeNegotiationRound(
     @Param("roundId") roundId: string,
@@ -90,7 +93,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-document-differences/:differenceId/disposition")
-  @ContractCutoverSurface()
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.create")
   disposeDifference(
     @Param("differenceId") differenceId: string,
@@ -101,7 +104,7 @@ export class ContractDocumentController {
   }
 
   @Post("contract-offline-revisions/:revisionId/retry")
-  @ContractCutoverSurface()
+  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.create")
   retryOfflineRevision(
     @Param("revisionId") revisionId: string,

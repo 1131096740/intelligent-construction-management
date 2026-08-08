@@ -16,7 +16,7 @@ describe("contract workbench vertical sections", () => {
       { id: "settlement_payment", label: "结算与付款" },
       { id: "clauses", label: "合同条款" },
       { id: "attachments", label: "附件资料" },
-      { id: "negotiation_documents", label: "协商与文档" },
+      { id: "negotiation_documents", label: "合同文档" },
       { id: "flow_history", label: "流程记录" }
     ]);
   });

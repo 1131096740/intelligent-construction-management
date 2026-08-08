@@ -523,16 +523,7 @@
             当前状态（{{ contractVersionStatusLabel(workbench.version.status) }}）不可编辑，仅供查看。
           </p>
 
-          <ContractNegotiationCanvas
-            v-if="activeSection === 'negotiation_documents'"
-            :version-id="workbench?.version.id ?? ''"
-            :selected="selectedNegotiation"
-            :readiness="workbench?.readiness"
-            :disabled="editorDisabled"
-            @changed="onNegotiationChanged"
-          />
           <ContractDocumentCanvas
-            v-else
             :contract-name="workbench?.contract.name ?? ''"
             :draft-revision="workbench?.version.draftRevision ?? 0"
             :documents="canvasDocuments"
@@ -710,13 +701,6 @@
                 class="workbench-section-card document-governance-flow"
                 data-section-id="attachments"
               >
-                <ContractFormalDocumentSection
-                  v-if="governedWorkbench"
-                  :workbench="governedWorkbench"
-                  :disabled="editorDisabled"
-                  :prepare-mutation="prepareGovernanceMutation"
-                  :complete-mutation="completeGovernanceMutation"
-                />
                 <ContractAuthorizationSection
                   v-if="governedWorkbench"
                   :workbench="governedWorkbench"
@@ -767,12 +751,9 @@
                 <ContractDocumentsSection
                   :workbench="workbench"
                   :disabled="editorDisabled"
-                  :negotiation-refresh-token="negotiationRefreshToken"
                   :prepare-mutation="prepareGovernanceMutation"
                   :complete-mutation="completeGovernanceMutation"
                   @reload="reloadCurrent"
-                  @negotiation-selection="selectedNegotiation = $event"
-                  @negotiation-changed="onNegotiationChanged"
                 />
                 <section
                   class="submission-section"
@@ -910,7 +891,7 @@
     <SensitiveActionDialog
       v-model="submissionConfirmVisible"
       title="确认提交合同审批？"
-      description="系统将先保存草稿，检查双方授权、乙方签章完整 PDF 和审批人员，全部通过后才会冻结并提交。"
+      description="系统将先保存草稿，检查双方授权、乙方签章文件确认和审批人员，全部通过后才会冻结并提交。"
       confirm-text="确认提交审批"
       :loading="submissionBusy"
       :error="submissionError"
@@ -1245,13 +1226,11 @@ import ContractBillsSection from "./workbench/ContractBillsSection.vue";
 import ContractClausesSection from "./workbench/ContractClausesSection.vue";
 import ContractDocumentCanvas from "./workbench/ContractDocumentCanvas.vue";
 import ContractDocumentsSection from "./workbench/ContractDocumentsSection.vue";
-import ContractFormalDocumentSection from "./workbench/ContractFormalDocumentSection.vue";
 import {
   contractWorkbenchNavigationPrompt,
   contractWorkbenchShouldBlockUnload,
   createContractWorkbenchLeaveSave
 } from "./workbench/contract-workbench-navigation.state";
-import ContractNegotiationCanvas from "./workbench/ContractNegotiationCanvas.vue";
 import ContractOverviewSection from "./workbench/ContractOverviewSection.vue";
 import ContractPartySection from "./workbench/ContractPartySection.vue";
 import ContractPaymentTermsSection from "./workbench/ContractPaymentTermsSection.vue";
@@ -1281,10 +1260,6 @@ import {
   shouldReloadContractAfterManualSave
 } from "./workbench/contract-draft-save-status";
 import type { ContractDocumentCanvasRecord } from "./workbench/contract-document-canvas";
-import type {
-  ContractNegotiationRoundReadModel,
-  ContractOfflineRevisionReadModel
-} from "../../api/contract-negotiation.api";
 import type { ContractBillCandidateRow } from "./workbench/contract-bill-grid";
 import {
   mergeFocusedBillAggregate,
@@ -1654,7 +1629,7 @@ const SECTION_HINTS: Record<ContractWorkbenchSectionId, string> = {
   settlement_payment: "确认结算方式和付款约定",
   clauses: "维护合同条款",
   attachments: "核对正式文件、授权和附件要求",
-  negotiation_documents: "管理协商版本和合同文档",
+  negotiation_documents: "合同文档管理",
   flow_history: "只读查看当前版本与流程入口"
 };
 
@@ -1674,11 +1649,6 @@ const historicalTakeoverReturnTarget = ref<{
 const transferVisible = ref(false);
 const transferUserId = ref("");
 const transferUsers = ref<Array<{ id: string; name: string }>>([]);
-const selectedNegotiation = ref<{
-  round: ContractNegotiationRoundReadModel;
-  revision: ContractOfflineRevisionReadModel;
-} | null>(null);
-const negotiationRefreshToken = ref(0);
 const sectionObservations = new Map<
   ContractWorkbenchSectionId,
   ContractWorkbenchSectionObservation
@@ -2039,12 +2009,6 @@ const nextActionText = computed(() => {
   if (!editable.value) return "当前状态不可编辑";
   return `当前步骤：${activeSectionLabel.value}`;
 });
-
-function onNegotiationChanged() {
-  if (writeLocked.value) return;
-  negotiationRefreshToken.value += 1;
-  void reloadCurrent();
-}
 
 // A contract director may transfer even when they cannot edit. The backend
 // publishes that capability explicitly and the mutation rechecks it.

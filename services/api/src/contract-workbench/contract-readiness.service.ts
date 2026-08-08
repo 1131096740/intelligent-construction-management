@@ -17,7 +17,6 @@ import {
 } from "@jiangkong/shared-domain";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../database/prisma.service";
-import { contractDocumentCandidateMatchesLedger } from "../contract-document/contract-document-ledger-candidate";
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 
@@ -148,34 +147,6 @@ type ReadinessClient = {
       contractTypeKey: string;
     } | null>;
   };
-  contractGeneratedDocument: {
-    findMany(input: unknown): Promise<
-      Array<{
-        id: string;
-        purpose: string;
-        status: string;
-        sourceRevision: number;
-        layoutTemplateVersionId: string;
-        docxFileId?: string | null;
-        pdfFileId?: string | null;
-      }>
-    >;
-  };
-  contractNegotiationRound: {
-    findMany(input: unknown): Promise<Array<{ id: string; status: string }>>;
-  };
-  contractOfflineRevision: {
-    findMany(input: unknown): Promise<Array<{ id: string; status: string }>>;
-  };
-  contractDocumentComparison: {
-    findMany(input: unknown): Promise<
-      Array<{ id: string; offlineRevisionId: string; status: string }>
-    >;
-  };
-  contractDocumentDifference: {
-    findFirst(input: unknown): Promise<{ id: string } | null>;
-    findMany(input: unknown): Promise<Array<{ id: string; candidate: Prisma.JsonValue | null }>>;
-  };
   contractVersionAuthorizationLink: {
     findMany(input: unknown): Promise<Array<{
       side: string;
@@ -212,6 +183,8 @@ type ReadinessClient = {
       sourceRevision: number;
       status: string;
       declarationSnapshot: Prisma.JsonValue;
+      confirmedByUserId: string | null;
+      confirmationSnapshot: Prisma.JsonValue | null;
     } | null>;
   };
 };
@@ -279,7 +252,7 @@ export class ContractReadinessService {
       if (contract.voidedAt) {
         throw new BadRequestException("合同草稿已作废，不能继续检查资料");
       }
-      const result = await this.check(tx, version, contract, false);
+      const result = await this.check(tx, version, contract);
       const updated = await tx.contractVersion.updateMany({
         where: {
           id: version.id,
@@ -298,8 +271,7 @@ export class ContractReadinessService {
   async check(
     tx: ReadinessClient,
     version: ReadinessVersion,
-    contract: ReadinessContract,
-    requireInternalReviewDocument: boolean
+    contract: ReadinessContract
   ): Promise<ContractReadinessResult> {
     const blocking: ContractReadinessResult["blocking"] = [];
     const warnings: ContractReadinessResult["warnings"] = [];
@@ -657,117 +629,6 @@ export class ContractReadinessService {
       });
     }
 
-    if (requireInternalReviewDocument) {
-      const rounds = await tx.contractNegotiationRound.findMany({
-        where: { contractVersionId: version.id }
-      });
-      if (rounds.some((round) => round.status === "open")) {
-        blocking.push({
-          key: "negotiation.open_round",
-          section: "documents",
-          message: "仍有开放的合同磋商轮次，请完成差异处置并关闭轮次"
-        });
-      }
-      const comparisons = rounds.length
-        ? await tx.contractDocumentComparison.findMany({
-            where: { negotiationRoundId: { in: rounds.map((round) => round.id) } }
-          })
-        : [];
-      const offlineRevisions = rounds.length
-        ? await tx.contractOfflineRevision.findMany({
-            where: { negotiationRoundId: { in: rounds.map((round) => round.id) } },
-            select: { id: true, status: true }
-          })
-        : [];
-      if (
-        offlineRevisions.some(
-          (revision) =>
-            revision.status !== "succeeded" ||
-            !comparisons.some(
-              (comparison) =>
-                comparison.offlineRevisionId === revision.id &&
-                comparison.status === "succeeded"
-            )
-        ) ||
-        comparisons.some((comparison) => comparison.status !== "succeeded")
-      ) {
-        blocking.push({
-          key: "negotiation.incomplete_comparison",
-          section: "documents",
-          message: "仍有未完成、失败或过期的合同文档比较"
-        });
-      }
-      const pendingDifference = comparisons.length
-        ? await tx.contractDocumentDifference.findFirst({
-            where: {
-              comparisonId: { in: comparisons.map((comparison) => comparison.id) },
-              disposition: "pending"
-            },
-            select: { id: true }
-          })
-        : null;
-      if (pendingDifference) {
-        blocking.push({
-          key: "negotiation.pending_difference",
-          section: "documents",
-          message: "仍有待处理的合同文档差异"
-        });
-      }
-      const confirmedCandidates = comparisons.length
-        ? await tx.contractDocumentDifference.findMany({
-            where: {
-              comparisonId: { in: comparisons.map((comparison) => comparison.id) },
-              disposition: "confirmed",
-              candidate: { not: Prisma.JsonNull }
-            },
-            select: { id: true, candidate: true }
-          })
-        : [];
-      if (
-        confirmedCandidates.some(
-          ({ candidate }) => !contractDocumentCandidateMatchesLedger(candidate, version)
-        )
-      ) {
-        blocking.push({
-          key: "negotiation.confirmed_candidate_mismatch",
-          section: "documents",
-          message: "已确认的结构候选与当前合同账本不一致，请先恢复一致后再提交"
-        });
-      }
-      const documents = await tx.contractGeneratedDocument.findMany({
-        where: {
-          contractVersionId: version.id,
-          purpose: "internal_review"
-        },
-        orderBy: { createdAt: "desc" }
-      });
-      const currentFailure = documents.some(
-        (document) =>
-          document.sourceRevision === version.draftRevision &&
-          document.layoutTemplateVersionId === version.layoutTemplateVersionId &&
-          document.status === "failed"
-      );
-      if (currentFailure) {
-        blocking.push({
-          key: "document.failure",
-          section: "documents",
-          message: "当前修订存在未解决的合同文档生成失败"
-        });
-      }
-      const latestSuccess = documents.find((document) => document.status === "success");
-      if (
-        !latestSuccess ||
-        latestSuccess.sourceRevision !== version.draftRevision ||
-        latestSuccess.layoutTemplateVersionId !== version.layoutTemplateVersionId
-      ) {
-        blocking.push({
-          key: "document.internal_review",
-          section: "documents",
-          message: "最新内部审核文档与当前修订或版式不一致"
-        });
-      }
-    }
-
     if (version.contractGovernanceVersion === 1) {
       const links = await tx.contractVersionAuthorizationLink.findMany({
         where: { contractVersionId: version.id },
@@ -825,25 +686,37 @@ export class ContractReadinessService {
           }
         }
       }
-      const formal = await tx.contractFormalFile.findFirst({
+      const counterpartyPreview = await tx.contractFormalFile.findFirst({
         where: {
           contractVersionId: version.id,
-          purpose: "approval_original",
+          purpose: "counterparty_signed_preview",
           status: "active"
         },
         orderBy: { createdAt: "desc" }
       });
-      if (!formal) {
+      if (!counterpartyPreview) {
         blocking.push({
-          key: "document.counterparty_signed_pdf_missing",
+          key: "counterparty_signed_not_confirmed",
           section: "documents",
-          message: "请上传乙方已签字盖章的完整合同审批 PDF"
+          message: "请上传乙方签章文件并完成整体确认，再提交审批"
         });
-      } else if (formal.sourceRevision !== version.draftRevision) {
+      } else if (counterpartyPreview.sourceRevision !== version.draftRevision) {
         blocking.push({
-          key: "document.counterparty_signed_pdf_stale",
+          key: "counterparty_signed_stale",
           section: "documents",
-          message: "正式审批文件与当前合同内容不一致，请重新上传"
+          message: "乙方签章文件已过期，请按当前合同内容重新上传并确认"
+        });
+      } else if (
+        !counterpartyPreview.confirmedByUserId ||
+        !this.isCounterpartyPreviewConfirmed(
+          counterpartyPreview,
+          version.draftRevision
+        )
+      ) {
+        blocking.push({
+          key: "counterparty_signed_not_confirmed",
+          section: "documents",
+          message: "请先完成乙方签章文件整体确认，再提交审批"
         });
       }
     }
@@ -949,6 +822,8 @@ export class ContractReadinessService {
       };
     }
     if (issue.key.startsWith("authorization.") ||
+        issue.key === "counterparty_signed_not_confirmed" ||
+        issue.key === "counterparty_signed_stale" ||
         issue.key === "document.counterparty_signed_pdf_missing" ||
         issue.key === "document.counterparty_signed_pdf_stale") {
       return { sectionId: "attachments" };
@@ -967,6 +842,30 @@ export class ContractReadinessService {
       pricing_fact: "unitPrice",
       amount: "unitPrice"
     }[rawField] ?? rawField;
+  }
+
+  private isCounterpartyPreviewConfirmed(
+    preview: {
+      sourceRevision: number;
+      confirmedByUserId: string | null;
+      confirmationSnapshot: Prisma.JsonValue | null;
+    },
+    draftRevision: number
+  ) {
+    if (preview.sourceRevision !== draftRevision || !preview.confirmedByUserId) {
+      return false;
+    }
+    if (
+      !preview.confirmationSnapshot ||
+      typeof preview.confirmationSnapshot !== "object" ||
+      Array.isArray(preview.confirmationSnapshot)
+    ) {
+      return false;
+    }
+    return (
+      (preview.confirmationSnapshot as Prisma.JsonObject)
+        .confirmedAtRevision === draftRevision
+    );
   }
 
   private legacySectionId(section: string): ContractWorkbenchSectionId {
@@ -1060,14 +959,6 @@ export class ContractReadinessService {
     const parties = await tx.contractPartySnapshot.findMany({
       where: { contractVersionId: version.id }
     });
-    const documents = await tx.contractGeneratedDocument.findMany({
-      where: {
-        contractVersionId: version.id,
-        purpose: "internal_review",
-        status: "success"
-      },
-      orderBy: { createdAt: "desc" }
-    });
     const authorizationLinks = version.contractGovernanceVersion === 1
       ? await tx.contractVersionAuthorizationLink.findMany({
           where: { contractVersionId: version.id },
@@ -1078,7 +969,7 @@ export class ContractReadinessService {
       ? await tx.contractFormalFile.findFirst({
           where: {
             contractVersionId: version.id,
-            purpose: "approval_original",
+            purpose: "counterparty_signed_preview",
             status: "active"
           },
           orderBy: { createdAt: "desc" }
@@ -1104,7 +995,7 @@ export class ContractReadinessService {
         taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
         rows: rows.filter((row) => row.contractBillId === bill.id)
       })),
-      internalReviewDocument: documents[0] ?? null,
+      counterpartySignedPreview: formalFile,
       governance: version.contractGovernanceVersion === 1
         ? {
             version: 1,

@@ -1217,6 +1217,7 @@ import {
   confirmMutuallySignedContract,
   createContractChangeDraft,
   createPrivateFileDownloadTicket,
+  downloadPrivateFileByTicket,
   delegateContractApproval,
   downloadApprovalForm as requestApprovalFormDownload,
   executeContractApprovalWithdrawalAction,
@@ -1553,6 +1554,18 @@ async function createContractFileDownloadTicketWithCapability(
   );
   if (!operationAllowed) throw new Error("当前用户不能访问该合同文件");
   return createPrivateFileDownloadTicket(fileId, body);
+}
+
+async function downloadContractPrivateFileByTicket(
+  fileId: string,
+  body: Parameters<typeof downloadPrivateFileByTicket>[1]
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("当前用户不能访问该合同文件");
+  await downloadPrivateFileByTicket(fileId, body);
 }
 
 type SensitiveActionKind =
@@ -3205,16 +3218,19 @@ async function confirmContractFileAccess(values: { reason: string; password: str
       ? requiredText(contractArchiveForm.downloadFileId, "合同归档文件")
       : requiredText(sensitiveAction.targetFileId, "合同正式文件");
     requirePreparedContractFileDownload(fileId);
-    const ticket = await createContractFileDownloadTicketWithCapability(fileId, {
-      confirmationPassword: values.password,
-      downloadReason: values.reason,
-      ...(actionKind === "formalFilePreview" ? { accessMode: "preview" as const } : {})
-    });
     if (actionKind === "formalFilePreview") {
+      const ticket = await createContractFileDownloadTicketWithCapability(fileId, {
+        confirmationPassword: values.password,
+        downloadReason: values.reason,
+        accessMode: "preview"
+      });
       formalPreviewFileId.value = fileId;
       formalPreviewUrl.value = apiDownloadUrl(ticket.downloadUrl);
     } else {
-      window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
+      await downloadContractPrivateFileByTicket(fileId, {
+        confirmationPassword: values.password,
+        downloadReason: values.reason
+      });
     }
     return finishSensitiveContractAction(await completeContractLifecycleAction());
   } catch (error) {

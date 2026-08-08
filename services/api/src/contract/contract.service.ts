@@ -1935,7 +1935,11 @@ export class ContractService {
             SELECT f."id" FROM "ContractFormalFile" f
             WHERE f."contractVersionId" = ${version.id} FOR UPDATE
           `);
-          const formalFileSnapshot = await this.formalFiles.freeze(tx, version);
+          let formalFileSnapshot = await this.formalFiles.freezeFromCounterparty(tx, version);
+          if (!formalFileSnapshot) {
+            // 乙方签章尚未确认时回退旧路径（release-a 兼容）：仍要求已上传完整审批 PDF。
+            formalFileSnapshot = await this.formalFiles.freeze(tx, version);
+          }
           const authorizationSnapshot = await this.authorizations.freeze(tx, version);
           governanceSubmissionSnapshot = {
             version: 1,
@@ -1951,7 +1955,7 @@ export class ContractService {
           if (!this.readiness) {
             throw new Error("合同提交审批服务暂不可用，请稍后重试或联系管理员");
           }
-          const readiness = await this.readiness.check(tx, version, contract, true);
+          const readiness = await this.readiness.check(tx, version, contract);
           if (readiness.blocking.length > 0) {
             throw new BadRequestException({
               message: "合同资料尚未满足提交审批条件，请按阻断项补齐后再提交",

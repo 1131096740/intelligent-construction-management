@@ -181,8 +181,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, defaultTaxRatePercent: null },
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -204,8 +203,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       current as never,
       version,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -242,8 +240,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       current as never,
       version,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -270,8 +267,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       current as never,
       version,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
@@ -299,18 +295,16 @@ describe("ContractReadinessService", () => {
       draftData: {}
     };
 
-    const material = await service.check(tx() as never, fieldVersion, contract, false);
+    const material = await service.check(tx() as never, fieldVersion, contract);
     const labor = await service.check(
       tx() as never,
       fieldVersion,
-      { contractTypeKey: "labor_subcontract" },
-      false
+      { contractTypeKey: "labor_subcontract" }
     );
     const rental = await service.check(
       tx() as never,
       fieldVersion,
-      { contractTypeKey: "equipment_rental" },
-      false
+      { contractTypeKey: "equipment_rental" }
     );
 
     expect(material.blocking).not.toContainEqual(expect.objectContaining({ key: "field.deliveryDeadline" }));
@@ -345,7 +339,7 @@ describe("ContractReadinessService", () => {
       contractId: "contract-1",
       changeType: "change",
       baseVersionId: "version-0"
-    }, contract, false);
+    }, contract);
 
     expect(result.blocking).toContainEqual(expect.objectContaining({
       key: "bill.cross_version_mapping",
@@ -529,8 +523,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, draftData: { project_name: "" } } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -542,8 +535,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, draftData: { fieldValues: { project_name: "建设项目" } } } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual([]);
@@ -553,8 +545,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, clauseSnapshot: [{ ...version.clauseSnapshot[0], content: "" }] } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -571,8 +562,7 @@ describe("ContractReadinessService", () => {
           { ...version.clauseSnapshot[0], content: { text: "仅约定付款" } }
         ]
       } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -584,8 +574,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       version as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual([]);
@@ -594,101 +583,91 @@ describe("ContractReadinessService", () => {
     ]);
   });
 
-  it("blocks approval submission when the latest internal-review document is stale", async () => {
+  it("blocks approval until the counterparty signed preview is confirmed at the current revision", async () => {
     const result = await new ContractReadinessService().check(
       tx({
-        contractGeneratedDocument: {
-          findMany: jest.fn().mockResolvedValue([
-            {
-              id: "document-1",
-              purpose: "internal_review",
-              status: "success",
-              sourceRevision: 3,
-              layoutTemplateVersionId: "layout-1"
-            }
-          ])
+        contractFormalFile: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "preview-1",
+            fileId: "file-1",
+            contentSha256: "a".repeat(64),
+            pageCount: 2,
+            sourceRevision: 4,
+            status: "active",
+            declarationSnapshot: {},
+            confirmedByUserId: null,
+            confirmationSnapshot: null
+          })
         }
       }) as never,
-      version as never,
-      contract,
-      true
-    );
-
-    expect(result.blocking).toEqual(
-      expect.arrayContaining([expect.objectContaining({ key: "document.internal_review" })])
-    );
-  });
-
-  it("blocks approval for an open round, incomplete comparison, and pending difference", async () => {
-    const result = await new ContractReadinessService().check(
-      tx({
-        contractNegotiationRound: {
-          findMany: jest.fn().mockResolvedValue([{ id: "round-1", status: "open" }])
-        },
-        contractDocumentComparison: {
-          findMany: jest.fn().mockResolvedValue([
-            { id: "comparison-1", offlineRevisionId: "revision-1", status: "processing" },
-            { id: "comparison-2", offlineRevisionId: "revision-2", status: "succeeded" }
-          ])
-        },
-        contractDocumentDifference: {
-          findFirst: jest.fn().mockResolvedValue({ id: "difference-1" }),
-          findMany: jest.fn().mockResolvedValue([])
-        }
-      }) as never,
-      version as never,
-      contract,
-      true
+      { ...version, contractGovernanceVersion: 1 } as never,
+      contract
     );
 
     expect(result.blocking).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ key: "negotiation.open_round" }),
-        expect.objectContaining({ key: "negotiation.incomplete_comparison" }),
-        expect.objectContaining({ key: "negotiation.pending_difference" })
+        expect.objectContaining({ key: "counterparty_signed_not_confirmed" })
       ])
     );
   });
 
-  it("blocks approval when a previously confirmed candidate no longer matches the ledger", async () => {
+  it("blocks approval when the counterparty signed preview is stale against the current revision", async () => {
     const result = await new ContractReadinessService().check(
       tx({
-        contractNegotiationRound: {
-          findMany: jest.fn().mockResolvedValue([{ id: "round-1", status: "closed" }])
-        },
-        contractDocumentComparison: {
-          findMany: jest.fn().mockResolvedValue([
-            { id: "comparison-1", offlineRevisionId: "revision-1", status: "succeeded" }
-          ])
-        },
-        contractDocumentDifference: {
-          findFirst: jest.fn().mockResolvedValue(null),
-          findMany: jest.fn().mockResolvedValue([
-            {
-              id: "difference-1",
-              candidate: { kind: "amount", label: "合同金额", cents: "999" }
-            }
-          ])
+        contractFormalFile: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "preview-1",
+            fileId: "file-1",
+            contentSha256: "a".repeat(64),
+            pageCount: 2,
+            sourceRevision: 3,
+            status: "active",
+            declarationSnapshot: {},
+            confirmedByUserId: "user-1",
+            confirmationSnapshot: { confirmedAtRevision: 3 }
+          })
         }
       }) as never,
-      version as never,
-      contract,
-      true
+      { ...version, contractGovernanceVersion: 1 } as never,
+      contract
     );
 
     expect(result.blocking).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ key: "negotiation.confirmed_candidate_mismatch" })
+        expect.objectContaining({ key: "counterparty_signed_stale" })
       ])
     );
+  });
+
+  it("allows approval when the counterparty signed preview is confirmed at the current revision", async () => {
+    const result = await new ContractReadinessService().check(
+      tx({
+        contractFormalFile: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "preview-1",
+            fileId: "file-1",
+            contentSha256: "a".repeat(64),
+            pageCount: 2,
+            sourceRevision: 4,
+            status: "active",
+            declarationSnapshot: {},
+            confirmedByUserId: "user-1",
+            confirmationSnapshot: { confirmedAtRevision: 4 }
+          })
+        }
+      }) as never,
+      { ...version, contractGovernanceVersion: 1 } as never,
+      contract
+    );
+
+    expect(result.blocking.some((item) => item.key.startsWith("counterparty_signed"))).toBe(false);
   });
 
   it("ignores attachment completeness until stage 2", async () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       version as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking.some((item) => item.section === "attachments")).toBe(false);
@@ -702,8 +681,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       version as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -720,8 +698,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       tx() as never,
       { ...version, [field]: value } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -746,8 +723,7 @@ describe("ContractReadinessService", () => {
         contractBillRow: { findMany: jest.fn().mockResolvedValue([]) }
       }) as never,
       fixedVersion as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking.some((item) => item.section === "amount")).toBe(false);
@@ -761,8 +737,7 @@ describe("ContractReadinessService", () => {
         amountSource: "manual",
         amountAdjustmentReason: "旧调整说明"
       } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -800,14 +775,12 @@ describe("ContractReadinessService", () => {
     const single = await new ContractReadinessService().check(
       differentRateTx as never,
       version as never,
-      contract,
-      false
+      contract
     );
     const multiple = await new ContractReadinessService().check(
       differentRateTx as never,
       { ...version, taxMode: "multiple_rate" } as never,
-      contract,
-      false
+      contract
     );
 
     expect(single.blocking).toEqual(
@@ -843,8 +816,7 @@ describe("ContractReadinessService", () => {
         }
       }) as never,
       { ...version, taxMode: "multiple_rate" } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(
@@ -888,8 +860,7 @@ describe("ContractReadinessService", () => {
     const result = await new ContractReadinessService().check(
       frameworkTx as never,
       frameworkVersion as never,
-      contract,
-      false
+      contract
     );
     const snapshot = await new ContractReadinessService().freeze(
       frameworkTx as never,
@@ -909,7 +880,7 @@ describe("ContractReadinessService", () => {
     });
   });
 
-  it("governed contracts block until both authorization decisions and current signed PDF exist", async () => {
+  it("governed contracts block until both authorization decisions and a current counterparty signed preview exist", async () => {
     const governedTx = tx({
       contractVersionAuthorizationLink: {
         findMany: jest.fn().mockResolvedValue([
@@ -925,19 +896,20 @@ describe("ContractReadinessService", () => {
           pageCount: 2,
           sourceRevision: 3,
           status: "active",
-          declarationSnapshot: {}
+          declarationSnapshot: {},
+          confirmedByUserId: "user-1",
+          confirmationSnapshot: { confirmedAtRevision: 3 }
         })
       }
     });
     const result = await new ContractReadinessService().check(
       governedTx as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(expect.arrayContaining([
-      expect.objectContaining({ key: "document.counterparty_signed_pdf_stale" })
+      expect.objectContaining({ key: "counterparty_signed_stale" })
     ]));
     expect(result.blocking.some((item) => item.key.includes("selection_missing"))).toBe(false);
   });
@@ -977,15 +949,16 @@ describe("ContractReadinessService", () => {
           pageCount: 2,
           sourceRevision: 4,
           status: "active",
-          declarationSnapshot: {}
+          declarationSnapshot: {},
+          confirmedByUserId: "user-1",
+          confirmationSnapshot: { confirmedAtRevision: 4 }
         })
       }
     });
     const result = await new ContractReadinessService().check(
       governedTx as never,
       { ...version, contractGovernanceVersion: 1 } as never,
-      contract,
-      false
+      contract
     );
 
     expect(result.blocking).toEqual(expect.arrayContaining([

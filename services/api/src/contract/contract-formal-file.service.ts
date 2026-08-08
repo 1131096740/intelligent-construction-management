@@ -481,6 +481,93 @@ export class ContractFormalFileService {
       : null;
   }
 
+  // 提交时从已确认的乙方签章预览桥接创建 approval_original 记录。
+  // 下游审批/用章/归档仍按 purpose=approval_original 实时查询，桥接后无需改动。
+  // 未确认或已过期的预览返回 null，由调用方回退到旧 freeze（approval_original 手动上传路径）。
+  async freezeFromCounterparty(
+    tx: Prisma.TransactionClient,
+    version: GovernedVersion
+  ) {
+    if (version.contractGovernanceVersion !== 1) return null;
+    const preview = await this.findConfirmedCounterpartyPreview(tx, version);
+    if (!preview) return null;
+    const sourceFiles = await tx.contractFormalFile.findMany({
+      where: {
+        contractVersionId: version.id,
+        purpose: COUNTERPARTY_SIGNED_PURPOSE,
+        status: "active",
+        sourceRevision: version.draftRevision
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        fileId: true,
+        contentSha256: true,
+        sourceRevision: true
+      }
+    });
+    if (sourceFiles.length === 0) return null;
+    const previous = await tx.contractFormalFile.findFirst({
+      where: {
+        contractVersionId: version.id,
+        purpose: "approval_original",
+        status: "active"
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    await tx.contractFormalFile.updateMany({
+      where: {
+        contractVersionId: version.id,
+        purpose: "approval_original",
+        status: "active"
+      },
+      data: {
+        status: "superseded",
+        invalidatedAt: new Date(),
+        invalidationReason: "已按乙方签章文件确认重新生成审批文件"
+      }
+    });
+    const actorUserId = preview.confirmedByUserId ?? preview.uploadedByUserId;
+    const created = await tx.contractFormalFile.create({
+      data: {
+        contractVersionId: version.id,
+        purpose: "approval_original",
+        fileId: preview.fileId,
+        contentSha256: preview.contentSha256,
+        pageCount: preview.pageCount,
+        sourceRevision: version.draftRevision,
+        status: "active",
+        uploadedByUserId: actorUserId,
+        supersedesId: previous?.id ?? null,
+        declarationSnapshot: this.counterpartyApprovalDeclaration(
+          preview,
+          sourceFiles
+        ) as Prisma.InputJsonValue,
+        declaredByUserId: actorUserId,
+        declaredAt: new Date()
+      }
+    });
+    await this.audit?.record(tx, {
+      actorUserId,
+      action: "contract.formal_file.approval_bridge_from_counterparty",
+      businessType: "contract_version",
+      businessId: version.id,
+      metadata: {
+        approvalOriginalId: created.id,
+        counterpartyPreviewFormalFileId: preview.id,
+        sourceRevision: version.draftRevision
+      }
+    });
+    return {
+      id: created.id,
+      fileId: created.fileId,
+      contentSha256: created.contentSha256,
+      pageCount: created.pageCount,
+      sourceRevision: created.sourceRevision,
+      declarationSnapshot: created.declarationSnapshot
+    };
+  }
+
   async inspectOwnedPdf(
     tx: Prisma.TransactionClient,
     fileId: string,
@@ -973,6 +1060,70 @@ export class ContractFormalFileService {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const item = (value as Prisma.JsonObject).confirmedAtRevision;
     return typeof item === "number" ? item : null;
+  }
+
+  // 查询当前草稿修订上已整体确认的乙方签章预览；缺失、过期、未确认或校验失败均返回 null。
+  private async findConfirmedCounterpartyPreview(
+    tx: Prisma.TransactionClient,
+    version: GovernedVersion
+  ) {
+    const preview = await tx.contractFormalFile.findFirst({
+      where: {
+        contractVersionId: version.id,
+        purpose: COUNTERPARTY_PREVIEW_PURPOSE,
+        status: "active"
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    if (!preview) return null;
+    if (preview.sourceRevision !== version.draftRevision) return null;
+    if (!preview.confirmedByUserId) return null;
+    if (!this.isCounterpartyConfirmationValid(version, preview)) return null;
+    await this.inspectLinkedPdf(
+      tx,
+      preview.fileId,
+      preview.contentSha256,
+      preview.pageCount
+    );
+    return preview;
+  }
+
+  // 桥接 approval_original 的声明快照：保留旧五项字段为 true 以满足存量校验，
+  // 并附带 _counterparty_confirmed 元数据以追溯确认来源。
+  private counterpartyApprovalDeclaration(
+    preview: {
+      id: string;
+      sourceRevision: number;
+      confirmationSnapshot: Prisma.JsonValue;
+    },
+    sourceFiles: Array<{
+      id: string;
+      fileId: string;
+      contentSha256: string;
+      sourceRevision: number;
+    }>
+  ): Prisma.JsonObject {
+    return {
+      kind: "counterparty_bridge",
+      counterpartySigned: true,
+      counterpartyStamped: true,
+      crossPageSealCompleted: true,
+      documentOrderConfirmed: true,
+      authorizationsBeforeSignaturePageConfirmed: true,
+      documentOrder: "乙方签章文件整体确认（#12 上传 + 确认）",
+      _counterparty_confirmed: {
+        confirmedAtRevision:
+          this.counterpartyConfirmationRevision(preview.confirmationSnapshot) ??
+          preview.sourceRevision,
+        formalFileId: preview.id,
+        sourceFiles: sourceFiles.map((source) => ({
+          formalFileId: source.id,
+          fileId: source.fileId,
+          contentSha256: source.contentSha256,
+          sourceRevision: source.sourceRevision
+        }))
+      }
+    };
   }
 
   private pdfNamed(originalName: string) {

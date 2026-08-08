@@ -13,29 +13,29 @@
     "routeCount": 449,
     "exactRouteCount": 449,
     "normalizedRouteCount": 449,
-    "classificationOverrideCount": 165,
+    "classificationOverrideCount": 174,
     "consumerSurfaceOverrideCount": 4,
-    "classificationOverrideSha256": "b8c248b3167c686f42f5dc94261f057bae230ac26ebd43cab476b3843a0b9207",
+    "classificationOverrideSha256": "937534be125d812ad5d3a7a47c84facbe4367b72d9634f502bb49987d16a4559",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-    "derivedProductionPageCount": 284,
-    "pageRouteCount": 285,
+    "derivedProductionPageCount": 275,
+    "pageRouteCount": 276,
     "externalTakeoverCount": 61,
-    "exitCandidateCount": 100,
+    "exitCandidateCount": 109,
     "internalTaskCount": 3,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 334,
+      "web_api_wrapper": 325,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 106
+      "none": 115
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 334,
+    "productionWrapperRouteCount": 325,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 1
   },
@@ -957,9 +957,6 @@
               "apps/web-admin/src/pages/contracts/workbench/ContractBillTransitionsSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
@@ -1457,29 +1454,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "listContractNegotiationRounds",
-            "method": "GET",
-            "normalizedPath": "/contract-workbench/:param/negotiation-rounds",
-            "normalizedKey": "GET /contract-workbench/:param/negotiation-rounds",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -1497,29 +1483,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "listContractOfflineRevisionHistory",
-            "method": "GET",
-            "normalizedPath": "/contract-workbench/:param/offline-revisions",
-            "normalizedKey": "GET /contract-workbench/:param/offline-revisions",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -2302,13 +2277,13 @@
         "authStore": [],
         "ticketFollowups": [
           {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "openContractRevisionPreview",
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
-            "ticketField": "downloadPath",
-            "sourceLine": 170,
+            "ticketField": "downloadUrl",
+            "sourceLine": 5241,
             "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
           }
         ],
@@ -2339,6 +2314,16 @@
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "downloadPrivateFileByTicket",
+            "method": "GET",
+            "normalizedPath": "/files/:param/download-ticket-capability",
+            "normalizedKey": "GET /files/:param/download-ticket-capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          },
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "getPrivateFileDownloadTicketCapability",
@@ -7255,30 +7240,19 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "contractCutoverLegacyWrite": true,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "disposeContractDocumentDifference",
-            "method": "POST",
-            "normalizedPath": "/contract-document-differences/:param/disposition",
-            "normalizedKey": "POST /contract-document-differences/:param/disposition",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -7513,8 +7487,6 @@
               "apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue",
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue"
             ]
           }
@@ -7906,30 +7878,19 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "contractCutoverLegacyWrite": true,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "closeContractNegotiationRound",
-            "method": "POST",
-            "normalizedPath": "/contract-negotiation-rounds/:param/close",
-            "normalizedKey": "POST /contract-negotiation-rounds/:param/close",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8005,29 +7966,18 @@
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "openContractRevisionPreview",
-            "method": "POST",
-            "normalizedPath": "/contract-offline-revisions/:param/preview-download-ticket",
-            "normalizedKey": "POST /contract-offline-revisions/:param/preview-download-ticket",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationCanvas.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8044,30 +7994,19 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "contractCutoverLegacyWrite": true,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "retryContractOfflineRevision",
-            "method": "POST",
-            "normalizedPath": "/contract-offline-revisions/:param/retry",
-            "normalizedKey": "POST /contract-offline-revisions/:param/retry",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8541,30 +8480,19 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "contractCutoverLegacyWrite": true,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "openContractNegotiationRound",
-            "method": "POST",
-            "normalizedPath": "/contract-workbench/:param/negotiation-rounds",
-            "normalizedKey": "POST /contract-workbench/:param/negotiation-rounds",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -8581,30 +8509,19 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "contractCutoverLegacyWrite": true,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_contract_negotiation_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-negotiation.api.ts",
-            "wrapper": "uploadContractNegotiationRevision",
-            "method": "POST",
-            "normalizedPath": "/contract-workbench/:param/offline-revisions",
-            "normalizedKey": "POST /contract-workbench/:param/offline-revisions",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractNegotiationSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -9267,31 +9184,20 @@
       "requiredPositions": [],
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
-      "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": true,
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_13_legacy_approval_upload_retired_candidate_only_no_deletion_authorization",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "uploadContractFormalApprovalFile",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/formal-files/approval",
-            "normalizedKey": "POST /contracts/:param/formal-files/approval",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/workbench/ContractFormalDocumentSection.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -10609,6 +10515,16 @@
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            ]
+          },
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "downloadPrivateFileByTicket",
+            "method": "POST",
+            "normalizedPath": "/files/:param/download-ticket",
+            "normalizedKey": "POST /files/:param/download-ticket",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
           }
         ],

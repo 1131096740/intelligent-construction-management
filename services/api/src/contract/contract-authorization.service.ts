@@ -108,7 +108,9 @@ export class ContractAuthorizationService {
         await tx.contractFormalFile.updateMany({
           where: {
             contractVersionId: version.id,
-            purpose: "approval_original",
+            purpose: {
+              in: ["approval_original", "counterparty_signed", "counterparty_signed_preview"]
+            },
             status: "active"
           },
           data: {
