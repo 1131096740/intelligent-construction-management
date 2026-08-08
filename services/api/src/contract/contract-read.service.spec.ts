@@ -35,6 +35,7 @@ describe("ContractReadService", () => {
       approvalFormAvailable: false,
       approvalParticipant: false,
       canUploadGovernedFinal: false,
+      canSelfConfirmGovernedFinal: false,
       canReportSigningMaterialChange: true,
       genericDraftActionsAllowed: false
     };
@@ -134,7 +135,8 @@ describe("ContractReadService", () => {
         activeFinal: { uploadedByUserId: "handler-1" },
         approvalFormAvailable: true,
         approvalParticipant: false,
-        canUploadGovernedFinal: false
+        canUploadGovernedFinal: false,
+        canSelfConfirmGovernedFinal: false
       }
     );
 
@@ -146,6 +148,102 @@ describe("ContractReadService", () => {
         requiresPassword: false
       })
     ]));
+  });
+
+  it("exposes same-person final confirmation only when the server grants the director-handler exception", () => {
+    const service = new ContractReadService({} as never) as unknown as {
+      contractActions(
+        status: string,
+        roleKeys: string[],
+        approvalReviewAccess: { canAct: boolean; canReview: boolean; requiresSelfReviewConfirmation: boolean },
+        archiveFiles: [],
+        context: Record<string, unknown>
+      ): Array<{ key: string; enabled: boolean }>;
+    };
+    const context = {
+      actorUserId: "director-handler-1",
+      ownerUserId: "director-handler-1",
+      governed: true,
+      sealTask: { handlerUserId: "director-handler-1" },
+      activeFinal: { uploadedByUserId: "director-handler-1" },
+      approvalFormAvailable: false,
+      approvalParticipant: false,
+      canUploadGovernedFinal: true,
+      canSelfConfirmGovernedFinal: false
+    };
+
+    const action = (canSelfConfirmGovernedFinal: boolean) => service.contractActions(
+      "pending_archive_confirm",
+      ["contract_director"],
+      { canAct: false, canReview: false, requiresSelfReviewConfirmation: false },
+      [],
+      { ...context, canSelfConfirmGovernedFinal }
+    ).find((item) => item.key === "confirm_final_contract");
+
+    expect(action(false)).toMatchObject({ enabled: false });
+    expect(action(true)).toMatchObject({ enabled: true });
+  });
+
+  it.each([
+    ["active director handler", "director-handler-1", { id: "director-position" }, { id: "director-role" }, null, { isActive: true }, true, true],
+    ["active contract staff handler", "staff-handler-1", { id: "director-position" }, null, { id: "staff-membership" }, { isActive: true }, true, false],
+    ["inactive handler", "director-handler-1", { id: "director-position" }, { id: "director-role" }, { id: "staff-membership" }, { isActive: false }, false, false]
+  ])("derives governed final access from current employment for %s", async (
+    _label,
+    actorUserId,
+    position,
+    globalAssignment,
+    member,
+    actor,
+    canUpload,
+    canSelfConfirm
+  ) => {
+    const prisma = {
+      position: { findUnique: jest.fn().mockResolvedValue(position) },
+      userPosition: { findFirst: jest.fn().mockResolvedValue(globalAssignment) },
+      projectMember: { findFirst: jest.fn().mockResolvedValue(member) },
+      user: { findUnique: jest.fn().mockResolvedValue(actor) }
+    };
+    const service = new ContractReadService(prisma as never) as unknown as {
+      governedFinalAccess(
+        actorUserId: string | undefined,
+        projectId: string,
+        sealTask: { handlerUserId: string } | null,
+        activeFinal: { uploadedByUserId: string } | null
+      ): Promise<{ canUpload: boolean; canSelfConfirm: boolean }>;
+    };
+
+    await expect(service.governedFinalAccess(
+      actorUserId,
+      "project-1",
+      { handlerUserId: actorUserId },
+      { uploadedByUserId: actorUserId }
+    )).resolves.toEqual({ canUpload, canSelfConfirm });
+  });
+
+  it("does not expose a final upload or self-confirmation exception to a non-handler", async () => {
+    const prisma = {
+      position: { findUnique: jest.fn() },
+      userPosition: { findFirst: jest.fn() },
+      projectMember: { findFirst: jest.fn() },
+      user: { findUnique: jest.fn() }
+    };
+    const service = new ContractReadService(prisma as never) as unknown as {
+      governedFinalAccess(
+        actorUserId: string | undefined,
+        projectId: string,
+        sealTask: { handlerUserId: string } | null,
+        activeFinal: { uploadedByUserId: string } | null
+      ): Promise<{ canUpload: boolean; canSelfConfirm: boolean }>;
+    };
+
+    await expect(service.governedFinalAccess(
+      "contract-staff-2",
+      "project-1",
+      { handlerUserId: "director-handler-1" },
+      { uploadedByUserId: "director-handler-1" }
+    )).resolves.toEqual({ canUpload: false, canSelfConfirm: false });
+    expect(prisma.position.findUnique).not.toHaveBeenCalled();
   });
 
   it("does not expose PDF archive generation before a governed contract is effective", () => {
@@ -2263,9 +2361,9 @@ describe("ContractReadService", () => {
   });
 
   it.each([
-    ["冻结候选调岗后", "contract-director-1", [], true],
+    ["冻结候选调岗后", "contract-director-1", [], false],
     ["同岗位非冻结候选", "contract-director-2", ["contract_director"], false]
-  ] as const)("受治理合同节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
+  ] as const)("受治理合同节点%s按当前任职拒绝无效办理", async (_label, actorUserId, roleKeys, expected) => {
     const prisma = {
       approvalInstance: {
         findMany: jest.fn().mockResolvedValue([{

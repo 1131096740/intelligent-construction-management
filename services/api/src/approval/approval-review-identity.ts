@@ -45,7 +45,12 @@ export function resolveApprovalReviewIdentity(input: {
   const pendingRoles = pendingRoleKeys(input.node);
   if (!pendingRoles.length) return null;
 
-  const directRole = directFrozenRole(input.node, input.actorUserId, pendingRoles);
+  const directRole = directFrozenRole(
+    input.node,
+    input.actorUserId,
+    pendingRoles,
+    input.actorRoleKeys
+  );
   if (directRole) {
     return { approvedRoleKey: directRole, representedUserId: input.actorUserId, viaAssignment: false };
   }
@@ -80,7 +85,7 @@ export function resolveApprovalReviewIdentity(input: {
     const delegatedRole = isGovernedFrozenApprovalNode(input.node)
       ? uniqueFrozenRole(input.node, delegatorUserId, pendingRoles)
       : pendingRoles.find((role) => delegator.roleKeys.includes(role));
-    if (delegatedRole) {
+    if (delegatedRole && delegator.roleKeys.includes(delegatedRole)) {
       return { approvedRoleKey: delegatedRole, representedUserId: delegatorUserId, viaAssignment: false };
     }
   }
@@ -115,14 +120,15 @@ export async function assertActiveApprovalRecipient(
 function directFrozenRole(
   node: FrozenApprovalNode,
   userId: string,
-  pendingRoles: RoleKey[]
+  pendingRoles: RoleKey[],
+  actorRoleKeys: readonly RoleKey[]
 ): RoleKey | null {
   if (!isGovernedFrozenApprovalNode(node)) return null;
-  if (Object.prototype.hasOwnProperty.call(node, "selectedUserId")) {
-    if (node.selectedUserId !== userId) return null;
-    return uniqueFrozenRole(node, userId, pendingRoles);
+  if (Object.prototype.hasOwnProperty.call(node, "selectedUserId") && node.selectedUserId !== userId) {
+    return null;
   }
-  return uniqueFrozenRole(node, userId, pendingRoles);
+  const role = uniqueFrozenRole(node, userId, pendingRoles);
+  return role && actorRoleKeys.includes(role) ? role : null;
 }
 
 function uniqueFrozenRole(

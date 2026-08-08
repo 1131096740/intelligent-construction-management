@@ -69,7 +69,7 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 - Settlement approval does not go through chairman/general manager.
 - Settlement cost-control review is approved by contract director alone; budget roles remain available for optional review but are not mandatory nodes.
 - All payment approvals require chairman/general manager OR-sign approval.
-- Contract archive files are uploaded by contract staff and confirmed by contract director.
+- Contract archive files are ordinarily uploaded by contract staff and confirmed by contract director. Only for a mutually signed final contract, the same frozen handler who is currently an active contract director may upload and confirm their own file; this does not authorize another director, a non-handler, or `super_admin`.
 - Settlement archive files are uploaded by contract staff and confirmed by contract director.
 - Finance reads business archive files but does not upload contract/settlement archive files.
 - Approval engine must support instance freezing, conditional nodes, countersign, OR-sign, transfer, delegation, withdrawal, reject to previous node, return to applicant, reminders, and full audit history.

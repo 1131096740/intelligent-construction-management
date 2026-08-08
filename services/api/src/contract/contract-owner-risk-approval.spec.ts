@@ -86,6 +86,7 @@ function finalApprovalTransaction(ownerContractAmounts: bigint[] = []) {
       update: jest.fn()
     },
     approvalActionLog: { create: jest.fn() },
+    user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
     projectMember: {
       findMany: jest.fn().mockResolvedValue([{ positionKey: "chairman" }])

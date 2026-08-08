@@ -817,7 +817,7 @@ describe("ContractController authorization wiring", () => {
     ["delegateApproval", "contract.approve"],
     ["approveSeal", "contract.seal"],
     ["approveGovernedSeal", "contract.seal"],
-    ["uploadMutuallySignedFinal", "contract.archive.upload"],
+    ["uploadMutuallySignedFinal", "contract.archive.final.upload"],
     ["uploadArchiveFile", "contract.archive.upload"],
     ["confirmArchiveFile", "contract.archive.confirm"],
     ["returnMutuallySignedFinal", "contract.archive.confirm"],

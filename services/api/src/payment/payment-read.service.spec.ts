@@ -2953,9 +2953,9 @@ describe("PaymentReadService", () => {
   });
 
   it.each([
-    ["冻结候选调岗后", "finance-director-1", [], true],
+    ["冻结候选调岗后", "finance-director-1", [], false],
     ["同岗位非冻结候选", "finance-director-2", ["finance_director"], false]
-  ] as const)("受治理付款节点%s保持冻结人员口径", async (_label, actorUserId, roleKeys, expected) => {
+  ] as const)("受治理付款节点%s按当前任职控制", async (_label, actorUserId, roleKeys, expected) => {
     const prisma = {
       approvalInstance: {
         findMany: jest.fn().mockResolvedValue([{

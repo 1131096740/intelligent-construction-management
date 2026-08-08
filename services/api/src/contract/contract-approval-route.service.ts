@@ -113,10 +113,18 @@ function stableUnique(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
-function roleCandidates(rows: CandidateRow[], roleKey: RoleKey, applicantUserId: string): string[] {
+function roleCandidates(
+  rows: CandidateRow[],
+  roleKey: RoleKey,
+  applicantUserId: string,
+  allowApplicant = false
+): string[] {
   return stableUnique(
     rows
-      .filter((row) => row.roleKey === roleKey && row.userId !== applicantUserId)
+      .filter((row) =>
+        row.roleKey === roleKey &&
+        (allowApplicant || row.userId !== applicantUserId)
+      )
       .map((row) => row.userId)
   );
 }
@@ -174,12 +182,16 @@ export class ContractApprovalRouteService {
         AND p."key" IN ('contract_director','finance_director','chairman','general_manager')
       FOR SHARE OF up, p, u
     `);
-    const route = isDirectorApplicant ? CONTRACT_CHANGE_ROUTE.slice(1) : CONTRACT_CHANGE_ROUTE;
-    return route.map((definition) => {
+    return CONTRACT_CHANGE_ROUTE.map((definition) => {
       const sourceRows = definition.source === "global" ? globalCandidates : projectCandidates;
       const candidateUserIdsByRole = Object.fromEntries(definition.roleKeys.map((roleKey) => [
         roleKey,
-        roleCandidates(sourceRows, roleKey, applicantUserId)
+        roleCandidates(
+          sourceRows,
+          roleKey,
+          applicantUserId,
+          isDirectorApplicant && roleKey === "contract_director"
+        )
       ])) as Partial<Record<RoleKey, string[]>>;
       const candidateUserIds = stableUnique(definition.roleKeys.flatMap(
         (roleKey) => candidateUserIdsByRole[roleKey] ?? []
@@ -279,9 +291,7 @@ export class ContractApprovalRouteService {
     `);
 
     const route = NEW_CONTRACT_ROUTE[contractTypeKey as NewContractTypeKey];
-    const applicableRoute = isGlobalContractDirector ? route.slice(1) : route;
-
-    return applicableRoute.map((definition) => {
+    return route.map((definition) => {
       const sourceRows = definition.source === "global" ? globalCandidates : projectCandidates;
       if (definition.source === "unique_project") {
         const allActiveCandidates = stableUnique(
@@ -300,7 +310,12 @@ export class ContractApprovalRouteService {
       const candidateUserIdsByRole = Object.fromEntries(
         definition.roleKeys.map((roleKey) => [
           roleKey,
-          roleCandidates(sourceRows, roleKey, applicantUserId)
+          roleCandidates(
+            sourceRows,
+            roleKey,
+            applicantUserId,
+            isGlobalContractDirector && roleKey === "contract_director"
+          )
         ])
       ) as Partial<Record<RoleKey, string[]>>;
       const candidateUserIds = stableUnique(

@@ -1232,7 +1232,7 @@ describe("MeService", () => {
     });
   });
 
-  it("待办中心对受治理节点只认冻结候选且不因调岗失去待办", async () => {
+  it("待办中心对受治理节点要求冻结候选仍在当前岗位", async () => {
     const prisma = {
       approvalInstance: {
         findMany: jest.fn().mockResolvedValue([{
@@ -1268,7 +1268,7 @@ describe("MeService", () => {
     await expect(service.countApprovalTodos(
       [{ projectId: "project-1", roleKeys: [] }],
       "finance-director-1"
-    )).resolves.toMatchObject({ settlement: 1, total: 1 });
+    )).resolves.toMatchObject({ settlement: 0, total: 0 });
 
     await expect(service.countApprovalTodos(
       [{ projectId: "project-1", roleKeys: ["finance_director"] }],
@@ -1325,9 +1325,21 @@ describe("MeService", () => {
               ]
         )
       },
-      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { userId: string } }) =>
+          Promise.resolve(
+            where.userId === "finance-director-1"
+              ? [{ positionId: "finance-director-position" }]
+              : []
+          )
+        )
+      },
       projectMember: { findMany: jest.fn().mockResolvedValue([]) },
-      position: { findMany: jest.fn().mockResolvedValue([]) }
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "finance-director-position", key: "finance_director" }
+        ])
+      }
     };
     const service = new MeService(prisma as never, {} as never) as unknown as {
       countApprovalTodos(

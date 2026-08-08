@@ -389,7 +389,7 @@ export class ContractController {
   }
 
   @Post(":contractVersionId/formal-files/final")
-  @RequireProjectRole("contract.archive.upload")
+  @RequireProjectRole("contract.archive.final.upload")
   uploadMutuallySignedFinal(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,

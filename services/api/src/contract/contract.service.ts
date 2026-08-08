@@ -2602,6 +2602,7 @@ export class ContractService {
         approvedRoleKey,
         representedUserId: identity.representedUserId,
         viaAssignment: identity.viaAssignment,
+        allowContractDirectorSelfReview: true,
         selfReviewReason: input.selfReviewReason,
         confirmationPassword: input.confirmationPassword,
         confirmPassword: this.auth
@@ -2685,6 +2686,7 @@ export class ContractService {
             fromNodeName: currentNode.name,
             toNodeName: nextNodes[previousNodeIndex].name,
             approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...auditCoordinates,
             ...selfReview.metadata
           }
@@ -2730,6 +2732,7 @@ export class ContractService {
             toStatus: "draft",
             nodeName: currentNode.name,
             approvedRoleKey,
+            representedUserId: identity.representedUserId,
             ...auditCoordinates,
             ...selfReview.metadata
           }
@@ -2857,6 +2860,7 @@ export class ContractService {
           toStatus: nextStatus,
           nodeName: currentNode.name,
           approvedRoleKey,
+          representedUserId: identity.representedUserId,
           ...auditCoordinates,
           ...selfReview.metadata,
           ...ownerContractRiskMetadata
@@ -3615,12 +3619,19 @@ export class ContractService {
       };
       projectMember: { findMany(input: unknown): Promise<Array<{ positionKey: string }>> };
       position: { findMany(input: unknown): Promise<Array<{ id: string; key: string }>> };
+      user: { findUnique(input: unknown): Promise<{ isActive: boolean } | null> };
     },
     actorUserId: string,
     contractId: string
   ): Promise<RoleKey[]> {
-    const contract = await tx.contract.findUnique({ where: { id: contractId } });
+    const [actor, contract] = await Promise.all([
+      tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } }),
+      tx.contract.findUnique({ where: { id: contractId } })
+    ]);
 
+    if (!actor?.isActive) {
+      throw new ForbiddenException("当前账号已停用，不能处理合同审批");
+    }
     if (!contract) {
       throw new Error("未找到合同主信息，请刷新合同后重试");
     }

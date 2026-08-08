@@ -3117,7 +3117,7 @@
             "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": "contract.archive.upload"
+            "requiredProjectAction": "contract.archive.final.upload"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"

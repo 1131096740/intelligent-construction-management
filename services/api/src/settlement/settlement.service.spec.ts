@@ -2980,7 +2980,7 @@ describe("SettlementService", () => {
         .mockResolvedValueOnce([{ id: "budget-director-1", isActive: true }])
         .mockResolvedValueOnce([{ id: "sig-version-budget", fileId: "sig-budget", contentSha256: "b".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-budget", contentSha256: "b".repeat(64), storageStatus: "active" }]),
-      ...approvalRoleTables("finance_staff")
+      ...approvalRoleTables("budget_director")
     };
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(tx))

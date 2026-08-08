@@ -1358,10 +1358,14 @@ export class ContractReadService {
     const approvalReviewAccess = candidateReviewApprovalContext
       ? currentApprovalReview.access
       : { ...currentApprovalReview.access, canReview: false };
-    const canUploadGovernedFinal = await this.canUploadGovernedFinal(
+    const activeFinal = signingFacts.formalFiles.find((item) =>
+      item.purpose === "mutually_signed_final" && item.status === "active"
+    ) ?? null;
+    const governedFinalAccess = await this.governedFinalAccess(
       actorUserId,
       contract.projectId,
-      signingFacts.sealTask
+      signingFacts.sealTask,
+      activeFinal
     );
     const canReportSigningMaterialChange = await this.canReportSigningMaterialChange(
       actorUserId,
@@ -1391,9 +1395,7 @@ export class ContractReadService {
         contractTypeKey: contract.contractTypeKey,
         governed: version.contractGovernanceVersion === 1,
         sealTask: signingFacts.sealTask,
-        activeFinal: signingFacts.formalFiles.find((item) =>
-          item.purpose === "mutually_signed_final" && item.status === "active"
-        ) ?? null,
+        activeFinal,
         approvalFormAvailable: Boolean(
           latestApprovalInstance?.status === "approved" &&
           canUseCurrentContractApprovalForm(version.status)
@@ -1412,7 +1414,8 @@ export class ContractReadService {
             select: { id: true }
           })
         )),
-        canUploadGovernedFinal,
+        canUploadGovernedFinal: governedFinalAccess.canUpload,
+        canSelfConfirmGovernedFinal: governedFinalAccess.canSelfConfirm,
         canReportSigningMaterialChange,
         genericDraftActionsAllowed: Boolean(draftLifecycle.expectedAction),
         withdrawApprovalContext
@@ -2069,7 +2072,8 @@ export class ContractReadService {
       roleKeys,
       actorUserId,
       instance.applicantUserId,
-      false
+      false,
+      true
     );
     if (directOrAssignedAccess.canAct) {
       return {
@@ -2092,7 +2096,8 @@ export class ContractReadService {
       roleKeys,
       actorUserId,
       instance.applicantUserId,
-      activeDelegators
+      activeDelegators,
+      true
     );
     return {
       access: delegatedAccess,
@@ -2196,6 +2201,7 @@ export class ContractReadService {
       approvalFormAvailable: boolean;
       approvalParticipant: boolean;
       canUploadGovernedFinal: boolean;
+      canSelfConfirmGovernedFinal: boolean;
       canReportSigningMaterialChange: boolean;
       genericDraftActionsAllowed: boolean;
       withdrawApprovalContext: ContractDetailReadModel["withdrawApprovalContext"];
@@ -2388,7 +2394,11 @@ export class ContractReadService {
           roleKeys,
           requiredAction: "contract.archive.confirm",
           enabled: context?.governed
-            ? Boolean(context.activeFinal && context.activeFinal.uploadedByUserId !== context.actorUserId)
+            ? Boolean(
+              context.activeFinal &&
+              (context.activeFinal.uploadedByUserId !== context.actorUserId ||
+                context.canSelfConfirmGovernedFinal)
+            )
             : true,
           requiresPassword: context?.governed ? false : true
         }),
@@ -2426,37 +2436,38 @@ export class ContractReadService {
     return workflowActions;
   }
 
-  private async canUploadGovernedFinal(
+  private async governedFinalAccess(
     actorUserId: string | undefined,
     projectId: string,
-    sealTask: ContractDetailReadModel["sealTask"]
+    sealTask: ContractDetailReadModel["sealTask"],
+    activeFinal: NonNullable<ContractDetailReadModel["formalFiles"]>[number] | null
   ) {
-    if (!actorUserId || !sealTask) return false;
-    if (sealTask.handlerUserId === actorUserId) return true;
+    if (!actorUserId || !sealTask || sealTask.handlerUserId !== actorUserId) {
+      return { canUpload: false, canSelfConfirm: false };
+    }
     const position = await this.prisma.position.findUnique({
       where: { key: "contract_director" },
       select: { id: true }
     });
-    if (!position) return false;
-    const assignments = await this.prisma.userPosition.findMany({
-      where: { projectId: null, positionId: position.id },
-      select: { userId: true }
-    });
-    const activeDirectors = assignments.length ? await this.prisma.user.findMany({
-      where: { id: { in: assignments.map((item) => item.userId) }, isActive: true },
-      select: { id: true }
-    }) : [];
-    if (activeDirectors.length !== 1 || activeDirectors[0].id !== sealTask.handlerUserId) {
-      return false;
-    }
-    const [member, actor] = await Promise.all([
+    if (!position) return { canUpload: false, canSelfConfirm: false };
+    const [globalAssignment, member, actor] = await Promise.all([
+      this.prisma.userPosition.findFirst({
+        where: { userId: actorUserId, projectId: null, positionId: position.id },
+        select: { id: true }
+      }),
       this.prisma.projectMember.findFirst({
         where: { projectId, userId: actorUserId, positionKey: "contract_staff" },
         select: { id: true }
       }),
       this.prisma.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } })
     ]);
-    return Boolean(member && actor?.isActive);
+    const isCurrentContractDirector = Boolean(globalAssignment && actor?.isActive);
+    return {
+      canUpload: isCurrentContractDirector || Boolean(member && actor?.isActive),
+      canSelfConfirm: Boolean(
+        isCurrentContractDirector && activeFinal?.uploadedByUserId === actorUserId
+      )
+    };
   }
 
   private async canReportSigningMaterialChange(

@@ -78,6 +78,7 @@ function reviewFixture(
     contract: {
       findUnique: jest.fn().mockResolvedValue({ id: "contract-1", projectId: "project-1" })
     },
+    user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },
     projectMember: {
       findMany: jest.fn().mockResolvedValue([{ positionKey: actorPositionKey }])

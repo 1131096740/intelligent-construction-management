@@ -315,10 +315,16 @@ describe("role-specific gates", () => {
     expect(canPerform("contract.archive.confirm", ["contract_staff"])).toBe(false);
   });
 
-  it("requires contract_staff to upload archive files", () => {
+  it("keeps ordinary archive uploads limited to contract staff", () => {
     expect(canPerform("contract.archive.upload", ["contract_staff"])).toBe(true);
     expect(canPerform("settlement.archive.upload", ["contract_staff"])).toBe(true);
     expect(canPerform("contract.archive.upload", ["contract_director"])).toBe(false);
+  });
+
+  it("limits final archive uploads to contract staff or directors before the handler-scoped check", () => {
+    expect(canPerform("contract.archive.final.upload", ["contract_staff"])).toBe(true);
+    expect(canPerform("contract.archive.final.upload", ["contract_director"])).toBe(true);
+    expect(canPerform("contract.archive.final.upload", ["super_admin"])).toBe(false);
   });
 
   it("only allows contract staff to create settlements", () => {

@@ -25,7 +25,8 @@ export function approvalReviewAccessOnFrozenNode(
   roleKeys: RoleKey[],
   userId: string,
   applicantUserId: string,
-  activeDelegatorsOrLegacyAccess: readonly ActiveApprovalDelegatorIdentity[] | boolean
+  activeDelegatorsOrLegacyAccess: readonly ActiveApprovalDelegatorIdentity[] | boolean,
+  allowContractDirectorSelfReview = false
 ): ApprovalReviewAccess {
   const node = approvalNodeAt(frozenNodes, currentNodeIndex);
   const identity = node
@@ -50,7 +51,8 @@ export function approvalReviewAccessOnFrozenNode(
       applicantUserId,
       actorUserId: userId,
       actorRoleKeys: identity ? [identity.approvedRoleKey] : roleKeys,
-      nodeRoleKeys
+      nodeRoleKeys,
+      allowContractDirectorSelfReview
     });
 
   return {

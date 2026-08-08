@@ -201,7 +201,7 @@ describe("ProjectExpense review approval concurrency contract", () => {
     expect(detail.canSetApprovedAmount).toBe(false);
   });
 
-  it("lets a direct frozen candidate read and review after current role removal", async () => {
+  it("rejects a direct frozen candidate after current role removal on read", async () => {
     const currentNode = {
       name: "财务部",
       mode: "any",
@@ -211,16 +211,11 @@ describe("ProjectExpense review approval concurrency contract", () => {
     };
     const { service } = detailFixture(currentNode, null);
 
-    const detail = await service.getApprovalDetail(
+    await expect(service.getApprovalDetail(
       "project-1",
       "expense-1",
       "reviewer-1"
-    );
-
-    expect(detail.availableActions.filter((action) => action.key === "review_approval"))
-      .toEqual([expect.objectContaining({ enabled: true })]);
-    expect((detail as unknown as { reviewApprovalContext: unknown }).reviewApprovalContext)
-      .toEqual(REVIEW_COORDINATES);
+    )).rejects.toThrow("无权查看该项目支出审批详情");
   });
 
   it("rejects a frozen assignment recipient after current role removal", async () => {
@@ -409,7 +404,7 @@ describe("ProjectExpense review approval concurrency contract", () => {
     expect(JSON.stringify(metadata)).not.toContain("confirmationPassword");
   });
 
-  it("lets a direct frozen candidate approve without a current approval role", async () => {
+  it("rejects a direct frozen candidate without a current approval role", async () => {
     const currentNode = {
       name: "财务部",
       mode: "any",
@@ -423,19 +418,12 @@ describe("ProjectExpense review approval concurrency contract", () => {
       actorRoleKey: null
     });
 
-    await service.reviewApproval("project-1", "expense-1", "reviewer-1", {
+    await expect(service.reviewApproval("project-1", "expense-1", "reviewer-1", {
       decision: "approve",
       ...REVIEW_COORDINATES
-    });
+    })).rejects.toBeInstanceOf(ForbiddenException);
 
-    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        action: "approve",
-        approvedRoleKey: "finance_director",
-        representedUserId: "reviewer-1",
-        signatureFileIdSnapshot: "signature-file-1"
-      })
-    });
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects a frozen assignment recipient without a current approval role", async () => {

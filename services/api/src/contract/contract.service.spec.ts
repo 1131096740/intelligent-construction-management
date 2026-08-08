@@ -1133,6 +1133,9 @@ describe("ContractService", () => {
       projectMember: {
         findMany: jest.fn().mockResolvedValue([{ positionKey: roleKey }])
       },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ isActive: true })
+      },
       position: {
         findMany: jest.fn().mockResolvedValue([])
       }
@@ -3881,7 +3884,7 @@ describe("ContractService", () => {
         .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
         .mockResolvedValueOnce([{ id: "sig-version-chair", fileId: "sig-chair", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
-      ...approvalRoleTables("contract_staff")
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
@@ -3959,6 +3962,7 @@ describe("ContractService", () => {
         toStatus: "approved_pending_seal",
         nodeName: "董事长/总经理",
         approvedRoleKey: "chairman",
+        representedUserId: "chairman-1",
         ...contractReviewCoordinates(),
         ownerContractRisk: {
           status: "clear",
@@ -4015,7 +4019,7 @@ describe("ContractService", () => {
         .mockResolvedValueOnce([{ id: "chairman-1", isActive: true }])
         .mockResolvedValueOnce([{ id: "sig-version-chair", fileId: "sig-chair", contentSha256: "a".repeat(64) }])
         .mockResolvedValueOnce([{ id: "sig-chair", contentSha256: "a".repeat(64), storageStatus: "active" }]),
-      ...approvalRoleTables("contract_staff")
+      ...approvalRoleTables("chairman")
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
@@ -4062,7 +4066,7 @@ describe("ContractService", () => {
     });
   });
 
-  it("拒绝普通岗位申请人审批自己发起的合同", async () => {
+  it("合同经办人兼当前合同部主管时按合同部主管节点自审并归因", async () => {
     const tx = {
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({
@@ -4071,7 +4075,10 @@ describe("ContractService", () => {
           status: "in_approval",
           updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
         }),
-        update: jest.fn()
+        update: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          status: "in_approval"
+        })
       },
       approvalInstance: {
         findFirst: jest.fn().mockResolvedValue({
@@ -4083,6 +4090,11 @@ describe("ContractService", () => {
               name: "合同部主管",
               mode: "any",
               roleKeys: ["contract_director"]
+            },
+            {
+              name: "项目经理",
+              mode: "any",
+              roleKeys: ["project_manager"]
             }
           ],
           applicantUserId: "contract-director-1"
@@ -4098,18 +4110,74 @@ describe("ContractService", () => {
         callback(tx)
       )
     } as unknown as PrismaService;
-    const service = new ContractService(prisma);
+    const service = new ContractService(prisma, audit as never, auth as never);
 
-    await expect(
-      service.reviewApproval("contract-version-1", "contract-director-1", {
-        ...contractReviewCoordinates(),
-        decision: "approve"
+    await expect(service.reviewApproval("contract-version-1", "contract-director-1", {
+      ...contractReviewCoordinates(),
+      decision: "approve",
+      selfReviewReason: "项目合同经办与合同部主管由本人兼任",
+      confirmationPassword: "current-password"
+    })).resolves.toMatchObject({ status: "in_approval" });
+    expect(auth.confirmPassword).toHaveBeenCalledWith("contract-director-1", "current-password");
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: "approval-instance-1" },
+      data: { currentNodeIndex: 1, status: "in_progress" }
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "contract-director-1",
+        approvedRoleKey: "contract_director",
+        representedUserId: "contract-director-1",
+        metadata: { selfReview: true, selfReviewReason: "项目合同经办与合同部主管由本人兼任" }
       })
-    ).rejects.toThrow("申请人不能审批自己发起的业务，请由其他有权限的审批人处理");
+    });
+  });
+
+  it("合同部主管兼经办人不能跳过项目经理节点", async () => {
+    const tx = {
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "contract-version-1",
+          contractId: "contract-1",
+          status: "in_approval",
+          updatedAt: CONTRACT_REVIEW_VERSION_UPDATED_AT
+        }),
+        update: jest.fn()
+      },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "approval-instance-1",
+          currentNodeIndex: 0,
+          updatedAt: CONTRACT_REVIEW_APPROVAL_UPDATED_AT,
+          frozenNodes: [{
+            name: "项目经理",
+            mode: "any",
+            roleKeys: ["project_manager"]
+          }],
+          applicantUserId: "contract-director-1"
+        }),
+        update: jest.fn()
+      },
+      approvalActionLog: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      ...approvalRoleTables("contract_director")
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    } as unknown as PrismaService;
+    const service = new ContractService(prisma, audit as never, auth as never);
+
+    await expect(service.reviewApproval("contract-version-1", "contract-director-1", {
+      ...contractReviewCoordinates(),
+      decision: "approve",
+      selfReviewReason: "不能跳过",
+      confirmationPassword: "current-password"
+    })).rejects.toThrow("当前账号无权处理该合同审批节点");
     expect(tx.contractVersion.update).not.toHaveBeenCalled();
     expect(tx.approvalInstance.update).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
-    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   function contractLeaderSelfReviewFixture() {
@@ -4287,7 +4355,8 @@ describe("ContractService", () => {
         findMany: jest.fn(({ where }: { where: { userId: string } }) =>
           Promise.resolve(where.userId === "delegator-1" ? [{ positionKey: "chairman" }] : [])
         )
-      }
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) }
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
@@ -4752,6 +4821,7 @@ describe("ContractService", () => {
         fromNodeName: "董事长/总经理",
         toNodeName: "合同部主管",
         approvedRoleKey: "chairman",
+        representedUserId: "chairman-1",
         ...contractReviewCoordinates(1)
       }
     });
@@ -4886,6 +4956,7 @@ describe("ContractService", () => {
         toStatus: "draft",
         nodeName: "董事长/总经理",
         approvedRoleKey: "general_manager",
+        representedUserId: "general-manager-1",
         ...contractReviewCoordinates()
       }
     });
@@ -5111,7 +5182,8 @@ describe("ContractService", () => {
         contract: { findUnique: jest.fn().mockResolvedValue(null) },
         userPosition: { findMany: jest.fn() },
         projectMember: { findMany: jest.fn() },
-        position: { findMany: jest.fn() }
+        position: { findMany: jest.fn() },
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) }
       },
       "未找到合同主信息，请刷新合同后重试"
     ]
@@ -5211,6 +5283,7 @@ describe("ContractService", () => {
         toStatus: "approved_pending_seal",
         nodeName: "董事长/总经理",
         approvedRoleKey: "chairman",
+        representedUserId: "chairman-1",
         ...contractReviewCoordinates(),
         ownerContractRisk: {
           status: "clear",
