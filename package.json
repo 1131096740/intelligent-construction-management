@@ -7,8 +7,10 @@
     "dev:web": "node scripts/pnpm-workspace.mjs --filter @jiangkong/web-admin dev",
     "lint": "node scripts/pnpm-workspace.mjs -r lint",
     "test": "node scripts/pnpm-workspace.mjs -r test",
+    "test:ci-orchestration": "node --test scripts/go-live-ci-gates.test.mjs scripts/inspect-release-manifests.test.mjs",
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
     "inspect:contract-workbench-capabilities": "node scripts/inspect-contract-workbench-capabilities.mjs --check docs/product/contract-workbench-capability-matrix.md",
+    "inspect:release-manifests": "node scripts/inspect-release-manifests.mjs",
     "preinspect:whole-site-capabilities": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:whole-site-capabilities": "node scripts/inspect-whole-site-capabilities.mjs --check",
     "inspect:whole-site-web-api": "node scripts/inspect-whole-site-web-api-manifest.mjs --check",
@@ -41,6 +43,7 @@
       "brace-expansion@2.1.1": "2.1.4",
       "body-parser@1.20.4": "1.20.6",
       "multer": "2.2.0",
+      "nanoid@3.3.12": "3.3.17",
       "postcss@8.5.15": "8.5.18",
       "qs@6.14.2": "6.15.2"
     }
