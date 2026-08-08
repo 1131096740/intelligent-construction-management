@@ -1191,7 +1191,7 @@ ${rows}
 - 清单余量取消、签署材料变更等尚未被 route-usage 审计为 \`exit_candidate\` 的后端能力，如无生产消费者，保持“补入口”或经业务确认后“转内部”，不能仅因页面缺入口删除。
 - route-usage 已审计的 \`exit_candidate\` 只能显示“候选退出”；仍缺生产观察窗口零调用证据和独立物理删除授权，不得升级为“删除”。候选一旦重新出现生产消费者，检查器失败关闭。
 - \`listContractDrafts\`、void/restore、单行 add/update/delete/reorder 和 checkpoint 创建/恢复以实际消费者分类；route manifest、调用图及生产零命中同时成立时最多由“保留”转为“候选退出”，仍须独立物理删除授权才能删除。
-- 台账“删除草稿”当前委托 \`abandonContractDraft\` 调用 \`POST /contracts/:contractVersionId/abandonment\`，并提交 \`delete_pristine_draft\` 领域动作；旧 \`deletePristineContractDraft\` wrapper 无生产消费者。本矩阵不把受控物理 purge 暴露为日常页面能力。
+- 工作台“删除纯净草稿”当前通过 \`deletePristineContractDraft\` 调用 \`DELETE /contract-drafts/:contractVersionId\`，并携带 \`expectedRevision\`；服务端返回 \`deleting\`/\`deleted\`。若对象清理返回 \`retryable\`，页面保留确认界面、冻结草稿写入，并要求再次确认同一 DELETE 请求以重试；不再委托 \`abandonContractDraft\` 或 \`POST /contracts/:contractVersionId/abandonment\`。
 - 当前矩阵没有授权物理删除。Release C1 只允许在证据齐备后退出旧调用代码；checkpoint 表物理删除仍属于需独立授权的 Release C2。
 `;
 }
