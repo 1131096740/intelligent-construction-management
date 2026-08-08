@@ -51,6 +51,10 @@
         appearance="metrics"
       />
 
+      <ContractEndedRetentionPanel
+        v-if="activeTab === 'ended' && canManageEndedRetention"
+      />
+
       <JgFilterBar
         title="合同台账筛选"
         description="筛选作用于当前已加载记录；列设置按当前用户保存在本机。"
@@ -311,6 +315,7 @@ import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
 import BusinessStatusSummary from "../../components/BusinessStatusSummary.vue";
 import JgFilterBar from "../../components/JgFilterBar.vue";
 import EmptyBusinessState from "../../components/EmptyBusinessState.vue";
+import ContractEndedRetentionPanel from "./components/ContractEndedRetentionPanel.vue";
 import {
   canExportContractSettlementLedger,
   canManageContractRecords,
@@ -339,6 +344,7 @@ const route = useRoute();
 const auth = useAuthStore();
 const roleKeys = computed(() => auth.user?.roleKeys ?? []);
 const canManageContracts = computed(() => canManageContractRecords(roleKeys.value));
+const canManageEndedRetention = computed(() => roleKeys.value.includes("contract_director"));
 const canReadTakeovers = computed(() =>
   canReadHistoricalContractTakeovers(roleKeys.value)
 );

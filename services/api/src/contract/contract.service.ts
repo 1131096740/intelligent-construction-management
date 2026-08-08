@@ -1134,6 +1134,7 @@ export class ContractService {
             abandonedAt: now,
             abandonedByUserId: actorUserId,
             abandonReason: expectedAction === "abandon_application" ? reason : null,
+            endedAt: now,
             draftRevision: { increment: 1 }
           }
         });
@@ -2827,6 +2828,7 @@ export class ContractService {
       const nextStatus = input.decision === "approve"
         ? isFinalApproval ? "approved_pending_seal" : "in_approval"
         : "approval_rejected";
+      const endedAt = nextStatus === "approval_rejected" ? new Date() : null;
       const updated = await tx.contractVersion.update({
         where: { id: version.id },
         data:
@@ -2834,7 +2836,8 @@ export class ContractService {
             ? {
                 status: nextStatus,
                 taxFactStatus: "draft",
-                taxFactsFrozenAt: null
+                taxFactsFrozenAt: null,
+                endedAt
               }
             : { status: nextStatus }
       });

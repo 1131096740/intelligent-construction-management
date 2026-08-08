@@ -4702,7 +4702,8 @@ describe("ContractService", () => {
       data: {
         status: "approval_rejected",
         taxFactStatus: "draft",
-        taxFactsFrozenAt: null
+        taxFactsFrozenAt: null,
+        endedAt: expect.any(Date)
       }
     });
     expect(tx.approvalInstance.update).toHaveBeenCalledWith({
@@ -6975,7 +6976,8 @@ describe("ContractService", () => {
         status: "abandoned",
         abandonedAt: expect.any(Date),
         abandonedByUserId: "owner-1",
-        abandonReason: null
+        abandonReason: null,
+        endedAt: expect.any(Date)
       })
     }));
     expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({

@@ -204,6 +204,54 @@
       ]
     },
     {
+      "id": "contract-ended-retention.create-hold",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitCreateHold"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "preview.canManageRetention"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "name": "createContractEndedApplicationRetentionHold"
+        }
+      ]
+    },
+    {
+      "id": "contract-ended-retention.release-hold",
+      "usage": "page_action",
+      "routePaths": [
+        "/合同工作台"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitReleaseHold"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "preview.canManageRetention"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/contract-ended-retention.api.ts",
+          "name": "releaseContractEndedApplicationRetentionHold"
+        }
+      ]
+    },
+    {
       "id": "contract-draft.aggregate-autosave",
       "usage": "background",
       "routePaths": [
