@@ -1513,22 +1513,14 @@ async function confirmContractFinalFileWithCapability(
   body: Parameters<typeof confirmMutuallySignedContract>[1]
 ) {
   const capability = await fetchContractDetail(contractId);
-  assertCurrentContractVersionCapability(capability, contractVersionId);
-  const operationAllowed = capability.availableActionKeys.includes("confirm_final_contract");
-  if (!operationAllowed) throw new Error("当前用户不能确认合同最终版");
-  return confirmMutuallySignedContract(contractVersionId, body);
-}
-
-function assertCurrentContractVersionCapability(
-  capability: Pick<ContractDetailReadModel, "contractVersionId">,
-  contractVersionId: string
-) {
   // The detail endpoint accepts either the immutable UUID or the display code.
   // Its `id` is intentionally the display code, so the server-issued version
   // identity is the stable alias-independent preflight coordinate.
-  if (capability.contractVersionId !== contractVersionId) {
-    throw new Error("合同版本已变化，请刷新后重试");
-  }
+  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
+  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
+  const operationAllowed = capability.availableActionKeys.includes("confirm_final_contract");
+  if (!operationAllowed) throw new Error("当前用户不能确认合同最终版");
+  return confirmMutuallySignedContract(contractVersionId, body);
 }
 
 async function createContractChangeDraftWithCapability(

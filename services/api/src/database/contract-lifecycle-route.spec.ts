@@ -455,14 +455,22 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           abandonedByUserId: ownerId,
           idempotent: false
         });
-        await expect(prisma.contractVersion.findUnique({
+        const ownerDeleteVersion = await prisma.contractVersion.findUnique({
           where: { id: draftVersionId },
           select: { status: true, abandonedAt: true, abandonedByUserId: true }
-        })).resolves.toEqual({
+        });
+        expect(ownerDeleteVersion).toEqual({
           status: "abandoned",
           abandonedAt: expect.any(Date),
           abandonedByUserId: ownerId
         });
+        const ownerDeleteAuditCount = await prisma.auditLog.count({
+          where: {
+            action: "contract.draft.delete",
+            businessId: draftVersionId
+          }
+        });
+        expect(ownerDeleteAuditCount).toBe(1);
 
         const adminDelete = await fetch(
           `${await app.getUrl()}/contract-drafts/${draftVersionId}`,
@@ -475,11 +483,20 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             body: JSON.stringify({ expectedRevision: 1 })
           }
         );
-        expect(adminDelete.status).toBe(200);
+        expect(adminDelete.status).toBe(403);
         expect(await adminDelete.json()).toMatchObject({
-          status: "abandoned",
-          idempotent: true
+          statusCode: 403
         });
+        await expect(prisma.contractVersion.findUnique({
+          where: { id: draftVersionId },
+          select: { status: true, abandonedAt: true, abandonedByUserId: true }
+        })).resolves.toEqual(ownerDeleteVersion);
+        await expect(prisma.auditLog.count({
+          where: {
+            action: "contract.draft.delete",
+            businessId: draftVersionId
+          }
+        })).resolves.toBe(ownerDeleteAuditCount);
 
         const submissionSuffix = `${suffix}-submission`;
         const submittedContractId = `lifecycle-route-submit-${submissionSuffix}`;
