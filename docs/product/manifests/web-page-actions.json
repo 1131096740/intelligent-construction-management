@@ -3114,10 +3114,10 @@
             "sourceFile": "services/api/src/contract/contract.controller.ts",
             "authorizationScope": "guard_metadata_only",
             "authentication": "authenticated",
-            "guardAuthorization": "authenticated_only",
+            "guardAuthorization": "project_action",
             "isPublic": false,
             "requiredPositions": [],
-            "requiredProjectAction": null
+            "requiredProjectAction": "contract.archive.upload"
           },
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
