@@ -40,6 +40,11 @@ type RetentionHold = {
   releaseReason: string | null;
 };
 
+type RetentionProjectScope = {
+  allProjects: boolean;
+  projectIds: string[];
+};
+
 function toIso(value: Date | null) {
   return value?.toISOString() ?? null;
 }
@@ -79,20 +84,27 @@ export class ContractEndedApplicationRetentionService {
   ) {
     const page = this.page(rawPage);
     const limit = this.limit(rawLimit);
-    const [policy, projectIds] = await Promise.all([
+    const [policy, scope] = await Promise.all([
       this.prisma.contractEndedApplicationRetentionPolicy.findUnique({
         where: { id: ENDED_RETENTION_POLICY_ID }
       }),
-      this.retentionProjectIds(actorUserId)
+      this.retentionProjectScope(actorUserId)
     ]);
     if (!policy) {
       throw new ConflictException("结束申请保留策略尚未初始化，拒绝生成清理预览");
     }
-    const terminalScope = projectIds.length
+    const terminalScope = scope.allProjects
       ? Prisma.sql`
           FROM "ContractVersion" AS version
           INNER JOIN "Contract" AS contract ON contract."id" = version."contractId"
-          WHERE contract."projectId" IN (${Prisma.join(projectIds)})
+          WHERE version."status" IN (${Prisma.join(TERMINAL_STATUSES)})
+            AND (version."endedAt" IS NOT NULL OR version."firstSubmittedAt" IS NOT NULL)
+        `
+      : scope.projectIds.length
+      ? Prisma.sql`
+          FROM "ContractVersion" AS version
+          INNER JOIN "Contract" AS contract ON contract."id" = version."contractId"
+          WHERE contract."projectId" IN (${Prisma.join(scope.projectIds)})
             AND version."status" IN (${Prisma.join(TERMINAL_STATUSES)})
             AND (version."endedAt" IS NOT NULL OR version."firstSubmittedAt" IS NOT NULL)
         `
@@ -343,17 +355,62 @@ export class ContractEndedApplicationRetentionService {
     return Number.isInteger(parsed) && parsed >= 1 ? Math.min(parsed, 100) : 50;
   }
 
-  private async retentionProjectIds(actorUserId: string) {
-    const projects = await this.prisma.project.findMany({ select: { id: true } });
-    const projectIds = projects.map((project) => project.id);
-    if (!projectIds.length) return [];
-    const roleKeysByProject = await this.projectVisibility.effectiveRoleKeysByProject(
-      actorUserId,
-      projectIds
+  private async retentionProjectScope(actorUserId: string): Promise<RetentionProjectScope> {
+    const globalPositions = await this.prisma.userPosition.findMany({
+      where: { userId: actorUserId, projectId: null },
+      select: { positionId: true }
+    });
+    const globalPositionIds = [...new Set(globalPositions.map((position) => position.positionId))];
+    const globalPositionKeys = globalPositionIds.length
+      ? await this.prisma.position.findMany({
+          where: { id: { in: globalPositionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    const globalPositionKeyById = new Map(
+      globalPositionKeys.map((position) => [position.id, position.key])
     );
-    return projectIds.filter((projectId) =>
-      roleKeysByProject.get(projectId)?.includes("contract_director")
+    if (globalPositions.some((position) =>
+      globalPositionKeyById.get(position.positionId) === "contract_director"
+    )) {
+      return { allProjects: true, projectIds: [] };
+    }
+
+    const [projectPositions, projectMembers] = await Promise.all([
+      this.prisma.userPosition.findMany({
+        where: { userId: actorUserId, projectId: { not: null } },
+        select: { positionId: true, projectId: true }
+      }),
+      this.prisma.projectMember.findMany({
+        where: { userId: actorUserId },
+        select: { projectId: true, positionKey: true }
+      })
+    ]);
+    const projectPositionIds = [...new Set(projectPositions.map((position) => position.positionId))];
+    const projectPositionKeys = projectPositionIds.length
+      ? await this.prisma.position.findMany({
+          where: { id: { in: projectPositionIds } },
+          select: { id: true, key: true }
+        })
+      : [];
+    const projectPositionKeyById = new Map(
+      projectPositionKeys.map((position) => [position.id, position.key])
     );
+    const projectIds = new Set<string>();
+    for (const position of projectPositions) {
+      if (
+        position.projectId &&
+        projectPositionKeyById.get(position.positionId) === "contract_director"
+      ) {
+        projectIds.add(position.projectId);
+      }
+    }
+    for (const member of projectMembers) {
+      if (member.positionKey === "contract_director") {
+        projectIds.add(member.projectId);
+      }
+    }
+    return { allProjects: false, projectIds: [...projectIds] };
   }
 
   private async assertCanManageRetention(

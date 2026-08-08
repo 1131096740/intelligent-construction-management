@@ -42,6 +42,21 @@ describe("ContractEndedApplicationRetentionService", () => {
       project: {
         findMany: jest.fn().mockResolvedValue([{ id: "project-1" }])
       },
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }) => (
+          where.projectId === null
+            ? [{ positionId: "position-contract-director", projectId: null }]
+            : []
+        ))
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "position-contract-director", key: "contract_director" }
+        ])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       contractVersion: {
         count: jest.fn().mockResolvedValue(1),
         findMany: jest.fn().mockResolvedValue(previewVersions),
@@ -127,6 +142,7 @@ describe("ContractEndedApplicationRetentionService", () => {
       })
     ]);
     expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(client.project.findMany).not.toHaveBeenCalled();
     expect(client.contract.findMany).toHaveBeenCalledTimes(1);
     expect(client.contract.findMany).toHaveBeenCalledWith({
       where: { id: { in: ["contract-ended"] } },
@@ -142,6 +158,9 @@ describe("ContractEndedApplicationRetentionService", () => {
 
   it("returns an empty preview without querying terminal records outside the director's project scope", async () => {
     const client = prisma();
+    client.userPosition.findMany.mockResolvedValue([]);
+    client.position.findMany.mockResolvedValue([]);
+    client.projectMember.findMany.mockResolvedValue([]);
     const service = new ContractEndedApplicationRetentionService(client as never, {
       record: jest.fn()
     } as never, {
@@ -156,6 +175,7 @@ describe("ContractEndedApplicationRetentionService", () => {
       heldRecords: []
     });
     expect(client.$queryRaw).not.toHaveBeenCalled();
+    expect(client.project.findMany).not.toHaveBeenCalled();
     expect(client.contract.findMany).not.toHaveBeenCalled();
   });
 
@@ -434,11 +454,12 @@ describe("ContractEndedApplicationRetentionService", () => {
       abandonedAt: null
     };
     const client = prisma({
-      project: {
-        findMany: jest.fn().mockResolvedValue([
-          { id: "project-1" },
-          { id: "project-2" }
-        ])
+      userPosition: {
+        findMany: jest.fn().mockImplementation(({ where }) => (
+          where.projectId === null
+            ? []
+            : [{ positionId: "position-contract-director", projectId: "project-1" }]
+        ))
       },
       contractVersion: {
         count: jest.fn().mockResolvedValue(501),
@@ -511,6 +532,11 @@ describe("ContractEndedApplicationRetentionService", () => {
       candidates: [expect.objectContaining({ contractVersionId: "version-ended" })]
     });
     expect(client.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(client.project.findMany).not.toHaveBeenCalled();
+    expect((client.$queryRaw.mock.calls[0][0] as { values: unknown[] }).values)
+      .toContain("project-1");
+    expect((client.$queryRaw.mock.calls[0][0] as { values: unknown[] }).values)
+      .not.toContain("project-2");
     expect(client.contract.findMany).toHaveBeenCalledTimes(1);
     await expect(
       service.createHold("version-project-2", "project-director-1", { reason: "越权保留" })
