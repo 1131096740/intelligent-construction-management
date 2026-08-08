@@ -6893,6 +6893,84 @@ describe("FileService", () => {
     });
   });
 
+  it("rechecks formal final-contract access at download time and records the successful download", async () => {
+    const buffer = Buffer.from("formal-final-contract");
+    let hasContractStaffRole = true;
+    const file = {
+      id: "formal-final-file-1",
+      bucket: "private-local",
+      objectKey: "uploads/formal-final-file-1.docx",
+      originalName: "双方最终版.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: buffer.length,
+      uploadedByUserId: "contract-staff-1",
+      storageStatus: "active",
+      contentSha256: createHash("sha256").update(buffer).digest("hex")
+    };
+    const tx = {
+      fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
+      contractFormalFile: { findFirst: jest.fn().mockResolvedValue({
+        contractVersionId: "version-1",
+        purpose: "mutually_signed_final",
+        status: "active",
+        uploadedByUserId: "contract-staff-1",
+        confirmedByUserId: "contract-director-1"
+      }) },
+      contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) },
+      contractSealTask: { findFirst: jest.fn().mockResolvedValue({ handlerUserId: "handler-1" }) },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ id: "version-1", contractId: "contract-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        projectId: "project-1", ownerUserId: "owner-1", voidedAt: null
+      }) },
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(null) },
+      approvalActionLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn(() =>
+        Promise.resolve(hasContractStaffRole ? [{ positionKey: "contract_staff" }] : [])
+      ) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(
+      prisma,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    storage.read.mockResolvedValue(buffer);
+
+    const ticket = await service.createDownloadTicket(file.id, {
+      actorUserId: "contract-reader-1",
+      downloadReason: "合同最终归档复核"
+    });
+    const url = new URL(`http://local${ticket.downloadUrl}`);
+    audit.record.mockClear();
+
+    await expect(service.readPrivateFile(file.id, {
+      actorUserId: url.searchParams.get("actorUserId") ?? "",
+      expiresAt: url.searchParams.get("expiresAt") ?? "",
+      downloadReason: url.searchParams.get("downloadReason") ?? "",
+      token: url.searchParams.get("token") ?? ""
+    })).resolves.toMatchObject({ buffer });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "file.download",
+      businessId: file.id
+    }));
+
+    hasContractStaffRole = false;
+    audit.record.mockClear();
+    storage.read.mockClear();
+    await expect(service.readPrivateFile(file.id, {
+      actorUserId: url.searchParams.get("actorUserId") ?? "",
+      expiresAt: url.searchParams.get("expiresAt") ?? "",
+      downloadReason: url.searchParams.get("downloadReason") ?? "",
+      token: url.searchParams.get("token") ?? ""
+    })).rejects.toThrow("当前账号无权下载该合同签署资料");
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("rejects a private file whose stored content hash no longer matches", async () => {
     const expectedHash = "0".repeat(64);
     const actualHash = createHash("sha256").update("tampered-file").digest("hex");

@@ -242,7 +242,7 @@ export class ContractSealService {
       where: { id: preflightVersion.contractId },
       select: { projectId: true }
     }) : null;
-    if (!preflightTask || preflightVersion?.status !== "seal_approved_pending_archive" ||
+    if (!preflightTask || !["seal_approved_pending_archive", "pending_archive_confirm"].includes(preflightVersion?.status ?? "") ||
       preflightTask.status !== "completed") {
       throw new BadRequestException("请先完成我方签署与盖章，再上传双方最终版合同");
     }
@@ -255,11 +255,11 @@ export class ContractSealService {
       throw new ForbiddenException("当前账号不是冻结经办人，也不符合唯一合同主管的替代上传条件");
     }
     const formalFiles = this.formalFiles;
-    const inspected = await formalFiles.inspectOwnedStoredPdf(input.fileId, actorUserId);
+    const inspected = await formalFiles.inspectOwnedStoredFinalArchive(input.fileId, actorUserId);
     return this.prisma.$transaction(async (tx) => {
       const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
       this.assertGoverned(version);
-      if (version.status !== "seal_approved_pending_archive" || task.status !== "completed") {
+      if (!["seal_approved_pending_archive", "pending_archive_confirm"].includes(version.status) || task.status !== "completed") {
         throw new BadRequestException("请先完成我方签署与盖章，再上传双方最终版合同");
       }
       if (input.sourceRevision !== version.draftRevision) {
@@ -301,10 +301,7 @@ export class ContractSealService {
         lockedFile.sizeBytes !== inspected.fileSnapshot.sizeBytes ||
         lockedFile.contentSha256 !== inspected.sha256 ||
         lockedFile.contentSha256 !== inspected.fileSnapshot.contentSha256) {
-        throw new BadRequestException("合同最终 PDF 在校验后发生变化，请重新上传");
-      }
-      if (inspected.pageCount !== approvalOriginal.pageCount) {
-        throw new BadRequestException("双方最终版页数与审批原件不一致，请核对缺页、错页或多余页面");
+        throw new BadRequestException("合同最终归档文件在校验后发生变化，请重新上传");
       }
       const bound = await tx.contractFormalFile.findFirst({ where: { fileId: input.fileId } });
       const authorization = await tx.contractAuthorization.findFirst({ where: { fileId: input.fileId } });
@@ -312,9 +309,23 @@ export class ContractSealService {
         throw new BadRequestException("该文件已关联其他合同签署事实，请重新上传最终版");
       }
       const previous = await tx.contractFormalFile.findFirst({
-        where: { contractVersionId: version.id, purpose: "mutually_signed_final" },
+        where: {
+          contractVersionId: version.id,
+          purpose: "mutually_signed_final",
+          status: "active"
+        },
         orderBy: { createdAt: "desc" }
       });
+      if (previous) {
+        await tx.contractFormalFile.updateMany({
+          where: { id: previous.id, status: "active" },
+          data: {
+            status: "superseded",
+            invalidatedAt: new Date(),
+            invalidationReason: "归档确认前已替换双方最终版合同"
+          }
+        });
+      }
       const declaration = this.finalDeclaration(input);
       const created = await tx.contractFormalFile.create({
         data: {
@@ -333,7 +344,10 @@ export class ContractSealService {
         }
       });
       const updated = await tx.contractVersion.updateMany({
-        where: { id: version.id, status: "seal_approved_pending_archive" },
+        where: {
+          id: version.id,
+          status: { in: ["seal_approved_pending_archive", "pending_archive_confirm"] }
+        },
         data: { status: "pending_archive_confirm" }
       });
       if (updated.count !== 1) {
@@ -452,7 +466,7 @@ export class ContractSealService {
     if (!preflightOriginal) {
       throw new BadRequestException("未找到本次审批冻结的合同原件，不能确认归档");
     }
-    const inspectedFinal = await this.formalFiles.inspectLinkedStoredPdf(
+    const inspectedFinal = await this.formalFiles.inspectLinkedStoredFinalArchive(
       preflightFormal.fileId,
       preflightFormal.contentSha256,
       preflightFormal.pageCount
@@ -462,8 +476,6 @@ export class ContractSealService {
       preflightOriginal.contentSha256,
       preflightOriginal.pageCount
     );
-    if (!this.auth) throw new BadRequestException("当前密码校验服务暂不可用，请稍后重试");
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
     return this.prisma.$transaction(async (tx) => {
       await this.assertGlobalRole(tx, actorUserId, "contract_director");
       const { version, task } = await this.lockVersionAndTask(tx, contractVersionId, true);
@@ -484,7 +496,7 @@ export class ContractSealService {
         formal.contentSha256 !== preflightFormal.contentSha256 ||
         formal.pageCount !== preflightFormal.pageCount ||
         formal.sourceRevision !== version.draftRevision) {
-        throw new BadRequestException("合同最终 PDF 或合同修订已变化，请重新核对后确认");
+        throw new BadRequestException("合同最终归档文件或合同修订已变化，请重新核对后确认");
       }
       if (formal.uploadedByUserId === actorUserId) {
         throw new ForbiddenException("上传人与归档确认人不能是同一人");

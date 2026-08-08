@@ -590,19 +590,19 @@
             >
               <div class="action-title">
                 <strong>{{ displayContractActionLabel('upload_final_contract') }}</strong>
-                <span>仅上传线下签署盖章后的完整 PDF</span>
+                <span>上传线下签署盖章后的最终原件（PDF、DOCX 或图片扫描件）</span>
               </div>
               <label class="action-field action-field--wide">
-                <span>双方最终版 PDF <b aria-hidden="true">*</b></span>
+                <span>双方最终版原件 <b aria-hidden="true">*</b></span>
                 <t-upload
                   v-model="contractFinalUploadFiles"
                   theme="file-input"
                   :auto-upload="false"
                   :max="1"
-                  :accept="PDF_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
-                  :size-limit="pdfArchiveUploadSizeLimit"
+                  :accept="FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY.acceptAttribute"
+                  :size-limit="finalContractArchiveUploadSizeLimit"
                   :disabled="archiveActionBusy === 'finalUpload'"
-                  placeholder="选择双方最终版 PDF"
+                  placeholder="选择双方最终版原件"
                 />
                 <small>{{ contractFinalFileSummary }}</small>
               </label>
@@ -1083,7 +1083,6 @@
       :description="sensitiveAction.description"
       :confirm-text="sensitiveAction.confirmText"
       :confirm-theme="sensitiveAction.confirmTheme"
-      :require-password="sensitiveAction.requirePassword"
       :loading="Boolean(archiveActionBusy)"
       :error="sensitiveAction.error"
       @confirm="confirmFinalContractConfirmation"
@@ -1264,7 +1263,7 @@ import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { buildApprovalSelfReviewPayload } from "../../components/approval-self-review.config";
 import {
   CORE_ARCHIVE_UPLOAD_POLICY,
-  PDF_ARCHIVE_UPLOAD_POLICY
+  FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY
 } from "../../components/file-upload-policy.config";
 import { buildFileUploadSummary } from "../../components/file-upload-summary.config";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -1919,16 +1918,16 @@ const contractArchiveFileSummary = computed(() => buildFileUploadSummary(
   CORE_ARCHIVE_UPLOAD_POLICY.acceptText,
   CORE_ARCHIVE_UPLOAD_POLICY.limitText
 ));
-const pdfArchiveUploadSizeLimit = {
-  size: PDF_ARCHIVE_UPLOAD_POLICY.limitBytes,
+const finalContractArchiveUploadSizeLimit = {
+  size: FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY.limitBytes,
   unit: "B" as const,
-  message: `文件大小不能超过 ${PDF_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ", "")}`
+  message: `文件大小不能超过 ${FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY.limitText.replace("不超过 ", "")}`
 };
 const contractFinalFileSummary = computed(() => buildFileUploadSummary(
   selectedContractFinalFile.value,
   archiveActionBusy.value === "finalUpload",
-  PDF_ARCHIVE_UPLOAD_POLICY.acceptText,
-  PDF_ARCHIVE_UPLOAD_POLICY.limitText
+  FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY.acceptText,
+  FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY.limitText
 ));
 const contractFormalEvidenceView = computed(() => {
   const approvalOriginal = activeApprovalOriginal.value;
@@ -2708,10 +2707,10 @@ function requestFinalContractUpload() {
     if (staged) {
       if (staged.contractVersionId !== currentContractVersionId() ||
         staged.sourceRevision !== activeApprovalOriginal.value.sourceRevision) {
-        throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版 PDF");
+        throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版原件");
       }
     } else {
-      if (!selectedContractFinalFile.value) throw new Error("双方最终版 PDF 不能为空");
+      if (!selectedContractFinalFile.value) throw new Error("双方最终版原件不能为空");
       finalDeclarationPayload(finalUploadConfirmations.value);
     }
   } catch (error) {
@@ -2759,9 +2758,8 @@ function requestFinalContractConfirmation() {
   }
   openSensitiveAction("finalConfirm", {
     title: "确认双方最终版并归档？",
-    description: "确认后合同版本生效并冻结归档事实；该操作需要当前密码验证。",
+    description: "确认后合同版本生效并冻结当前选定的归档原件；该操作会写入审计记录。",
     confirmText: "确认归档",
-    requirePassword: true,
     targetContractVersionId: contractVersionId,
     targetFormalFileId: activeMutuallySignedFinal.value?.formalFileId ?? ""
   });
@@ -3077,7 +3075,7 @@ async function confirmFinalContractUpload() {
       ...finalUploadConfirmations.value
     ]);
     if (!staged) {
-      if (!file) throw new Error("双方最终版 PDF 不能为空");
+      if (!file) throw new Error("双方最终版原件不能为空");
       const uploaded = await uploadContractFinalPrivateFileWithCapability(
         contractId,
         contractVersionId,
@@ -3102,7 +3100,7 @@ async function confirmFinalContractUpload() {
       staged.contractVersionId !== contractVersionId ||
       staged.sourceRevision !== approvalOriginal.sourceRevision
     ) {
-      throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版 PDF");
+      throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版原件");
     }
     await associateContractFinalFileWithCapability(
       contractId,
@@ -3149,7 +3147,7 @@ async function confirmFinalContractReturn(values: { reason: string }) {
   }
 }
 
-async function confirmFinalContractConfirmation(values: { password: string }) {
+async function confirmFinalContractConfirmation() {
   const key = "finalConfirm";
   beginContractLifecycleAction(key);
   try {
@@ -3161,7 +3159,6 @@ async function confirmFinalContractConfirmation(values: { password: string }) {
       sensitiveAction.targetContractVersionId,
       {
         formalFileId: requiredText(sensitiveAction.targetFormalFileId, "双方最终版"),
-        confirmationPassword: values.password,
         ...finalDeclarationPayload(finalArchiveConfirmations.value)
       }
     );

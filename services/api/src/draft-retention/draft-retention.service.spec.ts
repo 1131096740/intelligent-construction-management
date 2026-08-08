@@ -91,6 +91,10 @@ describe("DraftRetentionService", () => {
         versionNo: 1
       }
     });
+    expect(result.categories.find((category) => category.key === "pristine_abandoned_contract_draft"))
+      .toMatchObject({
+        rule: expect.stringMatching(/effective\/superseded（含历史生效版本）永久排除/u)
+      });
     expect(client.$transaction).not.toHaveBeenCalled();
   });
 

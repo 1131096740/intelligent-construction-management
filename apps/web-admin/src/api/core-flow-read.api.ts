@@ -6317,7 +6317,6 @@ export interface ConfirmMutuallySignedContractPayload extends CompleteContractSe
   formalFileId: string;
   onlyPermittedSignatureChanges: boolean;
   documentOrderConfirmed: boolean;
-  confirmationPassword: string;
 }
 
 function governedContractPath(contractVersionId: string, suffix: string) {

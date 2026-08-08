@@ -38,6 +38,13 @@ export const PDF_ARCHIVE_UPLOAD_POLICY: FileUploadPolicy = {
   limitText: buildUploadLimitText(PRIVATE_FILE_UPLOAD_MAX_BYTES)
 };
 
+export const FINAL_CONTRACT_ARCHIVE_UPLOAD_POLICY: FileUploadPolicy = {
+  acceptAttribute: ".pdf,.docx,.png,.jpg,.jpeg",
+  acceptText: "合同最终归档（PDF、Word 或常见图片）",
+  limitBytes: PRIVATE_FILE_UPLOAD_MAX_BYTES,
+  limitText: buildUploadLimitText(PRIVATE_FILE_UPLOAD_MAX_BYTES)
+};
+
 export const SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY: FileUploadPolicy = {
   acceptAttribute: SPOT_PROCUREMENT_QUOTATION_EXTENSIONS.join(","),
   acceptText: "报价单（Word、Excel、PDF 或常见图片）",

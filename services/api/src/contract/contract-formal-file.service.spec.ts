@@ -410,6 +410,35 @@ describe("ContractFormalFileService.counterparty", () => {
     };
   }
 
+  it("允许 DOCX 和图片扫描件作为双方最终归档原件，并保留原始摘要", async () => {
+    const previewPdf = await pdfBytes();
+    jest.mocked(convertDocxToPdf).mockResolvedValue(previewPdf);
+    const { prisma, files } = counterpartyHarness();
+    const docx = Buffer.from("final-contract-docx");
+    const docxFile = makeFile("final-docx", "双方最终版.docx", DOCX_MIME, docx);
+    const imageFile = makeFile("final-image", "双方最终版扫描件.png", "image/png", PNG_1PX);
+    prisma.fileObject.findUnique
+      .mockResolvedValueOnce(docxFile)
+      .mockResolvedValueOnce(imageFile);
+    files.getFileBuffer
+      .mockResolvedValueOnce({ file: docxFile, buffer: docx })
+      .mockResolvedValueOnce({ file: imageFile, buffer: PNG_1PX });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+
+    await expect(service.inspectOwnedStoredFinalArchive("final-docx", "owner-1"))
+      .resolves.toMatchObject({
+        sha256: docxFile.contentSha256,
+        pageCount: 1,
+        fileSnapshot: { mimeType: DOCX_MIME }
+      });
+    await expect(service.inspectOwnedStoredFinalArchive("final-image", "owner-1"))
+      .resolves.toMatchObject({
+        sha256: imageFile.contentSha256,
+        pageCount: 1,
+        fileSnapshot: { mimeType: "image/png" }
+      });
+  });
+
   it("上传单一 PDF：预览内联复用原文件，创建原始行与预览行并冻结到当前修订", async () => {
     const bytes = await pdfBytes();
     const { tx, prisma, files } = counterpartyHarness();

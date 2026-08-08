@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "c610c24110df7ffdf4c7deca9ffd87386fff54add76e38af342b0663fd15c827",
+      "sha256": "5a762eacd703bd65bc203c487d2605c606525cca3ad79a4dde236a46c1dac5d8",
       "status": "ready",
       "summary": {
         "apiModuleCount": 15,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e5fa05c6f8ac80b9bc7e3961762867921cf995e911e5af2433768571fa4ff03f",
+      "sha256": "56f423417e0ec049daacd4107361187a602b65305f670657c8f49b60ce00f9cb",
       "status": "ready",
       "summary": {
         "registeredActionCount": 236,
