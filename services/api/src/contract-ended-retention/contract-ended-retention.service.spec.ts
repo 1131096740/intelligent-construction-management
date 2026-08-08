@@ -179,6 +179,38 @@ describe("ContractEndedApplicationRetentionService", () => {
     expect(client.contract.findMany).not.toHaveBeenCalled();
   });
 
+  it("uses a contract-director project membership as a bounded preview scope", async () => {
+    const client = prisma({
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { projectId: "project-1", positionKey: "contract_director" }
+        ])
+      }
+    });
+    const service = new ContractEndedApplicationRetentionService(client as never, {
+      record: jest.fn()
+    } as never, projectVisibility() as never);
+
+    await expect(service.preview(
+      "project-member-director",
+      undefined,
+      undefined,
+      new Date("2026-10-31T10:15:00.000Z")
+    )).resolves.toMatchObject({
+      total: 1,
+      candidates: [expect.objectContaining({ contractVersionId: "version-ended" })]
+    });
+    expect(client.project.findMany).not.toHaveBeenCalled();
+    expect((client.$queryRaw.mock.calls[0][0] as { values: unknown[] }).values)
+      .toContain("project-1");
+  });
+
   it("records a director hold and gives an overdue release a thirty-day buffer", async () => {
     const hold = {
       id: "hold-1",

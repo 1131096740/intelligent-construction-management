@@ -97,14 +97,18 @@ export class ContractEndedApplicationRetentionService {
       ? Prisma.sql`
           FROM "ContractVersion" AS version
           INNER JOIN "Contract" AS contract ON contract."id" = version."contractId"
-          WHERE version."status" IN (${Prisma.join(TERMINAL_STATUSES)})
+          INNER JOIN "Project" AS project ON project."id" = contract."projectId"
+          WHERE project."isActive" = true
+            AND version."status" IN (${Prisma.join(TERMINAL_STATUSES)})
             AND (version."endedAt" IS NOT NULL OR version."firstSubmittedAt" IS NOT NULL)
         `
       : scope.projectIds.length
       ? Prisma.sql`
           FROM "ContractVersion" AS version
           INNER JOIN "Contract" AS contract ON contract."id" = version."contractId"
-          WHERE contract."projectId" IN (${Prisma.join(scope.projectIds)})
+          INNER JOIN "Project" AS project ON project."id" = contract."projectId"
+          WHERE project."isActive" = true
+            AND contract."projectId" IN (${Prisma.join(scope.projectIds)})
             AND version."status" IN (${Prisma.join(TERMINAL_STATUSES)})
             AND (version."endedAt" IS NOT NULL OR version."firstSubmittedAt" IS NOT NULL)
         `
