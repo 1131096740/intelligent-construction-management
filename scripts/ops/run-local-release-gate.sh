@@ -7,6 +7,7 @@ NODE_BIN="${NODE_BIN:-node}"
 PNPM_BIN="${PNPM_BIN:-pnpm}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 GIT_BIN="${GIT_BIN:-git}"
+RECEIPT_TOOL="$SCRIPT_DIR/local-release-receipt.mjs"
 PREFLIGHT_ONLY=false
 LIST_CHECKS=false
 CANDIDATE_SHA=""
@@ -14,7 +15,7 @@ RECEIPT_PATH=""
 
 usage() {
   cat <<'USAGE'
-Usage: pnpm release:local -- [--preflight] [--candidate-sha <sha>] [--receipt <absolute-path>]
+Usage: pnpm release:local [--preflight] [--candidate-sha <sha>] [--receipt <absolute-path>]
 
 Runs the complete local release gate. It never connects to production, invokes
 GitHub Actions, or uses a remote Docker endpoint.
@@ -34,23 +35,7 @@ fail() {
 }
 
 print_checks() {
-  cat <<'CHECKS'
-ci-orchestration
-frozen-dependency-install
-prisma-client-generation
-production-dependency-audit
-workspace-typecheck
-web-e2e-typecheck
-workspace-lint
-business-errors-and-operations-safety
-workspace-test
-api-and-web-production-build
-web-ui-governance
-release-manifests
-exact-sha-postgresql-16
-playwright-p0
-playwright-rc06-mock
-CHECKS
+  "$NODE_BIN" "$RECEIPT_TOOL" --list-checks
 }
 
 while (( $# > 0 )); do
@@ -91,6 +76,9 @@ fi
 node_version="$($NODE_BIN -p 'process.versions.node' 2>/dev/null || true)"
 [[ "$node_version" =~ ^20\.[0-9]+\.[0-9]+$ ]] ||
   fail "Node.js 20 is required; found ${node_version:-unavailable}"
+pnpm_version="$($PNPM_BIN --version 2>/dev/null || true)"
+[[ "$pnpm_version" =~ ^9\.[0-9]+\.[0-9]+$ ]] ||
+  fail "pnpm 9 is required; found ${pnpm_version:-unavailable}"
 
 cd "$REPO_ROOT"
 actual_sha="$($GIT_BIN rev-parse HEAD)"
@@ -163,8 +151,9 @@ run_check playwright-rc06-mock "$PNPM_BIN" --filter @jiangkong/web-admin test:e2
 mkdir -p "$receipt_dir"
 receipt_temp="$(mktemp "$receipt_dir/.local-release-${CANDIDATE_SHA}.XXXXXX")"
 umask 077
-printf '{\n  "schemaVersion": 1,\n  "status": "passed",\n  "candidateSha": "%s",\n  "verifiedAt": "%s",\n  "nodeVersion": "%s",\n  "pnpmVersion": "%s",\n  "checks": ["ci-orchestration", "frozen-dependency-install", "prisma-client-generation", "production-dependency-audit", "workspace-typecheck", "web-e2e-typecheck", "workspace-lint", "business-errors-and-operations-safety", "workspace-test", "api-and-web-production-build", "web-ui-governance", "release-manifests", "exact-sha-postgresql-16", "playwright-p0", "playwright-rc06-mock"]\n}\n' \
-  "$CANDIDATE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$node_version" "$($PNPM_BIN --version)" > "$receipt_temp"
+checks_json="$("$NODE_BIN" "$RECEIPT_TOOL" --checks-json)"
+printf '{\n  "schemaVersion": 1,\n  "status": "passed",\n  "candidateSha": "%s",\n  "verifiedAt": "%s",\n  "nodeVersion": "%s",\n  "pnpmVersion": "%s",\n  "checks": %s\n}\n' \
+  "$CANDIDATE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$node_version" "$pnpm_version" "$checks_json" > "$receipt_temp"
 chmod 600 "$receipt_temp"
 mv -f "$receipt_temp" "$RECEIPT_PATH"
 printf '\nLocal release gate passed for %s\nReceipt: %s\n' "$CANDIDATE_SHA" "$RECEIPT_PATH"

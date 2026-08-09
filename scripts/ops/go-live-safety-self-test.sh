@@ -36,7 +36,7 @@ grep -Fq 'TARGET_SHA="${TARGET_SHA:-}"' "$DEPLOY_SCRIPT" ||
 if grep -Fq 'CANDIDATE_SHA_CONFIRMATION' "$DEPLOY_SCRIPT"; then
   fail "deployment script still defines a second candidate SHA contract"
 fi
-grep -Fq '"env TARGET_SHA=$TARGET_SHA DEPLOY_SCOPE=$DEPLOY_SCOPE DEPLOY_CONFIRMATION_MODE=immediate bash -s"' "$LOCAL_DEPLOY_SCRIPT" ||
+grep -Fq 'DEPLOY_CONFIRMATION_MODE=$DEPLOY_CONFIRMATION_MODE DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=$DEPLOY_CONFIRMATION_TIMEOUT_SECONDS' "$LOCAL_DEPLOY_SCRIPT" ||
   fail "local deployment launcher does not pass the canonical TARGET_SHA"
 grep -Fq 'assert_dependency_tree_writable' "$DEPLOY_SCRIPT" ||
   fail "deployment script does not preflight dependency-tree ownership"

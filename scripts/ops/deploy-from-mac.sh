@@ -5,16 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GIT_BIN="${GIT_BIN:-git}"
 SSH_BIN="${SSH_BIN:-ssh}"
+NODE_BIN="${NODE_BIN:-node}"
+RECEIPT_TOOL="$SCRIPT_DIR/local-release-receipt.mjs"
 TARGET_SHA=""
 RECEIPT_PATH=""
 CONFIRMATION=""
 DEPLOY_SCOPE="full"
+DEPLOY_CONFIRMATION_MODE="manual"
+DEPLOY_CONFIRMATION_TIMEOUT_SECONDS="1800"
 DRY_RUN=false
 
 usage() {
   cat <<'USAGE'
-Usage: pnpm deploy:local -- --target-sha <sha> --receipt <absolute-path> \
-  --confirm 'DEPLOY JGZG PRODUCTION' [--scope full|api-only] [--dry-run]
+Usage: pnpm deploy:local --target-sha <sha> --receipt <absolute-path> \
+  --confirm 'DEPLOY JGZG PRODUCTION' [--scope full|api-only] \
+  [--confirmation-mode manual|immediate] [--confirmation-timeout-seconds <seconds>] \
+  [--dry-run]
 
 Required local configuration (never commit these values):
   JGZG_DEPLOY_HOST
@@ -53,6 +59,16 @@ while (( $# > 0 )); do
       DEPLOY_SCOPE=$2
       shift 2
       ;;
+    --confirmation-mode)
+      [[ $# -ge 2 ]] || fail "--confirmation-mode requires manual or immediate"
+      DEPLOY_CONFIRMATION_MODE=$2
+      shift 2
+      ;;
+    --confirmation-timeout-seconds)
+      [[ $# -ge 2 ]] || fail "--confirmation-timeout-seconds requires a positive integer"
+      DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=$2
+      shift 2
+      ;;
     --dry-run)
       DRY_RUN=true
       shift
@@ -78,6 +94,18 @@ case "$DEPLOY_SCOPE" in
     fail "deployment scope must be full or api-only"
     ;;
 esac
+case "$DEPLOY_CONFIRMATION_MODE" in
+  manual|immediate)
+    ;;
+  *)
+    fail "deployment confirmation mode must be manual or immediate"
+    ;;
+esac
+[[ "$DEPLOY_CONFIRMATION_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] &&
+  (( DEPLOY_CONFIRMATION_TIMEOUT_SECONDS <= 86400 )) ||
+  fail "deployment confirmation timeout must be between 1 and 86400 seconds"
+[[ "$DEPLOY_SCOPE" != "full" || "$DEPLOY_CONFIRMATION_MODE" == "manual" ]] ||
+  fail "full deployments require manual confirmation mode"
 
 : "${JGZG_DEPLOY_HOST:?JGZG_DEPLOY_HOST is required}"
 : "${JGZG_DEPLOY_USER:?JGZG_DEPLOY_USER is required}"
@@ -95,11 +123,9 @@ JGZG_DEPLOY_PORT="${JGZG_DEPLOY_PORT:-22}"
   fail "deployment known-hosts file must be a regular file"
 [[ -f "$RECEIPT_PATH" && ! -L "$RECEIPT_PATH" ]] || fail "release receipt must be a regular file"
 
-receipt_content="$(< "$RECEIPT_PATH")"
-grep -Eq '"status"[[:space:]]*:[[:space:]]*"passed"' <<< "$receipt_content" ||
-  fail "release receipt is not passed"
-grep -Eq "\\\"candidateSha\\\"[[:space:]]*:[[:space:]]*\\\"$TARGET_SHA\\\"" <<< "$receipt_content" ||
-  fail "release receipt does not match target SHA"
+if ! receipt_error="$("$NODE_BIN" "$RECEIPT_TOOL" --validate --receipt "$RECEIPT_PATH" --candidate-sha "$TARGET_SHA" 2>&1)"; then
+  fail "$receipt_error"
+fi
 
 cd "$REPO_ROOT"
 [[ "$($GIT_BIN rev-parse HEAD)" == "$TARGET_SHA" ]] ||
@@ -108,11 +134,12 @@ cd "$REPO_ROOT"
   fail "local candidate worktree must be clean"
 $GIT_BIN fetch --no-tags origin main:refs/remotes/origin/main
 $GIT_BIN cat-file -e "$TARGET_SHA^{commit}"
-$GIT_BIN merge-base --is-ancestor "$TARGET_SHA" origin/main ||
-  fail "target SHA is not an ancestor of origin/main"
+[[ "$($GIT_BIN rev-parse refs/remotes/origin/main)" == "$TARGET_SHA" ]] ||
+  fail "target SHA does not match origin/main"
 
 if [[ "$DRY_RUN" == true ]]; then
-  printf 'Dry run passed for %s (scope: %s). SSH was not invoked.\n' "$TARGET_SHA" "$DEPLOY_SCOPE"
+  printf 'Dry run passed for %s (scope: %s, confirmation: %s). SSH was not invoked.\n' \
+    "$TARGET_SHA" "$DEPLOY_SCOPE" "$DEPLOY_CONFIRMATION_MODE"
   exit 0
 fi
 
@@ -123,7 +150,7 @@ fi
   -o StrictHostKeyChecking=yes \
   -o "UserKnownHostsFile=$JGZG_DEPLOY_KNOWN_HOSTS" \
   "$JGZG_DEPLOY_USER@$JGZG_DEPLOY_HOST" \
-  "env TARGET_SHA=$TARGET_SHA DEPLOY_SCOPE=$DEPLOY_SCOPE DEPLOY_CONFIRMATION_MODE=immediate bash -s" <<'REMOTE_DEPLOY'
+  "env TARGET_SHA=$TARGET_SHA DEPLOY_SCOPE=$DEPLOY_SCOPE DEPLOY_CONFIRMATION_MODE=$DEPLOY_CONFIRMATION_MODE DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=$DEPLOY_CONFIRMATION_TIMEOUT_SECONDS bash -s" <<'REMOTE_DEPLOY'
 set -euo pipefail
 
 assert_clean_release_tree() {

@@ -32,7 +32,7 @@ operator 的 Mac 执行；生产机仍只接受 `origin/main` 的精确提交，
 隔离容器。
 
 ```bash
-pnpm release:local -- --preflight
+pnpm release:local --preflight
 pnpm release:local
 ```
 
@@ -65,7 +65,7 @@ export JGZG_DEPLOY_KNOWN_HOSTS="$HOME/.ssh/jiangkong_known_hosts"
 先运行不连接生产的 dry-run：
 
 ```bash
-pnpm deploy:local -- \
+pnpm deploy:local \
   --target-sha '<40-character-main-sha>' \
   --receipt '<absolute-path-to-local-receipt>' \
   --confirm 'DEPLOY JGZG PRODUCTION' \
@@ -73,9 +73,17 @@ pnpm deploy:local -- \
 ```
 
 dry-run 通过后，由人工再次确认后去掉 `--dry-run`。部署器会再次验证本地
-checkout、收据和 `origin/main` 的祖先关系，SSH 使用 `StrictHostKeyChecking=yes`
-和指定 known-hosts；远端仍会再次验证目标 SHA、工作树、依赖目录和生产脚本的
-备份/迁移/健康检查门禁。
+checkout、收据和拉取后的 `origin/main` **都精确等于**目标 SHA，SSH 使用
+`StrictHostKeyChecking=yes` 和指定 known-hosts；远端仍会再次验证目标 SHA、工作树、
+依赖目录和生产脚本的备份/迁移/健康检查门禁。
+
+`full` 发布默认使用 `manual` 确认模式和 1800 秒窗口，不能改成 `immediate`。
+健康检查后，仍须按 [Release B 延迟确认部署](contract-workbench-release-a-b-cutover.md#4-release-b-延迟确认部署)
+在第二终端针对该精确 SHA 写入 `CONFIRM` 或 `ROLLBACK`。API-only 若已有单独批准，
+才可显式传入 `--confirmation-mode immediate`。
+
+本机收据用于防止把未完整验证或错误 SHA 误部署；拥有本机写权限和部署 SSH 私钥的
+operator 仍可伪造本地文件，因此它不是对恶意本机 operator 的密码学证明。
 
 默认是 `full` 发布；确有批准的 API-only 发布时，额外传入 `--scope api-only`。
 
