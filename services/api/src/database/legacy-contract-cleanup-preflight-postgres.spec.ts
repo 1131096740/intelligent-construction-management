@@ -26,6 +26,69 @@ describe("legacy contract cleanup preflight PostgreSQL evidence", () => {
   const integrationTest =
     process.env.RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE === "1" ? it : it.skip;
 
+  integrationTest("reads retention activation as the same absolute instant as PostgreSQL", async () => {
+    const databaseUrl = localPreflightDatabaseUrl(
+      process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+    );
+    const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+
+    try {
+      await prisma.$executeRaw(Prisma.sql`
+        CREATE TEMP TABLE "RetentionPolicyTimezoneProbe" (
+          "activatedAt" TIMESTAMP(3) NOT NULL
+        )
+      `);
+      await prisma.$executeRaw(Prisma.sql`
+        INSERT INTO "RetentionPolicyTimezoneProbe" ("activatedAt")
+        VALUES (TIMESTAMP '2026-08-09 00:00:00')
+      `);
+      await prisma.$executeRaw(Prisma.sql`
+        ALTER TABLE "RetentionPolicyTimezoneProbe"
+          ALTER COLUMN "activatedAt" TYPE TIMESTAMPTZ(3)
+          USING ("activatedAt" AT TIME ZONE 'Asia/Shanghai')
+      `);
+      const probeEpochs = await prisma.$queryRaw<Array<{ epochMs: number }>>(
+        Prisma.sql`
+          SELECT (EXTRACT(EPOCH FROM "activatedAt") * 1000)::double precision AS "epochMs"
+          FROM "RetentionPolicyTimezoneProbe"
+        `
+      );
+      expect(probeEpochs).toEqual([{ epochMs: Date.parse("2026-08-08T16:00:00.000Z") }]);
+
+      const columns = await prisma.$queryRaw<Array<{ dataType: string }>>(
+        Prisma.sql`
+          SELECT data_type AS "dataType"
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'ContractEndedApplicationRetentionPolicy'
+            AND column_name = 'activatedAt'
+        `
+      );
+      expect(columns).toEqual([{ dataType: "timestamp with time zone" }]);
+
+      const epochs = await prisma.$queryRaw<Array<{ epochMs: number }>>(
+        Prisma.sql`
+          SELECT (EXTRACT(EPOCH FROM "activatedAt") * 1000)::double precision AS "epochMs"
+          FROM "ContractEndedApplicationRetentionPolicy"
+          WHERE "id" = 'contract-ended-retention-v1'
+        `
+      );
+      const policy = await prisma.contractEndedApplicationRetentionPolicy.findUnique({
+        where: { id: "contract-ended-retention-v1" },
+        select: { activatedAt: true }
+      });
+
+      expect(policy).not.toBeNull();
+      expect(epochs).toHaveLength(1);
+      expect(policy!.activatedAt.getTime()).toBe(Math.trunc(Number(epochs[0].epochMs)));
+    } finally {
+      await prisma.$executeRaw(
+        Prisma.sql`DROP TABLE IF EXISTS "RetentionPolicyTimezoneProbe"`
+      );
+      await prisma.$disconnect();
+    }
+  }, 30_000);
+
   integrationTest("uses a read-only transaction and lists exact COS versions without deleting", async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const tool = require(scriptPath);

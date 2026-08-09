@@ -15,7 +15,7 @@ describe("legacy contract cleanup preflight", () => {
       databaseFingerprint: "b".repeat(64),
       generatedAt: "2026-08-09T00:00:00.000Z",
       batchId: "legacy-preflight-20260809",
-      migrationHead: "20260808110000_contract_ended_application_purge",
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
       policyActivatedAt: "2026-08-08T00:00:00.000Z",
       totalRows: "1",
       rows: [
@@ -84,7 +84,7 @@ describe("legacy contract cleanup preflight", () => {
       databaseFingerprint: "b".repeat(64),
       generatedAt: "2026-08-09T00:00:00.000Z",
       batchId: "legacy-preflight-20260809-source",
-      migrationHead: "20260808110000_contract_ended_application_purge",
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
       policyActivatedAt: "2026-08-08T00:00:00.000Z",
       totalRows: "1",
       rows: [{
@@ -130,8 +130,8 @@ describe("legacy contract cleanup preflight", () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const tool = require(scriptPath);
     const fingerprint = tool.databaseFingerprint({
-      migrationHead: "20260808110000_contract_ended_application_purge",
-      migrationCount: 123,
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
+      migrationCount: 124,
       migrationDigest: "c".repeat(64),
       candidateStateHash: "d".repeat(64)
     });
@@ -140,7 +140,7 @@ describe("legacy contract cleanup preflight", () => {
       databaseFingerprint: fingerprint,
       generatedAt: "2026-08-09T00:00:00.000Z",
       batchId: "legacy-preflight-20260809-opaque",
-      migrationHead: "20260808110000_contract_ended_application_purge",
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
       policyActivatedAt: "2026-08-08T00:00:00.000Z",
       totalRows: "0",
       rows: []
@@ -172,7 +172,7 @@ describe("legacy contract cleanup preflight", () => {
       databaseFingerprint: "b".repeat(64),
       generatedAt: "2026-08-09T00:00:00.000Z",
       batchId: "legacy-preflight-20260809-retention",
-      migrationHead: "20260808110000_contract_ended_application_purge",
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
       policyActivatedAt: "2026-08-08T00:00:00.000Z",
       totalRows: "1",
       rows: [{
@@ -248,7 +248,7 @@ describe("legacy contract cleanup preflight", () => {
       databaseFingerprint: "b".repeat(64),
       generatedAt: "2026-08-09T00:00:00.000Z",
       batchId: "legacy-preflight-20260809-all-pages",
-      migrationHead: "20260808110000_contract_ended_application_purge",
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
       policyActivatedAt: "2026-08-08T00:00:00.000Z",
       totalRows: String(rows.length),
       rows
@@ -296,10 +296,10 @@ describe("legacy contract cleanup preflight", () => {
       $executeRawUnsafe: jest.fn(),
       $queryRawUnsafe: jest.fn((query: string) => {
         if (query === tool.checks.migrationHead) {
-          return [{ migrationHead: "20260808110000_contract_ended_application_purge" }];
+          return [{ migrationHead: "20260809150000_contract_retention_policy_timestamptz" }];
         }
         if (query === tool.checks.migrationBaseline) {
-          return [{ migrationName: "20260808110000_contract_ended_application_purge", checksum: "x" }];
+          return [{ migrationName: "20260809150000_contract_retention_policy_timestamptz", checksum: "x" }];
         }
         if (query === tool.checks.candidateCount) return [{ count: String(rows.length) }];
         throw new Error(`unexpected unsafe query: ${query}`);
@@ -354,10 +354,10 @@ describe("legacy contract cleanup preflight", () => {
       $executeRawUnsafe: jest.fn(),
       $queryRawUnsafe: jest.fn((query: string) => {
         if (query === tool.checks.migrationHead) {
-          return [{ migrationHead: "20260808110000_contract_ended_application_purge" }];
+          return [{ migrationHead: "20260809150000_contract_retention_policy_timestamptz" }];
         }
         if (query === tool.checks.migrationBaseline) {
-          return [{ migrationName: "20260808110000_contract_ended_application_purge", checksum: "x" }];
+          return [{ migrationName: "20260809150000_contract_retention_policy_timestamptz", checksum: "x" }];
         }
         if (query === tool.checks.candidateCount) return [{ count: "1" }];
         throw new Error(`unexpected unsafe query: ${query}`);

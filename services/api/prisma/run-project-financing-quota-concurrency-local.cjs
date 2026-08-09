@@ -51,9 +51,9 @@ const REQUEST_MIGRATION =
   "20260802010000_project_financing_quota_request_idempotency";
 const REQUEST_MIGRATION_CHECKSUM =
   "d3d0d07a6cc9a49da1cca1478822a873fad7c7324b9d189e2a55a4d3f57bfe61";
-const EXPECTED_MIGRATION_COUNT = 123;
+const EXPECTED_MIGRATION_COUNT = 124;
 const CURRENT_TERMINAL_MIGRATION =
-  "20260808110000_contract_ended_application_purge";
+  "20260809150000_contract_retention_policy_timestamptz";
 const TERMINAL_MIGRATION =
   "20260802020000_project_financing_quota_termination_idempotency";
 const TERMINAL_MIGRATION_CHECKSUM =
