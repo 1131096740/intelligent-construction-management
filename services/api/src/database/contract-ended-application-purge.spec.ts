@@ -4,7 +4,10 @@ import {
   CosVersionedObjectStorage,
   InMemoryVersionedObjectStorage
 } from "../file/versioned-object-storage";
-import { ContractEndedApplicationPurgeService } from "../contract-ended-purge/contract-ended-application-purge.service";
+import {
+  ContractEndedApplicationPurgeService,
+  LEGACY_AUTHORIZATION_AUDIT_EXCEPTION
+} from "../contract-ended-purge/contract-ended-application-purge.service";
 
 const TEST_DATABASE = "jiangkong_contract_draft_aggregate_test";
 
@@ -1099,6 +1102,109 @@ describe("contract ended application purge PostgreSQL evidence", () => {
       await prisma.contractNumberTombstone.deleteMany({ where: { formalCode: blockedFormalCode } });
       await prisma.contractVersion.deleteMany({ where: { id: blockedVersionId } });
       await prisma.contract.deleteMany({ where: { id: blockedContractId } });
+      await prisma.project.deleteMany({ where: { id: projectId } });
+      await prisma.user.deleteMany({ where: { id: ownerId } });
+      await prisma.$disconnect();
+    }
+  }, 30_000);
+
+  integrationTest("deletes only the explicitly reviewed authorization-update audit exception", async () => {
+    const databaseUrl = localPurgeDatabaseUrl(
+      process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+    );
+    const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const suffix = `${process.pid}-${Date.now()}`;
+    const ownerId = `legacy-audit-owner-${suffix}`;
+    const projectId = `legacy-audit-project-${suffix}`;
+    const contractId = `legacy-audit-contract-${suffix}`;
+    const contractVersionId = `${contractId}-v1`;
+    const formalCode = `HT-LEGACY-AUDIT-${suffix}`;
+
+    try {
+      await prisma.user.create({
+        data: { id: ownerId, name: "审计例外清理测试经办人", mustChangePassword: false }
+      });
+      await prisma.project.create({
+        data: {
+          id: projectId,
+          code: `LEGACY-AUDIT-${suffix}`,
+          name: "legacy 审计例外清理测试项目"
+        }
+      });
+      await prisma.contract.create({
+        data: {
+          id: contractId,
+          projectId,
+          code: formalCode,
+          temporaryCode: `TMP-${formalCode}`,
+          name: "legacy 审计例外清理测试合同",
+          counterparty: "测试相对方",
+          ownerUserId: ownerId
+        }
+      });
+      await prisma.contractVersion.create({
+        data: {
+          id: contractVersionId,
+          contractId,
+          versionNo: 1,
+          changeType: "original",
+          status: "abandoned",
+          abandonedAt: new Date("2026-06-01T01:00:00.000Z"),
+          abandonedByUserId: ownerId,
+          abandonReason: null,
+          amountCents: 100n,
+          draftData: {},
+          templateSnapshot: {},
+          clauseSnapshot: []
+        }
+      });
+      await prisma.auditLog.createMany({
+        data: [1, 2].map((index) => ({
+          actorUserId: ownerId,
+          action: LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.action,
+          businessType: LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.businessType,
+          businessId: contractVersionId,
+          metadata: { side: index === 1 ? "party_a" : "party_b" }
+        }))
+      });
+
+      const service = new ContractEndedApplicationPurgeService(
+        prisma as never,
+        new FileCleanupSeamService(prisma as never),
+        new InMemoryVersionedObjectStorage()
+      );
+      await expect(service.purgeLegacyAuthorizedApplications(
+        [contractVersionId],
+        `legacy-audit-ordinary-${suffix}`,
+        new Date("2026-08-09T08:00:00.000Z")
+      )).resolves.toEqual([{ contractVersionId, status: "skipped" }]);
+      await expect(service.purgeLegacyAuthorizedApplicationWithAuditException(
+        contractVersionId,
+        `legacy-audit-exception-${suffix}`,
+        {
+          ...LEGACY_AUTHORIZATION_AUDIT_EXCEPTION,
+          expectedCount: 2
+        },
+        new Date("2026-08-09T08:00:00.000Z")
+      )).resolves.toEqual({ contractVersionId, status: "completed" });
+      await expect(prisma.auditLog.count({
+        where: {
+          businessType: LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.businessType,
+          businessId: contractVersionId,
+          action: LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.action
+        }
+      })).resolves.toBe(0);
+      await expect(prisma.contract.findUnique({ where: { id: contractId } })).resolves.toBeNull();
+      await expect(prisma.contractNumberTombstone.findUnique({
+        where: { formalCode },
+        select: { formalCode: true }
+      })).resolves.toEqual({ formalCode });
+    } finally {
+      await prisma.contractEndedApplicationPurgeReceipt.deleteMany({ where: { contractVersionId } });
+      await prisma.auditLog.deleteMany({ where: { businessId: contractVersionId } });
+      await prisma.contractNumberTombstone.deleteMany({ where: { formalCode } });
+      await prisma.contractVersion.deleteMany({ where: { id: contractVersionId } });
+      await prisma.contract.deleteMany({ where: { id: contractId } });
       await prisma.project.deleteMany({ where: { id: projectId } });
       await prisma.user.deleteMany({ where: { id: ownerId } });
       await prisma.$disconnect();

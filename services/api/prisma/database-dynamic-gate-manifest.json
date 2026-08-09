@@ -28,9 +28,9 @@
     "pendingFiles": 33,
     "fullyPendingSuites": 23,
     "partiallyPendingSuites": 10,
-    "pendingTests": 65,
+    "pendingTests": 66,
     "coveredFiles": 33,
-    "coveredTests": 65,
+    "coveredTests": 66,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,11 +174,11 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 41,
+    "pendingTests": 42,
       "testFiles": [
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-          "pendingTests": 5,
+          "pendingTests": 6,
           "suiteStatus": "fully_pending"
         },
         {
