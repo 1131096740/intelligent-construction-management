@@ -13,9 +13,9 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 122;
+const EXPECTED_MIGRATION_COUNT = 123;
 const TERMINAL_MIGRATION =
-  "20260808103000_contract_ended_application_retention";
+  "20260808110000_contract_ended_application_purge";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
 const GROUPS = [
@@ -26,14 +26,15 @@ const GROUPS = [
       "src/database/contract-draft-aggregate-concurrency.spec.ts",
       "src/database/contract-draft-retention-script.spec.ts",
       "src/database/contract-lifecycle-route.spec.ts",
-      "src/database/contract-ended-application-retention.spec.ts"
+      "src/database/contract-ended-application-retention.spec.ts",
+      "src/database/contract-ended-application-purge.spec.ts"
     ],
     flags: {
       RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE: "1",
       CONTRACT_DRAFT_AGGREGATE_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 7
+    pendingTests: 12
   },
   {
     id: "project_funding_availability",

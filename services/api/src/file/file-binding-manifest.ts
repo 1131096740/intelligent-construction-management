@@ -255,6 +255,7 @@ export async function resolveContractVersionFileBindings(
                x."id" AS "rowId"
         FROM ${tableId} x
         JOIN candidates c ON c."id" = x.${versionIdColumnId}
+        WHERE x.${columnId} IS NOT NULL
       `;
     }
   );
