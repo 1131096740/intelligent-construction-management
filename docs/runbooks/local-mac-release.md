@@ -1,8 +1,11 @@
-# 本机零 GitHub Actions 分钟发布
+# 本机完整门禁 + 低分钟手动部署
 
-本仓库不再运行 GitHub-hosted Actions。开发验证和发布控制面均由
-operator 的 Mac 执行；生产机仍只接受 `origin/main` 的精确提交，并在
-服务器端自行构建、备份、迁移、重启和健康检查。
+日常开发验证和完整发布门禁都在 operator 的 Mac 执行。Pull Request 和普通
+`main` push 不会运行 GitHub Actions；只有一次已经通过本机完整门禁、并获得
+单独生产授权的发布，才会手动启动一个 deploy-only workflow。
+
+生产机仍只接受 `origin/main` 的精确提交，并在服务器端自行构建、备份、迁移、
+重启、健康检查和失败恢复。
 
 这不授权自动发布。每一次生产部署仍需要单独的业务/生产授权。
 
@@ -17,11 +20,15 @@ operator 的 Mac 执行；生产机仍只接受 `origin/main` 的精确提交，
    docker pull postgres:16
    ```
 
-4. 准备一个专用部署 SSH 私钥与固定的 known-hosts 文件。密钥、主机名和
-   known-hosts 不得写入仓库、shell history、`.env` 或 GitHub Secrets。
-5. 在 GitHub Billing 中将 Actions 预算设为 `$0` 且启用停止使用，并在
-   Actions 页面手动禁用默认分支上此前存在的 `CI` 与 `Deploy Production`
-   工作流。合并本变更后仓库也不会再有 workflow YAML 定义。
+4. 在 Mac 上以有仓库写权限的账号完成 `gh auth login`。它只用于手动发起
+   deploy-only workflow，日常 `check:fast` 和 `release:local` 不会调用它。
+5. 在 GitHub 仓库 Settings → Secrets and variables → Actions 配置五个
+   repository secrets：`DEPLOY_HOST`、`DEPLOY_USER`（必须为 `ubuntu`）、
+   `DEPLOY_PORT`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`。只填值，不把
+   私钥、主机名或 known-hosts 写进仓库、shell history 或 `.env`。
+6. 在 GitHub Billing 中将 Actions overage budget 设为 `$0` 并启用停止使用。
+   这不会扣除超额费用，但仍允许使用套餐内的月度分钟；用完后手动部署会被阻止，
+   而不会产生收费。
 
 ## 日常快速检查（不生成发布收据）
 
@@ -78,21 +85,10 @@ Chromium/WebKit 的 P0 和 RC-06 mocked browser checks。
 阶段结束时显示耗时。它既用于部署前的严格收据校验，也用于判断下一轮应优先优化
 哪一个慢阶段；阶段缺失、重复、负数或不是整数时，部署器会拒绝收据。
 
-## 从 Mac 发起生产部署
+## 通过 GitHub 手动发起生产部署
 
-只在候选已经推送、合并至 `main`、对该精确 `main` SHA 重跑本地完整门禁，且获得
-本次生产授权后，才从**同一个干净 checkout**运行。把本机部署配置放在用户自己的
-shell 配置或受限文件中：
-
-```bash
-export JGZG_DEPLOY_HOST='<production-host>'
-export JGZG_DEPLOY_USER='ubuntu'
-export JGZG_DEPLOY_PORT='22'
-export JGZG_DEPLOY_IDENTITY_FILE="$HOME/.ssh/jiangkong_deploy"
-export JGZG_DEPLOY_KNOWN_HOSTS="$HOME/.ssh/jiangkong_known_hosts"
-```
-
-先运行不连接生产的 dry-run：
+只在候选已经合并至 `main`、对这个精确 `main` SHA 重跑本机完整门禁，并获得本次
+生产授权后，才从**同一个干净 checkout**运行。先做不触发 GitHub 的 dry-run：
 
 ```bash
 pnpm deploy:local \
@@ -102,20 +98,39 @@ pnpm deploy:local \
   --dry-run
 ```
 
-dry-run 通过后，由人工再次确认后去掉 `--dry-run`。部署器会再次验证本地
-checkout、收据和拉取后的 `origin/main` **都精确等于**目标 SHA，SSH 使用
-`StrictHostKeyChecking=yes` 和指定 known-hosts；远端仍会再次验证目标 SHA、工作树、
-依赖目录和生产脚本的备份/迁移/健康检查门禁。
+dry-run 通过后，去掉 `--dry-run` 才会手动发起 GitHub 的 Deploy Production workflow：
 
-`full` 发布默认使用 `manual` 确认模式和 1800 秒窗口，不能改成 `immediate`。
-健康检查后，仍须按 [Release B 延迟确认部署](contract-workbench-release-a-b-cutover.md#4-release-b-延迟确认部署)
-在第二终端针对该精确 SHA 写入 `CONFIRM` 或 `ROLLBACK`。API-only 若已有单独批准，
-才可显式传入 `--confirmation-mode immediate`。
+```bash
+pnpm deploy:local \
+  --target-sha '<40-character-main-sha>' \
+  --receipt '<absolute-path-to-local-receipt>' \
+  --confirm 'DEPLOY JGZG PRODUCTION'
+```
 
-本机收据用于防止把未完整验证或错误 SHA 误部署；拥有本机写权限和部署 SSH 私钥的
-operator 仍可伪造本地文件，因此它不是对恶意本机 operator 的密码学证明。
+这个命令先在 Mac 验证收据、当前 HEAD、干净工作区和刚刷新过的 `origin/main` 都精确
+等于目标 SHA；只有通过后，才把经过清洗的非敏感收据摘要发送给 GitHub。它不会从 Mac
+打开 SSH 连接。
 
-默认是 `full` 发布；确有批准的 API-only 发布时，额外传入 `--scope api-only`。
+GitHub workflow 只接受手动触发，会串行排队且不会取消进行中的发布。它会再次校验确认
+短语、当前远端 `main`、收据的 15 个固定阶段和逐阶段耗时，然后才用 GitHub Secrets
+经固定 known-hosts SSH 到服务器。runner 不安装项目依赖、不跑测试/数据库动态门、
+不安装浏览器，也不构建应用；服务器端原有构建、迁移前备份、运行时快照、迁移、健康
+检查和恢复链保持不变。workflow 最长 90 分钟，且不创建 Actions cache 或 artifact。
+
+默认 `full` 发布保持 `manual` 确认模式与 1800 秒健康检查后窗口，不能改为
+`immediate`。确认窗口仍由服务器脚本控制：按
+[Release B 延迟确认部署](contract-workbench-release-a-b-cutover.md#4-release-b-延迟确认部署)
+在第二终端针对该精确 SHA 写入 `CONFIRM` 或 `ROLLBACK`；超时、错误确认或健康失败会
+触发现有运行时恢复。等待确认的时间也会占用本次 Actions 分钟，所以完成冒烟检查后应
+立即确认或回滚。API-only 仅在已有单独批准时可显式传入 `--scope api-only
+--confirmation-mode immediate`。
+
+本机收据防止未完整验证或错误 SHA 误部署，但不是针对恶意本机 operator 的密码学证明。
+
+## 直连 Mac 部署备用路径
+
+`pnpm deploy:mac-direct` 仍保留原有严格 SSH 直连能力，作为 GitHub 无法使用时的备用
+路径。它需要单独的生产授权以及本机 `JGZG_DEPLOY_*` 配置；不要把它当作日常默认入口。
 
 ## 不可用时
 
