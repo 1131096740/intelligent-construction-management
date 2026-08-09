@@ -7,7 +7,7 @@
     "dev:web": "node scripts/pnpm-workspace.mjs --filter @jiangkong/web-admin dev",
     "lint": "node scripts/pnpm-workspace.mjs -r lint",
     "test": "node scripts/pnpm-workspace.mjs -r test",
-    "test:ci-orchestration": "node --test scripts/go-live-ci-gates.test.mjs scripts/inspect-release-manifests.test.mjs",
+    "test:ci-orchestration": "node --test scripts/go-live-ci-gates.test.mjs scripts/inspect-release-manifests.test.mjs scripts/ops/local-release-tools.test.mjs",
     "typecheck": "node scripts/pnpm-workspace.mjs -r typecheck",
     "inspect:contract-workbench-capabilities": "node scripts/inspect-contract-workbench-capabilities.mjs --check docs/product/contract-workbench-capability-matrix.md",
     "inspect:release-manifests": "node scripts/inspect-release-manifests.mjs",
@@ -31,7 +31,9 @@
     "verify:settlement-approval-withdrawal-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:settlement-approval-withdrawal-concurrency:local",
     "verify:spot-procurement-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:spot-procurement-concurrency:local",
     "verify:payment-approval-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:payment-approval-concurrency:local",
-    "verify:contract-template-scenario-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:contract-template-scenario-concurrency:local"
+    "verify:contract-template-scenario-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:contract-template-scenario-concurrency:local",
+    "release:local": "bash scripts/ops/run-local-release-gate.sh",
+    "deploy:local": "bash scripts/ops/deploy-from-mac.sh"
   },
   "engines": {
     "node": ">=20.9.0",

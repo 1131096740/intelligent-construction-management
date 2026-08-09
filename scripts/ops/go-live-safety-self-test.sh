@@ -12,6 +12,8 @@ bash -n \
   "$SCRIPT_DIR/db-backup.sh" \
   "$SCRIPT_DIR/db-restore-drill.sh" \
   "$SCRIPT_DIR/deploy-production-server.sh" \
+  "$SCRIPT_DIR/deploy-from-mac.sh" \
+  "$SCRIPT_DIR/run-local-release-gate.sh" \
   "$SCRIPT_DIR/run-production-db-backup.sh"
 
 cleanup() {
@@ -27,19 +29,21 @@ fail() {
 }
 
 DEPLOY_SCRIPT="$SCRIPT_DIR/deploy-production-server.sh"
-DEPLOY_WORKFLOW="$SCRIPT_DIR/../../.github/workflows/deploy-production.yml"
+LOCAL_DEPLOY_SCRIPT="$SCRIPT_DIR/deploy-from-mac.sh"
 NGINX_SECURITY_SNIPPET="$SCRIPT_DIR/../../deploy/nginx/jiangkong-security-snippets.conf.example"
 grep -Fq 'TARGET_SHA="${TARGET_SHA:-}"' "$DEPLOY_SCRIPT" ||
   fail "deployment script does not accept the canonical TARGET_SHA"
 if grep -Fq 'CANDIDATE_SHA_CONFIRMATION' "$DEPLOY_SCRIPT"; then
   fail "deployment script still defines a second candidate SHA contract"
 fi
-grep -Fq '"env TARGET_SHA=$TARGET_SHA bash -s"' "$DEPLOY_WORKFLOW" ||
-  fail "deployment workflow does not pass the canonical TARGET_SHA"
+grep -Fq '"env TARGET_SHA=$TARGET_SHA DEPLOY_SCOPE=$DEPLOY_SCOPE DEPLOY_CONFIRMATION_MODE=immediate bash -s"' "$LOCAL_DEPLOY_SCRIPT" ||
+  fail "local deployment launcher does not pass the canonical TARGET_SHA"
 grep -Fq 'assert_dependency_tree_writable' "$DEPLOY_SCRIPT" ||
   fail "deployment script does not preflight dependency-tree ownership"
-grep -Fq 'assert_dependency_tree_writable' "$DEPLOY_WORKFLOW" ||
-  fail "deployment workflow does not preflight dependency-tree ownership before checkout"
+grep -Fq 'assert_dependency_tree_writable' "$LOCAL_DEPLOY_SCRIPT" ||
+  fail "local deployment launcher does not preflight dependency-tree ownership before checkout"
+grep -Fq 'StrictHostKeyChecking=yes' "$LOCAL_DEPLOY_SCRIPT" ||
+  fail "local deployment launcher must pin the SSH host key"
 grep -Fq 'add_header Content-Security-Policy-Report-Only ' "$NGINX_SECURITY_SNIPPET" ||
   fail "Nginx security snippet does not define the CSP report-only gate"
 if grep -Eq '^add_header Content-Security-Policy ' "$NGINX_SECURITY_SNIPPET"; then
