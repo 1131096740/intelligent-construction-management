@@ -101,6 +101,8 @@ jobs:
         run: bash scripts/ops/go-live-safety-self-test.sh
 
       - name: Test
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm test
 
       - name: Build API and Web

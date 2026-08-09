@@ -79,7 +79,7 @@
 - [~] Issue #20 发布候选本机发现性门：基线 `5dcfde8fbefeb7cd4f8edca38e01cbb4456b006e` 的 release manifests 已匹配（452 routes、440 wrappers/462 bindings），隔离合同结算治理 21/21 场景以及真实 Chromium `1366x768`、WebKit `390x844` 岗位链均通过；两种浏览器均覆盖 400/403/409/503，且浏览器错误、失败请求、测试失败均为 0。该基线仅用于发现环境与门禁缺口。
 - [~] Issue #20 最终本机候选收据（本登记前固定点）：`fc8d13324ef9a0e7b4512a23b56a0faf4cf086dc` 已通过完整本机门——Jest 527 suites / 8,148 tests（8,075 passed、73 pending、0 failed；API 331 suites / 6,043 tests）、typecheck、lint、Prisma validate、API/Web build、UI governance、business-errors、go-live safety 与 release manifests；disposable PostgreSQL 16 动态门通过 123 migrations（M123）、33 files / 63 tests、9/9 groups、remaining 0、315,907 ms；隔离治理 UAT 21/21；Chromium 为 200:72、201:15、400:1、403:7、409:1、503:1，WebKit 为 200:64、201:13、400:1、403:7、409:1、503:1，二者浏览器错误、失败请求、测试失败均为 0。该 SHA 的收据不自动继承给本次补充文档形成的新候选；新候选须重新绑定本机门，详见 `docs/progress/2026-08-09-issue-20-release-candidate.md`。
 - [~] Issue #20 发布后时区修复候选：M123 将上海本地 `TIMESTAMP(3)` 策略时间误当 UTC；新增前向 M124 将现有 `activatedAt` 按 `Asia/Shanghai` 转为 `TIMESTAMPTZ(3)`，并补 PostgreSQL/Prisma epoch 一致性回归。当前仅在独立 worktree 验证，生产仍运行 d668，未应用新迁移。
-- [~] Issue #20 生产门：生产只读预检与备份隔离恢复均为 **BLOCKED**，尚未获得生产访问/备份使用的单独授权；未连接生产、未执行恢复、未触发清理、未推送、未合并或部署。两门完成前结论仅为 Local gates only / Production No-Go。
+- [~] Issue #20 生产门：M124 候选已合并为 `f5f470db5af6649e41881ae2296981d30e092c5e`；首次正式部署 verify 在全量 `pnpm test` 阶段因 GitHub runner Node 默认堆上限 OOM 退出（exit 134），生产 deploy job 因门禁失败而未启动。仅对正式部署工作流 Test 步骤增加 `NODE_OPTIONS=--max-old-space-size=4096`，待新 SHA 的 CI/部署 verify 重新通过后再执行生产迁移与预检；当前未连接生产、未执行恢复、未触发清理。
 - [ ] Issue #9–#20 在各自 blocking edge 解除前不得并行写共享 Schema 或权限模型；Issue #8 关闭后才重新启用直接下游票据。
 - [ ] 未经单独授权，不修改生产业务数据、生产数据库记录或 COS 对象/生命周期规则。
 
