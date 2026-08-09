@@ -27,14 +27,15 @@ const GROUPS = [
       "src/database/contract-draft-retention-script.spec.ts",
       "src/database/contract-lifecycle-route.spec.ts",
       "src/database/contract-ended-application-retention.spec.ts",
-      "src/database/contract-ended-application-purge.spec.ts"
+      "src/database/contract-ended-application-purge.spec.ts",
+      "src/database/legacy-contract-cleanup-preflight-postgres.spec.ts"
     ],
     flags: {
       RUN_CONTRACT_DRAFT_AGGREGATE_DATABASE: "1",
       CONTRACT_DRAFT_AGGREGATE_DATABASE_URL: "databaseUrl",
       DATABASE_URL: "databaseUrl"
     },
-    pendingTests: 12
+    pendingTests: 13
   },
   {
     id: "project_funding_availability",
