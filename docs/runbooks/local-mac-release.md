@@ -23,6 +23,31 @@ operator 的 Mac 执行；生产机仍只接受 `origin/main` 的精确提交，
    Actions 页面手动禁用默认分支上此前存在的 `CI` 与 `Deploy Production`
    工作流。合并本变更后仓库也不会再有 workflow YAML 定义。
 
+## 日常快速检查（不生成发布收据）
+
+开发过程中直接运行：
+
+```bash
+pnpm check:fast
+```
+
+它以本机已有的 `origin/main` 与当前 `HEAD` 的共同基线为起点，同时检查已提交、
+已暂存、未暂存和未跟踪文件，再自动选择最小安全检查：
+
+- 纯文档：只做 Git diff 格式检查。
+- Web：typecheck、lint、UI 规则和关联 Vitest；找不到关联测试时改跑 Web 全量测试。
+- API：typecheck、lint、业务错误检查和串行关联 Jest；找不到关联测试时改跑 API
+  全量测试。
+- shared-domain 测试：检查 shared-domain，并检查 API/Web 两个使用方的类型。
+- Web + API 等组合：显示为 `mixed`，分别执行受影响范围的检查。
+
+依赖/lockfile、Prisma Schema 或迁移、shared-domain 生产契约、发布/运维脚本、
+GitHub 配置、治理清单以及任何不能可靠分类的变更，快速检查会以退出码 `2` 停止，
+并明确要求运行 `pnpm release:local`。它不会调用 `gh`、SSH、生产地址或 GitHub
+Actions，也不会生成可用于部署的收据。
+
+因此，`check:fast` 适合开发中的高频反馈，但**不能代替完整发布门禁**。
+
 ## 本地候选门禁
 
 日常可在功能分支运行它做本地验证。**用于生产的收据**必须在功能已合并后，
@@ -36,7 +61,8 @@ pnpm release:local --preflight
 pnpm release:local
 ```
 
-成功后命令会写入一个 `status=passed`、绑定候选 SHA 的本机收据，默认位置为：
+成功后命令会写入一个 `schemaVersion=2`、`status=passed`、绑定候选 SHA 的本机
+收据，默认位置为：
 
 ```text
 $XDG_STATE_HOME/jiangkong/local-release-<sha>.json
@@ -47,6 +73,10 @@ $XDG_STATE_HOME/jiangkong/local-release-<sha>.json
 错误与运维安全自测、全量测试、API/Web build、UI 规则、release manifests、精确 SHA
 PostgreSQL 16 动态门，以及
 Chromium/WebKit 的 P0 和 RC-06 mocked browser checks。
+
+收据中的 `durationsMs` 会按上述 15 个固定阶段记录毫秒耗时，命令行也会在每个
+阶段结束时显示耗时。它既用于部署前的严格收据校验，也用于判断下一轮应优先优化
+哪一个慢阶段；阶段缺失、重复、负数或不是整数时，部署器会拒绝收据。
 
 ## 从 Mac 发起生产部署
 

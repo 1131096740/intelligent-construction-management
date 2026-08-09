@@ -7,6 +7,7 @@ NODE_BIN="${NODE_BIN:-node}"
 PNPM_BIN="${PNPM_BIN:-pnpm}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 GIT_BIN="${GIT_BIN:-git}"
+BASH_BIN="${BASH_BIN:-bash}"
 RECEIPT_TOOL="$SCRIPT_DIR/local-release-receipt.mjs"
 PREFLIGHT_ONLY=false
 LIST_CHECKS=false
@@ -120,17 +121,51 @@ if [[ "$PREFLIGHT_ONLY" == true ]]; then
   exit 0
 fi
 
+umask 077
+duration_ledger="$(mktemp "${TMPDIR:-/tmp}/jiangkong-local-release-durations.XXXXXX")"
+cleanup_duration_ledger() {
+  rm -f "$duration_ledger"
+}
+trap cleanup_duration_ledger EXIT
+
 run_check() {
   local check=$1
   shift
+  local started_ms
+  local finished_ms
+  local duration_ms
   printf '\n==> %s\n' "$check"
+  started_ms="$($NODE_BIN -p 'Date.now()')"
   "$@"
+  finished_ms="$($NODE_BIN -p 'Date.now()')"
+  [[ "$started_ms" =~ ^[0-9]+$ && "$finished_ms" =~ ^[0-9]+$ ]] ||
+    fail "unable to measure check duration for $check"
+  duration_ms=$((finished_ms - started_ms))
+  (( duration_ms >= 0 )) || fail "invalid check duration for $check"
+  printf '%s\t%s\n' "$check" "$duration_ms" >> "$duration_ledger"
+  printf '<== %s passed (%s ms)\n' "$check" "$duration_ms"
 }
 
 run_workspace_tests() {
   "$PNPM_BIN" --filter @jiangkong/shared-domain test
   "$PNPM_BIN" --filter @jiangkong/api test -- --runInBand
   "$PNPM_BIN" --filter @jiangkong/web-admin test
+}
+
+run_business_and_operations_safety() {
+  "$NODE_BIN" services/api/scripts/check-business-errors.self-test.cjs
+  "$PNPM_BIN" --filter @jiangkong/api check:business-errors
+  "$BASH_BIN" scripts/ops/go-live-safety-self-test.sh
+}
+
+run_production_builds() {
+  "$PNPM_BIN" --filter @jiangkong/api build
+  "$PNPM_BIN" --filter @jiangkong/web-admin build
+}
+
+run_playwright_p0() {
+  "$PNPM_BIN" --filter @jiangkong/web-admin exec playwright install chromium webkit
+  "$PNPM_BIN" --filter @jiangkong/web-admin test:e2e:p0
 }
 
 run_check ci-orchestration "$PNPM_BIN" test:ci-orchestration
@@ -140,26 +175,22 @@ run_check production-dependency-audit "$PNPM_BIN" audit --prod --audit-level hig
 run_check workspace-typecheck "$PNPM_BIN" typecheck
 run_check web-e2e-typecheck "$PNPM_BIN" --filter @jiangkong/web-admin typecheck:e2e
 run_check workspace-lint "$PNPM_BIN" lint
-run_check business-errors-self-test "$NODE_BIN" services/api/scripts/check-business-errors.self-test.cjs
-run_check api-business-errors "$PNPM_BIN" --filter @jiangkong/api check:business-errors
-run_check operations-safety-self-test bash scripts/ops/go-live-safety-self-test.sh
+run_check business-errors-and-operations-safety run_business_and_operations_safety
 run_check workspace-test run_workspace_tests
-run_check api-production-build "$PNPM_BIN" --filter @jiangkong/api build
-run_check web-production-build "$PNPM_BIN" --filter @jiangkong/web-admin build
+run_check api-and-web-production-build run_production_builds
 run_check web-ui-governance "$PNPM_BIN" --filter @jiangkong/web-admin check:ui
 run_check release-manifests "$PNPM_BIN" inspect:release-manifests
 run_check exact-sha-postgresql-16 "$NODE_BIN" services/api/prisma/run-database-dynamic-gate-local.cjs \
   --execute --candidate-sha "$CANDIDATE_SHA" --confirm LOCAL_PG16_DYNAMIC_GATE
-run_check playwright-browser-install "$PNPM_BIN" --filter @jiangkong/web-admin exec playwright install chromium webkit
-run_check playwright-p0 "$PNPM_BIN" --filter @jiangkong/web-admin test:e2e:p0
+run_check playwright-p0 run_playwright_p0
 run_check playwright-rc06-mock "$PNPM_BIN" --filter @jiangkong/web-admin test:e2e:rc06:mock
 
 mkdir -p "$receipt_dir"
 receipt_temp="$(mktemp "$receipt_dir/.local-release-${CANDIDATE_SHA}.XXXXXX")"
-umask 077
 checks_json="$("$NODE_BIN" "$RECEIPT_TOOL" --checks-json)"
-printf '{\n  "schemaVersion": 1,\n  "status": "passed",\n  "candidateSha": "%s",\n  "verifiedAt": "%s",\n  "nodeVersion": "%s",\n  "pnpmVersion": "%s",\n  "checks": %s\n}\n' \
-  "$CANDIDATE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$node_version" "$pnpm_version" "$checks_json" > "$receipt_temp"
+durations_json="$("$NODE_BIN" "$RECEIPT_TOOL" --durations-json --file "$duration_ledger")"
+printf '{\n  "schemaVersion": 2,\n  "status": "passed",\n  "candidateSha": "%s",\n  "verifiedAt": "%s",\n  "nodeVersion": "%s",\n  "pnpmVersion": "%s",\n  "checks": %s,\n  "durationsMs": %s\n}\n' \
+  "$CANDIDATE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$node_version" "$pnpm_version" "$checks_json" "$durations_json" > "$receipt_temp"
 chmod 600 "$receipt_temp"
 mv -f "$receipt_temp" "$RECEIPT_PATH"
 printf '\nLocal release gate passed for %s\nReceipt: %s\n' "$CANDIDATE_SHA" "$RECEIPT_PATH"

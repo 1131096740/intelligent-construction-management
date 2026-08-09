@@ -9,6 +9,7 @@ import test from "node:test";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const localGate = join(root, "scripts", "ops", "run-local-release-gate.sh");
 const localDeploy = join(root, "scripts", "ops", "deploy-from-mac.sh");
+const localReceipt = join(root, "scripts", "ops", "local-release-receipt.mjs");
 const candidateSha = "a".repeat(40);
 const requiredChecks = [
   "ci-orchestration",
@@ -53,13 +54,16 @@ async function writeDeploymentInputs(testRoot, receiptCandidateSha, { complete =
     JSON.stringify(
       complete
         ? {
-            schemaVersion: 1,
+            schemaVersion: 2,
             status: "passed",
             candidateSha: receiptCandidateSha,
             verifiedAt: "2026-08-09T00:00:00Z",
             nodeVersion: "20.19.0",
             pnpmVersion: "9.15.9",
-            checks: requiredChecks
+            checks: requiredChecks,
+            durationsMs: Object.fromEntries(
+              requiredChecks.map((check, index) => [check, 1000 + index])
+            )
           }
         : { status: "passed", candidateSha: receiptCandidateSha }
     ),
@@ -98,6 +102,48 @@ async function writeFakeGit(testRoot, { head = candidateSha, main = candidateSha
     ].join("\n")
   );
   return fakeGit;
+}
+
+async function writeFakeLocalGateTools(testRoot) {
+  const fakeNode = join(testRoot, "node");
+  const fakePnpm = join(testRoot, "pnpm");
+  const fakeDocker = join(testRoot, "docker");
+  const fakeGit = join(testRoot, "git-gate");
+  const fakeBash = join(testRoot, "bash");
+  await writeExecutable(
+    fakeNode,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "if [[ \"${1:-}\" == \"-p\" && \"${2:-}\" == \"process.versions.node\" ]]; then printf '20.19.0\\n'; exit 0; fi",
+      `if [[ "\${1:-}" == "-p" && "\${2:-}" == "Date.now()" ]]; then exec ${JSON.stringify(process.execPath)} "$@"; fi`,
+      `if [[ "\${1:-}" == */local-release-receipt.mjs ]]; then exec ${JSON.stringify(process.execPath)} "$@"; fi`,
+      "exit 0"
+    ].join("\n")
+  );
+  await writeExecutable(
+    fakePnpm,
+    "#!/usr/bin/env bash\nif [[ \"${1:-}\" == \"--version\" ]]; then printf '9.15.9\\n'; fi\nexit 0\n"
+  );
+  await writeExecutable(
+    fakeDocker,
+    [
+      "#!/usr/bin/env bash",
+      "if [[ \"$*\" == \"context inspect --format {{.Endpoints.docker.Host}}\" ]]; then printf 'unix:///var/run/docker.sock\\n'; fi",
+      "exit 0"
+    ].join("\n")
+  );
+  await writeExecutable(
+    fakeGit,
+    [
+      "#!/usr/bin/env bash",
+      `if [[ "$*" == "rev-parse HEAD" ]]; then printf '${candidateSha}\\n'; exit 0; fi`,
+      "if [[ \"$*\" == \"status --porcelain=v1 --untracked-files=all\" ]]; then exit 0; fi",
+      "exit 1"
+    ].join("\n")
+  );
+  await writeExecutable(fakeBash, "#!/usr/bin/env bash\nexit 0\n");
+  return { fakeNode, fakePnpm, fakeDocker, fakeGit, fakeBash };
 }
 
 test("local release gate refuses a non-Node-20 host before writing a receipt", async () => {
@@ -141,6 +187,64 @@ test("local release gate runs the API suite in band", async () => {
     /--filter @jiangkong\/api test -- --runInBand/u
   );
   assert.match(source, /run_check workspace-test run_workspace_tests/u);
+});
+
+test("release receipt tool serializes an exact per-phase duration ledger", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-receipt-test-"));
+  try {
+    const durationFile = join(testRoot, "durations.tsv");
+    await writeFile(
+      durationFile,
+      `${requiredChecks.map((check, index) => `${check}\t${index + 1}`).join("\n")}\n`,
+      "utf8"
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [localReceipt, "--durations-json", "--file", durationFile],
+      { cwd: root, encoding: "utf8" }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      JSON.parse(result.stdout),
+      Object.fromEntries(requiredChecks.map((check, index) => [check, index + 1]))
+    );
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("full local gate writes schema v2 with all per-phase durations", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-gate-test-"));
+  try {
+    const receipt = join(testRoot, "receipt.json");
+    const tools = await writeFakeLocalGateTools(testRoot);
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => key !== "DATABASE_URL" && !key.endsWith("_DATABASE_URL"))
+    );
+
+    const result = runScript(localGate, ["--receipt", receipt], {
+      env: {
+        ...env,
+        NODE_BIN: tools.fakeNode,
+        PNPM_BIN: tools.fakePnpm,
+        DOCKER_BIN: tools.fakeDocker,
+        GIT_BIN: tools.fakeGit,
+        BASH_BIN: tools.fakeBash
+      }
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(await readFile(receipt, "utf8"));
+    assert.equal(parsed.schemaVersion, 2);
+    assert.deepEqual(Object.keys(parsed.durationsMs), requiredChecks);
+    for (const duration of Object.values(parsed.durationsMs)) {
+      assert.equal(Number.isInteger(duration) && duration >= 0, true);
+    }
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
 });
 
 test("local release gate refuses a non-pnpm-9 host before writing a receipt", async () => {
@@ -208,6 +312,44 @@ test("Mac deployment dry run refuses an incomplete local release receipt", async
     const inputs = await writeDeploymentInputs(testRoot, candidateSha, {
       complete: false
     });
+    const result = runScript(
+      localDeploy,
+      [
+        "--dry-run",
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          JGZG_DEPLOY_HOST: "example.test",
+          JGZG_DEPLOY_USER: "ubuntu",
+          JGZG_DEPLOY_IDENTITY_FILE: inputs.identityFile,
+          JGZG_DEPLOY_KNOWN_HOSTS: inputs.knownHosts,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /release receipt is incomplete/u);
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("Mac deployment dry run refuses a receipt without per-phase durations", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-deploy-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const receipt = JSON.parse(await readFile(inputs.receipt, "utf8"));
+    delete receipt.durationsMs;
+    await writeFile(inputs.receipt, JSON.stringify(receipt), "utf8");
     const result = runScript(
       localDeploy,
       [
