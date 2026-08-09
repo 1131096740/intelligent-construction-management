@@ -187,6 +187,7 @@ function isLegacyDeleteAuthorized(row) {
     row.changeType === "original" &&
     Number(row.versionNo) === 1 &&
     row.firstSubmittedAt == null &&
+    row.endedAt == null &&
     count(row.approvalInstanceCount, "approvalInstanceCount") === 0 &&
     count(row.approvalActionCount, "approvalActionCount") === 0 &&
     row.abandonedAt != null &&

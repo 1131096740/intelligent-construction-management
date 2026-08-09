@@ -975,4 +975,133 @@ describe("contract ended application purge PostgreSQL evidence", () => {
       await prisma.$disconnect();
     }
   }, 30_000);
+
+  integrationTest("executes only an explicitly authorized legacy abandoned candidate", async () => {
+    const databaseUrl = localPurgeDatabaseUrl(
+      process.env.CONTRACT_DRAFT_AGGREGATE_DATABASE_URL
+    );
+    const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    const suffix = `${process.pid}-${Date.now()}`;
+    const ownerId = `legacy-cleanup-owner-${suffix}`;
+    const projectId = `legacy-cleanup-project-${suffix}`;
+    const contractId = `legacy-cleanup-contract-${suffix}`;
+    const contractVersionId = `${contractId}-v1`;
+    const formalCode = `HT-LEGACY-CLEANUP-${suffix}`;
+    const blockedContractId = `legacy-cleanup-blocked-${suffix}`;
+    const blockedVersionId = `${blockedContractId}-v1`;
+    const blockedFormalCode = `HT-LEGACY-CLEANUP-BLOCKED-${suffix}`;
+
+    try {
+      await prisma.user.create({
+        data: { id: ownerId, name: "历史合同清理测试经办人", mustChangePassword: false }
+      });
+      await prisma.project.create({
+        data: {
+          id: projectId,
+          code: `LEGACY-CLEANUP-${suffix}`,
+          name: "历史合同清理测试项目"
+        }
+      });
+      await prisma.contract.create({
+        data: {
+          id: contractId,
+          projectId,
+          code: formalCode,
+          temporaryCode: `TMP-${formalCode}`,
+          name: "历史合同清理测试合同",
+          counterparty: "测试相对方",
+          ownerUserId: ownerId
+        }
+      });
+      await prisma.contractVersion.create({
+        data: {
+          id: contractVersionId,
+          contractId,
+          versionNo: 1,
+          changeType: "original",
+          status: "abandoned",
+          abandonedAt: new Date("2026-07-01T01:00:00.000Z"),
+          abandonedByUserId: ownerId,
+          abandonReason: null,
+          amountCents: 100n,
+          draftData: {},
+          templateSnapshot: {},
+          clauseSnapshot: []
+        }
+      });
+      await prisma.contract.create({
+        data: {
+          id: blockedContractId,
+          projectId,
+          code: blockedFormalCode,
+          temporaryCode: `TMP-${blockedFormalCode}`,
+          name: "已提交历史清理阻断测试合同",
+          counterparty: "测试相对方",
+          ownerUserId: ownerId
+        }
+      });
+      await prisma.contractVersion.create({
+        data: {
+          id: blockedVersionId,
+          contractId: blockedContractId,
+          versionNo: 1,
+          changeType: "original",
+          status: "abandoned",
+          firstSubmittedAt: new Date("2026-07-01T01:00:00.000Z"),
+          abandonedAt: new Date("2026-07-01T02:00:00.000Z"),
+          abandonedByUserId: ownerId,
+          abandonReason: null,
+          amountCents: 100n,
+          draftData: {},
+          templateSnapshot: {},
+          clauseSnapshot: []
+        }
+      });
+
+      const service = new ContractEndedApplicationPurgeService(
+        prisma as never,
+        new FileCleanupSeamService(prisma as never),
+        new InMemoryVersionedObjectStorage()
+      );
+      await expect(service.purgeLegacyAuthorizedApplications(
+        [contractVersionId, blockedVersionId],
+        `legacy-cleanup-${suffix}`,
+        new Date("2026-08-09T08:00:00.000Z")
+      )).resolves.toEqual([
+        { contractVersionId, status: "completed" },
+        { contractVersionId: blockedVersionId, status: "skipped" }
+      ]);
+      await expect(prisma.contract.findUnique({
+        where: { id: contractId },
+        select: { id: true }
+      })).resolves.toBeNull();
+      await expect(prisma.contractVersion.findUnique({
+        where: { id: contractVersionId },
+        select: { id: true }
+      })).resolves.toBeNull();
+      await expect(prisma.contractNumberTombstone.findUnique({
+        where: { formalCode },
+        select: { formalCode: true }
+      })).resolves.toEqual({ formalCode });
+      await expect(prisma.contract.findUnique({
+        where: { id: blockedContractId },
+        select: { id: true }
+      })).resolves.toEqual({ id: blockedContractId });
+      await expect(prisma.contractEndedApplicationPurgeReceipt.findUnique({
+        where: { contractVersionId },
+        select: { status: true, completedAt: true }
+      })).resolves.toMatchObject({ status: "completed", completedAt: expect.any(Date) });
+    } finally {
+      await prisma.contractEndedApplicationPurgeReceipt.deleteMany({ where: { contractVersionId } });
+      await prisma.contractNumberTombstone.deleteMany({ where: { formalCode } });
+      await prisma.contractVersion.deleteMany({ where: { id: contractVersionId } });
+      await prisma.contract.deleteMany({ where: { id: contractId } });
+      await prisma.contractNumberTombstone.deleteMany({ where: { formalCode: blockedFormalCode } });
+      await prisma.contractVersion.deleteMany({ where: { id: blockedVersionId } });
+      await prisma.contract.deleteMany({ where: { id: blockedContractId } });
+      await prisma.project.deleteMany({ where: { id: projectId } });
+      await prisma.user.deleteMany({ where: { id: ownerId } });
+      await prisma.$disconnect();
+    }
+  }, 30_000);
 });
