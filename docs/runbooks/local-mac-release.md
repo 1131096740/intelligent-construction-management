@@ -22,9 +22,9 @@
 
 4. 在 Mac 上以有仓库写权限的账号完成 `gh auth login`。它只用于手动发起
    deploy-only workflow，日常 `check:fast` 和 `release:local` 不会调用它。
-5. 在 GitHub 仓库 Settings → Secrets and variables → Actions 配置五个
-   repository secrets：`DEPLOY_HOST`、`DEPLOY_USER`（必须为 `ubuntu`）、
-   `DEPLOY_PORT`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`。只填值，不把
+5. 在 GitHub 仓库 Settings → Secrets and variables → Actions 配置四个
+   repository secrets：`DEPLOY_HOST`、`DEPLOY_PORT`、`DEPLOY_SSH_KEY`、
+   `DEPLOY_KNOWN_HOSTS`。workflow 固定以最小权限的 `ubuntu` 用户连接。只填值，不把
    私钥、主机名或 known-hosts 写进仓库、shell history 或 `.env`。
 6. 在 GitHub Billing 中将 Actions overage budget 设为 `$0` 并启用停止使用。
    这不会扣除超额费用，但仍允许使用套餐内的月度分钟；用完后手动部署会被阻止，
