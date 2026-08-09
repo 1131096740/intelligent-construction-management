@@ -127,6 +127,12 @@ run_check() {
   "$@"
 }
 
+run_workspace_tests() {
+  "$PNPM_BIN" --filter @jiangkong/shared-domain test
+  "$PNPM_BIN" --filter @jiangkong/api test -- --runInBand
+  "$PNPM_BIN" --filter @jiangkong/web-admin test
+}
+
 run_check ci-orchestration "$PNPM_BIN" test:ci-orchestration
 run_check frozen-dependency-install env CI=true "$PNPM_BIN" install --frozen-lockfile
 run_check prisma-client-generation "$PNPM_BIN" --filter @jiangkong/api exec prisma generate
@@ -137,7 +143,7 @@ run_check workspace-lint "$PNPM_BIN" lint
 run_check business-errors-self-test "$NODE_BIN" services/api/scripts/check-business-errors.self-test.cjs
 run_check api-business-errors "$PNPM_BIN" --filter @jiangkong/api check:business-errors
 run_check operations-safety-self-test bash scripts/ops/go-live-safety-self-test.sh
-run_check workspace-test "$PNPM_BIN" test
+run_check workspace-test run_workspace_tests
 run_check api-production-build "$PNPM_BIN" --filter @jiangkong/api build
 run_check web-production-build "$PNPM_BIN" --filter @jiangkong/web-admin build
 run_check web-ui-governance "$PNPM_BIN" --filter @jiangkong/web-admin check:ui

@@ -132,6 +132,17 @@ test("pnpm forwards local release options without a separator argument", () => {
   assert.match(result.stdout, /playwright-rc06-mock/u);
 });
 
+test("local release gate runs the API suite in band", async () => {
+  const source = await readFile(localGate, "utf8");
+
+  assert.match(source, /run_workspace_tests\(\) \{/u);
+  assert.match(
+    source,
+    /--filter @jiangkong\/api test -- --runInBand/u
+  );
+  assert.match(source, /run_check workspace-test run_workspace_tests/u);
+});
+
 test("local release gate refuses a non-pnpm-9 host before writing a receipt", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-gate-test-"));
   try {
