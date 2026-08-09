@@ -37,6 +37,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ContractDocumentController: "contract",
   ContractDraftBillExcelController: "contract",
   ContractDraftController: "contract",
+  ContractEndedApplicationRetentionController: "contract",
   ContractNumberRuleController: "contract",
   ContractTakeoverController: "contract",
   ContractTemplateController: "contract",

@@ -14,6 +14,7 @@ import { ContractWorkbenchModule } from "./contract-workbench/contract-workbench
 import { DatabaseModule } from "./database/database.module";
 import { FileModule } from "./file/file.module";
 import { DraftRetentionModule } from "./draft-retention/draft-retention.module";
+import { ContractEndedApplicationRetentionModule } from "./contract-ended-retention/contract-ended-retention.module";
 import { ExpenseClaimModule } from "./expense-claim/expense-claim.module";
 import { FundsWorkbenchModule } from "./funds-workbench/funds-workbench.module";
 import { HealthController } from "./health.controller";
@@ -50,6 +51,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     ApprovalModule,
     FileModule,
     DraftRetentionModule,
+    ContractEndedApplicationRetentionModule,
     MeModule,
     ArchiveModule,
     AuditModule,

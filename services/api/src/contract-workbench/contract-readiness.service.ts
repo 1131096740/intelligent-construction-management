@@ -257,7 +257,7 @@ export class ContractReadinessService {
         where: {
           id: version.id,
           draftRevision: version.draftRevision,
-          status: { in: ["draft", "approval_rejected"] }
+          status: { in: ["draft"] }
         },
         data: { readinessSnapshot: result as unknown as Prisma.InputJsonValue }
       });

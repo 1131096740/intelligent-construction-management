@@ -787,6 +787,18 @@ describe("ContractDocumentService", () => {
       ...version,
       status: "approval_rejected"
     });
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft"
+      })
+    ).rejects.toThrow("合同草稿当前不可编辑，不能生成或修订合同文档");
+    expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      status: "draft"
+    });
     tx.contractLayoutTemplate.findUnique.mockResolvedValue({
       id: "layout-template-1",
       contractTypeKey: "labor"
@@ -1365,7 +1377,7 @@ describe("ContractDocumentService", () => {
       where: {
         id: "version-1",
         draftRevision: 7,
-        status: { in: ["draft", "approval_rejected"] }
+        status: { in: ["draft"] }
       },
       data: { draftRevision: { increment: 0 } }
     });
@@ -1462,7 +1474,7 @@ describe("ContractDocumentService", () => {
       where: {
         id: "version-1",
         draftRevision: 7,
-        status: { in: ["draft", "approval_rejected"] }
+        status: { in: ["draft"] }
       },
       data: { draftRevision: { increment: 0 } }
     });

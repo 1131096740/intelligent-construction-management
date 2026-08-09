@@ -388,6 +388,19 @@ describe("core flow read API client", () => {
     ]);
   });
 
+  it("requests a retained ended application by its exact version for read-only history", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "ok" })
+    } as Response);
+
+    await fetchContractDetail("HT-2026-001", { versionId: "version-ended/1" });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/contracts/HT-2026-001?versionId=version-ended%2F1"
+    );
+  });
+
   it("uses contractVersionId routes for contract change eligibility and creation", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,

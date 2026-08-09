@@ -746,7 +746,9 @@ export class ContractReadService {
           lifecycleUpdatedAt: rowVersion.updatedAt.toISOString(),
           abandonedAt: rowVersion.abandonedAt?.toISOString() ?? null,
           abandonReason: rowVersion.abandonReason ?? null,
-          copyAvailable: view === "ended" && rowVersion.status === "abandoned" &&
+          copyAvailable: view === "ended" &&
+            draftLifecycle.contractLifecycleStage === "deleting" &&
+            rowVersion.status === "abandoned" &&
             rowVersion.changeType === "original" && rowVersion.versionNo === 1 &&
             contract.ownerUserId === actorUserId,
           ...this.contractTakeoverLedgerProjection(
@@ -898,7 +900,9 @@ export class ContractReadService {
           lifecycleBlockers: draftLifecycle.blockers,
           draftRevision: version.draftRevision,
           workbenchEditable: draftLifecycle.capabilities.canEdit,
-          copyAvailable: view === "all" && version.status === "abandoned" &&
+          copyAvailable: view === "all" &&
+            draftLifecycle.contractLifecycleStage === "deleting" &&
+            version.status === "abandoned" &&
             version.changeType === "original" && version.versionNo === 1 &&
             contract.ownerUserId === actorUserId,
           lifecycleUpdatedAt: version.updatedAt.toISOString(),
@@ -1161,7 +1165,8 @@ export class ContractReadService {
   async getDetail(
     contractId: string,
     visibleProjectIds?: string[],
-    actorUserId?: string
+    actorUserId?: string,
+    requestedVersionId?: string
   ): Promise<ContractDetailReadModel> {
     if (process.env.SKIP_DATABASE_CONNECT === "true") {
       return this.sampleDetail(contractId);
@@ -1221,7 +1226,7 @@ export class ContractReadService {
     )
       ? await this.contractDraftLifecycleByVersion(versions)
       : new Map<string, ContractDraftLifecycleClassification>();
-    const version = versions.find((candidate) => {
+    const defaultVersion = versions.find((candidate) => {
       const stage = lifecycleByVersion.get(candidate.id)?.contractLifecycleStage;
       return stage !== "deleting" &&
         stage !== "ended_retained" &&
@@ -1232,6 +1237,24 @@ export class ContractReadService {
           roleKeys
         );
     });
+
+    const requestedVersion = requestedVersionId
+      ? versions.find((candidate) => candidate.id === requestedVersionId)
+      : null;
+    const endedHistoryRead = Boolean(
+      requestedVersion &&
+      lifecycleByVersion.get(requestedVersion.id)?.contractLifecycleStage === "ended_retained"
+    );
+    if (requestedVersionId && !requestedVersion) {
+      throw new NotFoundException("未找到请求的合同版本，请刷新合同台账后重试");
+    }
+    if (
+      endedHistoryRead &&
+      this.getContractVisibilityLevel(roleKeys) !== "full"
+    ) {
+      throw new NotFoundException("未找到合同，请刷新合同台账后重试");
+    }
+    const version = endedHistoryRead ? requestedVersion : defaultVersion;
 
     if (!version) {
       throw new NotFoundException("未找到合同版本，请刷新合同台账后重试");
@@ -1323,14 +1346,16 @@ export class ContractReadService {
     ) {
       throw new NotFoundException("未找到合同，请刷新合同台账后重试");
     }
-    const currentApprovalReview = await this.canReviewCurrentApproval(
-      "contract_version",
-      version.id,
-      contract.projectId,
-      roleKeys,
-      actorUserId,
-      actorRoles.roleScopes
-    );
+    const currentApprovalReview = endedHistoryRead
+      ? emptyCurrentContractApprovalReview()
+      : await this.canReviewCurrentApproval(
+          "contract_version",
+          version.id,
+          contract.projectId,
+          roleKeys,
+          actorUserId,
+          actorRoles.roleScopes
+        );
     const candidateReviewApprovalContext =
       currentApprovalReview.access.canReview &&
       version.updatedAt instanceof Date &&
@@ -1343,11 +1368,13 @@ export class ContractReadService {
               currentApprovalReview.approval.updatedAt.toISOString()
           }
         : null;
-    const currentApprovalWithdrawal = await this.currentApprovalWithdrawal(
-      "contract_version",
-      version.id,
-      actorUserId
-    );
+    const currentApprovalWithdrawal = endedHistoryRead
+      ? null
+      : await this.currentApprovalWithdrawal(
+          "contract_version",
+          version.id,
+          actorUserId
+        );
     const withdrawApprovalContext =
       version.status === "in_approval" &&
       version.updatedAt instanceof Date &&
@@ -1366,22 +1393,27 @@ export class ContractReadService {
     const activeFinal = signingFacts.formalFiles.find((item) =>
       item.purpose === "mutually_signed_final" && item.status === "active"
     ) ?? null;
-    const governedFinalAccess = await this.governedFinalAccess(
-      actorUserId,
-      contract.projectId,
-      signingFacts.sealTask,
-      activeFinal
-    );
-    const canReportSigningMaterialChange = await this.canReportSigningMaterialChange(
-      actorUserId,
-      signingFacts.sealTask
-    );
+    const governedFinalAccess = endedHistoryRead
+      ? { canUpload: false, canConfirm: false, canSelfConfirm: false }
+      : await this.governedFinalAccess(
+          actorUserId,
+          contract.projectId,
+          signingFacts.sealTask,
+          activeFinal
+        );
+    const canReportSigningMaterialChange = endedHistoryRead
+      ? false
+      : await this.canReportSigningMaterialChange(
+          actorUserId,
+          signingFacts.sealTask
+        );
     const ownerRiskClient = this.prisma as unknown as {
       projectOwnerContract?: { findMany?: unknown };
       contract?: { findMany?: unknown };
       contractVersion?: { findMany?: unknown };
     };
     const ownerContractRisk =
+      !endedHistoryRead &&
       typeof ownerRiskClient.projectOwnerContract?.findMany === "function" &&
       typeof ownerRiskClient.contract?.findMany === "function" &&
       typeof ownerRiskClient.contractVersion?.findMany === "function"
@@ -1389,7 +1421,9 @@ export class ContractReadService {
         : null;
 
     const status = this.statusView(version.status);
-    const availableActions = this.contractActions(
+    const availableActions = endedHistoryRead
+      ? []
+      : this.contractActions(
       version.status,
       roleKeys,
       approvalReviewAccess,
@@ -1429,6 +1463,7 @@ export class ContractReadService {
     );
 
     if (
+      !endedHistoryRead &&
       draftLifecycle.expectedAction &&
       actorUserId && actorUserId === contract.ownerUserId
     ) {
@@ -1567,6 +1602,7 @@ export class ContractReadService {
         .map((action) => action.key),
       reviewApprovalContext,
       withdrawApprovalContext,
+      historyReadOnly: endedHistoryRead,
       contractLifecycleStage: draftLifecycle.contractLifecycleStage,
       contractLifecycleCapabilities: draftLifecycle.capabilities,
       lifecycleKind: draftLifecycle.lifecycleKind,
@@ -2532,7 +2568,7 @@ export class ContractReadService {
       draft: { label: "草拟中", tone: "default" },
       in_approval: { label: "审批中", tone: "primary" },
       approval_pending: { label: "审批中", tone: "primary" },
-      approval_rejected: { label: "审批退回", tone: "danger" },
+      approval_rejected: { label: "最终驳回", tone: "danger" },
       approved_pending_seal: { label: "待用章", tone: "warning" },
       approved: { label: "待用章", tone: "warning" },
       in_seal: { label: "用章中", tone: "warning" },
@@ -2606,7 +2642,7 @@ export class ContractReadService {
       draft: "合同部成员",
       in_approval: "审批节点处理人",
       approval_pending: "审批节点处理人",
-      approval_rejected: "合同部成员",
+      approval_rejected: "保留历史（只读）",
       approved_pending_seal: "综合部主管",
       approved: "合同部成员",
       in_seal: "冻结经办人",
@@ -2626,7 +2662,7 @@ export class ContractReadService {
       draft: "提交合同审批",
       in_approval: "等待审批",
       approval_pending: "等待审批",
-      approval_rejected: "退回修改",
+      approval_rejected: "查看保留历史",
       approved_pending_seal: "综合部主管同意用章",
       approved: "发起用章",
       in_seal: "经办人完成线下签署盖章",
@@ -2642,7 +2678,7 @@ export class ContractReadService {
   }
 
   private returnReason(status: string): string {
-    return status === "approval_rejected" ? "审批退回，查看审批历史" : "-";
+    return status === "approval_rejected" ? "最终驳回，查看保留历史" : "-";
   }
 
   private stalledFor(value: Date): string {
@@ -3246,7 +3282,9 @@ export class ContractReadService {
     pendingVersionIds: ReadonlySet<string>
   ): V | undefined {
     const candidates = versions.filter((version) =>
-      lifecycleByVersion.get(version.id)?.contractLifecycleStage !== "deleting"
+      !["deleting", "ended_retained"].includes(
+        lifecycleByVersion.get(version.id)?.contractLifecycleStage ?? ""
+      )
     );
     if (view === "all") return candidates[0];
     if (view === "my_drafts") {
@@ -3287,6 +3325,7 @@ export class ContractReadService {
   ) {
     const { status } = version;
     if (!draftLifecycle.capabilities.canView) return false;
+    if (draftLifecycle.contractLifecycleStage === "ended_retained") return false;
     if (
       draftLifecycle.contractLifecycleStage === "unsubmitted_draft" &&
       ownerUserId !== actorUserId &&

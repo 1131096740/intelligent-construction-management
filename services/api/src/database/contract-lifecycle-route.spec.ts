@@ -472,26 +472,17 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const rowByStage = new Map(
           body.rows.map((row) => [row.contractLifecycleStage, row])
         );
-        expect(body.rows).toHaveLength(5);
+        expect(body.rows).toHaveLength(3);
         expect([...rowByStage.keys()].sort()).toEqual([
-          "ended_retained",
           "protected_formal",
           "returned_editable",
           "unsubmitted_draft"
         ]);
         expect(body.rows.map((row) => row.status).sort()).toEqual([
-          "abandoned",
-          "approval_rejected",
           "draft",
           "draft",
           "effective"
         ]);
-        expect(
-          body.rows
-            .filter((row) => row.contractLifecycleStage === "ended_retained")
-            .map((row) => row.status)
-            .sort()
-        ).toEqual(["abandoned", "approval_rejected"]);
         expect(rowByStage.get("unsubmitted_draft"))
           .toMatchObject({
             contractLifecycleCapabilities: {
@@ -506,14 +497,6 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               canEdit: true,
               canPhysicallyDelete: false,
               historyRetention: "none"
-            }
-          });
-        expect(rowByStage.get("ended_retained"))
-          .toMatchObject({
-            contractLifecycleCapabilities: {
-              canEdit: false,
-              canPhysicallyDelete: false,
-              historyRetention: "three_calendar_months"
             }
           });
         expect(rowByStage.get("protected_formal"))

@@ -62,7 +62,7 @@ export interface ContractDocumentInputSnapshot {
 }
 
 const ACTIVE_DOCUMENT_STATUSES = ["queued", "processing", "success"];
-const EDITABLE_VERSION_STATUSES = ["draft", "approval_rejected"];
+const EDITABLE_VERSION_STATUSES = ["draft"];
 const COMPANY_ENTITY_DRIFT = Symbol("company-entity-drift");
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

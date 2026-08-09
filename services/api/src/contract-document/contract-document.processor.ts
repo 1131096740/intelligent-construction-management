@@ -302,7 +302,8 @@ export class ContractDocumentProcessor
           id: string;
           voidedAt: Date | null;
         }>(tx, job.contractVersionId, {
-          allowHistoricalTakeoverInspection: true
+          allowHistoricalTakeoverInspection: true,
+          allowEndedApplicationInspection: true
         });
         const currentRound = await tx.contractNegotiationRound.findUnique({
           where: { id: job.negotiationRoundId! }
@@ -315,7 +316,7 @@ export class ContractDocumentProcessor
           !version ||
           version.changeType === "historical_takeover" ||
           version.hasHistoricalTakeoverRelation === true ||
-          !["draft", "approval_rejected"].includes(version.status) ||
+          version.status !== "draft" ||
           version.draftRevision !== job.sourceRevision ||
           !currentRound ||
           currentRound.status !== "open"
@@ -574,7 +575,8 @@ export class ContractDocumentProcessor
           id: string;
           voidedAt: Date | null;
         }>(tx, job.contractVersionId, {
-          allowHistoricalTakeoverInspection: true
+          allowHistoricalTakeoverInspection: true,
+          allowEndedApplicationInspection: true
         });
         const version = mutationBoundary?.version;
         if (
@@ -583,7 +585,7 @@ export class ContractDocumentProcessor
           mutationBoundary.formalBlockers.length > 0 ||
           !version ||
           version.draftRevision !== job.sourceRevision ||
-          !["draft", "approval_rejected"].includes(version.status) ||
+          version.status !== "draft" ||
           version.changeType === "historical_takeover" ||
           version.hasHistoricalTakeoverRelation === true
         ) {

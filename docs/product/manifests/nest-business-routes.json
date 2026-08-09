@@ -414,6 +414,25 @@
     },
     {
       "method": "GET",
+      "path": "/contract-ended-retention/preview",
+      "normalizedKey": "GET /contract-ended-retention/preview",
+      "controller": "ContractEndedApplicationRetentionController",
+      "handler": "preview",
+      "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "GET",
       "path": "/contract-layout-template-versions/:versionId/preview-generation",
       "normalizedKey": "GET /contract-layout-template-versions/:param/preview-generation",
       "controller": "ContractTemplateController",
@@ -3499,6 +3518,44 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/contract-ended-retention/:contractVersionId/hold-release",
+      "normalizedKey": "POST /contract-ended-retention/:param/hold-release",
+      "controller": "ContractEndedApplicationRetentionController",
+      "handler": "releaseHold",
+      "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false
+    },
+    {
+      "method": "POST",
+      "path": "/contract-ended-retention/:contractVersionId/holds",
+      "normalizedKey": "POST /contract-ended-retention/:param/holds",
+      "controller": "ContractEndedApplicationRetentionController",
+      "handler": "createHold",
+      "sourceFile": "services/api/src/contract-ended-retention/contract-ended-retention.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "contract_director"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false
     },
     {

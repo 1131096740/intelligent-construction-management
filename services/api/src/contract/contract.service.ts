@@ -83,6 +83,7 @@ import {
   type ContractOwnerRisk
 } from "./contract-owner-risk";
 import {
+  assertEndedContractApplicationReadOnly,
   assertGenericContractDraftVersion,
   loadContractDraftLifecycle,
   lockContractDraftMutationBoundary
@@ -471,29 +472,41 @@ export class ContractService {
         changeType: string;
         versionNo: number;
         updatedAt: Date;
+        firstSubmittedAt: Date | null;
+        endedAt: Date | null;
+        abandonedAt: Date | null;
+        abandonedByUserId: string | null;
+        abandonReason: string | null;
+        ownerUserId: string | null;
         hasHistoricalTakeoverRelation: boolean;
       }>>(Prisma.sql`
         SELECT
           cv."id", cv."contractId", cv."status", cv."changeType",
-          cv."versionNo", cv."updatedAt",
+          cv."versionNo", cv."updatedAt", cv."firstSubmittedAt", cv."endedAt",
+          cv."abandonedAt", cv."abandonedByUserId", cv."abandonReason",
+          c."ownerUserId",
           EXISTS (
             SELECT 1
             FROM "ContractTakeover" takeover
             WHERE takeover."contractVersionId" = cv."id"
           ) AS "hasHistoricalTakeoverRelation"
-        FROM "ContractVersion" cv
+        FROM "Contract" c
+        INNER JOIN "ContractVersion" cv ON cv."contractId" = c."id"
         WHERE cv."id" = ${sourceVersionId}
-        FOR UPDATE OF cv
+        FOR UPDATE OF c, cv
       `);
       if (!locked) throw new NotFoundException("未找到来源合同草稿");
-      const sourceContract = await tx.contract.findUnique({ where: { id: locked.contractId } });
-      if (!sourceContract || sourceContract.ownerUserId !== actorUserId) {
+      if (locked.ownerUserId !== actorUserId) {
         throw new ForbiddenException("只能复制本人已放弃的合同草稿");
       }
       assertGenericContractDraftVersion({
         changeType: locked.changeType,
         hasHistoricalTakeoverRelation: locked.hasHistoricalTakeoverRelation
       });
+      const lifecycle = await loadContractDraftLifecycle(tx, locked);
+      if (lifecycle.contractLifecycleStage === "ended_retained") {
+        assertEndedContractApplicationReadOnly(locked);
+      }
       if (locked.status !== "abandoned") {
         throw new ConflictException("只有已放弃的合同草稿可以复制为新草稿");
       }
@@ -503,6 +516,8 @@ export class ContractService {
       if (locked.updatedAt.toISOString() !== input.expectedUpdatedAt) {
         throw new ConflictException("来源合同草稿已变化，请刷新台账后重试");
       }
+      const sourceContract = await tx.contract.findUnique({ where: { id: locked.contractId } });
+      if (!sourceContract) throw new NotFoundException("未找到来源合同草稿");
       const source = await tx.contractVersion.findUnique({ where: { id: sourceVersionId } });
       if (!source) throw new NotFoundException("未找到来源合同草稿");
       const project = await tx.project.findUnique({ where: { id: sourceContract.projectId } });
@@ -729,7 +744,7 @@ export class ContractService {
           changeType: { not: "original" },
           status: {
             in: [
-              "draft", "in_approval", "approval_rejected", "approved_pending_seal",
+              "draft", "in_approval", "approved_pending_seal",
               "in_seal", "seal_approved_pending_archive", "pending_archive_confirm"
             ]
           }
@@ -1086,7 +1101,7 @@ export class ContractService {
             idempotent: true
           };
         }
-        if (!new Set(["draft", "approval_rejected"]).has(locked.status)) {
+        if (locked.status !== "draft") {
           throw new ConflictException("合同状态已变化，请刷新页面后按当前状态处理");
         }
         if (locked.draftRevision !== input.expectedRevision) {
@@ -1134,6 +1149,7 @@ export class ContractService {
             abandonedAt: now,
             abandonedByUserId: actorUserId,
             abandonReason: expectedAction === "abandon_application" ? reason : null,
+            endedAt: expectedAction === "abandon_application" ? now : null,
             draftRevision: { increment: 1 }
           }
         });
@@ -1599,7 +1615,7 @@ export class ContractService {
           changeType: { not: "original" },
           status: {
             in: [
-              "draft", "in_approval", "approval_rejected", "approved_pending_seal",
+              "draft", "in_approval", "approved_pending_seal",
               "in_seal", "seal_approved_pending_archive", "pending_archive_confirm"
             ]
           }
@@ -2827,6 +2843,7 @@ export class ContractService {
       const nextStatus = input.decision === "approve"
         ? isFinalApproval ? "approved_pending_seal" : "in_approval"
         : "approval_rejected";
+      const endedAt = nextStatus === "approval_rejected" ? new Date() : null;
       const updated = await tx.contractVersion.update({
         where: { id: version.id },
         data:
@@ -2834,7 +2851,8 @@ export class ContractService {
             ? {
                 status: nextStatus,
                 taxFactStatus: "draft",
-                taxFactsFrozenAt: null
+                taxFactsFrozenAt: null,
+                endedAt
               }
             : { status: nextStatus }
       });

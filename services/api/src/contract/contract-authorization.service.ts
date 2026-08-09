@@ -6,7 +6,7 @@ import { lockContractDraftMutationBoundary } from "./contract-draft-lifecycle";
 import { ContractFormalFileService, ContractGovernanceDenial } from "./contract-formal-file.service";
 import type { SetContractAuthorizationDto } from "./dto/contract-authorization.dto";
 
-const EDITABLE_STATUSES = new Set(["draft", "approval_rejected"]);
+const EDITABLE_STATUSES = new Set(["draft"]);
 const SIDES = ["first_party", "counterparty"] as const;
 type AuthorizationSide = (typeof SIDES)[number];
 type GovernedVersion = {

@@ -339,7 +339,7 @@ describe("ContractWorkbenchService", () => {
         where: {
           id: "version-1",
           draftRevision: 4,
-          status: { in: ["draft", "approval_rejected"] }
+          status: { in: ["draft"] }
         },
         data: expect.objectContaining({ draftRevision: { increment: 1 } })
       })
@@ -353,6 +353,30 @@ describe("ContractWorkbenchService", () => {
       data: { status: "stale" }
     });
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not save a final-rejected retained application through the legacy workbench API", async () => {
+    const tx = ownedVersionTx();
+    const editableVersion = await tx.contractVersion.findUnique({});
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...editableVersion,
+      status: "approval_rejected"
+    });
+    const service = makeService(tx);
+
+    await expect(
+      service.saveDraft("version-1", "owner-1", {
+        expectedRevision: 4,
+        draftData: { project_name: "不应保存" },
+        clauses: [],
+        pricingNature: "fixed_total",
+        amountSource: "manual",
+        manualAmountCents: "1000000",
+        taxFacts: VALID_TAX_FACTS
+      })
+    ).rejects.toThrow("合同草稿当前不可编辑");
+
+    expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it("lets a contract director confirm the suggested settlement mode with a CAS revision", async () => {
@@ -3364,7 +3388,7 @@ describe("ContractWorkbenchService", () => {
       where: {
         id: "version-1",
         draftRevision: 4,
-        status: { in: ["draft", "approval_rejected"] }
+        status: { in: ["draft"] }
       },
       data: {
         draftData: expect.objectContaining({
@@ -3666,7 +3690,7 @@ describe("ContractWorkbenchService", () => {
       expect(tx.contractVersion.findFirst).toHaveBeenCalledWith({
         where: {
           contractId: "contract-1",
-          status: { in: ["draft", "approval_rejected"] }
+          status: { in: ["draft"] }
         },
         orderBy: { versionNo: "desc" },
         select: { id: true }
@@ -3763,7 +3787,7 @@ describe("ContractWorkbenchService", () => {
     expect(tx.contractVersion.findFirst).toHaveBeenCalledWith({
       where: {
         contractId: "contract-1",
-        status: { in: ["draft", "approval_rejected"] }
+        status: { in: ["draft"] }
       },
       orderBy: { versionNo: "desc" },
       select: { id: true }
@@ -4525,7 +4549,7 @@ describe("ContractWorkbenchService", () => {
         where: {
           id: "version-1",
           draftRevision: 4,
-          status: { in: ["draft", "approval_rejected"] }
+          status: { in: ["draft"] }
         }
       })
     );

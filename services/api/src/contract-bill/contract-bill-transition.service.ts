@@ -16,7 +16,7 @@ import type {
   SaveContractBillTransitionDto
 } from "./dto/contract-bill-transition.dto";
 
-const EDITABLE_VERSION_STATUSES = new Set(["draft", "approval_rejected"]);
+const EDITABLE_VERSION_STATUSES = new Set(["draft"]);
 const DECIMAL_SCALE = 6;
 
 type ParsedMapping = {

@@ -19,7 +19,7 @@ import type {
   SaveContractDraftAttachmentDto
 } from "./dto/contract-workbench.dto";
 
-const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft", "approval_rejected"]);
+const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft"]);
 
 interface ContractDraftPrivateFileUploadInput {
   originalName: string;

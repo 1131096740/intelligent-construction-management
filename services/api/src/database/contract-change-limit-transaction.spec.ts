@@ -37,7 +37,7 @@ describe("contract change limit transaction evidence", () => {
       await client.$executeRawUnsafe(`CREATE TABLE "ContractVersion" (
         "id" TEXT PRIMARY KEY, "contractId" TEXT NOT NULL, "versionNo" INTEGER NOT NULL,
         "status" TEXT NOT NULL, "changeType" TEXT NOT NULL, "baseVersionId" TEXT,
-        "effectiveAt" TIMESTAMPTZ, "changeDirection" TEXT, "changeAmountCents" BIGINT,
+        "effectiveAt" TIMESTAMPTZ, "endedAt" TIMESTAMPTZ, "changeDirection" TEXT, "changeAmountCents" BIGINT,
         "amountCents" BIGINT NOT NULL, "originalBaseAmountCents" BIGINT,
         "cumulativeIncreaseCents" BIGINT NOT NULL DEFAULT 0,
         "cumulativeDecreaseCents" BIGINT NOT NULL DEFAULT 0,

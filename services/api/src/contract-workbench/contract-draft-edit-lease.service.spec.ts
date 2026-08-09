@@ -14,6 +14,7 @@ describe("ContractDraftEditLeaseService", () => {
   let ownerUserId: string;
   let director: boolean;
   let versionChangeType = "original";
+  let versionStatus = "draft";
   let hasHistoricalTakeoverRelation = false;
   let formalEvidence = false;
 
@@ -45,7 +46,7 @@ describe("ContractDraftEditLeaseService", () => {
       findUnique: jest.fn().mockImplementation(async () => ({
         id: "cv-1",
         contractId: "contract-1",
-        status: "draft",
+        status: versionStatus,
         changeType: versionChangeType
       }))
     },
@@ -134,6 +135,7 @@ describe("ContractDraftEditLeaseService", () => {
     ownerUserId = "owner-1";
     director = false;
     versionChangeType = "original";
+    versionStatus = "draft";
     hasHistoricalTakeoverRelation = false;
     formalEvidence = false;
     jest.clearAllMocks();
@@ -214,6 +216,15 @@ describe("ContractDraftEditLeaseService", () => {
     await expect(
       service().heartbeat("cv-1", acquired.token)
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("does not issue an edit lease to a final-rejected retained application", async () => {
+    versionStatus = "approval_rejected";
+
+    await expect(
+      service().acquire("cv-1", "owner-1")
+    ).rejects.toThrow("当前不可按草稿办理");
+    expect(tx.contractDraftEditLease.upsert).not.toHaveBeenCalled();
   });
 
   it("does not let another user silently acquire the active owner lease", async () => {

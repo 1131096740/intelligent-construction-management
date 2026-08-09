@@ -16,7 +16,7 @@ import { PrismaService } from "../database/prisma.service";
 export const CONTRACT_DRAFT_LEASE_TTL_MS = 120_000;
 export const CONTRACT_DRAFT_LEASE_HEARTBEAT_MS = 30_000;
 
-const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft", "approval_rejected"]);
+const EDITABLE_CONTRACT_DRAFT_STATUSES = new Set(["draft"]);
 
 interface TakeOverContractDraftEditLeaseInput {
   currentPassword: string;

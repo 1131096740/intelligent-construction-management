@@ -1420,6 +1420,87 @@ describe("ContractReadService", () => {
     });
   });
 
+  it("returns a permissioned ended application history with no edit capability", async () => {
+    const now = new Date("2026-08-08T10:00:00.000Z");
+    const prisma = {
+      contract: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-ended",
+          projectId: "project-1",
+          code: "HT-ENDED-001",
+          temporaryCode: null,
+          name: "最终驳回合同",
+          counterparty: "乙方",
+          ownerUserId: "owner-1",
+          contractTypeKey: "subcontract",
+          updatedAt: now
+        })
+      },
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", name: "项目一" }) },
+      contractVersion: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "version-ended",
+          contractId: "contract-ended",
+          versionNo: 1,
+          status: "approval_rejected",
+          changeType: "original",
+          firstSubmittedAt: now,
+          endedAt: now,
+          amountCents: 100n,
+          amountLimitType: "capped",
+          pricingNature: "fixed_total",
+          draftRevision: 2,
+          updatedAt: now,
+          contractGovernanceVersion: null
+        }])
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "terms-ended", versionNo: 1, status: "draft" })
+      },
+      paymentTermsStage: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn() },
+      contractFormalFile: { findMany: jest.fn().mockResolvedValue([]) },
+      contractAuthorization: { findMany: jest.fn().mockResolvedValue([]) },
+      contractVersionAuthorizationLink: { findMany: jest.fn().mockResolvedValue([]) },
+      contractSealTask: { findMany: jest.fn().mockResolvedValue([]) },
+      contractArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const fullService = new ContractReadService(prisma as never, {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["contract_director"])
+    } as never);
+
+    const detail = await fullService.getDetail(
+      "HT-ENDED-001",
+      ["project-1"],
+      "director-1",
+      "version-ended"
+    );
+
+    expect(detail).toMatchObject({
+      contractVersionId: "version-ended",
+      contractLifecycleStage: "ended_retained",
+      historyReadOnly: true,
+      availableActions: [],
+      availableActionKeys: []
+    });
+    expect(detail.approvalTimeline).toEqual(expect.any(Array));
+
+    const summaryService = new ContractReadService(prisma as never, {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["employee"])
+    } as never);
+    await expect(
+      summaryService.getDetail("HT-ENDED-001", ["project-1"], "employee-1", "version-ended")
+    ).rejects.toThrow("未找到合同");
+  });
+
   it("builds contract detail from persisted contract version and payment terms", async () => {
     const prisma = {
       contract: {
@@ -2535,7 +2616,7 @@ describe("ContractReadService", () => {
         contractVersionId: "c5-v1",
         contractLifecycleStage: "ended_retained",
         lifecycleKind: "approval_draft",
-        copyAvailable: true
+        copyAvailable: false
       }),
       expect.objectContaining({ contractVersionId: "c6-v2", lifecycleKind: "approval_draft" })
     ]));
@@ -2580,7 +2661,7 @@ describe("ContractReadService", () => {
     const pendingArchive = await service.workbenchLedger("pending_archive", 1, 20, ["p1"], "u1");
 
     expect(pendingArchive.summary).toEqual({
-      pending_action: 1, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 6
+      pending_action: 1, my_drafts: 1, in_approval: 1, pending_seal: 1, pending_archive: 1, effective: 1, all: 5
     });
     expect(pendingArchive.rows).toEqual([
       expect.objectContaining({ contractVersionId: "c4-v1", contractNo: "HT-4", currentNode: "合同部主管确认双方最终版" })

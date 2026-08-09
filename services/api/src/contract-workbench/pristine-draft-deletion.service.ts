@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { PrismaService } from "../database/prisma.service";
+import { addShanghaiCalendarMonths } from "../contract/contract-retention-calendar";
 import {
   acquireFileBusinessBindingTransactionLock
 } from "../file/file-business-binding";
@@ -26,19 +27,6 @@ import type { DeleteContractDraftDto } from "./dto/contract-workbench.dto";
 export const PRISTINE_DRAFT_DELETION_STORAGE = Symbol(
   "PRISTINE_DRAFT_DELETION_STORAGE"
 );
-
-const CHINA_TIME_ZONE = "Asia/Shanghai";
-const CHINA_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
-const chinaDateTimeFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: CHINA_TIME_ZONE,
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-  hour: "numeric",
-  minute: "numeric",
-  second: "numeric",
-  hourCycle: "h23"
-});
 
 interface LockedPristineDraft {
   id: string;
@@ -75,29 +63,7 @@ class CleanupBlockedError extends Error {
 }
 
 export function threeCalendarMonthsAfter(value: Date): Date {
-  const chinaParts = Object.fromEntries(
-    chinaDateTimeFormatter
-      .formatToParts(value)
-      .filter(({ type }) => type !== "literal")
-      .map(({ type, value: partValue }) => [type, Number(partValue)])
-  );
-  const targetMonthIndex = chinaParts.month + 2;
-  const targetYear = chinaParts.year + Math.floor(targetMonthIndex / 12);
-  const targetMonth = targetMonthIndex % 12;
-  const lastDayOfTargetMonth = new Date(
-    Date.UTC(targetYear, targetMonth + 1, 0)
-  ).getUTCDate();
-  return new Date(
-    Date.UTC(
-      targetYear,
-      targetMonth,
-      Math.min(chinaParts.day, lastDayOfTargetMonth),
-      chinaParts.hour,
-      chinaParts.minute,
-      chinaParts.second,
-      value.getUTCMilliseconds()
-    ) - CHINA_UTC_OFFSET_MS
-  );
+  return addShanghaiCalendarMonths(value, 3);
 }
 
 function deletionAggregateHash(input: {

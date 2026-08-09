@@ -120,9 +120,12 @@ async function deleteJson<TResponse>(path: string): Promise<TResponse> {
   return response.json() as Promise<TResponse>;
 }
 
-export function fetchContractDetail(contractId: string) {
+export function fetchContractDetail(contractId: string, options?: { versionId?: string }) {
+  const query = options?.versionId
+    ? `?versionId=${encodeURIComponent(options.versionId)}`
+    : "";
   return readJson<ContractDetailReadModel>(
-    `/contracts/${encodeURIComponent(contractId)}`
+    `/contracts/${encodeURIComponent(contractId)}${query}`
   );
 }
 

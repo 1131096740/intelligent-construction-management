@@ -1,7 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 
-export const EDITABLE_CONTRACT_VERSION_STATUSES = ["draft", "approval_rejected"];
+export const EDITABLE_CONTRACT_VERSION_STATUSES = ["draft"];
 
 export async function bumpContractRenderInputRevision(
   tx: Prisma.TransactionClient,

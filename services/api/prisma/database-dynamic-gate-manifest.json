@@ -3,8 +3,8 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 121,
-    "terminalMigration": "20260808100000_contract_pristine_draft_deletion",
+    "expectedDirectoryCount": 122,
+    "terminalMigration": "20260808103000_contract_ended_application_retention",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -25,12 +25,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 29,
-    "fullyPendingSuites": 19,
+    "pendingFiles": 31,
+    "fullyPendingSuites": 21,
     "partiallyPendingSuites": 10,
-    "pendingTests": 55,
-    "coveredFiles": 29,
-    "coveredTests": 55,
+    "pendingTests": 57,
+    "coveredFiles": 31,
+    "coveredTests": 57,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,7 +174,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 31,
+      "pendingTests": 33,
       "testFiles": [
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
@@ -195,6 +195,11 @@
           "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
           "pendingTests": 1,
           "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/contract-ended-application-retention.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
         },
         {
           "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",
@@ -225,6 +230,11 @@
           "path": "services/api/src/database/contract-takeover-correction-concurrency.spec.ts",
           "pendingTests": 1,
           "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/file-binding-manifest.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
         },
         {
           "path": "services/api/src/database/contract-change-limit-transaction.spec.ts",
