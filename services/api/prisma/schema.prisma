@@ -288,7 +288,7 @@ model ContractVersion {
 
 model ContractEndedApplicationRetentionPolicy {
   id          String   @id
-  activatedAt DateTime
+  activatedAt DateTime @db.Timestamptz(3)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

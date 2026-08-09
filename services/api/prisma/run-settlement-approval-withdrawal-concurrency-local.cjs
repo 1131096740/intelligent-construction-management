@@ -23,11 +23,11 @@ const {
   assertVerificationScope
 } = require("./settlement-approval-withdrawal-concurrency-fixtures.cjs");
 
-const EXPECTED_MIGRATION_COUNT = 123;
+const EXPECTED_MIGRATION_COUNT = 124;
 const TERMINAL_MIGRATION =
-  "20260808110000_contract_ended_application_purge";
+  "20260809150000_contract_retention_policy_timestamptz";
 const TERMINAL_MIGRATION_CHECKSUM =
-  "5a3ac7999f2310b0fab88e838bff50059771154502f03154a26847ee0f4c726a";
+  "d68568c402656eb67c4175696f527aadce95f8dc06ef5bc8d51c7bfdd37d9b21";
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
 const pnpm =
