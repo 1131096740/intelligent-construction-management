@@ -38,6 +38,7 @@
     "inspect:draft-lifecycle-readiness": "node scripts/inspect-draft-lifecycle-readiness.cjs",
     "inspect:contract-draft-aggregate": "node scripts/inspect-contract-draft-aggregate-readiness.cjs",
     "inspect:legacy-contract-cleanup-preflight": "node scripts/inspect-legacy-contract-cleanup-preflight.cjs",
+    "execute:legacy-contract-cleanup": "node scripts/execute-legacy-contract-cleanup.cjs",
     "resolve:contract-draft-formal-code": "node scripts/resolve-contract-draft-formal-code.cjs",
     "inspect:contract-draft-retention": "node scripts/execute-contract-draft-retention.cjs",
     "execute:contract-draft-retention": "node scripts/execute-contract-draft-retention.cjs --apply",

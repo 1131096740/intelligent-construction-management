@@ -30,6 +30,10 @@ const RESUMABLE_RECEIPT_STATUSES = ["object_cleanup_pending", "retryable"];
 const RETENTION_MONTHS = 3;
 const RELEASE_BUFFER_DAYS = 30;
 const DAY_MS = 86_400_000;
+export const LEGACY_AUTHORIZATION_AUDIT_EXCEPTION = Object.freeze({
+  businessType: "contract_version",
+  action: "contract.authorization.update"
+} as const);
 const DELETABLE_AUDIT_ACTION_PREFIXES = [
   "contract.draft.",
   "contract.approval.",
@@ -47,6 +51,12 @@ interface PurgeAuditScope {
   protectedBusinessIds: string[];
 }
 
+export interface LegacyAuditDeletionException {
+  businessType: typeof LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.businessType;
+  action: typeof LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.action;
+  expectedCount: number;
+}
+
 interface LockedEndedApplication {
   id: string;
   contractId: string;
@@ -61,6 +71,8 @@ interface LockedEndedApplication {
   copiedFromContractVersionId: string | null;
   firstSubmittedAt: Date | null;
   abandonedAt: Date | null;
+  abandonedByUserId: string | null;
+  abandonReason: string | null;
   endedAt: Date | null;
   effectiveAt: Date | null;
 }
@@ -170,11 +182,69 @@ export class ContractEndedApplicationPurgeService {
     };
   }
 
+  /**
+   * 执行 #19 预检中已明确授权的两条 legacy abandoned 记录。
+   *
+   * 该入口不扫描候选，也不把 `manual_review`/`blocking` 记录带入批次；调用方
+   * 必须先用精确预检报告完成候选 allowlist 与数据库 fingerprint 校验。这里仍
+   * 在每条记录的两个 Serializable 事务中重新锁定并核验所有生命周期事实，
+   * 以便报告与执行之间发生漂移时 fail-closed。
+   */
+  async purgeLegacyAuthorizedApplications(
+    contractVersionIds: readonly string[],
+    batchId: string,
+    now = new Date()
+  ): Promise<Array<{ contractVersionId: string; status: "completed" | "retryable" | "skipped" }>> {
+    const ids = [...new Set(contractVersionIds)];
+    if (ids.length < 1 || ids.length > 100 || ids.some((id) => !id.trim())) {
+      throw new ConflictException("legacy 清理候选必须是 1 到 100 个非空合同版本 ID");
+    }
+    const results: Array<{
+      contractVersionId: string;
+      status: "completed" | "retryable" | "skipped";
+    }> = [];
+    for (const contractVersionId of ids) {
+      results.push(await this.purgeLegacyCandidate(contractVersionId, batchId, now));
+    }
+    return results;
+  }
+
+  /**
+   * One-off, separately authorized legacy exception: remove only the exact
+   * contract authorization-update audit rows for one reviewed version.
+   * Ordinary legacy cleanup never accepts this exception.
+   */
+  async purgeLegacyAuthorizedApplicationWithAuditException(
+    contractVersionId: string,
+    batchId: string,
+    auditException: LegacyAuditDeletionException,
+    now = new Date()
+  ): Promise<{ contractVersionId: string; status: "completed" | "retryable" | "skipped" }> {
+    this.assertLegacyAuditDeletionException(contractVersionId, auditException);
+    return this.purgeLegacyCandidate(contractVersionId, batchId, now, auditException);
+  }
+
   private limit(value: number): number {
     if (!Number.isInteger(value) || value < 1 || value > 100) {
       throw new ConflictException("结束申请清理批次大小必须是 1 到 100 的整数");
     }
     return value;
+  }
+
+  private assertLegacyAuditDeletionException(
+    contractVersionId: string,
+    auditException: LegacyAuditDeletionException
+  ): void {
+    if (
+      !contractVersionId.trim() ||
+      auditException.businessType !== LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.businessType ||
+      auditException.action !== LEGACY_AUTHORIZATION_AUDIT_EXCEPTION.action ||
+      !Number.isInteger(auditException.expectedCount) ||
+      auditException.expectedCount < 1 ||
+      auditException.expectedCount > 10
+    ) {
+      throw new ConflictException("legacy 审计例外必须精确绑定合同版本与授权更新 action");
+    }
   }
 
   private async purgeCandidate(
@@ -196,6 +266,39 @@ export class ContractEndedApplicationPurgeService {
       if (error instanceof EndedApplicationPurgeSkippedError) return "skipped";
       await this.markRetryable(contractVersionId, retryableFailureCode(error));
       return "retryable";
+    }
+  }
+
+  private async purgeLegacyCandidate(
+    contractVersionId: string,
+    batchId: string,
+    now: Date,
+    auditException?: LegacyAuditDeletionException
+  ): Promise<{ contractVersionId: string; status: "completed" | "retryable" | "skipped" }> {
+    try {
+      const prepared = await this.prepareLegacy(contractVersionId, batchId, now, auditException);
+      if (prepared.completed) {
+        return { contractVersionId, status: "completed" };
+      }
+      if (prepared.resumeObjectCleanup) {
+        await this.finalizeObjectCleanup(prepared.receiptId);
+        return { contractVersionId, status: "completed" };
+      }
+      await this.purgeBusinessAggregate(
+        contractVersionId,
+        prepared.receiptId,
+        now,
+        "legacy",
+        auditException
+      );
+      await this.finalizeObjectCleanup(prepared.receiptId);
+      return { contractVersionId, status: "completed" };
+    } catch (error) {
+      if (error instanceof EndedApplicationPurgeSkippedError) {
+        return { contractVersionId, status: "skipped" };
+      }
+      await this.markRetryable(contractVersionId, retryableFailureCode(error));
+      return { contractVersionId, status: "retryable" };
     }
   }
 
@@ -257,10 +360,69 @@ export class ContractEndedApplicationPurgeService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
+  private async prepareLegacy(
+    contractVersionId: string,
+    batchId: string,
+    now: Date,
+    auditException?: LegacyAuditDeletionException
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existingReceipt = await tx.contractEndedApplicationPurgeReceipt.findUnique({
+        where: { contractVersionId },
+        select: { id: true, status: true, aggregateHash: true }
+      });
+      const locked = await this.lockEndedApplication(tx, contractVersionId);
+      if (!locked) {
+        if (existingReceipt?.status === "completed") {
+          return { completed: true, receiptId: existingReceipt.id, resumeObjectCleanup: false };
+        }
+        if (existingReceipt?.aggregateHash && RESUMABLE_RECEIPT_STATUSES.includes(existingReceipt.status)) {
+          return { completed: false, receiptId: existingReceipt.id, resumeObjectCleanup: true };
+        }
+        throw new EndedApplicationPurgeSkippedError("legacy 合同记录已不在可清理集合");
+      }
+      const policy = await tx.contractEndedApplicationRetentionPolicy.findUnique({
+        where: { id: ENDED_RETENTION_POLICY_ID },
+        select: { activatedAt: true }
+      });
+      if (!policy) {
+        throw new EndedApplicationPurgeSkippedError("结束申请保留策略尚未初始化");
+      }
+      await this.assertLegacyDeleteEligible(tx, locked, policy.activatedAt, now, auditException);
+      if (existingReceipt?.status === "completed") {
+        throw new ConflictException("legacy 合同清理已完成但原业务记录仍存在");
+      }
+      if (existingReceipt) {
+        await tx.contractEndedApplicationPurgeReceipt.update({
+          where: { contractVersionId },
+          data: { batchId, status: "purging", failureCode: null }
+        });
+      } else {
+        await tx.contractEndedApplicationPurgeReceipt.create({
+          data: {
+            batchId,
+            projectId: locked.projectId,
+            contractId: locked.contractId,
+            contractVersionId: locked.id,
+            formalCode: locked.code,
+            status: "purging"
+          }
+        });
+      }
+      const receipt = await tx.contractEndedApplicationPurgeReceipt.findUniqueOrThrow({
+        where: { contractVersionId },
+        select: { id: true }
+      });
+      return { completed: false, receiptId: receipt.id, resumeObjectCleanup: false };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
   private async purgeBusinessAggregate(
     contractVersionId: string,
     receiptId: string,
-    now: Date
+    now: Date,
+    mode: "ended" | "legacy" = "ended",
+    auditException?: LegacyAuditDeletionException
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const locked = await this.lockEndedApplication(tx, contractVersionId);
@@ -279,8 +441,12 @@ export class ContractEndedApplicationPurgeService {
       if (!policy) {
         throw new EndedApplicationPurgeSkippedError("结束申请保留策略尚未初始化");
       }
-      this.assertTerminalRetentionElapsed(locked, policy.activatedAt, now);
-      await this.assertNoProtectionOrHold(tx, locked, policy.activatedAt, now);
+      if (mode === "legacy") {
+        await this.assertLegacyDeleteEligible(tx, locked, policy.activatedAt, now, auditException);
+      } else {
+        this.assertTerminalRetentionElapsed(locked, policy.activatedAt, now);
+        await this.assertNoProtectionOrHold(tx, locked, policy.activatedAt, now);
+      }
       await acquireFileBusinessBindingTransactionLock(tx);
 
       const approvalInstances = await tx.approvalInstance.findMany({
@@ -304,7 +470,8 @@ export class ContractEndedApplicationPurgeService {
         locked,
         approvalInstances.map((item) => item.id),
         exclusiveRows.map((row) => row.fileId),
-        receiptId
+        receiptId,
+        auditException
       );
       await tx.contractEndedApplicationPurgeReceipt.update({
         where: { contractVersionId },
@@ -387,7 +554,8 @@ export class ContractEndedApplicationPurgeService {
         v."id", v."contractId", c."projectId", c."source", c."code",
         v."status", v."changeType", v."versionNo", v."baseVersionId",
         v."supersedesVersionId", v."copiedFromContractVersionId",
-        v."firstSubmittedAt", v."abandonedAt", v."endedAt", v."effectiveAt"
+        v."firstSubmittedAt", v."abandonedAt", v."abandonedByUserId",
+        v."abandonReason", v."endedAt", v."effectiveAt"
       FROM "ContractVersion" v
       INNER JOIN "Contract" c ON c."id" = v."contractId"
       WHERE v."id" = ${contractVersionId}
@@ -427,6 +595,46 @@ export class ContractEndedApplicationPurgeService {
     if (addShanghaiCalendarMonths(terminalAt, RETENTION_MONTHS) > now) {
       throw new EndedApplicationPurgeSkippedError("结束申请尚在三个月保留期内");
     }
+  }
+
+  private async assertLegacyDeleteEligible(
+    tx: Prisma.TransactionClient,
+    locked: LockedEndedApplication,
+    policyActivatedAt: Date,
+    now: Date,
+    auditException?: LegacyAuditDeletionException
+  ): Promise<void> {
+    if (
+      locked.status !== "abandoned" ||
+      locked.source !== "system" ||
+      locked.changeType !== "original" ||
+      locked.versionNo !== 1 ||
+      locked.baseVersionId ||
+      locked.supersedesVersionId ||
+      locked.copiedFromContractVersionId ||
+      locked.firstSubmittedAt ||
+      locked.abandonedAt === null ||
+      locked.abandonedByUserId === null ||
+      locked.abandonReason !== null ||
+      locked.endedAt ||
+      locked.effectiveAt
+    ) {
+      throw new EndedApplicationPurgeSkippedError("legacy 记录不满足未提交放弃事实");
+    }
+    const approvalInstances = await tx.approvalInstance.findMany({
+      where: { businessType: "contract_version", businessId: locked.id },
+      select: { id: true }
+    });
+    const approvalAction = approvalInstances.length > 0
+      ? await tx.approvalActionLog.findFirst({
+          where: { approvalInstanceId: { in: approvalInstances.map((row) => row.id) } },
+          select: { id: true }
+        })
+      : null;
+    if (approvalInstances.length > 0 || approvalAction) {
+      throw new EndedApplicationPurgeSkippedError("legacy 记录存在审批事实");
+    }
+    await this.assertNoProtectionOrHold(tx, locked, policyActivatedAt, now, auditException);
   }
 
   private async purgeAuditScope(
@@ -530,7 +738,8 @@ export class ContractEndedApplicationPurgeService {
     tx: Prisma.TransactionClient,
     locked: LockedEndedApplication,
     policyActivatedAt: Date,
-    now: Date
+    now: Date,
+    auditException?: LegacyAuditDeletionException
   ): Promise<void> {
     const [
       holds,
@@ -613,6 +822,16 @@ export class ContractEndedApplicationPurgeService {
       where: { businessId: { in: auditScope.protectedBusinessIds } },
       select: { action: true, businessType: true, businessId: true }
     });
+    const allowedAuditExceptionRows = auditException
+      ? auditRows.filter((row) =>
+          row.businessType === auditException.businessType &&
+          row.businessId === locked.id &&
+          row.action === auditException.action
+        )
+      : [];
+    if (auditException && allowedAuditExceptionRows.length !== auditException.expectedCount) {
+      throw new EndedApplicationPurgeSkippedError("legacy 授权更新审计行数量已变化");
+    }
     const nonDeletableAudit = auditRows.some((row) => {
       const matchingScope = auditScope.deletable.find(
         (scope) =>
@@ -620,7 +839,11 @@ export class ContractEndedApplicationPurgeService {
           row.businessId !== null &&
           scope.businessIds.includes(row.businessId)
       );
-      return !matchingScope || !auditActionIsDeletable(row.action);
+      const matchesAuthorizedException = auditException &&
+        row.businessType === auditException.businessType &&
+        row.businessId === locked.id &&
+        row.action === auditException.action;
+      return !matchesAuthorizedException && (!matchingScope || !auditActionIsDeletable(row.action));
     });
     if (holds.some((hold) => hold.releasedAt === null)) {
       throw new EndedApplicationPurgeSkippedError("结束申请存在人工保留");
@@ -756,7 +979,8 @@ export class ContractEndedApplicationPurgeService {
     locked: LockedEndedApplication,
     approvalInstanceIds: string[],
     exclusiveFileIds: string[],
-    receiptId: string
+    receiptId: string,
+    auditException?: LegacyAuditDeletionException
   ): Promise<void> {
     const auditScope = await this.purgeAuditScope(tx, locked);
     const [bills, terms, rounds, offlineRevisions] = await Promise.all([
@@ -869,6 +1093,18 @@ export class ContractEndedApplicationPurgeService {
         ]
       }
     });
+    if (auditException) {
+      const deletedAudit = await tx.auditLog.deleteMany({
+        where: {
+          businessType: auditException.businessType,
+          businessId: locked.id,
+          action: auditException.action
+        }
+      });
+      if (deletedAudit.count !== auditException.expectedCount) {
+        throw new ConflictException("legacy 授权更新审计行数量已变化");
+      }
+    }
     await tx.contractEndedApplicationRetentionHold.deleteMany({
       where: { contractVersionId: locked.id }
     });

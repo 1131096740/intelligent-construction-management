@@ -102,6 +102,11 @@ const checks = Object.freeze({
         WHERE settlement."contractVersionId" = version."id") +
        (SELECT count(*) FROM "PaymentRequest" payment
         WHERE payment."contractVersionId" = version."id"))::text AS "formalBusinessFactCount",
+      (SELECT count(*)::text
+       FROM "AuditLog" authorization_audit
+       WHERE authorization_audit."businessType" = 'contract_version'
+         AND authorization_audit."businessId" = version."id"
+         AND authorization_audit."action" = 'contract.authorization.update') AS "legacyAuthorizationUpdateAuditCount",
       (CASE
         WHEN contract."id" <> version."contractId"
           OR contract."projectId" IS NULL
@@ -187,6 +192,7 @@ function isLegacyDeleteAuthorized(row) {
     row.changeType === "original" &&
     Number(row.versionNo) === 1 &&
     row.firstSubmittedAt == null &&
+    row.endedAt == null &&
     count(row.approvalInstanceCount, "approvalInstanceCount") === 0 &&
     count(row.approvalActionCount, "approvalActionCount") === 0 &&
     row.abandonedAt != null &&
@@ -232,18 +238,29 @@ function classifyRow(row, policyActivatedAt) {
   if (safety.inconsistentCoordinateCount > 0) reasons.push("INCONSISTENT_PROJECT_VERSION_COORDINATE");
   if (safety.versionEnumerationFailureCount > 0) reasons.push("COS_VERSION_ENUMERATION_UNAVAILABLE");
   if (safety.bucketMismatchCount > 0) reasons.push("COS_BUCKET_SCOPE_MISMATCH");
+  const legacyAuthorizationUpdateAuditCount = count(
+    row.legacyAuthorizationUpdateAuditCount,
+    "legacyAuthorizationUpdateAuditCount"
+  );
 
   const legacyAuthorized = isLegacyDeleteAuthorized(row);
   if (legacyAuthorized) {
+    const legacyReasons = [
+      ...reasons,
+      ...(legacyAuthorizationUpdateAuditCount > 0
+        ? ["NON_DELETABLE_AUTHORIZATION_AUDIT"]
+        : [])
+    ];
     return {
       contractVersionId: row.contractVersionId,
       classification: "legacy_abandoned",
       authorization: "legacy_delete_confirmed",
-      status: reasons.length ? "blocking" : "candidate",
+      status: legacyReasons.length ? "manual_review" : "candidate",
       retentionStartsAt: null,
       fileSummary,
       objectListHash: readSha(row.objectListHash, "objectListHash", 64),
-      reasons
+      reasons: legacyReasons,
+      legacyAuthorizationUpdateAuditCount
     };
   }
 
@@ -260,7 +277,8 @@ function classifyRow(row, policyActivatedAt) {
         ...reasons,
         ...(row.source !== "system" ? ["LEGACY_SOURCE_NOT_SYSTEM"] : []),
         "LEGACY_DELETE_FACT_UNVERIFIABLE"
-      ]
+      ],
+      legacyAuthorizationUpdateAuditCount
     };
   }
 
@@ -273,7 +291,8 @@ function classifyRow(row, policyActivatedAt) {
       retentionStartsAt: retentionStartsAt(row, policyActivatedAt),
       fileSummary,
       objectListHash: readSha(row.objectListHash, "objectListHash", 64),
-      reasons
+      reasons,
+      legacyAuthorizationUpdateAuditCount
     };
   }
 
@@ -286,7 +305,8 @@ function classifyRow(row, policyActivatedAt) {
       retentionStartsAt: null,
       fileSummary,
       objectListHash: readSha(row.objectListHash, "objectListHash", 64),
-      reasons: reasons.length ? reasons : ["ACTIVE_DRAFT_IS_NEVER_AUTOMATICALLY_SELECTED"]
+      reasons: reasons.length ? reasons : ["ACTIVE_DRAFT_IS_NEVER_AUTOMATICALLY_SELECTED"],
+      legacyAuthorizationUpdateAuditCount
     };
   }
 
@@ -298,7 +318,8 @@ function classifyRow(row, policyActivatedAt) {
     retentionStartsAt: null,
     fileSummary,
     objectListHash: readSha(row.objectListHash, "objectListHash", 64),
-    reasons: [...reasons, "LIFECYCLE_STATUS_NOT_ELIGIBLE_FOR_LEGACY_AUTHORIZATION"]
+    reasons: [...reasons, "LIFECYCLE_STATUS_NOT_ELIGIBLE_FOR_LEGACY_AUTHORIZATION"],
+    legacyAuthorizationUpdateAuditCount
   };
 }
 
@@ -574,6 +595,7 @@ async function inspectWithClient(prisma, {
     effectiveAt: iso(row.effectiveAt, "effectiveAt"),
     approvalInstanceCount: row.approvalInstanceCount,
     approvalActionCount: row.approvalActionCount,
+    legacyAuthorizationUpdateAuditCount: row.legacyAuthorizationUpdateAuditCount,
     holdCount: row.holdCount,
     formalBusinessFactCount: row.formalBusinessFactCount,
     inconsistentCoordinateCount: row.inconsistentCoordinateCount,

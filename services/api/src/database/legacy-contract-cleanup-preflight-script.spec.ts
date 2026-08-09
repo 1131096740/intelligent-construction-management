@@ -126,6 +126,57 @@ describe("legacy contract cleanup preflight", () => {
     });
   });
 
+  it("marks the reviewed authorization-update audit fact for a separate exception", () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const tool = require(scriptPath);
+    const report = tool.createReport({
+      codeSha: "a".repeat(40),
+      databaseFingerprint: "b".repeat(64),
+      generatedAt: "2026-08-09T00:00:00.000Z",
+      batchId: "legacy-preflight-audit-exception",
+      migrationHead: "20260809150000_contract_retention_policy_timestamptz",
+      policyActivatedAt: "2026-08-08T00:00:00.000Z",
+      totalRows: "1",
+      rows: [{
+        contractVersionId: "legacy-audit-exception-version",
+        status: "abandoned",
+        source: "system",
+        changeType: "original",
+        versionNo: 1,
+        firstSubmittedAt: null,
+        approvalInstanceCount: "0",
+        approvalActionCount: "0",
+        abandonedAt: "2026-06-01T00:00:00.000Z",
+        abandonedByUserId: "user-1",
+        abandonReason: null,
+        holdCount: "0",
+        formalBusinessFactCount: "0",
+        legacyAuthorizationUpdateAuditCount: "2",
+        unknownBindingCount: "0",
+        missingFileHashCount: "0",
+        inconsistentCoordinateCount: "0",
+        exclusiveFileCount: "0",
+        sharedFileCount: "0",
+        versionCount: "0",
+        deleteMarkerCount: "0",
+        versionEnumerationFailureCount: "0",
+        bucketMismatchCount: "0",
+        objectListHash: "c".repeat(64)
+      }]
+    });
+
+    expect(report).toMatchObject({
+      status: "manual_review",
+      summary: { legacyAuthorizedCandidates: 0, manualReviewRecords: 1 },
+      records: [{
+        contractVersionId: "legacy-audit-exception-version",
+        status: "manual_review",
+        reasons: ["NON_DELETABLE_AUTHORIZATION_AUDIT"],
+        legacyAuthorizationUpdateAuditCount: 2
+      }]
+    });
+  });
+
   it("keeps the database fingerprint opaque and rejects any apply argument", () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const tool = require(scriptPath);

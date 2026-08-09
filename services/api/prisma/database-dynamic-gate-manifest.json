@@ -28,9 +28,9 @@
     "pendingFiles": 33,
     "fullyPendingSuites": 23,
     "partiallyPendingSuites": 10,
-    "pendingTests": 64,
+    "pendingTests": 66,
     "coveredFiles": 33,
-    "coveredTests": 64,
+    "coveredTests": 66,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,11 +174,11 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-      "pendingTests": 40,
+    "pendingTests": 42,
       "testFiles": [
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
-          "pendingTests": 5,
+          "pendingTests": 6,
           "suiteStatus": "fully_pending"
         },
         {
@@ -203,7 +203,7 @@
         },
         {
           "path": "services/api/src/database/contract-ended-application-purge.spec.ts",
-          "pendingTests": 4,
+          "pendingTests": 5,
           "suiteStatus": "fully_pending"
         },
         {
