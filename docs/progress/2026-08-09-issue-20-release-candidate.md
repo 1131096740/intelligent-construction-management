@@ -18,6 +18,21 @@ Issue #20 只准备可部署候选，不得把本记录解释为已上线或生�
 | 隔离治理 UAT | 21/21 必选场景通过 | 临时 localhost PostgreSQL、API、写冻结 API 与本地文件存储 |
 | 真实浏览器 | Chromium `1366x768`、WebKit `390x844` 均通过；400/403/409/503 均出现；浏览器错误、失败请求、测试失败均为 0 | 收据绑定基线 SHA，最终候选重新运行 |
 
+## 已核验的最终本机固定点
+
+`fc8d13324ef9a0e7b4512a23b56a0faf4cf086dc` 是本文件补充前已完成的最终本机候选。其完整收据如下；该 SHA 与本次文档补充后的候选不同，因此仅作为可审计的历史固定点，不能继承给新候选。
+
+| 门 | `fc8d133` 收据 |
+| --- | --- |
+| 完整 Jest | 527 suites / 8,148 tests：8,075 passed、73 pending、0 failed；其中 API 为 331 suites / 6,043 tests（5,970 passed、73 pending、0 failed），shared-domain 为 15 suites / 158 tests，web-admin 为 181 files / 1,947 tests。 |
+| 静态与发布门 | Prisma generate/validate、typecheck、lint、API build、Web production build、`check:ui`、business-errors self tests、go-live safety self-test、release manifests 全部通过；manifest 为 452 routes、440 wrappers、462 bindings。 |
+| PostgreSQL 16 全动态门 | disposable runner 通过 123 migrations 至 M123（`20260808110000_contract_ended_application_purge`）、33 files / 63 tests、9/9 groups、remaining 0，耗时 315,907 ms；临时容器已清理。 |
+| 隔离治理 UAT | 21/21 场景通过、failed cases 为空；只使用 localhost PostgreSQL、API、写冻结 API 与本地文件存储。 |
+| Chromium | `1366x768`：200:72、201:15、400:1、403:7、409:1、503:1；browser errors、failed requests、test failures 均为 0。 |
+| WebKit | `390x844`：200:64、201:13、400:1、403:7、409:1、503:1；browser errors、failed requests、test failures 均为 0。 |
+
+本文件及 `PROGRESS.md` 的提交将改变候选 SHA。为避免 Git 提交自引用，新的精确 40 位 SHA 和同 SHA 的机器可读 JSON 收据仅在提交后生成，并由本文件下方列出的完整重跑门绑定；不得将本节的 `fc8d133` 收据误报为新 SHA 已通过。
+
 ## 最终本机候选门
 
 提交本文件后，在该工作树干净且 SHA 精确匹配的前提下，重新执行：
