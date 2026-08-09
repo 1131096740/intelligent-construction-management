@@ -17,7 +17,7 @@ DRY_RUN=false
 
 usage() {
   cat <<'USAGE'
-Usage: pnpm deploy:local --target-sha <sha> --receipt <absolute-path> \
+Usage: pnpm deploy:mac-direct --target-sha <sha> --receipt <absolute-path> \
   --confirm 'DEPLOY JGZG PRODUCTION' [--scope full|api-only] \
   [--confirmation-mode manual|immediate] [--confirmation-timeout-seconds <seconds>] \
   [--dry-run]
@@ -102,8 +102,8 @@ case "$DEPLOY_CONFIRMATION_MODE" in
     ;;
 esac
 [[ "$DEPLOY_CONFIRMATION_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] &&
-  (( DEPLOY_CONFIRMATION_TIMEOUT_SECONDS <= 86400 )) ||
-  fail "deployment confirmation timeout must be between 1 and 86400 seconds"
+  (( DEPLOY_CONFIRMATION_TIMEOUT_SECONDS <= 3600 )) ||
+  fail "deployment confirmation timeout must be between 1 and 3600 seconds"
 [[ "$DEPLOY_SCOPE" != "full" || "$DEPLOY_CONFIRMATION_MODE" == "manual" ]] ||
   fail "full deployments require manual confirmation mode"
 

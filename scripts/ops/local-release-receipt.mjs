@@ -117,6 +117,19 @@ function validateReceipt(receiptPath, candidateSha) {
   if (!isComplete) {
     fail("release receipt is incomplete");
   }
+
+  return {
+    schemaVersion: receipt.schemaVersion,
+    status: receipt.status,
+    candidateSha: receipt.candidateSha,
+    verifiedAt: receipt.verifiedAt,
+    nodeVersion: receipt.nodeVersion,
+    pnpmVersion: receipt.pnpmVersion,
+    checks: [...requiredChecks],
+    durationsMs: Object.fromEntries(
+      requiredChecks.map((check) => [check, receipt.durationsMs[check]])
+    )
+  };
 }
 
 const [command, ...args] = process.argv.slice(2);
@@ -142,6 +155,18 @@ switch (command) {
       fail("release receipt is incomplete");
     }
     validateReceipt(options["--receipt"], options["--candidate-sha"]);
+    break;
+  }
+  case "--dispatch-json": {
+    const options = parseOptions(args);
+    if (!options["--receipt"] || !options["--candidate-sha"]) {
+      fail("release receipt is incomplete");
+    }
+    process.stdout.write(
+      JSON.stringify(
+        validateReceipt(options["--receipt"], options["--candidate-sha"])
+      )
+    );
     break;
   }
   default:

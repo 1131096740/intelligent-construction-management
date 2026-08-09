@@ -9,6 +9,7 @@ import test from "node:test";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const localGate = join(root, "scripts", "ops", "run-local-release-gate.sh");
 const localDeploy = join(root, "scripts", "ops", "deploy-from-mac.sh");
+const localDispatch = join(root, "scripts", "ops", "request-github-deploy.sh");
 const localReceipt = join(root, "scripts", "ops", "local-release-receipt.mjs");
 const candidateSha = "a".repeat(40);
 const requiredChecks = [
@@ -84,7 +85,10 @@ async function writeDeploymentInputs(testRoot, receiptCandidateSha, { complete =
   return { receipt, identityFile, knownHosts, sshLog, fakeSsh };
 }
 
-async function writeFakeGit(testRoot, { head = candidateSha, main = candidateSha } = {}) {
+async function writeFakeGit(
+  testRoot,
+  { head = candidateSha, main = candidateSha, dirty = false } = {}
+) {
   const fakeGit = join(testRoot, "git");
   await writeExecutable(
     fakeGit,
@@ -93,7 +97,9 @@ async function writeFakeGit(testRoot, { head = candidateSha, main = candidateSha
       "case \"$*\" in",
       `  \"rev-parse HEAD\") printf '${head}\\n' ;;`,
       `  \"rev-parse refs/remotes/origin/main\") printf '${main}\\n' ;;`,
-      "  \"status --porcelain=v1 --untracked-files=all\") ;;",
+      dirty
+        ? "  \"status --porcelain=v1 --untracked-files=all\") printf ' M uncommitted.txt\\n' ;;"
+        : "  \"status --porcelain=v1 --untracked-files=all\") ;;",
       "  \"fetch --no-tags origin main:refs/remotes/origin/main\") ;;",
       "  cat-file\\ -e\\ *) ;;",
       "  merge-base\\ --is-ancestor\\ *) ;;",
@@ -102,6 +108,20 @@ async function writeFakeGit(testRoot, { head = candidateSha, main = candidateSha
     ].join("\n")
   );
   return fakeGit;
+}
+
+async function writeFakeGh(testRoot) {
+  const ghLog = join(testRoot, "gh.log");
+  const fakeGh = join(testRoot, "gh");
+  await writeExecutable(
+    fakeGh,
+    [
+      "#!/usr/bin/env bash",
+      "printf '%s\\n' \"$@\" >> " + JSON.stringify(ghLog),
+      "exit 0"
+    ].join("\n")
+  );
+  return { fakeGh, ghLog };
 }
 
 async function writeFakeLocalGateTools(testRoot) {
@@ -176,6 +196,24 @@ test("pnpm forwards local release options without a separator argument", () => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /playwright-rc06-mock/u);
+});
+
+test("normal deployment dispatch and direct-Mac fallback have distinct package commands", async () => {
+  const [packageJsonSource, directMacSource] = await Promise.all([
+    readFile(join(root, "package.json"), "utf8"),
+    readFile(localDeploy, "utf8")
+  ]);
+  const packageJson = JSON.parse(packageJsonSource);
+
+  assert.equal(
+    packageJson.scripts["deploy:local"],
+    "bash scripts/ops/request-github-deploy.sh"
+  );
+  assert.equal(
+    packageJson.scripts["deploy:mac-direct"],
+    "bash scripts/ops/deploy-from-mac.sh"
+  );
+  assert.match(directMacSource, /Usage: pnpm deploy:mac-direct --target-sha/u);
 });
 
 test("local release gate runs the API suite in band", async () => {
@@ -434,6 +472,23 @@ test("full Mac deployment requires a manual post-health confirmation window", ()
   assert.match(result.stderr, /full deployments require manual confirmation mode/u);
 });
 
+test("direct Mac deployment refuses a confirmation window beyond the server recovery bound", () => {
+  const result = runScript(localDeploy, [
+    "--dry-run",
+    "--target-sha",
+    candidateSha,
+    "--receipt",
+    "/tmp/receipt.json",
+    "--confirm",
+    "DEPLOY JGZG PRODUCTION",
+    "--confirmation-timeout-seconds",
+    "3601"
+  ]);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /between 1 and 3600 seconds/u);
+});
+
 test("Mac deployment dry run refuses a target that is no longer origin/main", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-local-deploy-test-"));
   try {
@@ -503,6 +558,263 @@ test("Mac deployment dry run validates a matching receipt without invoking SSH",
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Dry run passed/u);
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch refuses an incorrect production confirmation before invoking GitHub or SSH", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot);
+    const result = runScript(
+      localDispatch,
+      [
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY SOMETHING ELSE"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /production confirmation must exactly match/u);
+    await assert.rejects(readFile(ghLog, "utf8"));
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch refuses a receipt for another candidate before invoking GitHub or SSH", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, "b".repeat(40));
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot);
+    const result = runScript(
+      localDispatch,
+      [
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /does not match target SHA/u);
+    await assert.rejects(readFile(ghLog, "utf8"));
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch refuses a dirty checkout before invoking GitHub or SSH", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot, { dirty: true });
+    const result = runScript(
+      localDispatch,
+      [
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /local candidate worktree must be clean/u);
+    await assert.rejects(readFile(ghLog, "utf8"));
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch refuses a target that is no longer origin/main before invoking GitHub or SSH", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot, { main: "b".repeat(40) });
+    const result = runScript(
+      localDispatch,
+      [
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /does not match origin\/main/u);
+    await assert.rejects(readFile(ghLog, "utf8"));
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch dry run validates a matching request without invoking GitHub or SSH", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot);
+    const result = runScript(
+      localDispatch,
+      [
+        "--dry-run",
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Dry run passed/u);
+    await assert.rejects(readFile(ghLog, "utf8"));
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch sends only the validated receipt summary after local checks pass", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot);
+    const result = runScript(
+      localDispatch,
+      [
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /GitHub deployment workflow requested/u);
+    const args = await readFile(ghLog, "utf8");
+    assert.match(args, /^workflow$/mu);
+    assert.match(args, /^run$/mu);
+    assert.match(args, /^deploy-production\.yml$/mu);
+    assert.match(args, /^--ref$/mu);
+    assert.match(args, /^main$/mu);
+    assert.match(args, new RegExp("^target_sha=" + candidateSha + "$", "mu"));
+    assert.match(args, /^production_confirmation=DEPLOY JGZG PRODUCTION$/mu);
+    assert.match(args, /release_receipt_json=.*"candidateSha":"a{40}"/u);
+    await assert.rejects(readFile(inputs.sshLog, "utf8"));
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
+test("GitHub dispatch strips receipt fields that are outside the non-sensitive summary", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "jiangkong-github-dispatch-test-"));
+  try {
+    const inputs = await writeDeploymentInputs(testRoot, candidateSha);
+    const receipt = JSON.parse(await readFile(inputs.receipt, "utf8"));
+    receipt.localOperatorNote = "do-not-send";
+    await writeFile(inputs.receipt, JSON.stringify(receipt), "utf8");
+    const { fakeGh, ghLog } = await writeFakeGh(testRoot);
+    const fakeGit = await writeFakeGit(testRoot);
+    const result = runScript(
+      localDispatch,
+      [
+        "--target-sha",
+        candidateSha,
+        "--receipt",
+        inputs.receipt,
+        "--confirm",
+        "DEPLOY JGZG PRODUCTION"
+      ],
+      {
+        env: {
+          ...process.env,
+          GH_BIN: fakeGh,
+          GIT_BIN: fakeGit,
+          SSH_BIN: inputs.fakeSsh
+        }
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const args = await readFile(ghLog, "utf8");
+    assert.doesNotMatch(args, /do-not-send/u);
     await assert.rejects(readFile(inputs.sshLog, "utf8"));
   } finally {
     await rm(testRoot, { recursive: true, force: true });

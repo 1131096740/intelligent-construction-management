@@ -1,0 +1,333 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "已通过本地完整门禁的 40 位 main SHA"
+        required: true
+        type: string
+      production_confirmation:
+        description: "输入 DEPLOY JGZG PRODUCTION 确认生产部署"
+        required: true
+        type: string
+      release_receipt_json:
+        description: "由本机发布入口生成的非敏感完整门禁收据摘要"
+        required: true
+        type: string
+      deployment_scope:
+        description: "full 或 api-only"
+        required: true
+        default: "full"
+        type: string
+      confirmation_mode:
+        description: "full 必须为 manual；api-only 可使用 immediate"
+        required: true
+        default: "manual"
+        type: string
+      confirmation_timeout_seconds:
+        description: "健康检查后的确认窗口秒数，最大 3600"
+        required: true
+        default: "1800"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  deploy:
+    name: Verify receipt and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Validate deployment request and local release receipt
+        id: request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          PRODUCTION_CONFIRMATION: ${{ inputs.production_confirmation }}
+          RELEASE_RECEIPT_JSON: ${{ inputs.release_receipt_json }}
+          DEPLOY_SCOPE: ${{ inputs.deployment_scope }}
+          DEPLOY_CONFIRMATION_MODE: ${{ inputs.confirmation_mode }}
+          DEPLOY_CONFIRMATION_TIMEOUT_SECONDS: ${{ inputs.confirmation_timeout_seconds }}
+        run: |
+          set -euo pipefail
+          : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
+          main_ref_json="$(curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main")"
+          MAIN_REF_JSON="$main_ref_json" node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { appendFileSync } = require("node:fs");
+
+          const requiredChecks = [
+            "ci-orchestration",
+            "frozen-dependency-install",
+            "prisma-client-generation",
+            "production-dependency-audit",
+            "workspace-typecheck",
+            "web-e2e-typecheck",
+            "workspace-lint",
+            "business-errors-and-operations-safety",
+            "workspace-test",
+            "api-and-web-production-build",
+            "web-ui-governance",
+            "release-manifests",
+            "exact-sha-postgresql-16",
+            "playwright-p0",
+            "playwright-rc06-mock"
+          ];
+
+          function fail(message) {
+            console.error("deploy request: " + message);
+            process.exit(1);
+          }
+
+          const targetSha = process.env.TARGET_SHA;
+          const confirmation = process.env.PRODUCTION_CONFIRMATION;
+          const deployScope = process.env.DEPLOY_SCOPE;
+          const confirmationMode = process.env.DEPLOY_CONFIRMATION_MODE;
+          const timeoutText = process.env.DEPLOY_CONFIRMATION_TIMEOUT_SECONDS;
+
+          if (process.env.GITHUB_REF !== "refs/heads/main") {
+            fail("deployment workflow must run from main");
+          }
+          if (!/^[0-9a-f]{40}$/.test(targetSha ?? "")) {
+            fail("target_sha must be a lowercase 40-character commit ID");
+          }
+          if (confirmation !== "DEPLOY JGZG PRODUCTION") {
+            fail("production confirmation must exactly match DEPLOY JGZG PRODUCTION");
+          }
+          if (deployScope !== "full" && deployScope !== "api-only") {
+            fail("deployment scope must be full or api-only");
+          }
+          if (confirmationMode !== "manual" && confirmationMode !== "immediate") {
+            fail("deployment confirmation mode must be manual or immediate");
+          }
+          if (deployScope === "full" && confirmationMode !== "manual") {
+            fail("full deployments require manual confirmation mode");
+          }
+          if (!/^[1-9][0-9]*$/.test(timeoutText ?? "")) {
+            fail("deployment confirmation timeout must be an integer from 1 to 3600");
+          }
+          const confirmationTimeoutSeconds = Number(timeoutText);
+          if (
+            !Number.isSafeInteger(confirmationTimeoutSeconds) ||
+            confirmationTimeoutSeconds > 3600
+          ) {
+            fail("deployment confirmation timeout must be an integer from 1 to 3600");
+          }
+
+          let mainRef;
+          let receipt;
+          try {
+            mainRef = JSON.parse(process.env.MAIN_REF_JSON ?? "");
+            receipt = JSON.parse(process.env.RELEASE_RECEIPT_JSON ?? "");
+          } catch {
+            fail("release receipt or main reference is invalid");
+          }
+          if (mainRef?.object?.sha !== targetSha) {
+            fail("target SHA does not match current origin/main");
+          }
+
+          const receiptKeys = [
+            "schemaVersion",
+            "status",
+            "candidateSha",
+            "verifiedAt",
+            "nodeVersion",
+            "pnpmVersion",
+            "checks",
+            "durationsMs"
+          ];
+          if (
+            receipt === null ||
+            typeof receipt !== "object" ||
+            Array.isArray(receipt) ||
+            Object.keys(receipt).length !== receiptKeys.length ||
+            receiptKeys.some((key) => !Object.hasOwn(receipt, key))
+          ) {
+            fail("release receipt is incomplete");
+          }
+          if (
+            receipt.schemaVersion !== 2 ||
+            receipt.status !== "passed" ||
+            receipt.candidateSha !== targetSha ||
+            typeof receipt.verifiedAt !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(receipt.verifiedAt) ||
+            !Number.isFinite(Date.parse(receipt.verifiedAt)) ||
+            typeof receipt.nodeVersion !== "string" ||
+            !/^20\.\d+\.\d+$/.test(receipt.nodeVersion) ||
+            typeof receipt.pnpmVersion !== "string" ||
+            !/^9\.\d+\.\d+$/.test(receipt.pnpmVersion)
+          ) {
+            fail("release receipt is incomplete");
+          }
+          if (
+            !Array.isArray(receipt.checks) ||
+            receipt.checks.length !== requiredChecks.length ||
+            new Set(receipt.checks).size !== requiredChecks.length ||
+            requiredChecks.some((check) => !receipt.checks.includes(check))
+          ) {
+            fail("release receipt is incomplete");
+          }
+          if (
+            receipt.durationsMs === null ||
+            typeof receipt.durationsMs !== "object" ||
+            Array.isArray(receipt.durationsMs) ||
+            Object.keys(receipt.durationsMs).length !== requiredChecks.length ||
+            requiredChecks.some(
+              (check) =>
+                !Object.hasOwn(receipt.durationsMs, check) ||
+                !Number.isSafeInteger(receipt.durationsMs[check]) ||
+                receipt.durationsMs[check] < 0
+            )
+          ) {
+            fail("release receipt is incomplete");
+          }
+
+          const canonicalReceipt = {
+            schemaVersion: receipt.schemaVersion,
+            status: receipt.status,
+            candidateSha: receipt.candidateSha,
+            verifiedAt: receipt.verifiedAt,
+            nodeVersion: receipt.nodeVersion,
+            pnpmVersion: receipt.pnpmVersion,
+            checks: [...requiredChecks],
+            durationsMs: Object.fromEntries(
+              requiredChecks.map((check) => [check, receipt.durationsMs[check]])
+            )
+          };
+          const receiptSha256 = createHash("sha256")
+            .update(JSON.stringify(canonicalReceipt))
+            .digest("hex");
+          const totalDurationMs = requiredChecks.reduce(
+            (total, check) => total + canonicalReceipt.durationsMs[check],
+            0
+          );
+
+          appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            [
+              "target_sha=" + targetSha,
+              "deployment_scope=" + deployScope,
+              "confirmation_mode=" + confirmationMode,
+              "confirmation_timeout_seconds=" + confirmationTimeoutSeconds,
+              "receipt_sha256=" + receiptSha256
+            ].join("\n") + "\n"
+          );
+          appendFileSync(
+            process.env.GITHUB_STEP_SUMMARY,
+            [
+              "### Validated local release receipt",
+              "",
+              "- Target SHA: " + targetSha,
+              "- Receipt SHA-256: " + receiptSha256,
+              "- Local gate completed: " + canonicalReceipt.verifiedAt,
+              "- Fixed checks: " + requiredChecks.length,
+              "- Measured phase total: " + totalDurationMs + " ms"
+            ].join("\n") + "\n"
+          );
+          NODE
+
+      - name: Deploy through the existing server safety chain
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          TARGET_SHA: ${{ steps.request.outputs.target_sha }}
+          DEPLOY_SCOPE: ${{ steps.request.outputs.deployment_scope }}
+          DEPLOY_CONFIRMATION_MODE: ${{ steps.request.outputs.confirmation_mode }}
+          DEPLOY_CONFIRMATION_TIMEOUT_SECONDS: ${{ steps.request.outputs.confirmation_timeout_seconds }}
+        run: |
+          set -euo pipefail
+
+          : "${DEPLOY_HOST:?DEPLOY_HOST is required}"
+          : "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY is required}"
+          : "${DEPLOY_KNOWN_HOSTS:?DEPLOY_KNOWN_HOSTS is required}"
+          : "${TARGET_SHA:?TARGET_SHA is required}"
+          DEPLOY_PORT="${DEPLOY_PORT:-22}"
+
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || {
+            echo "deployment host is invalid" >&2
+            exit 1
+          }
+          [[ "$DEPLOY_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && (( DEPLOY_PORT <= 65535 )) || {
+            echo "deployment port is invalid" >&2
+            exit 1
+          }
+
+          ssh_dir="$RUNNER_TEMP/jiangkong-deploy-ssh"
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          key_file="$ssh_dir/id_ed25519"
+          known_hosts_file="$ssh_dir/known_hosts"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$key_file" "$known_hosts_file"
+
+          ssh -i "$key_file" \
+            -p "$DEPLOY_PORT" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$known_hosts_file" \
+            "ubuntu@$DEPLOY_HOST" \
+            "env TARGET_SHA=$TARGET_SHA DEPLOY_SCOPE=$DEPLOY_SCOPE DEPLOY_CONFIRMATION_MODE=$DEPLOY_CONFIRMATION_MODE DEPLOY_CONFIRMATION_TIMEOUT_SECONDS=$DEPLOY_CONFIRMATION_TIMEOUT_SECONDS bash -s" <<'REMOTE_DEPLOY'
+          set -euo pipefail
+
+          assert_clean_release_tree() {
+            local entry status_output
+            if ! status_output="$(git status --porcelain=v1 --untracked-files=all)"; then
+              echo "unable to inspect the production release tree" >&2
+              return 1
+            fi
+            while IFS= read -r entry; do
+              case "$entry" in
+                "" | "?? .deploy-backups/"* | "?? deploy.sh" | "?? deploy.sh.bak-20260706")
+                  ;;
+                *)
+                  echo "release tree contains a non-allowlisted change: $entry" >&2
+                  exit 1
+                  ;;
+              esac
+            done <<< "$status_output"
+          }
+
+          assert_dependency_tree_writable() {
+            local path
+            for path in \
+              /opt/jiangkong \
+              /opt/jiangkong/node_modules \
+              /opt/jiangkong/node_modules/.bin \
+              /opt/jiangkong/services/api/node_modules \
+              /opt/jiangkong/apps/web-admin/node_modules; do
+              if [[ -e "$path" ]] &&
+                { [[ ! -d "$path" ]] || [[ ! -w "$path" ]]; }; then
+                echo "deployment dependency path is not writable by $(id -un): $path" >&2
+                return 1
+              fi
+            done
+          }
+
+          git config --global --replace-all safe.directory /opt/jiangkong
+          cd /opt/jiangkong
+          assert_clean_release_tree
+          assert_dependency_tree_writable
+          git fetch origin main
+          git cat-file -e "$TARGET_SHA^{commit}"
+          test "$(git rev-parse origin/main)" = "$TARGET_SHA"
+          git merge --ff-only "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          assert_clean_release_tree
+          git rev-parse HEAD
+
+          /opt/jiangkong/scripts/ops/deploy-production-server.sh
+          REMOTE_DEPLOY

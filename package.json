@@ -34,7 +34,8 @@
     "verify:contract-template-scenario-concurrency:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:contract-template-scenario-concurrency:local",
     "check:fast": "node scripts/ops/run-fast-local-check.mjs",
     "release:local": "bash scripts/ops/run-local-release-gate.sh",
-    "deploy:local": "bash scripts/ops/deploy-from-mac.sh"
+    "deploy:local": "bash scripts/ops/request-github-deploy.sh",
+    "deploy:mac-direct": "bash scripts/ops/deploy-from-mac.sh"
   },
   "engines": {
     "node": ">=20.9.0",
