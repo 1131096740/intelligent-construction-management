@@ -306,6 +306,28 @@ model ContractEndedApplicationRetentionHold {
   @@index([contractVersionId, releasedAt])
 }
 
+/// 到期结束申请的最小清理回执。它不保留合同正文、相对方、金额或审批意见，
+/// 只保留可核验的技术标识、正式编号占位关联和清理收敛摘要。
+model ContractEndedApplicationPurgeReceipt {
+  id                 String   @id @default(uuid())
+  batchId            String
+  projectId          String
+  contractId         String
+  contractVersionId  String   @unique
+  formalCode         String?
+  status             String   @default("purging")
+  exclusiveFileCount Int      @default(0)
+  sharedFileCount    Int      @default(0)
+  aggregateHash      String?
+  failureCode        String?
+  completedAt        DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([batchId, status])
+  @@index([status, updatedAt])
+}
+
 model ContractDraftEditLease {
   contractVersionId String   @id
   holderUserId      String
@@ -2808,12 +2830,15 @@ model FileObject {
   uploadedByUserId        String
   contentSha256           String?
   storageStatus           String       @default("active")
+  /// 结束申请业务聚合已剥离后，独占对象的最小可重试技术指针。
+  purgeReceiptId          String?
   supersedesFileObjectId  String?
   supersedesFileObject    FileObject?  @relation("FileObjectReplacement", fields: [supersedesFileObjectId], references: [id], onDelete: SetNull)
   supersededByFileObjects FileObject[] @relation("FileObjectReplacement")
   createdAt               DateTime     @default(now())
 
   @@index([supersedesFileObjectId])
+  @@index([purgeReceiptId])
   @@index([storageStatus])
 }
 
