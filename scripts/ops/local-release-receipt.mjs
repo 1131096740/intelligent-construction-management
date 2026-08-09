@@ -36,6 +36,54 @@ function parseOptions(args) {
   return options;
 }
 
+function hasExactDurations(durationsMs) {
+  if (
+    durationsMs === null ||
+    typeof durationsMs !== "object" ||
+    Array.isArray(durationsMs)
+  ) {
+    return false;
+  }
+  const durationKeys = Object.keys(durationsMs);
+  return (
+    durationKeys.length === requiredChecks.length &&
+    requiredChecks.every(
+      (check) =>
+        Object.hasOwn(durationsMs, check) &&
+        Number.isInteger(durationsMs[check]) &&
+        durationsMs[check] >= 0
+    )
+  );
+}
+
+function readDurations(durationPath) {
+  let lines;
+  try {
+    lines = readFileSync(durationPath, "utf8").split("\n").filter(Boolean);
+  } catch {
+    fail("release duration ledger is incomplete");
+  }
+
+  const entries = [];
+  for (const line of lines) {
+    const parts = line.split("\t");
+    if (parts.length !== 2 || !/^(?:0|[1-9]\d*)$/u.test(parts[1])) {
+      fail("release duration ledger is incomplete");
+    }
+    const duration = Number(parts[1]);
+    if (!Number.isSafeInteger(duration)) {
+      fail("release duration ledger is incomplete");
+    }
+    entries.push([parts[0], duration]);
+  }
+
+  const durations = Object.fromEntries(entries);
+  if (entries.length !== requiredChecks.length || !hasExactDurations(durations)) {
+    fail("release duration ledger is incomplete");
+  }
+  return Object.fromEntries(requiredChecks.map((check) => [check, durations[check]]));
+}
+
 function validateReceipt(receiptPath, candidateSha) {
   let receipt;
   try {
@@ -55,7 +103,7 @@ function validateReceipt(receiptPath, candidateSha) {
     new Set(checks).size === requiredChecks.length &&
     requiredChecks.every((check) => checks.includes(check));
   const isComplete =
-    receipt.schemaVersion === 1 &&
+    receipt.schemaVersion === 2 &&
     receipt.status === "passed" &&
     typeof receipt.verifiedAt === "string" &&
     receipt.verifiedAt.endsWith("Z") &&
@@ -64,7 +112,8 @@ function validateReceipt(receiptPath, candidateSha) {
     /^20\.\d+\.\d+$/.test(receipt.nodeVersion) &&
     typeof receipt.pnpmVersion === "string" &&
     /^9\.\d+\.\d+$/.test(receipt.pnpmVersion) &&
-    hasExactCheckSet;
+    hasExactCheckSet &&
+    hasExactDurations(receipt.durationsMs);
   if (!isComplete) {
     fail("release receipt is incomplete");
   }
@@ -80,6 +129,12 @@ switch (command) {
   case "--checks-json":
     if (args.length !== 0) fail("release receipt is incomplete");
     process.stdout.write(JSON.stringify(requiredChecks));
+    break;
+  case "--durations-json":
+    if (args.length !== 2 || args[0] !== "--file") {
+      fail("release duration ledger is incomplete");
+    }
+    process.stdout.write(JSON.stringify(readDurations(args[1])));
     break;
   case "--validate": {
     const options = parseOptions(args);
