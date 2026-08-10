@@ -27,6 +27,7 @@ function readyLegacyHits({
   coverageWindow = OBSERVATION_WINDOW,
   coverageBasis = "operator_attested",
   apiPrefix = "/api",
+  inputFormat,
   inputSourceCount = 1,
   inWindowApiPrefixedRequests = 1,
   parseFailures = 0,
@@ -39,6 +40,7 @@ function readyLegacyHits({
   );
   return {
     schemaVersion,
+    ...(inputFormat === undefined ? {} : { inputFormat }),
     status,
     observationWindow,
     counts,
@@ -47,6 +49,7 @@ function readyLegacyHits({
       coverageWindow,
       coverageBasis,
       apiPrefix,
+      ...(inputFormat === undefined ? {} : { inputFormat }),
       inputSourceCount,
       inWindowApiPrefixedRequests,
       nonEmptyLines: safeCountTotal + 3,
@@ -887,6 +890,80 @@ test("accepts the production route observer report without schema translation", 
       ]);
     }
   );
+});
+
+test("accepts the declared route-observation-v1 report without schema translation", async () => {
+  const legacyHits = inspectProductionRouteHits({
+    logText: JSON.stringify({
+      schemaVersion: 1,
+      timestamp: "2026-07-15T00:00:00.000Z",
+      method: "GET",
+      uri: "/api/health",
+      status: 200,
+      upstreamStatus: "200"
+    }),
+    from: "2026-07-01T00:00:00.000Z",
+    to: "2026-07-29T00:00:00.000Z",
+    coverageFrom: "2026-07-01T00:00:00.000Z",
+    coverageTo: "2026-07-29T00:00:00.000Z",
+    apiPrefix: "/api",
+    inputFormat: "route-observation-v1",
+    now: Date.parse("2026-07-30T00:00:00.000Z"),
+    routes: ["PATCH /contract-workbench/:contractVersionId"]
+  });
+  await withFixture(
+    {
+      "services/api/src/example.controller.ts": `
+        @Controller("contract-workbench")
+        export class ExampleController {
+          @Patch(":contractVersionId")
+          legacySave() {}
+        }
+      `,
+      "apps/web-admin/src/api/contract-workbench.api.ts": "",
+      "apps/web-admin/src/api/core-flow-read.api.ts": ""
+    },
+    async (root) => {
+      const report = await inspectCapabilityProject({
+        root,
+        legacyRoutes: ["PATCH /contract-workbench/:param"],
+        runtimeRoutes: ["PATCH /contract-workbench/:contractVersionId"],
+        legacyHits
+      });
+      const candidate = report.capabilities.find(
+        (item) => item.route === "/contract-workbench/:param"
+      );
+      assert.equal(candidate?.decision, "候选退出");
+    }
+  );
+});
+
+test("requires a matching declared route-observation-v1 report format", async () => {
+  await withFixture({}, async (root) => {
+    const valid = readyLegacyHits({
+      schemaVersion: 2,
+      inputFormat: "route-observation-v1"
+    });
+    for (const legacyHits of [
+      { ...valid, inputFormat: "combined-v1" },
+      {
+        ...valid,
+        evidence: { ...valid.evidence, inputFormat: "combined-v1" }
+      },
+      { ...valid, schemaVersion: 3 },
+      readyLegacyHits({ inputFormat: "route-observation-v1" })
+    ]) {
+      await assert.rejects(
+        () =>
+          inspectCapabilityProject({
+            root,
+            legacyRoutes: ["PATCH /contract-workbench/:param"],
+            legacyHits
+          }),
+        (error) => error.code === "CAPABILITY_LEGACY_HITS_INVALID"
+      );
+    }
+  });
 });
 
 test("CLI fails safely for invalid or damaged legacy hit JSON", async () => {

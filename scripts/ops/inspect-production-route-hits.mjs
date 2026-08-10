@@ -13,6 +13,24 @@ const NGINX_TIMESTAMP =
   /^(\d{2})\/([A-Z][a-z]{2})\/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2})$/;
 const NGINX_COMBINED_LINE =
   /^\S+ \S+ \S+ \[([^\]]+)\] "([A-Z]+) ([^\s"]+) HTTP\/(?:1\.0|1\.1|2(?:\.0)?|3)" [1-5]\d{2} (?:\d+|-) "(?:[^"\\]|\\.)*" "(?:[^"\\]|\\.)*"\s*$/;
+const ROUTE_OBSERVATION_INPUT_FORMAT = "route-observation-v1";
+const ROUTE_OBSERVATION_FIELDS = new Set([
+  "schemaVersion",
+  "timestamp",
+  "method",
+  "uri",
+  "status",
+  "upstreamStatus"
+]);
+const ROUTE_OBSERVATION_METHODS = new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS"
+]);
 const MONTHS = new Map(
   ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map(
     (month, index) => [month, index + 1]
@@ -218,6 +236,58 @@ function normalizeRequestPath(target, lineNumber, apiPrefix) {
   return path || "/";
 }
 
+function routeObservationInputError(lineNumber) {
+  fail(
+    "invalid_route_observation_line",
+    `Route observation line ${lineNumber} is invalid`
+  );
+}
+
+function parseRouteObservationLine(line, lineNumber, apiPrefix) {
+  let record;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    fail(
+      "unparseable_route_observation_line",
+      `Route observation line ${lineNumber} is not valid JSON`
+    );
+  }
+  if (
+    !record ||
+    typeof record !== "object" ||
+    Array.isArray(record) ||
+    Object.keys(record).length !== ROUTE_OBSERVATION_FIELDS.size ||
+    Object.keys(record).some((key) => !ROUTE_OBSERVATION_FIELDS.has(key)) ||
+    record.schemaVersion !== 1 ||
+    typeof record.timestamp !== "string" ||
+    !ROUTE_OBSERVATION_METHODS.has(record.method) ||
+    typeof record.uri !== "string" ||
+    !Number.isSafeInteger(record.status) ||
+    record.status < 100 ||
+    record.status > 599 ||
+    typeof record.upstreamStatus !== "string" ||
+    !/^(?:-|[1-5]\d{2}(?:,\s*[1-5]\d{2})*)$/.test(record.upstreamStatus)
+  ) {
+    routeObservationInputError(lineNumber);
+  }
+  if (record.uri.includes("?") || /[\u0000-\u0020\u007F]/.test(record.uri)) {
+    fail(
+      "ambiguous_request_target",
+      `Route observation line ${lineNumber} has an ambiguous request target`
+    );
+  }
+  return {
+    epoch: parseExplicitIso(
+      record.timestamp,
+      "invalid_route_observation_line",
+      `Route observation line ${lineNumber} timestamp`
+    ).epoch,
+    method: record.method,
+    path: normalizeRequestPath(record.uri, lineNumber, apiPrefix)
+  };
+}
+
 function normalizeCandidateRoute(value, index, apiPrefix) {
   const match = String(value ?? "").trim().match(/^([A-Za-z]+)\s+(\S+)$/);
   if (!match) {
@@ -374,6 +444,19 @@ function parseCombinedLine(line, lineNumber, apiPrefix) {
   };
 }
 
+function normalizeInputFormat(inputFormat) {
+  if (inputFormat === undefined) return null;
+  if (inputFormat === ROUTE_OBSERVATION_INPUT_FORMAT) return inputFormat;
+  fail("invalid_input_format", "Route observation input format is unsupported");
+}
+
+function parseObservationLine(line, lineNumber, apiPrefix, inputFormat) {
+  if (inputFormat === ROUTE_OBSERVATION_INPUT_FORMAT) {
+    return parseRouteObservationLine(line, lineNumber, apiPrefix);
+  }
+  return parseCombinedLine(line, lineNumber, apiPrefix);
+}
+
 export function inspectProductionRouteHits({
   logText,
   from,
@@ -383,6 +466,7 @@ export function inspectProductionRouteHits({
   apiPrefix: rawApiPrefix,
   inputSourceCount = 1,
   now = Date.now(),
+  inputFormat,
   routes: routeManifest
 }) {
   const windowFrom = parseExplicitIso(from);
@@ -429,6 +513,7 @@ export function inspectProductionRouteHits({
     );
   }
   const apiPrefix = normalizeApiPrefix(rawApiPrefix);
+  const normalizedInputFormat = normalizeInputFormat(inputFormat);
   const routes = prepareRoutes(routeManifest, apiPrefix);
   const counts = Object.fromEntries(routes.map((route) => [route.key, 0]));
   const evidence = {
@@ -436,6 +521,9 @@ export function inspectProductionRouteHits({
     coverageWindow: `${coverageStart.iso}/${coverageEnd.iso}`,
     coverageBasis: "operator_attested",
     apiPrefix,
+    ...(normalizedInputFormat
+      ? { inputFormat: normalizedInputFormat }
+      : {}),
     inWindowApiPrefixedRequests: 0,
     inputSourceCount,
     nonEmptyLines: 0,
@@ -452,7 +540,12 @@ export function inspectProductionRouteHits({
   for (const [index, rawLine] of String(logText ?? "").split(/\r?\n/).entries()) {
     if (rawLine.trim() === "") continue;
     evidence.nonEmptyLines += 1;
-    const line = parseCombinedLine(rawLine, index + 1, apiPrefix);
+    const line = parseObservationLine(
+      rawLine,
+      index + 1,
+      apiPrefix,
+      normalizedInputFormat
+    );
     evidence.parsedLines += 1;
     if (line.epoch < previousEpoch) {
       fail(
@@ -512,8 +605,11 @@ export function inspectProductionRouteHits({
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: normalizedInputFormat ? 2 : 1,
     status: "ready",
+    ...(normalizedInputFormat
+      ? { inputFormat: normalizedInputFormat }
+      : {}),
     observationWindow: `${windowFrom.iso}/${windowTo.iso}`,
     counts,
     evidence
@@ -531,6 +627,7 @@ function parseArgs(argv) {
         "--coverage-from",
         "--coverage-to",
         "--api-prefix",
+        "--input-format",
         "--routes",
         "--log"
       ].includes(flag)
@@ -630,6 +727,7 @@ async function main() {
     coverageFrom: args["--coverage-from"],
     coverageTo: args["--coverage-to"],
     apiPrefix: args["--api-prefix"],
+    inputFormat: args["--input-format"],
     inputSourceCount: accessLogs.inputSourceCount,
     routes: routeManifest
   });

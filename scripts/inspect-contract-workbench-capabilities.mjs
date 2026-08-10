@@ -52,6 +52,7 @@ export const DEFAULT_LEGACY_ROUTES = [
 ];
 
 const DEFAULT_INTERNAL_ROUTES = [];
+const ROUTE_OBSERVATION_INPUT_FORMAT = "route-observation-v1";
 const EXPLICIT_ISO_TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
@@ -274,9 +275,21 @@ function validateLegacyHits(legacyHits, legacyRoutes) {
     "matchedRequests",
     "unmatchedRequests"
   ];
+  const combinedReport =
+    plainRecord(legacyHits) &&
+    legacyHits.schemaVersion === 1 &&
+    !Object.hasOwn(legacyHits, "inputFormat") &&
+    plainRecord(legacyHits.evidence) &&
+    !Object.hasOwn(legacyHits.evidence, "inputFormat");
+  const routeObservationReport =
+    plainRecord(legacyHits) &&
+    legacyHits.schemaVersion === 2 &&
+    legacyHits.inputFormat === ROUTE_OBSERVATION_INPUT_FORMAT &&
+    plainRecord(legacyHits.evidence) &&
+    legacyHits.evidence.inputFormat === ROUTE_OBSERVATION_INPUT_FORMAT;
   if (
     !plainRecord(legacyHits) ||
-    legacyHits.schemaVersion !== 1 ||
+    (!combinedReport && !routeObservationReport) ||
     legacyHits.status !== "ready" ||
     !plainRecord(legacyHits.evidence) ||
     legacyHits.evidence.complete !== true ||
