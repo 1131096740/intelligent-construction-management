@@ -178,7 +178,8 @@ checkout 部署新 SHA，或读取生产访问日志执行统计，仍须另获�
    边界；跨 SHA 的窗口不得合并成一条无版本报告。
 3. `scripts/ops/production-route-observation-targets.json` 的文件 SHA-256、
    `schemaVersion` 和目标数量。该版本化清单必须完整覆盖能力检查器的 12 条旧
-   合同路由，并唯一追加 `POST /auth/wx-login`，不得临时删减目标来制造零命中。
+   合同路由、`POST /auth/wx-login`，以及 Issue #57 已授权纳入目标的普通 party 写入
+   路由族；不得临时删减目标来制造零命中。
 4. 生产实时 `nginx -T` 的脱敏摘要或受控原件哈希、实际 `access_log` 指令、
    `log_format`、server/vhost、监听端口和 `/api` 代理映射。必须先证明输入是
    工具支持的 Nginx combined 格式；不支持的自定义格式按阻塞处理。
