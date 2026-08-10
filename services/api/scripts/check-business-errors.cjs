@@ -48,6 +48,7 @@ const ALLOWED_INTERNAL_ERRORS = [
   { file: "src/contract-document/pdf-normalizer.ts", kind: "Error", message: "Invalid PNG", expectedOccurrences: 1, reason: "图片解析后由上层固定中文包装的内部哨兵" },
   { file: "src/contract-document/pdf-normalizer.ts", kind: "Error", message: "Invalid JPEG", expectedOccurrences: 4, reason: "图片解析后由上层固定中文包装的内部哨兵" },
   { file: "src/contract-takeover/dto/precheck-contract-takeover-import.dto.ts", kind: "Error", message: "invalid import row", expectedOccurrences: 2, reason: "接管导入 DTO 反射失败后固定中文降级的内部哨兵" },
+  { file: "src/contract-workbench/contract-mutation-authority.ts", kind: "Error", message: "CONTRACT_MUTATION_AUTHORITY_OVERLAP", expectedOccurrences: 1, reason: "合同 mutation authority 规则重叠时的 fail-closed 内部不变量" },
   { file: "src/contract-workbench/contract-workbench.service.ts", kind: "Error", message: "Unreachable checkpoint transaction retry state", expectedOccurrences: 1, reason: "检查点事务重试耗尽后的不可达内部状态" },
   { file: "src/file/file.service.ts", kind: "Error", message: "not-directory", expectedOccurrences: 1, reason: "私有目录类型检查后固定中文包装的内部哨兵" },
   { file: "src/file/file.service.ts", kind: "Error", message: "template:[\"\",\" is required for COS private storage\"]", expectedOccurrences: 1, reason: "COS 启动配置保护，不进入业务响应" },
