@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -19,6 +19,9 @@ const API_PREFIX = "/api";
 const SCRIPT_PATH = fileURLToPath(
   new URL("./inspect-production-route-hits.mjs", import.meta.url)
 );
+const TARGET_MANIFEST_PATH = fileURLToPath(
+  new URL("./production-route-observation-targets.json", import.meta.url)
+);
 
 function combinedLine({
   timestamp,
@@ -29,6 +32,23 @@ function combinedLine({
   userAgent = "CanaryTokenAgent/1.0"
 }) {
   return `${ip} - - [${timestamp}] "${method} ${target} HTTP/1.1" ${status} 123 "-" "${userAgent}"`;
+}
+
+function routeObservationLine({
+  timestamp,
+  method = "GET",
+  uri = "/health",
+  status = 200,
+  upstreamStatus = "-"
+}) {
+  return JSON.stringify({
+    schemaVersion: 1,
+    timestamp,
+    method,
+    uri,
+    status,
+    upstreamStatus
+  });
 }
 
 function errorCode(error) {
@@ -129,6 +149,209 @@ test("counts normalized dynamic and wx-login routes without leaking request data
   ]) {
     assert.equal(serialized.includes(sensitiveValue), false);
   }
+});
+
+test("counts route-observation-v1 inputs without leaking normalized URI identifiers", () => {
+  const report = inspectProductionRouteHits({
+    inputFormat: "route-observation-v1",
+    from: FROM,
+    to: TO,
+    coverageFrom: COVERAGE_FROM,
+    coverageTo: COVERAGE_TO,
+    apiPrefix: API_PREFIX,
+    routes: [
+      "PATCH /contract-workbench/:contractVersionId",
+      "POST /auth/wx-login"
+    ],
+    logText: [
+      routeObservationLine({
+        timestamp: "2026-07-30T00:00:00.000Z",
+        method: "PATCH",
+        uri: "/api/contract-workbench/version-secret",
+        status: 410,
+        upstreamStatus: "410"
+      }),
+      routeObservationLine({
+        timestamp: "2026-07-30T00:30:00.000Z",
+        method: "POST",
+        uri: "/api/auth/wx-login",
+        status: 503,
+        upstreamStatus: "503"
+      }),
+      routeObservationLine({
+        timestamp: "2026-07-30T00:45:00.000Z",
+        uri: "/health"
+      })
+    ].join("\n")
+  });
+
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.inputFormat, "route-observation-v1");
+  assert.deepEqual(report.counts, {
+    "PATCH /contract-workbench/:param": 1,
+    "POST /auth/wx-login": 1
+  });
+  assert.equal(report.evidence.inputFormat, "route-observation-v1");
+  assert.equal(report.evidence.unmatchedRequests, 1);
+  assert.equal(report.evidence.parseFailures, 0);
+
+  const serialized = JSON.stringify(report);
+  for (const sensitiveValue of ["version-secret", "/health"]) {
+    assert.equal(serialized.includes(sensitiveValue), false);
+  }
+});
+
+test("counts every versioned observation target through route-observation-v1", async () => {
+  const manifest = JSON.parse(await readFile(TARGET_MANIFEST_PATH, "utf8"));
+  const logText = manifest.routes
+    .map((route, index) => {
+      const [method, template] = route.split(" ");
+      return routeObservationLine({
+        timestamp: `2026-07-30T00:${String(index).padStart(2, "0")}:00.000Z`,
+        method,
+        uri: `/api${template.replaceAll(":param", `route-${index}`)}`,
+        status: 200,
+        upstreamStatus: "200"
+      });
+    })
+    .join("\n");
+  const report = inspectProductionRouteHits({
+    inputFormat: "route-observation-v1",
+    from: FROM,
+    to: TO,
+    coverageFrom: COVERAGE_FROM,
+    coverageTo: COVERAGE_TO,
+    apiPrefix: API_PREFIX,
+    routes: manifest,
+    logText
+  });
+
+  assert.deepEqual(
+    report.counts,
+    Object.fromEntries(manifest.routes.map((route) => [route, 1]))
+  );
+});
+
+test("fails closed on ambiguous route-observation-v1 URI input", () => {
+  assert.throws(
+    () =>
+      inspectProductionRouteHits({
+        inputFormat: "route-observation-v1",
+        from: FROM,
+        to: TO,
+        coverageFrom: COVERAGE_FROM,
+        coverageTo: COVERAGE_TO,
+        apiPrefix: API_PREFIX,
+        routes: ["POST /auth/wx-login"],
+        logText: routeObservationLine({
+          timestamp: "2026-07-30T00:30:00.000Z",
+          uri: "/api//auth/wx-login"
+        })
+      }),
+    (error) => errorCode(error) === "ambiguous_request_target"
+  );
+});
+
+test("validates every route-observation-v1 field without echoing input", () => {
+  const valid = {
+    schemaVersion: 1,
+    timestamp: "2026-07-30T00:30:00.000Z",
+    method: "POST",
+    uri: "/api/auth/wx-login",
+    status: 200,
+    upstreamStatus: "200"
+  };
+  const invalidRecords = [
+    { ...valid, schemaVersion: 2 },
+    { ...valid, timestamp: "" },
+    { ...valid, timestamp: "2026-07-30T00:30:00" },
+    { ...valid, method: "" },
+    { ...valid, method: "EXFILTRATE" },
+    { ...valid, uri: "" },
+    { ...valid, uri: "/api/auth/wx-login with-space" },
+    { ...valid, uri: "/api/auth/wx-login\u0000" },
+    { ...valid, uri: "/api/auth/wx-login?code=secret-code" },
+    { ...valid, uri: "/api//auth/wx-login" },
+    { ...valid, uri: "/api/./auth/wx-login" },
+    { ...valid, uri: "/api/%2Fauth/wx-login" },
+    { ...valid, status: 0 },
+    { ...valid, upstreamStatus: "" },
+    { ...valid, status: "200" },
+    { ...valid, upstreamStatus: "upstream-secret" },
+    { ...valid, extra: "unexpected" }
+  ];
+
+  for (const record of invalidRecords) {
+    assert.throws(
+      () =>
+        inspectProductionRouteHits({
+          inputFormat: "route-observation-v1",
+          from: FROM,
+          to: TO,
+          coverageFrom: COVERAGE_FROM,
+          coverageTo: COVERAGE_TO,
+          apiPrefix: API_PREFIX,
+          routes: ["POST /auth/wx-login"],
+          logText: JSON.stringify(record)
+        }),
+      (error) => {
+        assert.equal(
+          ["invalid_route_observation_line", "ambiguous_request_target"].includes(
+            errorCode(error)
+          ),
+          true
+        );
+        assert.equal(error.message.includes("secret-code"), false);
+        assert.equal(error.message.includes("upstream-secret"), false);
+        return true;
+      }
+    );
+  }
+});
+
+test("preserves HEAD, OPTIONS, 410 and 503 handling for route-observation-v1", () => {
+  const common = {
+    inputFormat: "route-observation-v1",
+    from: FROM,
+    to: TO,
+    coverageFrom: COVERAGE_FROM,
+    coverageTo: COVERAGE_TO,
+    apiPrefix: API_PREFIX,
+    routes: ["GET /contract-workbench/:contractVersionId"]
+  };
+  const report = inspectProductionRouteHits({
+    ...common,
+    logText: [
+      routeObservationLine({
+        timestamp: "2026-07-30T00:00:00.000Z",
+        method: "HEAD",
+        uri: "/api/contract-workbench/version-410",
+        status: 410,
+        upstreamStatus: "410"
+      }),
+      routeObservationLine({
+        timestamp: "2026-07-30T00:30:00.000Z",
+        method: "GET",
+        uri: "/api/contract-workbench/version-503",
+        status: 503,
+        upstreamStatus: "503"
+      })
+    ].join("\n")
+  });
+  assert.equal(report.counts["GET /contract-workbench/:param"], 2);
+
+  assert.throws(
+    () =>
+      inspectProductionRouteHits({
+        ...common,
+        logText: routeObservationLine({
+          timestamp: "2026-07-30T00:30:00.000Z",
+          method: "OPTIONS",
+          uri: "/api/contract-workbench/version-preflight"
+        })
+      }),
+    (error) => errorCode(error) === "ambiguous_preflight_request"
+  );
 });
 
 test("counts unmatched in-window requests only as a safe aggregate", () => {
@@ -560,6 +783,86 @@ test("CLI accepts a log file and a JSON route manifest", async () => {
     const report = JSON.parse(result.stdout);
     assert.equal(report.counts["POST /auth/wx-login"], 1);
     assert.equal(result.stdout.includes("cli-secret"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI requires the explicit route-observation-v1 selection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "route-hit-inspector-"));
+  try {
+    const logPath = join(root, "route-observation.log");
+    const routesPath = join(root, "routes.json");
+    await writeFile(
+      logPath,
+      [
+        routeObservationLine({
+          timestamp: "2026-07-30T00:30:00.000Z",
+          method: "POST",
+          uri: "/api/auth/wx-login",
+          status: 410,
+          upstreamStatus: "410"
+        })
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(routesPath, JSON.stringify(["POST /auth/wx-login"]), "utf8");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        SCRIPT_PATH,
+        "--from",
+        FROM,
+        "--to",
+        TO,
+        "--coverage-from",
+        COVERAGE_FROM,
+        "--coverage-to",
+        COVERAGE_TO,
+        "--api-prefix",
+        API_PREFIX,
+        "--input-format",
+        "route-observation-v1",
+        "--routes",
+        routesPath,
+        "--log",
+        logPath
+      ],
+      { encoding: "utf8" }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.schemaVersion, 2);
+    assert.equal(report.inputFormat, "route-observation-v1");
+    assert.equal(report.counts["POST /auth/wx-login"], 1);
+
+    const defaultInputFormat = spawnSync(
+      process.execPath,
+      [
+        SCRIPT_PATH,
+        "--from",
+        FROM,
+        "--to",
+        TO,
+        "--coverage-from",
+        COVERAGE_FROM,
+        "--coverage-to",
+        COVERAGE_TO,
+        "--api-prefix",
+        API_PREFIX,
+        "--routes",
+        routesPath,
+        "--log",
+        logPath
+      ],
+      { encoding: "utf8" }
+    );
+    assert.notEqual(defaultInputFormat.status, 0);
+    assert.equal(
+      JSON.parse(defaultInputFormat.stderr).code,
+      "unparseable_log_line"
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
