@@ -40,6 +40,8 @@ type DraftRuntime = {
   load: ReturnType<typeof vi.fn>;
   discardLocalState: ReturnType<typeof vi.fn>;
   suspendAutosaveForLifecycleAction: ReturnType<typeof vi.fn>;
+  freezeForPendingPristineDraftDeletion: ReturnType<typeof vi.fn>;
+  failClosedAfterUncertainPristineDraftDeletion: ReturnType<typeof vi.fn>;
   resumeAutosaveAfterLifecycleAction: ReturnType<typeof vi.fn>;
 };
 
@@ -193,6 +195,8 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
   });
   const discardLocalState = vi.fn();
   const suspendAutosaveForLifecycleAction = vi.fn(() => true);
+  const freezeForPendingPristineDraftDeletion = vi.fn();
+  const failClosedAfterUncertainPristineDraftDeletion = vi.fn();
   const resumeAutosaveAfterLifecycleAction = vi.fn();
 
   lifecycleRuntime.draft = {
@@ -222,6 +226,8 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
     markDirty: vi.fn(),
     discardLocalState,
     suspendAutosaveForLifecycleAction,
+    freezeForPendingPristineDraftDeletion,
+    failClosedAfterUncertainPristineDraftDeletion,
     resumeAutosaveAfterLifecycleAction,
     savedRevision,
     formalSaveCompleted: ref(false),
@@ -356,10 +362,11 @@ describe("contract draft lifecycle page delegation", () => {
           retryPending: false,
           isCurrent: expect.any(Function),
           beforeWrite: draft.suspendAutosaveForLifecycleAction,
-          onWriteFailure: draft.resumeAutosaveAfterLifecycleAction
+          onWriteFailure: draft.failClosedAfterUncertainPristineDraftDeletion
         })
       );
       expect(draft.discardLocalState).not.toHaveBeenCalled();
+      expect(draft.freezeForPendingPristineDraftDeletion).toHaveBeenCalledTimes(1);
       expect(lifecycleRuntime.routerPush).not.toHaveBeenCalled();
       expect(bindings.deletePristineDraftError.value).toContain("清理未完成");
 

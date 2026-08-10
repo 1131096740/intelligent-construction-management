@@ -827,7 +827,7 @@ describe("contract workbench API client", () => {
       code: "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
     });
 
-    expect(onWriteFailure).not.toHaveBeenCalled();
+    expect(onWriteFailure).toHaveBeenCalledTimes(1);
     expect(onCapabilityFailure).toHaveBeenCalledTimes(1);
   });
 

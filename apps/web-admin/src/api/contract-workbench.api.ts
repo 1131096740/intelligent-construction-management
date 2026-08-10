@@ -732,7 +732,12 @@ async function runDeletePristineContractDraftLifecycleOperation(
     throw error;
   }
   if (!input.isCurrent(context)) return { status: "stale", context };
-  assertContractDraftLifecycleResponse(context, response);
+  try {
+    assertContractDraftLifecycleResponse(context, response);
+  } catch (error) {
+    input.onWriteFailure();
+    throw error;
+  }
   if (response.status === "deleting" && response.retryable) {
     return {
       status: "retryable",

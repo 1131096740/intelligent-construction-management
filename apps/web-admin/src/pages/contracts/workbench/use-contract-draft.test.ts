@@ -702,7 +702,7 @@ describe("useContractDraft", () => {
     first.markDirty();
 
     const second = makeDraft();
-    mockFetchWorkbench.mockResolvedValueOnce(makeWorkbench({
+    mockFetchWorkbench.mockResolvedValueOnce(makeFormallySavedWorkbench({
       version: {
         ...makeWorkbench().version,
         draftRevision: 4,
@@ -715,6 +715,8 @@ describe("useContractDraft", () => {
     expect(second.pendingLocalRecovery.value?.revisionMatches).toBe(false);
     expect(second.restoreLocalRecovery()).toBe(true);
     expect(second.model.contractName).toBe("旧修订本机输入");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
   });
 
   it("loads and saves the complete aggregate without resubmitting bill derived facts", async () => {
@@ -1695,6 +1697,59 @@ describe("useContractDraft", () => {
     draft.resumeAutosaveAfterLifecycleAction();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an uncertain pristine-draft deletion frozen until fresh server state grants a current lease", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench
+      .mockResolvedValueOnce(makeFormallySavedWorkbench())
+      .mockResolvedValueOnce(makeFormallySavedWorkbench());
+    await draft.load("cv-1");
+
+    draft.model.contractName = "删除结果未知前的本机输入";
+    draft.markDirty();
+    expect(draft.currentLeaseToken()).toBe("lease-token");
+    expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
+
+    draft.failClosedAfterUncertainPristineDraftDeletion();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    expect(draft.currentLeaseToken()).toBeNull();
+    expect(draft.lease.value).toEqual({
+      kind: "lost",
+      reason: "lifecycle_result_unknown"
+    });
+    expect(draft.canEdit.value).toBe(false);
+    await expect(draft.saveNow()).resolves.toBe(false);
+
+    await draft.reload();
+
+    expect(draft.lease.value).toMatchObject({ kind: "held" });
+    expect(draft.currentLeaseToken()).toBe("lease-token");
+    expect(draft.canEdit.value).toBe(true);
+  });
+
+  it("keeps a retry-pending pristine-draft deletion frozen after the autosave timer advances", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValueOnce(makeFormallySavedWorkbench());
+    await draft.load("cv-1");
+
+    draft.model.contractName = "待重试删除前的本机输入";
+    draft.markDirty();
+    expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
+
+    draft.freezeForPendingPristineDraftDeletion();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+    expect(draft.currentLeaseToken()).toBeNull();
+    expect(draft.lease.value).toEqual({
+      kind: "lost",
+      reason: "lifecycle_deletion_pending"
+    });
+    expect(draft.canEdit.value).toBe(false);
+    await expect(draft.saveNow()).resolves.toBe(false);
   });
 
   it("does not retry automatically after a revision conflict", async () => {

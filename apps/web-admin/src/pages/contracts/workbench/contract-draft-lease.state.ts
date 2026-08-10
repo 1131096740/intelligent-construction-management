@@ -23,7 +23,12 @@ export type ContractDraftLeaseView =
     }
   | {
       kind: "lost";
-      reason: "lease_expired" | "lease_taken_over" | "verification_failed";
+      reason:
+        | "lease_expired"
+        | "lease_taken_over"
+        | "verification_failed"
+        | "lifecycle_deletion_pending"
+        | "lifecycle_result_unknown";
     };
 
 export function contractDraftLeaseViewFromGrant(
