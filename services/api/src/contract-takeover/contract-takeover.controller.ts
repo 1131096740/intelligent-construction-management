@@ -19,7 +19,6 @@ import {
   type BusinessAction
 } from "@jiangkong/shared-domain";
 import {
-  ContractCutoverLegacyWrite,
   ContractCutoverSurface
 } from "../contract-cutover/contract-cutover.decorators";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -671,7 +670,6 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/confirmation")
-  @ContractCutoverLegacyWrite()
   @RequireProjectRole("contract.archive.confirm")
   confirm(
     @Param("projectId") projectId: string,

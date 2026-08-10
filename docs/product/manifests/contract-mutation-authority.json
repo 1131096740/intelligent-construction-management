@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "mutationMethods": [
       "DELETE",
@@ -15,12 +15,12 @@
     "routeCount": 80,
     "authorityCounts": {
       "aggregate_member_writer": 1,
-      "governed_specialized_command": 55,
-      "exit_candidate": 24
+      "governed_specialized_command": 56,
+      "exit_candidate": 23
     },
     "actionTargetCount": 29,
     "advertisedActionCount": 22,
-    "blockerCount": 1
+    "blockerCount": 0
   },
   "routes": [
     {
@@ -497,8 +497,8 @@
       "controller": "ContractTakeoverController",
       "handler": "confirm",
       "tombstoned": false,
-      "authority": "exit_candidate",
-      "authorityRule": "legacy_cutover_exit"
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
     },
     {
       "method": "POST",
@@ -1038,13 +1038,6 @@
     "actionTargetDrift": [],
     "invalidActionTargets": [],
     "invalidRoutes": [],
-    "routeAuthorityDrift": [
-      {
-        "method": "POST",
-        "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
-        "usage": "external_takeover",
-        "authority": "exit_candidate"
-      }
-    ]
+    "routeAuthorityDrift": []
   }
 }

@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  cp,
+  mkdtemp,
+  mkdir,
+  readFile,
+  writeFile
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -254,6 +261,78 @@ function blockerCodes(manifest) {
   }
   return codes;
 }
+
+async function authoritySnapshotFixture() {
+  const root = await mkdtemp(join(tmpdir(), "jgzg-authority-snapshot-"));
+  await cp(
+    join(process.cwd(), "apps/web-admin/src"),
+    join(root, "apps/web-admin/src"),
+    { recursive: true }
+  );
+  for (const path of [
+    "docs/product/manifests/web-api-wrappers.json",
+    "docs/product/manifests/nest-business-routes.json",
+    "docs/product/manifests/web-page-actions.registry.json",
+    "packages/shared-domain/src/permissions.ts"
+  ]) {
+    const target = join(root, path);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(join(process.cwd(), path), target);
+  }
+  return root;
+}
+
+test("rejects a replaced server read before authority snapshot capture", async () => {
+  const root = await authoritySnapshotFixture();
+  const sourcePath = join(
+    root,
+    "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+  );
+  const source = await readFile(sourcePath, "utf8");
+  const tampered = source.replace(
+    "    workbenchReceipt.value = structuredClone(result);",
+    `    result.availableActions = [];
+    result = { availableActions: [] };
+    workbenchReceipt.value = structuredClone(result);`
+  );
+  assert.notEqual(tampered, source);
+  await writeFile(sourcePath, tampered);
+
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  const action = manifest.actions.find(
+    (candidate) => candidate.id === "contract-draft.delete-pristine"
+  );
+  assert.equal(action?.capability.serverDerived, false);
+});
+
+test("rejects a mutation below the authority snapshot receipt", async () => {
+  const root = await authoritySnapshotFixture();
+  const sourcePath = join(
+    root,
+    "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+  );
+  const source = await readFile(sourcePath, "utf8");
+  const tampered = source.replace(
+    "    workbenchReceipt.value = structuredClone(result);",
+    `    workbenchReceipt.value = structuredClone(result);
+    workbenchReceipt.value.availableActions.push({
+      key: "delete_pristine_draft",
+      enabled: true
+    });`
+  );
+  assert.notEqual(tampered, source);
+  await writeFile(sourcePath, tampered);
+
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(manifest.status, "blocked");
+  const action = manifest.actions.find(
+    (candidate) => candidate.id === "contract-draft.delete-pristine"
+  );
+  assert.equal(action?.capability.serverDerived, false);
+});
 
 test("joins a server-gated visible action through its wrapper to the Nest route", async () => {
   const root = await fixture();

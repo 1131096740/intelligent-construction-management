@@ -2197,7 +2197,7 @@
         "event": "call",
         "handler": "autoSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 178,
+        "sourceLine": 186,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2263,7 +2263,7 @@
         "event": "call",
         "handler": "createWorkbenchDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 78,
+        "sourceLine": 91,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2433,7 +2433,7 @@
         "event": "call",
         "handler": "acquireContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 95,
+        "sourceLine": 131,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2500,7 +2500,7 @@
         "event": "call",
         "handler": "heartbeatContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 115,
+        "sourceLine": 144,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2567,7 +2567,7 @@
         "event": "call",
         "handler": "releaseContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 136,
+        "sourceLine": 158,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2634,7 +2634,7 @@
         "event": "call",
         "handler": "takeOverContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 157,
+        "sourceLine": 172,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2768,7 +2768,7 @@
         "event": "call",
         "handler": "queueContractDraftPreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 222,
+        "sourceLine": 214,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2835,7 +2835,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1161,
+        "sourceLine": 1150,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6018,7 +6018,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1137,
+        "sourceLine": 1134,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6084,7 +6084,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1072,
+        "sourceLine": 1092,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6150,7 +6150,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1092,
+        "sourceLine": 1105,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6216,7 +6216,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1113,
+        "sourceLine": 1118,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6283,7 +6283,7 @@
         "event": "call",
         "handler": "submitContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 243,
+        "sourceLine": 227,
         "sourceColumn": 0
       },
       "semantic": "business_write",

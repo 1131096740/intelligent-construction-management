@@ -6158,7 +6158,7 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true,
+      "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false
     },
     {
