@@ -11,7 +11,8 @@ describe("contract mutation authority", () => {
         controller: "ContractDraftController",
         handler: "saveDraft",
         contractCutoverSurface: true,
-        contractCutoverLegacyWrite: true
+        contractCutoverLegacyWrite: true,
+        contractCutoverTombstoneWrite: false
       })
     ).toThrow("CONTRACT_MUTATION_AUTHORITY_OVERLAP");
   });
@@ -23,11 +24,28 @@ describe("contract mutation authority", () => {
         controller: "ContractTakeoverController",
         handler: "confirm",
         contractCutoverSurface: true,
-        contractCutoverLegacyWrite: true
+        contractCutoverLegacyWrite: true,
+        contractCutoverTombstoneWrite: false
       })
     ).toEqual({
       authority: "exit_candidate",
       authorityRule: "legacy_cutover_exit"
+    });
+  });
+
+  it("classifies a tombstoned ordinary party write as a non-advertised exit", () => {
+    expect(
+      classifyContractMutationRoute({
+        method: "POST",
+        controller: "BusinessPartyController",
+        handler: "addContractParty",
+        contractCutoverSurface: true,
+        contractCutoverLegacyWrite: false,
+        contractCutoverTombstoneWrite: true
+      })
+    ).toEqual({
+      authority: "exit_candidate",
+      authorityRule: "tombstoned_cutover_exit"
     });
   });
 

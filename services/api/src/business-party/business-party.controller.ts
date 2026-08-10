@@ -10,7 +10,7 @@ import {
 } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import { ContractCutoverTombstoneWrite } from "../contract-cutover/contract-cutover.decorators";
 import { BusinessPartyService } from "./business-party.service";
 import type {
   AddContractPartyDto,
@@ -49,7 +49,7 @@ export class BusinessPartyController {
   }
 
   @Post("contract-workbench/:contractVersionId/parties")
-  @ContractCutoverSurface()
+  @ContractCutoverTombstoneWrite()
   addContractParty(
     @Param("contractVersionId") contractVersionId: string,
     @Body() body: AddContractPartyDto,
@@ -59,7 +59,7 @@ export class BusinessPartyController {
   }
 
   @Patch("contract-workbench/:contractVersionId/parties/:partySnapshotId")
-  @ContractCutoverSurface()
+  @ContractCutoverTombstoneWrite()
   updateContractPartyRole(
     @Param("contractVersionId") contractVersionId: string,
     @Param("partySnapshotId") partySnapshotId: string,
@@ -75,7 +75,7 @@ export class BusinessPartyController {
   }
 
   @Delete("contract-workbench/:contractVersionId/parties/:partySnapshotId")
-  @ContractCutoverSurface()
+  @ContractCutoverTombstoneWrite()
   removeContractParty(
     @Param("contractVersionId") contractVersionId: string,
     @Param("partySnapshotId") partySnapshotId: string,

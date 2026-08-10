@@ -77,6 +77,7 @@ function routeIsValid(route) {
     isNonEmptyString(route.handler) &&
     typeof route.contractCutoverSurface === "boolean" &&
     typeof route.contractCutoverLegacyWrite === "boolean" &&
+    typeof route.contractCutoverTombstoneWrite === "boolean" &&
     isNonEmptyString(route.usage);
 }
 
@@ -152,6 +153,7 @@ export function buildContractMutationAuthorityManifest({
       path: route.path,
       controller: route.controller,
       handler: route.handler,
+      tombstoned: route.contractCutoverTombstoneWrite,
       authority: classification.authority,
       authorityRule: classification.authorityRule
     });
@@ -204,7 +206,9 @@ export function buildContractMutationAuthorityManifest({
       handler: target.handler,
       authority: classification.authority,
       authorityRule: classification.authorityRule,
-      advertised: classification.authority !== "exit_candidate"
+      advertised:
+        !route.contractCutoverTombstoneWrite &&
+        classification.authority !== "exit_candidate"
     });
   }
 

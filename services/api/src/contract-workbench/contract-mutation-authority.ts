@@ -11,6 +11,7 @@ export interface ContractMutationRouteIdentity {
   handler: string;
   contractCutoverSurface: boolean;
   contractCutoverLegacyWrite: boolean;
+  contractCutoverTombstoneWrite: boolean;
 }
 
 export interface ContractMutationAuthorityClassification {
@@ -19,6 +20,7 @@ export interface ContractMutationAuthorityClassification {
     | "contract_draft_aggregate_save"
     | "legacy_cutover_exit"
     | "registered_exit_candidate"
+    | "tombstoned_cutover_exit"
     | "governed_specialized_command";
 }
 
@@ -27,6 +29,7 @@ interface ContractMutationTarget {
   controller: string;
   handler: string;
   contractCutoverLegacyWrite?: boolean;
+  contractCutoverTombstoneWrite?: boolean;
 }
 
 const AGGREGATE_MEMBER_WRITER: ContractMutationTarget = {
@@ -214,8 +217,14 @@ function sameTarget(left: ContractMutationTarget, right: ContractMutationTarget)
 }
 
 export function classifyContractMutationTarget(
-  route: ContractMutationTarget & { contractCutoverLegacyWrite?: boolean }
+  route: ContractMutationTarget
 ): ContractMutationAuthorityClassification {
+  if (route.contractCutoverTombstoneWrite) {
+    return {
+      authority: "exit_candidate",
+      authorityRule: "tombstoned_cutover_exit"
+    };
+  }
   const matches: ContractMutationAuthorityClassification[] = [
     ...(route.contractCutoverLegacyWrite
       ? [{ authority: "exit_candidate" as const, authorityRule: "legacy_cutover_exit" as const }]

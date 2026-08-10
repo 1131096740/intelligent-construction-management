@@ -34,7 +34,8 @@ function route(normalizedKey = "POST /examples/:param/submission") {
     requiredProjectAction: "contract.create",
     authorizationCombination: null,
     contractCutoverSurface: false,
-    contractCutoverLegacyWrite: false
+    contractCutoverLegacyWrite: false,
+    contractCutoverTombstoneWrite: false
   };
 }
 

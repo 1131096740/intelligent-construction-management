@@ -17,7 +17,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "DELETE",
@@ -34,7 +35,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "DELETE",
@@ -51,7 +53,8 @@
       "requiredProjectAction": "contract.draft.delete",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "DELETE",
@@ -68,7 +71,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "DELETE",
@@ -85,7 +89,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "DELETE",
@@ -102,7 +107,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "DELETE",
@@ -119,7 +125,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -136,7 +143,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -153,7 +161,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -178,7 +187,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -199,7 +209,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -220,7 +231,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -237,7 +249,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -254,7 +267,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -271,7 +285,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -288,7 +303,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -305,7 +321,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -322,7 +339,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -342,7 +360,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -359,7 +378,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -376,7 +396,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -393,7 +414,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -410,7 +432,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -429,7 +452,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -449,7 +473,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -466,7 +491,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -486,7 +512,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -503,7 +530,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -520,7 +548,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -540,7 +569,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -557,7 +587,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -574,7 +605,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -591,7 +623,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -608,7 +641,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -625,7 +659,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -642,7 +677,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -659,7 +695,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -676,7 +713,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -713,7 +751,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -730,7 +769,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -747,7 +787,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -764,7 +805,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -781,7 +823,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -798,7 +841,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -821,7 +865,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -858,7 +903,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -875,7 +921,8 @@
       "requiredProjectAction": "payment.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -892,7 +939,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -929,7 +977,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -948,7 +997,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -965,7 +1015,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -982,7 +1033,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -999,7 +1051,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1016,7 +1069,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1033,7 +1087,8 @@
       "requiredProjectAction": "expense_claim.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1050,7 +1105,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1067,7 +1123,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1088,7 +1145,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1105,7 +1163,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1122,7 +1181,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1139,7 +1199,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1156,7 +1217,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1173,7 +1235,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1190,7 +1253,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1207,7 +1271,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1234,7 +1299,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1253,7 +1319,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1290,7 +1357,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1307,7 +1375,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1324,7 +1393,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1341,7 +1411,8 @@
       "requiredProjectAction": "payment.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1358,7 +1429,8 @@
       "requiredProjectAction": "payment.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1375,7 +1447,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1404,7 +1477,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1421,7 +1495,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1438,7 +1513,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1468,7 +1544,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1491,7 +1568,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1514,7 +1592,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1537,7 +1616,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1560,7 +1640,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1583,7 +1664,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1600,7 +1682,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1617,7 +1700,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1634,7 +1718,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1657,7 +1742,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1682,7 +1768,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1699,7 +1786,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1716,7 +1804,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1733,7 +1822,8 @@
       "requiredProjectAction": "project_expense.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1762,7 +1852,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1779,7 +1870,8 @@
       "requiredProjectAction": "project.financing_quota.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1796,7 +1888,8 @@
       "requiredProjectAction": "project.financing_quota.terminate",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1825,7 +1918,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1842,7 +1936,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1859,7 +1954,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1876,7 +1972,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1893,7 +1990,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1910,7 +2008,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1930,7 +2029,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1947,7 +2047,8 @@
       "requiredProjectAction": "project.upstream_fund_fact.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1964,7 +2065,8 @@
       "requiredProjectAction": "project.upstream_fund_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -1985,7 +2087,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2002,7 +2105,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2022,7 +2126,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2039,7 +2144,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2059,7 +2165,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2079,7 +2186,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2096,7 +2204,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2113,7 +2222,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2130,7 +2240,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2147,7 +2258,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2164,7 +2276,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2181,7 +2294,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2218,7 +2332,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2255,7 +2370,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2272,7 +2388,8 @@
       "requiredProjectAction": "settlement.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2289,7 +2406,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2306,7 +2424,8 @@
       "requiredProjectAction": "settlement.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2343,7 +2462,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2366,7 +2486,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2403,7 +2524,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2440,7 +2562,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2457,7 +2580,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2474,7 +2598,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2491,7 +2616,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2508,7 +2634,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2525,7 +2652,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2542,7 +2670,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2559,7 +2688,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2576,7 +2706,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2593,7 +2724,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2613,7 +2745,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "GET",
@@ -2630,7 +2763,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2647,7 +2781,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2664,7 +2799,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2681,7 +2817,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2701,7 +2838,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2721,7 +2859,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2738,7 +2877,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2758,7 +2898,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2778,7 +2919,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2795,7 +2937,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2812,7 +2955,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "PATCH",
@@ -2831,7 +2975,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2858,7 +3003,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2878,7 +3024,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2895,7 +3042,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2912,7 +3060,8 @@
       "requiredProjectAction": "contract.tax_fact.supplement",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2929,7 +3078,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2946,7 +3096,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2966,7 +3117,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -2983,7 +3135,8 @@
       "requiredProjectAction": "spot_procurement.payment.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -3000,7 +3153,8 @@
       "requiredProjectAction": "spot_procurement.payment.facts.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -3017,7 +3171,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -3034,7 +3189,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PATCH",
@@ -3053,7 +3209,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3070,7 +3227,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3087,7 +3245,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3104,7 +3263,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3121,7 +3281,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3138,7 +3299,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3155,7 +3317,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3172,7 +3335,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3189,7 +3353,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3206,7 +3371,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3223,7 +3389,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3240,7 +3407,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3257,7 +3425,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3274,7 +3443,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3291,7 +3461,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3308,7 +3479,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3325,7 +3497,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3345,7 +3518,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3365,7 +3539,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3382,7 +3557,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3399,7 +3575,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3416,7 +3593,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3433,7 +3611,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3450,7 +3629,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3467,7 +3647,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3484,7 +3665,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3501,7 +3683,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3518,7 +3701,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3537,7 +3721,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3556,7 +3741,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3576,7 +3762,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3596,7 +3783,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3616,7 +3804,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3636,7 +3825,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3655,7 +3845,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3674,7 +3865,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3693,7 +3885,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3713,7 +3906,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3733,7 +3927,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3750,7 +3945,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3767,7 +3963,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3784,7 +3981,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3801,7 +3999,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3818,7 +4017,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3838,7 +4038,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3858,7 +4059,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3877,7 +4079,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3896,7 +4099,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3915,7 +4119,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3935,7 +4140,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3955,7 +4161,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3972,7 +4179,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -3989,7 +4197,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4006,7 +4215,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4023,7 +4233,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4040,7 +4251,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4057,7 +4269,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4074,7 +4287,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "POST",
@@ -4091,7 +4305,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4108,7 +4323,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4125,7 +4341,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4142,7 +4359,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4159,7 +4377,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4176,7 +4395,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4193,7 +4413,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4210,7 +4431,8 @@
       "requiredProjectAction": "contract.draft.delete",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4227,7 +4449,8 @@
       "requiredProjectAction": "contract.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4244,7 +4467,8 @@
       "requiredProjectAction": "contract.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4261,7 +4485,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4278,7 +4503,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4295,7 +4521,8 @@
       "requiredProjectAction": "contract.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4312,7 +4539,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4329,7 +4557,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4346,7 +4575,8 @@
       "requiredProjectAction": "contract.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4363,7 +4593,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4380,7 +4611,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4397,7 +4629,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4414,7 +4647,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4431,7 +4665,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4448,7 +4683,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4465,7 +4701,8 @@
       "requiredProjectAction": "contract.archive.final.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4482,7 +4719,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4499,7 +4737,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4516,7 +4755,8 @@
       "requiredProjectAction": "contract.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4533,7 +4773,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4550,7 +4791,8 @@
       "requiredProjectAction": "contract.seal",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4567,7 +4809,8 @@
       "requiredProjectAction": "contract.seal",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4584,7 +4827,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4601,7 +4845,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4620,7 +4865,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4637,7 +4883,8 @@
       "requiredProjectAction": "expense_claim.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4654,7 +4901,8 @@
       "requiredProjectAction": "expense_claim.attachment.append",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4671,7 +4919,8 @@
       "requiredProjectAction": "expense_claim.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4688,7 +4937,8 @@
       "requiredProjectAction": "expense_claim.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4705,7 +4955,8 @@
       "requiredProjectAction": "expense_claim.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4722,7 +4973,8 @@
       "requiredProjectAction": "expense_claim.attachment.append",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4739,7 +4991,8 @@
       "requiredProjectAction": "expense_claim.disburse",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4756,7 +5009,8 @@
       "requiredProjectAction": "expense_claim.disburse",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4773,7 +5027,8 @@
       "requiredProjectAction": "expense_claim.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4790,7 +5045,8 @@
       "requiredProjectAction": "expense_claim.disburse",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4807,7 +5063,8 @@
       "requiredProjectAction": "expense_claim.payment.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4828,7 +5085,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4845,7 +5103,8 @@
       "requiredProjectAction": "expense_claim.payment.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4862,7 +5121,8 @@
       "requiredProjectAction": "expense_claim.payment.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4879,7 +5139,8 @@
       "requiredProjectAction": "expense_claim.repayment.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4896,7 +5157,8 @@
       "requiredProjectAction": "expense_claim.repayment.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4913,7 +5175,8 @@
       "requiredProjectAction": "expense_claim.repayment.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4930,7 +5193,8 @@
       "requiredProjectAction": "expense_claim.repayment.reverse",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4947,7 +5211,8 @@
       "requiredProjectAction": "expense_claim.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4969,7 +5234,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -4986,7 +5252,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5003,7 +5270,8 @@
       "requiredProjectAction": "spot_procurement.invoice.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5020,7 +5288,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5037,7 +5306,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5054,7 +5324,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5071,7 +5342,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5090,7 +5362,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5117,7 +5390,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5144,7 +5418,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5171,7 +5446,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5190,7 +5466,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5217,7 +5494,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5244,7 +5522,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5261,7 +5540,8 @@
       "requiredProjectAction": "payment.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5278,7 +5558,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5295,7 +5576,8 @@
       "requiredProjectAction": "payment.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5312,7 +5594,8 @@
       "requiredProjectAction": "payment.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5329,7 +5612,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5346,7 +5630,8 @@
       "requiredProjectAction": "payment.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5363,7 +5648,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5380,7 +5666,8 @@
       "requiredProjectAction": "payment.execution",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5397,7 +5684,8 @@
       "requiredProjectAction": "payment.execution",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5414,7 +5702,8 @@
       "requiredProjectAction": "payment.finance_record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5431,7 +5720,8 @@
       "requiredProjectAction": "payment.pdf_archive",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5448,7 +5738,8 @@
       "requiredProjectAction": "payment.pdf_archive",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5465,7 +5756,8 @@
       "requiredProjectAction": "payment.pdf_archive",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5485,7 +5777,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5505,7 +5798,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5522,7 +5816,8 @@
       "requiredProjectAction": "project.affiliate_business_fact.evidence_supplement",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5539,7 +5834,8 @@
       "requiredProjectAction": "project.affiliate_business_fact.evidence_supplement",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5556,7 +5852,8 @@
       "requiredProjectAction": "project.affiliate_company_contract.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5573,7 +5870,8 @@
       "requiredProjectAction": "project.affiliate_company_contract.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5590,7 +5888,8 @@
       "requiredProjectAction": "project.affiliate_company_contract.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5607,7 +5906,8 @@
       "requiredProjectAction": "project.affiliate_contract_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5624,7 +5924,8 @@
       "requiredProjectAction": "project.affiliate_contract_fact.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5641,7 +5942,8 @@
       "requiredProjectAction": "project.affiliate_contract_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5658,7 +5960,8 @@
       "requiredProjectAction": "project.affiliate_payment_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5675,7 +5978,8 @@
       "requiredProjectAction": "project.affiliate_payment_fact.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5692,7 +5996,8 @@
       "requiredProjectAction": "project.affiliate_payment_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5709,7 +6014,8 @@
       "requiredProjectAction": "project.affiliate_settlement_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5726,7 +6032,8 @@
       "requiredProjectAction": "project.affiliate_settlement_fact.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5743,7 +6050,8 @@
       "requiredProjectAction": "project.affiliate_settlement_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5760,7 +6068,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5777,7 +6086,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5794,7 +6104,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5811,7 +6122,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5828,7 +6140,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5845,7 +6158,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true
+      "contractCutoverLegacyWrite": true,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5862,7 +6176,8 @@
       "requiredProjectAction": "contract.takeover.contract_facts.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5879,7 +6194,8 @@
       "requiredProjectAction": "contract.takeover.confirmation.withdraw",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5896,7 +6212,8 @@
       "requiredProjectAction": "contract.takeover.correction.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5913,7 +6230,8 @@
       "requiredProjectAction": "contract.takeover.correction.review",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5930,7 +6248,8 @@
       "requiredProjectAction": "contract.takeover.contract_facts.edit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5947,7 +6266,8 @@
       "requiredProjectAction": "contract.takeover.finance_facts.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5964,7 +6284,8 @@
       "requiredProjectAction": "contract.takeover.confirmation.withdraw",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5981,7 +6302,8 @@
       "requiredProjectAction": "contract.takeover.payment_evidence.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -5998,7 +6320,8 @@
       "requiredProjectAction": "contract.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6015,7 +6338,8 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6032,7 +6356,8 @@
       "requiredProjectAction": "contract.tax_fact.supplement",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6049,7 +6374,8 @@
       "requiredProjectAction": "contract.tax_fact.supplement",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6066,7 +6392,8 @@
       "requiredProjectAction": "contract.tax_fact.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6083,7 +6410,8 @@
       "requiredProjectAction": "contract.tax_fact.finance_review",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6100,7 +6428,8 @@
       "requiredProjectAction": "contract.tax_fact.supplement",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6117,7 +6446,8 @@
       "requiredProjectAction": "contract.takeover.file.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6134,7 +6464,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6151,7 +6482,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6168,7 +6500,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6185,7 +6518,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6202,7 +6536,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6219,7 +6554,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6236,7 +6572,8 @@
       "requiredProjectAction": "project_expense.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6253,7 +6590,8 @@
       "requiredProjectAction": "project_expense.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6270,7 +6608,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6287,7 +6626,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6304,7 +6644,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6321,7 +6662,8 @@
       "requiredProjectAction": "project_expense.execution",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6338,7 +6680,8 @@
       "requiredProjectAction": "project_expense.execution",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6355,7 +6698,8 @@
       "requiredProjectAction": "project_expense.finance_record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6372,7 +6716,8 @@
       "requiredProjectAction": "project_expense.purchase_execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6389,7 +6734,8 @@
       "requiredProjectAction": "project_expense.receipt_confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6406,7 +6752,8 @@
       "requiredProjectAction": "project_expense.void",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6423,7 +6770,8 @@
       "requiredProjectAction": "project_expense.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6440,7 +6788,8 @@
       "requiredProjectAction": "project.financing_quota.request",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6457,7 +6806,8 @@
       "requiredProjectAction": "project.financing_quota.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6474,7 +6824,8 @@
       "requiredProjectAction": "project.financing_quota.terminate",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6491,7 +6842,8 @@
       "requiredProjectAction": "project.financing_quota.request",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6508,7 +6860,8 @@
       "requiredProjectAction": "project.owner_contract.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6525,7 +6878,8 @@
       "requiredProjectAction": "project.owner_contract.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6542,7 +6896,8 @@
       "requiredProjectAction": "project.proxy_payment.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6559,7 +6914,8 @@
       "requiredProjectAction": "project.receipt.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6576,7 +6932,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6593,7 +6950,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6610,7 +6968,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6627,7 +6986,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6644,7 +7004,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6661,7 +7022,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6678,7 +7040,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6695,7 +7058,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6712,7 +7076,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6729,7 +7094,8 @@
       "requiredProjectAction": "project.settlement_exception_quota.request",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6746,7 +7112,8 @@
       "requiredProjectAction": "project.settlement_exception_quota.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6763,7 +7130,8 @@
       "requiredProjectAction": "project.upstream_fund_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6780,7 +7148,8 @@
       "requiredProjectAction": "project.upstream_fund_fact.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6797,7 +7166,8 @@
       "requiredProjectAction": "project.upstream_fund_fact.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6814,7 +7184,8 @@
       "requiredProjectAction": "project.upstream_settlement.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6831,7 +7202,8 @@
       "requiredProjectAction": "project.upstream_settlement.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6851,7 +7223,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6870,7 +7243,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6890,7 +7264,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6910,7 +7285,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6930,7 +7306,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6950,7 +7327,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6970,7 +7348,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -6990,7 +7369,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7010,7 +7390,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7030,7 +7411,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7047,7 +7429,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7064,7 +7447,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7081,7 +7465,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7098,7 +7483,8 @@
       "requiredProjectAction": "settlement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7115,7 +7501,8 @@
       "requiredProjectAction": "settlement.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7132,7 +7519,8 @@
       "requiredProjectAction": "settlement.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7149,7 +7537,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7166,7 +7555,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7183,7 +7573,8 @@
       "requiredProjectAction": "settlement.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7220,7 +7611,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7237,7 +7629,8 @@
       "requiredProjectAction": "settlement.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7254,7 +7647,8 @@
       "requiredProjectAction": "settlement.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7271,7 +7665,8 @@
       "requiredProjectAction": "settlement.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7288,7 +7683,8 @@
       "requiredProjectAction": "settlement.archive.upload",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7307,7 +7703,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7326,7 +7723,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7345,7 +7743,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7362,7 +7761,8 @@
       "requiredProjectAction": "settlement.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7379,7 +7779,8 @@
       "requiredProjectAction": "settlement.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7396,7 +7797,8 @@
       "requiredProjectAction": "spot_procurement.payment.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7413,7 +7815,8 @@
       "requiredProjectAction": "spot_procurement.payment.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7430,7 +7833,8 @@
       "requiredProjectAction": "spot_procurement.payment.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7447,7 +7851,8 @@
       "requiredProjectAction": "spot_procurement.balance.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7464,7 +7869,8 @@
       "requiredProjectAction": "spot_procurement.payment.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7481,7 +7887,8 @@
       "requiredProjectAction": "spot_procurement.payment.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7498,7 +7905,8 @@
       "requiredProjectAction": "spot_procurement.payment.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7515,7 +7923,8 @@
       "requiredProjectAction": "spot_procurement.invoice.append",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7532,7 +7941,8 @@
       "requiredProjectAction": "spot_procurement.invoice.append",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7549,7 +7959,8 @@
       "requiredProjectAction": "spot_procurement.payment.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7566,7 +7977,8 @@
       "requiredProjectAction": "spot_procurement.void",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7583,7 +7995,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7600,7 +8013,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7617,7 +8031,8 @@
       "requiredProjectAction": "spot_procurement.abnormal_termination.request",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7634,7 +8049,8 @@
       "requiredProjectAction": "spot_procurement.abnormal_termination.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7651,7 +8067,8 @@
       "requiredProjectAction": "spot_procurement.approve",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7668,7 +8085,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7685,7 +8103,8 @@
       "requiredProjectAction": "spot_procurement.discrepancy.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7702,7 +8121,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7719,7 +8139,8 @@
       "requiredProjectAction": "spot_procurement.invoice.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7736,7 +8157,8 @@
       "requiredProjectAction": "spot_procurement.invoice_exception.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7753,7 +8175,8 @@
       "requiredProjectAction": "spot_procurement.invoice.append",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7770,7 +8193,8 @@
       "requiredProjectAction": "spot_procurement.invoice.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7787,7 +8211,8 @@
       "requiredProjectAction": "spot_procurement.invoice.manage",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7804,7 +8229,8 @@
       "requiredProjectAction": "spot_procurement.invoice_exception.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7821,7 +8247,8 @@
       "requiredProjectAction": "spot_procurement.payment.submit",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7838,7 +8265,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7855,7 +8283,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7872,7 +8301,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7889,7 +8319,8 @@
       "requiredProjectAction": "spot_procurement.receipt.review",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7906,7 +8337,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7923,7 +8355,8 @@
       "requiredProjectAction": "spot_procurement.receipt.review",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7940,7 +8373,8 @@
       "requiredProjectAction": "spot_procurement.receipt.review_revoke",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7957,7 +8391,8 @@
       "requiredProjectAction": "spot_procurement.receipt.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7974,7 +8409,8 @@
       "requiredProjectAction": "spot_procurement.refund.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -7991,7 +8427,8 @@
       "requiredProjectAction": "spot_procurement.refund.record",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8008,7 +8445,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8025,7 +8463,8 @@
       "requiredProjectAction": "spot_procurement.balance.execute",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8042,7 +8481,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8059,7 +8499,8 @@
       "requiredProjectAction": "spot_procurement.void",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8076,7 +8517,8 @@
       "requiredProjectAction": "spot_procurement.create",
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8096,7 +8538,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8115,7 +8558,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8135,7 +8579,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8155,7 +8600,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "POST",
@@ -8174,7 +8620,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PUT",
@@ -8191,7 +8638,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PUT",
@@ -8208,7 +8656,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PUT",
@@ -8225,7 +8674,8 @@
       "requiredProjectAction": "contract.create",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PUT",
@@ -8242,7 +8692,8 @@
       "requiredProjectAction": "contract.takeover.contract_facts.edit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     },
     {
       "method": "PUT",
@@ -8259,7 +8710,8 @@
       "requiredProjectAction": "contract.takeover.finance_facts.edit",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false
     }
   ]
 }

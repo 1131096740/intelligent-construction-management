@@ -33,6 +33,7 @@ const NEST_ROUTE_KEYS = [
   "authorizationScope",
   "contractCutoverLegacyWrite",
   "contractCutoverSurface",
+  "contractCutoverTombstoneWrite",
   "controller",
   "guardAuthorization",
   "handler",
@@ -326,7 +327,8 @@ function validateNestRoute(route) {
   );
   assert(
     typeof route.contractCutoverSurface === "boolean" &&
-      typeof route.contractCutoverLegacyWrite === "boolean",
+      typeof route.contractCutoverLegacyWrite === "boolean" &&
+      typeof route.contractCutoverTombstoneWrite === "boolean",
     "CAPABILITY_MATRIX_INVALID_NEST_ROUTE"
   );
 }

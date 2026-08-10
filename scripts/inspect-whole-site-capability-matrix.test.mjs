@@ -110,7 +110,8 @@ function route(method, path, suffix = "Fixture") {
     requiredProjectAction: null,
     authorizationCombination: null,
     contractCutoverSurface: false,
-    contractCutoverLegacyWrite: false
+    contractCutoverLegacyWrite: false,
+    contractCutoverTombstoneWrite: false
   };
 }
 
