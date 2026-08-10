@@ -90,14 +90,21 @@ describe("contract ledger page configuration", () => {
     expect(source).toContain('@confirm="confirmAbandonApplication"');
     expect(source).toContain("useUnsavedChangesGuard");
     expect(source).toContain("suspendAutosaveForLifecycleAction");
+    expect(source).toContain("const contractDraftAvailableActions = computed(");
     expect(source).toContain(
+      "() => authoritySnapshot.value?.availableActions ?? null"
+    );
+    expect(source).not.toContain(
       "const capability = await fetchContractDraftWorkbench(expectedVersionId)"
     );
     expect(source).toContain("contractDraftLifecycleContextCurrent");
     expect(source).toContain("executeDeletePristineContractDraftAction({");
     expect(source).toContain("executeAbandonContractDraftAction({");
-    expect(source).toContain("expectedRevision: savedRevision.value");
+    expect(source).toContain("const contractDraftLifecycleRevision = computed(");
     expect(source).toContain(
+      "expectedRevision: contractDraftLifecycleRevision.value"
+    );
+    expect(source).not.toContain(
       "contractDraftAvailableActions.value = capability.availableActions!"
     );
     expect(source).not.toContain(

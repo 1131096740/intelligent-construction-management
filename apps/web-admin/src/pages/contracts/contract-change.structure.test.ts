@@ -41,7 +41,32 @@ describe("contract change Web closure", () => {
   it("fails visibly and clears the stale workbench on an exact-version mismatch", () => {
     expect(workbench).toContain("v-if=\"exactVersionError\"");
     expect(workbench).toContain("工作台返回的合同版本与刚创建的变更草稿不一致");
-    expect(workbench).toContain("workbench.value = null");
+    expect(workbench).toContain("const receipt = authoritySnapshot.value?.workbench;");
+    const loadExistingSource = workbench.slice(
+      workbench.indexOf("async function loadExisting()"),
+      workbench.indexOf("function contractWorkbenchLoadContextCurrent")
+    );
+    const exactVersionMismatch = loadExistingSource.slice(
+      loadExistingSource.indexOf(
+        "error.message.includes(\"响应版本与请求版本不一致\")"
+      ),
+      loadExistingSource.indexOf(
+        "errorMessage.value = error instanceof Error ? \"工作台加载失败\""
+      )
+    );
+    expect(exactVersionMismatch).toContain("clearAuthoritySnapshot();");
+    const loadExpectedWorkbenchSource = workbench.slice(
+      workbench.indexOf("async function loadExpectedWorkbench"),
+      workbench.indexOf("function returnToContractDetail()")
+    );
+    const authoritySnapshotMismatch = loadExpectedWorkbenchSource.slice(
+      loadExpectedWorkbenchSource.indexOf("!snapshot ||"),
+      loadExpectedWorkbenchSource.indexOf("throw new Error(exactVersionError.value)")
+    );
+    expect(authoritySnapshotMismatch).toContain(
+      "snapshot.contractVersionId !== expectedVersionId"
+    );
+    expect(authoritySnapshotMismatch).toContain("clearAuthoritySnapshot();");
     expect(workbench).toContain("@click=\"returnToContractDetail\"");
     expect(workbench).toContain("v-if=\"workbench && !exactVersionError && isChangeVersion\"");
   });
