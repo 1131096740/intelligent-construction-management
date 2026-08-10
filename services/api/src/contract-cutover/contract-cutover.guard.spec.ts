@@ -196,7 +196,7 @@ describe("ContractCutoverGuard", () => {
         CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
         ContractTakeoverController.prototype.confirm
       )
-    ).toBe(true);
+    ).toBeUndefined();
   });
 
   it("marks draft mutations outside the aggregate controllers without blocking read-only tickets", () => {

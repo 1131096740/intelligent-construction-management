@@ -28,6 +28,12 @@ const WEB_MANIFEST_PATH =
   "docs/product/manifests/web-api-wrappers.json";
 const NEST_MANIFEST_PATH =
   "docs/product/manifests/nest-business-routes.json";
+const CONTRACT_WORKBENCH_PAGE_PATH =
+  `${WEB_SOURCE_ROOT}/pages/contracts/ContractWorkbenchPage.vue`;
+const CONTRACT_DRAFT_COMPOSABLE_PATH =
+  `${WEB_SOURCE_ROOT}/pages/contracts/workbench/use-contract-draft.ts`;
+const CONTRACT_WORKBENCH_API_PATH =
+  `${WEB_SOURCE_ROOT}/api/contract-workbench.api.ts`;
 const PERMISSIONS_SOURCE_PATH =
   "packages/shared-domain/src/permissions.ts";
 const ACTION_USAGES = new Set(["page_action", "background"]);
@@ -8417,9 +8423,254 @@ function capabilityServerProvenanceSources(
   return sources.size === 1 ? sources : null;
 }
 
+function uniqueVariableBinding(ast, name, symbols) {
+  const bindings = new Set();
+  walkEstree(ast, (node) => {
+    if (
+      node.type === "VariableDeclarator" &&
+      node.id?.type === "Identifier" &&
+      node.id.name === name
+    ) {
+      const binding = symbols.scopeBindings?.get(node.id);
+      if (binding) bindings.add(binding);
+    }
+  });
+  return bindings.size === 1 ? [...bindings][0] : null;
+}
+
+function isServerReadAwait(
+  expression,
+  symbols,
+  serverReadBinding
+) {
+  const awaited = unwrapPreflightExpression(expression);
+  const call = awaited?.type === "AwaitExpression"
+    ? unwrapPreflightExpression(awaited.argument)
+    : null;
+  return call?.type === "CallExpression" &&
+    call.callee?.type === "Identifier" &&
+    symbols.scopeBindings?.get(call.callee) === serverReadBinding &&
+    (call.arguments ?? []).every(
+      (argument) => argument?.type !== "SpreadElement"
+    );
+}
+
+function immutableServerReadBinding(
+  identifier,
+  symbols,
+  serverReadBinding
+) {
+  const binding = symbols.scopeBindings?.get(identifier);
+  if (!binding) return false;
+  const sources = [];
+  const declaration = uniqueIndexedNode(
+    symbols.declarationsByBinding,
+    binding
+  );
+  if (declaration) {
+    if (!isServerReadAwait(declaration, symbols, serverReadBinding)) {
+      return false;
+    }
+    sources.push(declaration);
+  }
+  for (const write of symbols.writesByBinding.get(binding) ?? []) {
+    if (
+      write.kind !== "assignment" ||
+      write.operator !== "=" ||
+      write.path !== identifier.name ||
+      !isServerReadAwait(write.value, symbols, serverReadBinding)
+    ) {
+      return false;
+    }
+    sources.push(write.value);
+  }
+  return sources.length === 1;
+}
+
+function trustedAuthoritySnapshotReceipt(
+  composableAst,
+  symbols,
+  serverReadBinding
+) {
+  const receiptBinding = uniqueVariableBinding(
+    composableAst,
+    "workbenchReceipt",
+    symbols
+  );
+  if (!receiptBinding) return false;
+  const writes = symbols.writesByBinding.get(receiptBinding) ?? [];
+  if (writes.length === 0) return false;
+  return writes.every((write) => {
+    if (
+      write.kind !== "assignment" ||
+      write.operator !== "=" ||
+      write.path !== "workbenchReceipt.value"
+    ) {
+      return false;
+    }
+    const value = unwrapPreflightExpression(write.value);
+    if (value?.type === "Literal" && value.value === null) return true;
+    if (
+      value?.type !== "CallExpression" ||
+      value.callee?.type !== "Identifier" ||
+      value.callee.name !== "structuredClone" ||
+      value.arguments?.length !== 1 ||
+      value.arguments[0]?.type !== "Identifier"
+    ) {
+      return false;
+    }
+    return immutableServerReadBinding(
+      value.arguments[0],
+      symbols,
+      serverReadBinding
+    );
+  });
+}
+
+function contractDraftAuthoritySnapshotProvenance(
+  capability,
+  context
+) {
+  if (
+    capability.kind !== "detail_action" ||
+    capability.source !== "contractDraftAvailableActions" ||
+    context.sourceFile !== CONTRACT_WORKBENCH_PAGE_PATH ||
+    !isNonEmptyString(context.source)
+  ) {
+    return null;
+  }
+  const collectionBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    "contractDraftAvailableActions"
+  );
+  if (
+    collectionBindings.length !== 1 ||
+    (context.symbols.writesByBinding.get(collectionBindings[0]) ?? [])
+      .length > 0
+  ) {
+    return null;
+  }
+  const draftImport = context.symbols.imports.get("useContractDraft");
+  if (
+    draftImport?.sourceFile !== CONTRACT_DRAFT_COMPOSABLE_PATH ||
+    draftImport.importedName !== "useContractDraft" ||
+    !/const\s+draft\s*=\s*useContractDraft\s*\(/.test(
+      context.source
+    ) ||
+    !/const\s*\{[\s\S]*?\bauthoritySnapshot\b[\s\S]*?\}\s*=\s*draft\s*;/.test(
+      context.source
+    ) ||
+    !/const\s+contractDraftAvailableActions\s*=\s*computed\s*\(\s*\(\s*\)\s*=>\s*authoritySnapshot\.value\?\.availableActions\s*\?\?\s*null\s*\)\s*;/.test(
+      context.source
+    )
+  ) {
+    return null;
+  }
+  const composableSource = context.sources.get(
+    CONTRACT_DRAFT_COMPOSABLE_PATH
+  );
+  const composableAst = context.asts.get(
+    CONTRACT_DRAFT_COMPOSABLE_PATH
+  );
+  if (!isNonEmptyString(composableSource) || !composableAst) return null;
+  const authoritySnapshotStart = composableSource.indexOf(
+    "const authoritySnapshot"
+  );
+  const authoritySnapshotEnd = composableSource.indexOf(
+    "function hasAuthorityOperation",
+    authoritySnapshotStart
+  );
+  const authoritySnapshotSource =
+    authoritySnapshotStart >= 0 && authoritySnapshotEnd > authoritySnapshotStart
+      ? composableSource.slice(authoritySnapshotStart, authoritySnapshotEnd)
+      : "";
+  const composableSymbols = buildSymbolContext(
+    composableAst,
+    CONTRACT_DRAFT_COMPOSABLE_PATH,
+    context.sourceFileSet
+  );
+  const workbenchImport = composableSymbols.imports.get(
+    "fetchContractDraftWorkbench"
+  );
+  const workbenchImportBinding =
+    composableSymbols.importVariablesByName.get(
+      "fetchContractDraftWorkbench"
+    );
+  if (
+    workbenchImport?.sourceFile !== CONTRACT_WORKBENCH_API_PATH ||
+    workbenchImport.importedName !== "fetchContractDraftWorkbench" ||
+    !/const\s+workbenchReceipt\s*=\s*ref(?:\s*<[\s\S]*?>)?\s*\(\s*null\s*\)\s*;/.test(
+      composableSource
+    ) ||
+    !/const\s+authoritySnapshot\s*=\s*computed(?:\s*<[\s\S]*?>)?\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?const\s+currentWorkbench\s*=\s*workbenchReceipt\.value\s*;/.test(
+      authoritySnapshotSource
+    ) ||
+    !/const\s+receiptAvailableActions\s*=\s*Object\.freeze\s*\(\s*Array\.isArray\s*\(\s*currentWorkbench\.availableActions\s*\)/.test(
+      authoritySnapshotSource
+    ) ||
+    !/const\s+availableActions\s*=\s*refreshRequired\s*\?\s*Object\.freeze\s*\(\s*\[\s*\]\s*\)\s*:\s*receiptAvailableActions\s*;/.test(
+      authoritySnapshotSource
+    ) ||
+    !/return\s+Object\.freeze\s*\(\s*\{[\s\S]*?\bavailableActions\s*,[\s\S]*?\}\s*\)\s*;/.test(
+      authoritySnapshotSource
+    ) ||
+    !/result\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*requestedVersionId\s*\)\s*;/.test(
+      composableSource
+    ) ||
+    !/fresh\s*=\s*await\s+fetchContractDraftWorkbench\s*\(\s*conflictingVersionId\s*\)\s*;/.test(
+      composableSource
+    )
+  ) {
+    return null;
+  }
+  if (
+    !workbenchImportBinding ||
+    !trustedAuthoritySnapshotReceipt(
+      composableAst,
+      composableSymbols,
+      workbenchImportBinding
+    )
+  ) {
+    return null;
+  }
+  const sourceIdentity = wrapperIdentity(
+    CONTRACT_WORKBENCH_API_PATH,
+    "fetchContractDraftWorkbench"
+  );
+  return {
+    sources: new Set([sourceIdentity]),
+    sourceFiles: new Map([
+      [sourceIdentity, CONTRACT_DRAFT_COMPOSABLE_PATH]
+    ])
+  };
+}
+
+function capabilityServerProvenance(capability, context) {
+  const sources = capabilityServerProvenanceSources(
+    capability,
+    context
+  );
+  if (sources?.size === 1) {
+    return {
+      sources,
+      sourceFiles: new Map(
+        [...sources].map((sourceIdentity) => [
+          sourceIdentity,
+          context.sourceFile
+        ])
+      )
+    };
+  }
+  return contractDraftAuthoritySnapshotProvenance(
+    capability,
+    context
+  );
+}
+
 function capabilityHasServerProvenance(capability, context) {
   return (
-    capabilityServerProvenanceSources(capability, context)
+    capabilityServerProvenance(capability, context)
+      ?.sources
       ?.size === 1
   );
 }
@@ -9067,7 +9318,193 @@ function actionCollectionEvidence(element) {
     .filter(Boolean);
 }
 
-function backgroundCapabilityDominates(candidate, capability, context) {
+function literalBindingsForCall(definition, callNode, symbols) {
+  const bindings = new Map();
+  for (const [index, parameter] of (definition?.params ?? []).entries()) {
+    if (parameter?.type !== "Identifier") continue;
+    const value = literalString(callNode?.arguments?.[index]);
+    const binding = symbols.scopeBindings?.get(parameter);
+    if (binding && value !== null) bindings.set(binding, value);
+  }
+  return bindings;
+}
+
+function leadingAwaitedLocalPreflight(definition, symbols) {
+  const statement = (definition?.body?.body ?? []).find(
+    (candidate) => candidate.type !== "EmptyStatement"
+  );
+  if (statement?.type !== "ExpressionStatement") return null;
+  // Preserve the AwaitExpression while unwrapping only TypeScript wrappers.
+  // unwrapValueExpression intentionally erases awaits for ordinary data-flow
+  // analysis, but a delegated preflight must prove that it completes first.
+  const awaited = unwrapPreflightExpression(statement.expression);
+  const call = awaited?.type === "AwaitExpression"
+    ? unwrapValueExpression(awaited.argument)
+    : null;
+  if (
+    call?.type !== "CallExpression" ||
+    call.callee?.type !== "Identifier"
+  ) {
+    return null;
+  }
+  const binding = symbols.scopeBindings?.get(call.callee);
+  const helperDefinition = binding
+    ? uniqueIndexedNode(symbols.definitionsByBinding, binding)
+    : null;
+  return binding && helperDefinition
+    ? { binding, definition: helperDefinition, call }
+    : null;
+}
+
+function throwOnlyStatement(statement) {
+  if (statement?.type === "ThrowStatement") return true;
+  return statement?.type === "BlockStatement" &&
+    (statement.body ?? []).length === 1 &&
+    statement.body[0]?.type === "ThrowStatement";
+}
+
+function serverReadDeclarationIsSafe(statement, context) {
+  return statement?.type === "VariableDeclaration" &&
+    statement.kind === "const" &&
+    (statement.declarations ?? []).every((declaration) => {
+      const initialized = unwrapPreflightExpression(declaration.init);
+      const value = initialized?.type === "AwaitExpression"
+        ? unwrapPreflightExpression(initialized.argument)
+        : initialized;
+      if (
+        declaration.id?.type !== "Identifier" ||
+        value?.type !== "CallExpression" ||
+        value.callee?.type !== "Identifier"
+      ) {
+        return false;
+      }
+      const binding = context.symbols.scopeBindings?.get(value.callee);
+      return Boolean(
+        binding &&
+        context.serverReadImports.has(binding) &&
+        (value.arguments ?? []).every(
+          (argument) =>
+            argument?.type !== "SpreadElement" &&
+            preflightExpressionIsPure(argument, context.symbols)
+        )
+      );
+    });
+}
+
+function delegatedPreflightCapabilityCheck(
+  definition,
+  capability,
+  context,
+  literalBindings
+) {
+  const statements = definition?.body?.body ?? [];
+  for (let index = 0; index < statements.length; index += 1) {
+    const statement = statements[index];
+    if (
+      statement?.type !== "IfStatement" ||
+      statement.alternate ||
+      !throwOnlyStatement(statement.consequent) ||
+      !preflightExpressionIsPure(statement.test, context.symbols)
+    ) {
+      continue;
+    }
+    const test = unwrapValueExpression(statement.test);
+    if (
+      test?.type !== "UnaryExpression" ||
+      test.operator !== "!" ||
+      !collectionIncludesIsTrusted(
+        test.argument,
+        capability,
+        context,
+        literalBindings
+      )
+    ) {
+      continue;
+    }
+    const prefixIsSafe = statements
+      .slice(0, index)
+      .every((prefixStatement) =>
+        serverReadDeclarationIsSafe(prefixStatement, context) ||
+        (prefixStatement?.type === "IfStatement" &&
+          !prefixStatement.alternate &&
+          throwOnlyStatement(prefixStatement.consequent) &&
+          preflightExpressionIsPure(
+            prefixStatement.test,
+            context.symbols
+          ))
+      );
+    const suffixIsEmpty = statements
+      .slice(index + 1)
+      .every((suffixStatement) =>
+        suffixStatement?.type === "EmptyStatement"
+      );
+    if (prefixIsSafe && suffixIsEmpty) return true;
+  }
+  return false;
+}
+
+function delegatedBackgroundCapabilityPreflight(
+  candidate,
+  capability,
+  context
+) {
+  if (candidate?.kind !== "background_call") return null;
+  const leading = leadingAwaitedLocalPreflight(
+    candidate.expression,
+    context.symbols
+  );
+  if (!leading) return null;
+  const sourceBindings = capabilitySourceBindings(
+    [leading.definition],
+    capability.source,
+    context.symbols
+  );
+  if (sourceBindings.size !== 1) return null;
+  const preflightContext = {
+    ...context,
+    capabilitySourceBindings: sourceBindings,
+    discoveredCapabilitySourceBindings: new Set()
+  };
+  const dominates = backgroundCapabilityDominates(
+    { expression: leading.definition },
+    capability,
+    preflightContext,
+    literalBindingsForCall(
+      leading.definition,
+      leading.call,
+      context.symbols
+    )
+  );
+  const literalBindings = literalBindingsForCall(
+    leading.definition,
+    leading.call,
+    context.symbols
+  );
+  const explicitCheck = delegatedPreflightCapabilityCheck(
+    leading.definition,
+    capability,
+    preflightContext,
+    literalBindings
+  );
+  const sources = capabilityServerProvenanceSources(
+    capability,
+    preflightContext
+  );
+  if ((!dominates && !explicitCheck) || sources?.size !== 1) {
+    return null;
+  }
+  return {
+    helperBinding: leading.binding,
+    sourceBindings: sourceBindings
+  };
+}
+
+function backgroundCapabilityDominates(
+  candidate,
+  capability,
+  context,
+  literalBindings = new Map()
+) {
   const definition = candidate.expression;
   const body = [
     "ArrowFunctionExpression",
@@ -9095,7 +9532,8 @@ function backgroundCapabilityDominates(candidate, capability, context) {
         statement.test,
         false,
         capability,
-        context
+        context,
+        literalBindings
       )
     ) {
       continue;
@@ -9197,6 +9635,17 @@ function capabilityDominates(candidate, capability, context) {
       context
     )
   ) {
+    return true;
+  }
+  const delegated = delegatedBackgroundCapabilityPreflight(
+    candidate,
+    capability,
+    context
+  );
+  if (delegated) {
+    for (const binding of delegated.sourceBindings) {
+      context.discoveredCapabilitySourceBindings?.add(binding);
+    }
     return true;
   }
   if (
@@ -12171,7 +12620,9 @@ function wrapperCausalProof(
   {
     candidate = null,
     variant = null,
-    businessDraftActionTrusted = false
+    businessDraftActionTrusted = false,
+    capability = null,
+    capabilityContext = null
   } = {}
 ) {
   const handlerBindings = topLevelScopeVariables(
@@ -12287,6 +12738,15 @@ function wrapperCausalProof(
         wrapper,
         symbols
       );
+    const delegatedPreflight =
+      capability && capabilityContext &&
+      current.binding === handlerBinding
+        ? delegatedBackgroundCapabilityPreflight(
+            { kind: "background_call", expression: definition },
+            capability,
+            capabilityContext
+          )
+        : null;
     for (const call of analysis.calls) {
       const callState = variantStateBeforeCall(
         definition,
@@ -12332,6 +12792,7 @@ function wrapperCausalProof(
         call.kind === "identifier" &&
         callBinding &&
         !safePreflightHelpers.has(callBinding) &&
+        callBinding !== delegatedPreflight?.helperBinding &&
         uniqueIndexedNode(
           symbols.definitionsByBinding,
           callBinding
@@ -12453,7 +12914,8 @@ function actionBindings({
   graph,
   symbols,
   candidate,
-  businessDraftActionTrusted
+  businessDraftActionTrusted,
+  capabilityContext
 }) {
   const bindings = [];
   for (const declared of action.wrappers) {
@@ -12497,7 +12959,9 @@ function actionBindings({
             variant:
               declared.variant ??
               action.trigger.variant,
-            businessDraftActionTrusted
+            businessDraftActionTrusted,
+            capability: action.capability,
+            capabilityContext
           }
         )
       : {
@@ -13908,6 +14372,22 @@ export async function inspectWholeSitePageActionManifest({
         handler: action.trigger.handler
       });
     }
+    const capabilityContext = {
+      symbols,
+      sourceFile: action.sourceFile,
+      source,
+      sources,
+      asts,
+      sourceFileSet,
+      serverReadImports: serverReadImportNames(
+        symbols,
+        wrapperIndex,
+        action.sourceFile
+      ),
+      discoveredCapabilitySourceBindings: new Set(),
+      registryVariant: action.trigger.variant,
+      businessDraftActionTrusted
+    };
     const bindings = actionBindings({
       action,
       wrapperIndex,
@@ -13916,7 +14396,8 @@ export async function inspectWholeSitePageActionManifest({
       graph: ownershipGraph,
       symbols,
       candidate,
-      businessDraftActionTrusted
+      businessDraftActionTrusted,
+      capabilityContext
     });
     for (const binding of bindings) {
       const boundWrapper = wrapperIndex.get(
@@ -13940,17 +14421,6 @@ export async function inspectWholeSitePageActionManifest({
     const writes = bindings.some((binding) =>
       isMutationRequest(binding)
     );
-    const capabilityContext = {
-      symbols,
-      serverReadImports: serverReadImportNames(
-        symbols,
-        wrapperIndex,
-        action.sourceFile
-      ),
-      discoveredCapabilitySourceBindings: new Set(),
-      registryVariant: action.trigger.variant,
-      businessDraftActionTrusted
-    };
     const dominatesTrigger =
       Boolean(candidate && source) &&
       capabilityDominates(
@@ -13958,11 +14428,11 @@ export async function inspectWholeSitePageActionManifest({
         action.capability,
         capabilityContext
       );
-    const capabilitySources =
-      capabilityServerProvenanceSources(
-        action.capability,
-        capabilityContext
-      );
+    const capabilityProvenance = capabilityServerProvenance(
+      action.capability,
+      capabilityContext
+    );
+    const capabilitySources = capabilityProvenance?.sources ?? null;
     const capabilityProvenanceTrusted =
       SERVER_CAPABILITY_KINDS.has(
         action.capability.kind
@@ -13971,7 +14441,9 @@ export async function inspectWholeSitePageActionManifest({
       [...capabilitySources].every((sourceIdentity) =>
         capabilitySourceUpstreamAssociationIsTrusted({
           sourceIdentity,
-          sourceFile: action.sourceFile,
+          sourceFile:
+            capabilityProvenance.sourceFiles.get(sourceIdentity) ??
+            action.sourceFile,
           webManifest,
           nestManifest
         })

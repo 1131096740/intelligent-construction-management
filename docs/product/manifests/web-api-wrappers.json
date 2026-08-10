@@ -1686,7 +1686,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2140,
+          "sourceLine": 2145,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1716,7 +1716,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2140,
+          "sourceLine": 2145,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1812,7 +1812,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1705,
+          "sourceLine": 1710,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -2070,7 +2070,6 @@
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
       "unreachableConsumers": []

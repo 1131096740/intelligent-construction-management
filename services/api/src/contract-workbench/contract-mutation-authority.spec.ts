@@ -17,19 +17,19 @@ describe("contract mutation authority", () => {
     ).toThrow("CONTRACT_MUTATION_AUTHORITY_OVERLAP");
   });
 
-  it("classifies the legacy historical takeover confirmation as an exit candidate", () => {
+  it("retains historical takeover confirmation as a governed command", () => {
     expect(
       classifyContractMutationRoute({
         method: "POST",
         controller: "ContractTakeoverController",
         handler: "confirm",
         contractCutoverSurface: true,
-        contractCutoverLegacyWrite: true,
+        contractCutoverLegacyWrite: false,
         contractCutoverTombstoneWrite: false
       })
     ).toEqual({
-      authority: "exit_candidate",
-      authorityRule: "legacy_cutover_exit"
+      authority: "governed_specialized_command",
+      authorityRule: "governed_specialized_command"
     });
   });
 

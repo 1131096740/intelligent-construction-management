@@ -1012,7 +1012,6 @@
             "normalizedPath": "/contract-drafts/:param/workbench",
             "normalizedKey": "GET /contract-drafts/:param/workbench",
             "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
             ]
           }
@@ -12800,7 +12799,7 @@
       "requiredProjectAction": "contract.archive.confirm",
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true,
+      "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
       "usage": "external_takeover",
       "classificationSource": "registry_override",

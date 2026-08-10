@@ -17,3 +17,16 @@ test("PR1 remediation has no duplicate mutation routes or web requests without N
   assert.deepEqual(manifest.blockers.frontendWithoutBackend, []);
   assert.deepEqual(pageManifest.blockers.unresolvedComponentForwards, []);
 });
+
+test("contract workbench authority snapshot remains a verified server capability gate", async () => {
+  const pageManifest = await inspectWholeSitePageActionManifest({ root });
+
+  assert.equal(
+    pageManifest.status,
+    "ready",
+    JSON.stringify(pageManifest.blockers)
+  );
+  assert.deepEqual(pageManifest.blockers.unresolvedWrappers, []);
+  assert.deepEqual(pageManifest.blockers.writeWithoutServerCapability, []);
+  assert.deepEqual(pageManifest.blockers.uncoveredMutationWrappers, []);
+});
