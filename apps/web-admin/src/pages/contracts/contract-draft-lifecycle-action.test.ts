@@ -1,4 +1,5 @@
 import {
+  computed,
   effectScope,
   reactive,
   ref,
@@ -35,9 +36,28 @@ type WorkbenchSnapshot = {
 };
 
 type DraftRuntime = {
-  workbench: Ref<WorkbenchSnapshot | null>;
+  authoritySnapshot: Ref<{
+    workbench: WorkbenchSnapshot;
+    contractId: string;
+    contractVersionId: string;
+    draftRevision: number;
+    capabilityReceipt: {
+      contractId: string;
+      contractVersionId: string;
+      draftRevision: number;
+    };
+    availableActions: WorkbenchSnapshot["availableActions"];
+    draftOperationAvailableActions: string[];
+    lease: { kind: string };
+    refreshRequired: boolean;
+    canWrite: boolean;
+    readonly: boolean;
+    lifecycleKind: WorkbenchSnapshot["lifecycleKind"];
+  } | null>;
   savedRevision: Ref<number>;
   load: ReturnType<typeof vi.fn>;
+  clearAuthoritySnapshot: ReturnType<typeof vi.fn>;
+  requireAuthorityRefresh: ReturnType<typeof vi.fn>;
   discardLocalState: ReturnType<typeof vi.fn>;
   suspendAutosaveForLifecycleAction: ReturnType<typeof vi.fn>;
   freezeForPendingPristineDraftDeletion: ReturnType<typeof vi.fn>;
@@ -176,6 +196,29 @@ function workbenchSnapshot(
 function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
   const workbench = ref<WorkbenchSnapshot | null>(null);
   const savedRevision = ref(initial.version.draftRevision);
+  const lease = ref({ kind: "active" });
+  const authoritySnapshot = computed(() => {
+    const snapshot = workbench.value;
+    if (!snapshot) return null;
+    return {
+      workbench: snapshot,
+      contractId: snapshot.contract.id,
+      contractVersionId: snapshot.version.id,
+      draftRevision: snapshot.version.draftRevision,
+      capabilityReceipt: {
+        contractId: snapshot.contract.id,
+        contractVersionId: snapshot.version.id,
+        draftRevision: snapshot.version.draftRevision
+      },
+      availableActions: snapshot.availableActions,
+      draftOperationAvailableActions: ["save_contract_draft"],
+      lease: lease.value,
+      refreshRequired: false,
+      canWrite: true,
+      readonly: false,
+      lifecycleKind: snapshot.lifecycleKind
+    };
+  });
   const model = reactive({
     taxMode: "tax_exclusive",
     defaultTaxRatePercent: "9"
@@ -194,6 +237,10 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
     return initial;
   });
   const discardLocalState = vi.fn();
+  const clearAuthoritySnapshot = vi.fn(() => {
+    workbench.value = null;
+  });
+  const requireAuthorityRefresh = vi.fn();
   const suspendAutosaveForLifecycleAction = vi.fn(() => true);
   const freezeForPendingPristineDraftDeletion = vi.fn();
   const failClosedAfterUncertainPristineDraftDeletion = vi.fn();
@@ -202,7 +249,7 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
   lifecycleRuntime.draft = {
     aggregateModel,
     model,
-    workbench,
+    authoritySnapshot,
     saveState: ref("saved"),
     saveError: ref(null),
     conflict: ref(null),
@@ -223,6 +270,8 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
       setAmountLimitType: vi.fn()
     },
     load,
+    clearAuthoritySnapshot,
+    requireAuthorityRefresh,
     markDirty: vi.fn(),
     discardLocalState,
     suspendAutosaveForLifecycleAction,
@@ -232,8 +281,6 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
     savedRevision,
     formalSaveCompleted: ref(false),
     lastSavedAt: ref(null),
-    lease: ref({ kind: "active" }),
-    canEdit: ref(true),
     pendingLocalRecovery: ref(null),
     saveNow: vi.fn(),
     queuePreviewForCurrentRevision: vi.fn(),
@@ -291,16 +338,16 @@ describe("contract draft lifecycle page delegation", () => {
     lifecycleRuntime.draft = null;
   });
 
-  it("keeps the action collection on the direct authoritative GET response", async () => {
+  it("renders lifecycle actions from the draft authority snapshot without a second GET", async () => {
     const capability = workbenchSnapshot();
     const { bindings, draft, scope } = await preparePage(capability);
 
     try {
-      expect(lifecycleRuntime.fetchWorkbench).toHaveBeenCalledWith("version-a");
+      expect(lifecycleRuntime.fetchWorkbench).not.toHaveBeenCalled();
       expect(bindings.contractDraftAvailableActions.value).toBe(
-        capability.availableActions
+        draft.authoritySnapshot.value?.availableActions
       );
-      expect(draft.workbench.value).not.toBe(capability);
+      expect(draft.authoritySnapshot.value?.workbench).not.toBe(capability);
     } finally {
       scope.stop();
     }
@@ -504,44 +551,6 @@ describe("contract draft lifecycle page delegation", () => {
 
     try {
       await bindings.confirmDeletePristineDraft(actionRequest());
-      expect(bindings.contractDraftAvailableActions.value).toBeNull();
-    } finally {
-      scope.stop();
-    }
-  });
-
-  it("rejects a mismatched capability GET before advertising an action", async () => {
-    const initial = workbenchSnapshot();
-    lifecycleRuntime.fetchWorkbench.mockResolvedValueOnce(
-      workbenchSnapshot("delete_pristine_draft", {
-        versionId: "version-other"
-      })
-    );
-    const { bindings, scope } = setupPage(initial);
-
-    try {
-      await expect(
-        bindings.loadExpectedWorkbench("contract-a")
-      ).rejects.toThrow("工作台返回的合同版本");
-      expect(bindings.contractDraftAvailableActions.value).toBeNull();
-    } finally {
-      scope.stop();
-    }
-  });
-
-  it("rejects a newer capability revision before advertising it on stale workbench data", async () => {
-    const initial = workbenchSnapshot();
-    lifecycleRuntime.fetchWorkbench.mockResolvedValueOnce(
-      workbenchSnapshot("delete_pristine_draft", {
-        revision: 13
-      })
-    );
-    const { bindings, scope } = setupPage(initial);
-
-    try {
-      await expect(
-        bindings.loadExpectedWorkbench("contract-a")
-      ).rejects.toThrow("工作台返回的合同版本");
       expect(bindings.contractDraftAvailableActions.value).toBeNull();
     } finally {
       scope.stop();

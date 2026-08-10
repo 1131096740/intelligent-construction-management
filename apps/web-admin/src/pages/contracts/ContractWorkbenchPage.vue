@@ -1033,8 +1033,7 @@
 import type {
   ContractReadinessResult,
   ContractSettlementMode,
-  ContractWorkbenchReadModel,
-  DetailActionReadModel
+  ContractWorkbenchReadModel
 } from "@jiangkong/shared-domain";
 import {
   computed,
@@ -1042,7 +1041,6 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
-  shallowRef,
   watch
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -1056,7 +1054,6 @@ import {
   executeDeletePristineContractDraftAction,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftTransferCapabilities,
-  fetchContractDraftWorkbench,
   listPublishedContractTemplates,
   previewContractTypeChange,
   transferContractDraft,
@@ -1069,23 +1066,39 @@ import {
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 
-async function checkContractSubmissionReadinessWithCapability(
-  contractVersionId: string
+async function assertCurrentContractDraftOperationCapability(
+  contractVersionId: string,
+  expectedRevision: number,
+  operation: string,
+  deniedMessage: string
 ) {
   const operationCapabilities =
     await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "check_contract_submission_readiness"
+  if (operationCapabilities.version.id !== contractVersionId) {
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "合同草稿能力响应版本不一致，请刷新后重试"
     );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能检查合同提交条件");
   }
+  if (operationCapabilities.version.draftRevision !== expectedRevision) {
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "合同草稿能力响应修订不一致，请刷新后重试"
+    );
+  }
+  if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
+    throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
+  }
+}
+
+async function checkContractSubmissionReadinessWithCapability(
+  contractVersionId: string,
+  expectedRevision: number
+) {
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    expectedRevision,
+    "check_contract_submission_readiness",
+    "当前用户不能检查合同提交条件"
+  );
   return checkContractSubmissionReadiness(contractVersionId);
 }
 
@@ -1093,20 +1106,12 @@ async function confirmContractSettlementModeWithCapability(
   contractVersionId: string,
   body: { expectedRevision: number; settlementMode: ContractSettlementMode }
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "confirm_contract_settlement_mode"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能确认合同结算方式");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    body.expectedRevision,
+    "confirm_contract_settlement_mode",
+    "当前用户不能确认合同结算方式"
+  );
   return confirmContractSettlementMode(contractVersionId, body);
 }
 
@@ -1117,20 +1122,12 @@ async function previewContractTypeChangeWithCapability(
     expectedRevision: number;
   }
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "preview_contract_type_change"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能预览合同类型迁移");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    body.expectedRevision,
+    "preview_contract_type_change",
+    "当前用户不能预览合同类型迁移"
+  );
   return previewContractTypeChange(contractVersionId, body);
 }
 
@@ -1141,20 +1138,12 @@ async function applyContractTypeChangeWithCapability(
     expectedRevision: number;
   }
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "apply_contract_type_change"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能执行合同类型迁移");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    body.expectedRevision,
+    "apply_contract_type_change",
+    "当前用户不能执行合同类型迁移"
+  );
   return applyContractTypeChange(contractVersionId, body);
 }
 
@@ -1166,18 +1155,24 @@ async function transferContractDraftWithCapability(
   const capability = await fetchContractDraftTransferCapabilities(contractId);
   const matchesRequestedContract = capability.contractId === contractId;
   if (!matchesRequestedContract) {
-    throw new Error("合同草稿能力响应合同不一致");
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "合同草稿能力响应合同不一致，请刷新后重试"
+    );
   }
   const matchesRequestedVersion =
     capability.contractVersionId === contractVersionId;
   if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "合同草稿能力响应版本不一致，请刷新后重试"
+    );
   }
   const operationAllowed = capability.availableActions.includes(
     "transfer_contract_draft"
   );
   if (!operationAllowed) {
-    throw new Error("当前用户不能转移合同草稿负责人");
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "当前用户不能转移合同草稿负责人"
+    );
   }
   return transferContractDraft(contractId, {
     toUserId,
@@ -1267,6 +1262,7 @@ import {
   type WorkbenchBill
 } from "./workbench/contract-bill-editor";
 import {
+  ContractDraftAuthorityRefreshRequiredError,
   useContractDraft,
   type ContractDraftModel
 } from "./workbench/use-contract-draft";
@@ -1294,7 +1290,7 @@ const draft = useContractDraft({
 const {
   aggregateModel,
   model,
-  workbench,
+  authoritySnapshot,
   saveState,
   saveError,
   conflict,
@@ -1302,6 +1298,8 @@ const {
   isDirty,
   initializeDraft,
   load,
+  clearAuthoritySnapshot,
+  requireAuthorityRefresh,
   markDirty,
   discardLocalState,
   suspendAutosaveForLifecycleAction,
@@ -1311,9 +1309,7 @@ const {
   savedRevision,
   formalSaveCompleted,
   lastSavedAt,
-  lease,
   currentLeaseToken,
-  canEdit,
   pendingLocalRecovery,
   localRecoveryError,
   saveNow,
@@ -1326,6 +1322,25 @@ const {
   keepLocalAfterConflict,
   loadServerAfterConflict
 } = draft;
+// The receipt remains deeply readonly at the composable boundary. Existing
+// presentation-only child props still describe the legacy mutable read model,
+// so narrow only the view type here without cloning or creating a second state.
+const workbench = computed<ContractWorkbenchReadModel | null>(() => {
+  const receipt = authoritySnapshot.value?.workbench;
+  return receipt ? (receipt as unknown as ContractWorkbenchReadModel) : null;
+});
+const lease = computed(() => authoritySnapshot.value?.lease ?? {
+  kind: "available" as const,
+  canTakeOver: false
+});
+const canEdit = computed(() => authoritySnapshot.value?.canWrite ?? false);
+
+function failClosedForAuthorityRefresh(error: unknown): void {
+  if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+    requireAuthorityRefresh();
+  }
+}
+
 const leaseTakeoverVisible = ref(false);
 const leaseTakeoverBusy = ref(false);
 const leaseTakeoverError = ref("");
@@ -1347,11 +1362,17 @@ const leaveSave = createContractWorkbenchLeaveSave({
   state: () => navigationState.value,
   flushBeforeLeave: saveNow
 });
-const contractDraftAvailableActions =
-  shallowRef<DetailActionReadModel[] | null>(null);
-const contractDraftOperationAvailableActions = shallowRef<string[]>([]);
+const contractDraftAvailableActions = computed(
+  () => authoritySnapshot.value?.availableActions ?? null
+);
+const contractDraftOperationAvailableActions = computed(
+  () => authoritySnapshot.value?.draftOperationAvailableActions ?? []
+);
 const contractDraftLifecycleVersionId = computed(
-  () => workbench.value?.version.id ?? ""
+  () => authoritySnapshot.value?.contractVersionId ?? ""
+);
+const contractDraftLifecycleRevision = computed(
+  () => authoritySnapshot.value?.draftRevision ?? 0
 );
 const deletePristineDraftConfig =
   businessDraftActionConfig.delete_pristine_draft;
@@ -1481,9 +1502,9 @@ function contractDraftLifecycleContextCurrent(
     context.generation === workbenchLoadRequestId &&
     contractId.value === context.contractId &&
     queryText(route.query.versionId).trim() === context.versionId &&
-    workbench.value?.contract.id === context.contractId &&
-    workbench.value.version.id === context.versionId &&
-    savedRevision.value === context.expectedRevision;
+    authoritySnapshot.value?.contractId === context.contractId &&
+    authoritySnapshot.value.contractVersionId === context.versionId &&
+    authoritySnapshot.value.draftRevision === context.expectedRevision;
 }
 
 async function finishContractDraftLifecycleAction(
@@ -1505,8 +1526,7 @@ function hideInvalidContractDraftLifecycleCapability(error: unknown) {
     code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
     code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
   ) {
-    contractDraftAvailableActions.value = null;
-    contractDraftOperationAvailableActions.value = [];
+    clearAuthoritySnapshot();
     deletePristineDraftVisible.value = false;
     abandonApplicationVisible.value = false;
   }
@@ -1558,7 +1578,7 @@ async function confirmDeletePristineDraft(request: {
     generation: workbenchLoadRequestId,
     contractId: contractId.value,
     versionId: contractDraftLifecycleVersionId.value,
-    expectedRevision: savedRevision.value,
+    expectedRevision: contractDraftLifecycleRevision.value,
     reason: request.reason,
     currentPassword: request.password,
     expectedRequiresComment: deletePristineDraftRequiresComment.value,
@@ -1585,7 +1605,7 @@ async function confirmAbandonApplication(request: {
     generation: workbenchLoadRequestId,
     contractId: contractId.value,
     versionId: contractDraftLifecycleVersionId.value,
-    expectedRevision: savedRevision.value,
+    expectedRevision: contractDraftLifecycleRevision.value,
     reason: request.reason,
     currentPassword: request.password,
     expectedRequiresComment: abandonApplicationRequiresComment.value,
@@ -1724,6 +1744,9 @@ const leaseCanTakeOver = computed(() =>
   "canTakeOver" in lease.value && lease.value.canTakeOver
 );
 const leaseReadonlyMessage = computed(() => {
+  if (authoritySnapshot.value?.refreshRequired) {
+    return "服务端已更新草稿修订，当前能力回执已过期；请刷新后继续编辑。";
+  }
   if (lease.value.kind === "lost") {
     if (lease.value.reason === "lease_expired") {
       return "编辑租约已超过有效期，未保存内容仍保留在本机；请刷新后重新取得租约。";
@@ -2094,8 +2117,6 @@ watch([saveState, isDirty], ([state, draftDirty]) => {
 onBeforeUnmount(() => {
   contractWorkbenchComponentAlive = false;
   workbenchLoadRequestId += 1;
-  contractDraftAvailableActions.value = null;
-  contractDraftOperationAvailableActions.value = [];
   deletePristineDraftVisible.value = false;
   deletePristineDraftRetryPending.value = false;
   abandonApplicationVisible.value = false;
@@ -2479,6 +2500,7 @@ async function onExistingTypeChange(value: string) {
     migrationPreview.value = preview;
     migrationVisible.value = true;
   } catch (error) {
+    failClosedForAuthorityRefresh(error);
     errorMessage.value = error instanceof Error ? error.message : "迁移预览失败";
   } finally {
     migrationBusy.value = false;
@@ -2521,6 +2543,7 @@ async function onConfirmMigration() {
     resetMigrationState();
     await loadExpectedWorkbench(contractId.value);
   } catch (error) {
+    failClosedForAuthorityRefresh(error);
     errorMessage.value = error instanceof Error ? error.message : "合同类型迁移失败";
   } finally {
     migrationBusy.value = false;
@@ -2566,6 +2589,18 @@ async function onSave() {
     errorMessage.value = saveError.value || "合同草稿未保存成功，已保留当前内容，请重试。";
     return;
   }
+  let refreshedAuthorityAfterSave = false;
+  if (authoritySnapshot.value?.refreshRequired) {
+    try {
+      await loadExpectedWorkbench(contractId.value);
+      refreshedAuthorityAfterSave = true;
+    } catch (error) {
+      errorMessage.value = error instanceof Error
+        ? `合同内容已保存，但工作台刷新失败：${error.message}`
+        : "合同内容已保存，但工作台刷新失败，请刷新页面后继续编辑。";
+      return;
+    }
+  }
   showManualSaveMessage(
     contractDraftPreviewFeedbackText({
       savedRevision: savedRevision.value,
@@ -2593,6 +2628,7 @@ async function onSave() {
     );
   }
   if (
+    !refreshedAuthorityAfterSave &&
     shouldReloadContractAfterManualSave({
       wasFormalSaveCompleted: wasFormallySaved,
       formalSaveCompleted: formalSaveCompleted.value,
@@ -2626,6 +2662,7 @@ async function onConfirmSettlementMode(mode: ContractSettlementMode) {
     await completeGovernanceMutation(true);
     showManualSaveMessage("结算方式已由合同部主管确认并保存。");
   } catch (error) {
+    failClosedForAuthorityRefresh(error);
     await completeGovernanceMutation(false);
     errorMessage.value = error instanceof Error
       ? error.message
@@ -2870,7 +2907,10 @@ async function confirmSubmission() {
   try {
     const current = await prepareGovernanceMutation();
     if (!current) throw new Error("草稿保存失败，本次未提交审批。");
-    const readiness = await checkContractSubmissionReadinessWithCapability(current.version.id) as {
+    const readiness = await checkContractSubmissionReadinessWithCapability(
+      current.version.id,
+      current.version.draftRevision
+    ) as {
       ready?: boolean;
       blocking?: unknown[];
       blockingMessages?: string[];
@@ -2894,6 +2934,7 @@ async function confirmSubmission() {
     navigationBypass.value = true;
     await router.push(`/contracts/${latest.contract.id}`);
   } catch (error) {
+    failClosedForAuthorityRefresh(error);
     submissionError.value = error instanceof Error
       ? error.message
       : "合同提交失败，已保留当前草稿，请按提示处理后重试。";
@@ -2934,6 +2975,7 @@ async function onConfirmTransfer() {
     transferUserId.value = "";
     await loadExpectedWorkbench(id);
   } catch (error) {
+    failClosedForAuthorityRefresh(error);
     errorMessage.value = error instanceof Error ? error.message : "转移失败";
   }
 }
@@ -2966,7 +3008,7 @@ async function loadExisting() {
         historicalTakeoverReturnTargetFromError(error);
       exactVersionError.value =
         "这是一份历史合同接管记录，不能按新签合同办理。请返回历史合同接管工作台继续处理。";
-      workbench.value = null;
+      clearAuthoritySnapshot();
       errorMessage.value = "";
       return;
     }
@@ -2976,7 +3018,7 @@ async function loadExisting() {
     ) {
       exactVersionError.value =
         "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
-      workbench.value = null;
+      clearAuthoritySnapshot();
     }
     errorMessage.value = error instanceof Error ? error.message : "工作台加载失败";
   }
@@ -2993,8 +3035,7 @@ function contractWorkbenchLoadContextCurrent(context: {
 async function loadExpectedWorkbench(id: string) {
   const requestId = ++workbenchLoadRequestId;
   const expectedVersionId = queryText(route.query.versionId).trim();
-  contractDraftAvailableActions.value = null;
-  contractDraftOperationAvailableActions.value = [];
+  clearAuthoritySnapshot();
   deletePristineDraftVisible.value = false;
   deletePristineDraftRetryPending.value = false;
   abandonApplicationVisible.value = false;
@@ -3005,29 +3046,17 @@ async function loadExpectedWorkbench(id: string) {
   }
   await load(expectedVersionId);
   if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
-  const capability = await fetchContractDraftWorkbench(expectedVersionId);
-  if (requestId !== workbenchLoadRequestId || id !== contractId.value) return;
+  const snapshot = authoritySnapshot.value;
   if (
-    capability.contract.id !== id ||
-    capability.version.id !== expectedVersionId ||
-    capability.version.draftRevision !== savedRevision.value ||
-    workbench.value?.contract.id !== id ||
-    workbench.value.version.id !== expectedVersionId ||
-    workbench.value.version.draftRevision !== savedRevision.value
+    !snapshot ||
+    snapshot.contractId !== id ||
+    snapshot.contractVersionId !== expectedVersionId
   ) {
     exactVersionError.value =
       "工作台返回的合同版本与刚创建的变更草稿不一致，已停止加载并保留原页面。";
-    workbench.value = null;
+    clearAuthoritySnapshot();
     throw new Error(exactVersionError.value);
   }
-  contractDraftAvailableActions.value = capability.availableActions!;
-  contractDraftOperationAvailableActions.value = Array.isArray(
-    capability.draftOperationAvailableActions
-  )
-    ? capability.draftOperationAvailableActions.filter(
-        (action): action is string => typeof action === "string"
-      )
-    : [];
 }
 
 function returnToContractDetail() {
@@ -3065,9 +3094,7 @@ watch(contractId, (next, previous) => {
     clearSessionSaveReceipt();
     focusedBillKey.value = "";
     workbenchLoadRequestId += 1;
-    contractDraftAvailableActions.value = null;
-    contractDraftOperationAvailableActions.value = [];
-    workbench.value = null;
+    clearAuthoritySnapshot();
     exactVersionError.value = "";
     historicalTakeoverRouteRequired.value = false;
     historicalTakeoverReturnTarget.value = null;
@@ -3080,9 +3107,7 @@ watch(() => route.query.versionId, (next, previous) => {
     clearManualSaveMessage();
     clearSessionSaveReceipt();
     workbenchLoadRequestId += 1;
-    contractDraftAvailableActions.value = null;
-    contractDraftOperationAvailableActions.value = [];
-    workbench.value = null;
+    clearAuthoritySnapshot();
     exactVersionError.value = "";
     historicalTakeoverRouteRequired.value = false;
     historicalTakeoverReturnTarget.value = null;

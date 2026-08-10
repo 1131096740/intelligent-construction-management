@@ -4,7 +4,8 @@ import type {
   ContractInvoiceType,
   ContractReadinessResult,
   ContractTemplateSchema,
-  ContractTaxMode
+  ContractTaxMode,
+  DetailActionReadModel
 } from "@jiangkong/shared-domain";
 import {
   computed,
@@ -15,6 +16,7 @@ import {
   ref,
   shallowRef,
   type ComputedRef,
+  type DeepReadonly,
   type Ref
 } from "vue";
 import {
@@ -75,6 +77,17 @@ import {
 /** Backend phrase emitted on optimistic-lock failure (Task 9). */
 const REVISION_CONFLICT_PHRASE = "Contract draft revision conflict";
 
+/**
+ * A fresh server capability receipt no longer describes the loaded workbench.
+ * Callers must reload before they can attempt another governed operation.
+ */
+export class ContractDraftAuthorityRefreshRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ContractDraftAuthorityRefreshRequiredError";
+  }
+}
+
 async function createWorkbenchDraftWithCapability(
   payload: CreateWorkbenchDraftPayload
 ) {
@@ -92,86 +105,81 @@ async function createWorkbenchDraftWithCapability(
   return createWorkbenchDraft(payload);
 }
 
-async function acquireContractDraftEditLeaseWithCapability(
-  contractVersionId: string
+async function assertCurrentContractDraftOperationCapability(
+  contractVersionId: string,
+  expectedRevision: number,
+  operation: string,
+  deniedMessage: string
 ) {
   const operationCapabilities =
     await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "acquire_contract_draft_edit_lease"
+  if (operationCapabilities.version.id !== contractVersionId) {
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "合同草稿能力响应版本不一致，请刷新后重试"
     );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能取得合同草稿编辑租约");
   }
+  if (operationCapabilities.version.draftRevision !== expectedRevision) {
+    throw new ContractDraftAuthorityRefreshRequiredError(
+      "合同草稿能力响应修订不一致，请刷新后重试"
+    );
+  }
+  if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
+    throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
+  }
+}
+
+async function acquireContractDraftEditLeaseWithCapability(
+  contractVersionId: string,
+  expectedRevision: number
+) {
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    expectedRevision,
+    "acquire_contract_draft_edit_lease",
+    "当前用户不能取得合同草稿编辑租约"
+  );
   return acquireContractDraftEditLease(contractVersionId);
 }
 
 async function heartbeatContractDraftEditLeaseWithCapability(
   contractVersionId: string,
+  expectedRevision: number,
   leaseToken: string
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "heartbeat_contract_draft_edit_lease"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能续期合同草稿编辑租约");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    expectedRevision,
+    "heartbeat_contract_draft_edit_lease",
+    "当前用户不能续期合同草稿编辑租约"
+  );
   return heartbeatContractDraftEditLease(contractVersionId, leaseToken);
 }
 
 async function releaseContractDraftEditLeaseWithCapability(
   contractVersionId: string,
+  expectedRevision: number,
   leaseToken: string
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "release_contract_draft_edit_lease"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能释放合同草稿编辑租约");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    expectedRevision,
+    "release_contract_draft_edit_lease",
+    "当前用户不能释放合同草稿编辑租约"
+  );
   return releaseContractDraftEditLease(contractVersionId, leaseToken);
 }
 
 async function takeOverContractDraftEditLeaseWithCapability(
   contractVersionId: string,
+  expectedRevision: number,
   confirmation: { currentPassword: string }
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "take_over_contract_draft_edit_lease"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能接管合同草稿编辑租约");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    expectedRevision,
+    "take_over_contract_draft_edit_lease",
+    "当前用户不能接管合同草稿编辑租约"
+  );
   return takeOverContractDraftEditLease(contractVersionId, confirmation);
 }
 
@@ -180,20 +188,12 @@ async function autoSaveContractDraftAggregateWithCapability(
   leaseToken: string,
   payload: SaveContractDraftAggregatePayload
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "save_contract_draft"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能保存合同草稿");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    payload.expectedRevision,
+    "save_contract_draft",
+    "当前用户不能保存合同草稿"
+  );
   return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
 }
 
@@ -202,20 +202,12 @@ async function manualSaveContractDraftAggregateWithCapability(
   leaseToken: string,
   payload: SaveContractDraftAggregatePayload
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "save_contract_draft"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能保存合同草稿");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    payload.expectedRevision,
+    "save_contract_draft",
+    "当前用户不能保存合同草稿"
+  );
   return saveContractDraftAggregate(contractVersionId, leaseToken, payload);
 }
 
@@ -223,20 +215,12 @@ async function queueContractDraftPreviewWithCapability(
   contractVersionId: string,
   sourceRevision: number
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "queue_contract_draft_preview"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能生成合同草稿预览");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    sourceRevision,
+    "queue_contract_draft_preview",
+    "当前用户不能生成合同草稿预览"
+  );
   return queueContractDraftPreview(contractVersionId, sourceRevision);
 }
 
@@ -245,20 +229,12 @@ async function submitContractDraftWithCapability(
   leaseToken: string,
   payload: { expectedRevision: number; idempotencyKey: string }
 ) {
-  const operationCapabilities =
-    await fetchContractDraftOperationCapabilities(contractVersionId);
-  const matchesRequestedVersion =
-    operationCapabilities.version.id === contractVersionId;
-  if (!matchesRequestedVersion) {
-    throw new Error("合同草稿能力响应版本不一致");
-  }
-  const operationAllowed =
-    operationCapabilities.draftOperationAvailableActions.includes(
-      "submit_contract_draft"
-    );
-  if (!operationAllowed) {
-    throw new Error("当前用户不能提交合同草稿");
-  }
+  await assertCurrentContractDraftOperationCapability(
+    contractVersionId,
+    payload.expectedRevision,
+    "submit_contract_draft",
+    "当前用户不能提交合同草稿"
+  );
   return submitContractDraft(contractVersionId, leaseToken, payload);
 }
 
@@ -451,11 +427,34 @@ export interface UseContractDraftOptions {
   userId?: () => string | null | undefined;
 }
 
+export interface ContractDraftAuthoritySnapshot {
+  /** The only server workbench receipt the page may use to render authority. */
+  readonly workbench: DeepReadonly<ContractDraftWorkbenchReadModel>;
+  readonly contractId: string;
+  readonly contractVersionId: string;
+  readonly draftRevision: number;
+  readonly capabilityReceipt: {
+    readonly contractId: string;
+    readonly contractVersionId: string;
+    readonly draftRevision: number;
+  };
+  readonly availableActions: readonly DetailActionReadModel[];
+  readonly draftOperationAvailableActions: readonly string[];
+  readonly lease: Readonly<ContractDraftLeaseView>;
+  readonly refreshRequired: boolean;
+  readonly canWrite: boolean;
+  readonly readonly: boolean;
+  readonly lifecycleKind: NonNullable<
+    ContractDraftWorkbenchReadModel["version"]["draftLifecycleKind"]
+  > | null;
+}
+
 export interface UseContractDraft {
   aggregateModel: ContractDraftAggregateModel;
   /** Transitional view over aggregateModel.draft for existing section components. */
   model: ContractDraftModel;
-  workbench: Ref<ContractDraftWorkbenchReadModel | null>;
+  /** Exact version, revision, capability, lease, and lifecycle receipt for the page. */
+  authoritySnapshot: ComputedRef<ContractDraftAuthoritySnapshot | null>;
   saveState: Ref<ContractDraftSaveState>;
   saveError: Readonly<Ref<string>>;
   conflict: Ref<ContractDraftConflict | null>;
@@ -468,10 +467,8 @@ export interface UseContractDraft {
   formalSaveCompleted: Readonly<Ref<boolean>>;
   /** Client time of the latest successful server save in this editing session. */
   lastSavedAt: Readonly<Ref<Date | null>>;
-  lease: Readonly<Ref<ContractDraftLeaseView>>;
   /** Returns the current in-memory edit lease only to an immediate governed write. */
   currentLeaseToken: () => string | null;
-  canEdit: ComputedRef<boolean>;
   pendingLocalRecovery: Ref<
     ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
   >;
@@ -481,6 +478,10 @@ export interface UseContractDraft {
   load: (
     contractVersionId: string
   ) => Promise<ContractDraftWorkbenchReadModel | null>;
+  /** Clears a stale page projection without creating another authority owner. */
+  clearAuthoritySnapshot: () => void;
+  /** Fails closed until the page reloads an exact server authority receipt. */
+  requireAuthorityRefresh: () => void;
   /** Re-fetches the currently loaded workbench through the same guarded load path. */
   reload: () => Promise<void>;
   markDirty: (section?: ContractDraftChangedSection) => void;
@@ -1200,8 +1201,11 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
   }) as ContractDraftAggregateModel;
   const model = aggregateModel.draft;
+  // This receipt is never merged with local edits or save responses. It is the
+  // only workbench projection exposed to the page for authority decisions.
+  const workbenchReceipt = ref<ContractDraftWorkbenchReadModel | null>(null);
   const workbench = ref<ContractDraftWorkbenchReadModel | null>(null);
-  const contractDraftOperationAvailableActions = ref<string[]>([]);
+  const authorityRefreshRequired = ref(false);
   const saveError = ref("");
   const conflict = ref<ContractDraftConflict | null>(null);
   const formalSaveCompleted = ref(false);
@@ -1263,6 +1267,70 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   const canEdit = computed(
     () => !submissionCompleted.value && contractDraftLeaseCanEdit(lease.value)
   );
+  const authoritySnapshot = computed<ContractDraftAuthoritySnapshot | null>(() => {
+    const currentWorkbench = workbenchReceipt.value;
+    const versionId = contractVersionId.value;
+    if (
+      !currentWorkbench ||
+      !versionId ||
+      currentWorkbench.version.id !== versionId
+    ) {
+      return null;
+    }
+    const capabilityReceipt = Object.freeze({
+      contractId: currentWorkbench.contract.id,
+      contractVersionId: currentWorkbench.version.id,
+      draftRevision: currentWorkbench.version.draftRevision
+    });
+    const refreshRequired =
+      authorityRefreshRequired.value ||
+      capabilityReceipt.draftRevision !== currentRevision.value;
+    const receiptDraftOperationAvailableActions = Object.freeze(
+      Array.isArray(currentWorkbench.draftOperationAvailableActions)
+        ? currentWorkbench.draftOperationAvailableActions.filter(
+            (action): action is string => typeof action === "string"
+          )
+        : []
+    );
+    const receiptAvailableActions = Object.freeze(
+      Array.isArray(currentWorkbench.availableActions)
+        ? currentWorkbench.availableActions.map((action) =>
+            Object.freeze({ ...action })
+          )
+        : []
+    );
+    const draftOperationAvailableActions = refreshRequired
+      ? Object.freeze([])
+      : receiptDraftOperationAvailableActions;
+    const availableActions = refreshRequired
+      ? Object.freeze([])
+      : receiptAvailableActions;
+    const canWrite = !refreshRequired && canEdit.value &&
+      draftOperationAvailableActions.includes("save_contract_draft");
+    return Object.freeze({
+      workbench: readonly(currentWorkbench),
+      contractId: currentWorkbench.contract.id,
+      contractVersionId: versionId,
+      draftRevision: capabilityReceipt.draftRevision,
+      capabilityReceipt,
+      availableActions,
+      draftOperationAvailableActions,
+      lease: Object.freeze({ ...lease.value }),
+      refreshRequired,
+      canWrite,
+      readonly: !canWrite,
+      lifecycleKind: currentWorkbench.version.draftLifecycleKind ?? null
+    });
+  });
+
+  function hasAuthorityOperation(operation: string): boolean {
+    return authoritySnapshot.value?.draftOperationAvailableActions.includes(operation) ?? false;
+  }
+
+  function requireAuthorityRefresh(): void {
+    authorityRefreshRequired.value = true;
+    cancelScheduledSave();
+  }
 
   function currentLeaseToken(): string | null {
     return canEdit.value && leaseToken ? leaseToken : null;
@@ -1434,9 +1502,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       disposed ||
       !versionId ||
       !token ||
-      !contractDraftOperationAvailableActions.value.includes(
-        "heartbeat_contract_draft_edit_lease"
-      ) ||
+      !hasAuthorityOperation("heartbeat_contract_draft_edit_lease") ||
       lease.value.kind !== "held"
     ) {
       return false;
@@ -1448,6 +1514,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     try {
       const result = await heartbeatContractDraftEditLeaseWithCapability(
         versionId,
+        currentRevision.value,
         token
       );
       if (
@@ -1476,6 +1543,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       ) {
         return false;
       }
+      if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+        requireAuthorityRefresh();
+        return false;
+      }
       const reason = leaseLossReason(error);
       if (reason) {
         loseLease(reason);
@@ -1502,17 +1573,25 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       !versionId ||
       disposed ||
-      !contractDraftOperationAvailableActions.value.includes(
-        "take_over_contract_draft_edit_lease"
-      ) ||
+      !hasAuthorityOperation("take_over_contract_draft_edit_lease") ||
       !("canTakeOver" in lease.value) ||
       !lease.value.canTakeOver
     ) {
       return false;
     }
-    const grant = await takeOverContractDraftEditLeaseWithCapability(versionId, {
-      currentPassword
-    });
+    let grant: Awaited<ReturnType<typeof takeOverContractDraftEditLease>>;
+    try {
+      grant = await takeOverContractDraftEditLeaseWithCapability(
+        versionId,
+        currentRevision.value,
+        { currentPassword }
+      );
+    } catch (error) {
+      if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+        requireAuthorityRefresh();
+      }
+      throw error;
+    }
     if (disposed || contractVersionId.value !== versionId) return false;
     setLeaseGrant(grant);
     return true;
@@ -1526,11 +1605,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       versionId &&
       token &&
-      contractDraftOperationAvailableActions.value.includes(
-        "release_contract_draft_edit_lease"
-      )
+      hasAuthorityOperation("release_contract_draft_edit_lease")
     ) {
-      void releaseContractDraftEditLeaseWithCapability(versionId, token).catch(() => {
+      void releaseContractDraftEditLeaseWithCapability(
+        versionId,
+        currentRevision.value,
+        token
+      ).catch(() => {
         // Unload release is best effort and must never extend the lease.
       });
     }
@@ -1673,14 +1754,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       releaseCurrentLease();
     }
     workbench.value = structuredClone(result);
-    contractDraftOperationAvailableActions.value = Array.isArray(
-      result.draftOperationAvailableActions
-    )
-      ? result.draftOperationAvailableActions.filter(
-          (action): action is string => typeof action === "string"
-        )
-      : [];
+    workbenchReceipt.value = structuredClone(result);
     contractVersionId.value = result.version.id;
+    authorityRefreshRequired.value = false;
     aggregateSaveState.value = createAggregateSaveState(
       result.version.draftRevision
     );
@@ -1705,14 +1781,21 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       !leaseToken &&
       canAutoAcquireLease &&
-      contractDraftOperationAvailableActions.value.includes(
-        "acquire_contract_draft_edit_lease"
-      ) &&
+      hasAuthorityOperation("acquire_contract_draft_edit_lease") &&
       (result.lease.state === "available" || result.lease.state === "expired")
     ) {
-      const lease = await acquireContractDraftEditLeaseWithCapability(
-        requestedVersionId
-      );
+      let lease: Awaited<ReturnType<typeof acquireContractDraftEditLease>>;
+      try {
+        lease = await acquireContractDraftEditLeaseWithCapability(
+          requestedVersionId,
+          result.version.draftRevision
+        );
+      } catch (error) {
+        if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+          requireAuthorityRefresh();
+        }
+        throw error;
+      }
       if (disposed || requestId !== loadRequestId) return null;
       setLeaseGrant(lease);
     } else if (!leaseToken) {
@@ -1805,9 +1888,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       disposed ||
       !savingVersionId ||
-      !contractDraftOperationAvailableActions.value.includes(
-        "save_contract_draft"
-      )
+      !authoritySnapshot.value?.canWrite
     ) {
       return false;
     }
@@ -1938,6 +2019,14 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
           );
           loseLease(lostReason);
           saveError.value = "编辑租约已失效，页面已转为只读；未保存内容仍保留在本机。";
+        } else if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+          requireAuthorityRefresh();
+          aggregateSaveState.value = failAggregateSave(
+            aggregateSaveState.value,
+            "readonly",
+            error.message
+          );
+          saveError.value = error.message;
         } else {
           const message =
             error instanceof Error ? error.message : "合同草稿保存失败";
@@ -2006,9 +2095,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (
       disposed ||
       !versionId ||
-      !contractDraftOperationAvailableActions.value.includes(
-        "queue_contract_draft_preview"
-      ) ||
+      !hasAuthorityOperation("queue_contract_draft_preview") ||
       !formalSaveCompleted.value ||
       dirtyRef.value ||
       activeSave ||
@@ -2016,10 +2103,17 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     ) {
       return false;
     }
-    await queueContractDraftPreviewWithCapability(
-      versionId,
-      currentRevision.value
-    );
+    try {
+      await queueContractDraftPreviewWithCapability(
+        versionId,
+        currentRevision.value
+      );
+    } catch (error) {
+      if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+        requireAuthorityRefresh();
+      }
+      throw error;
+    }
     return true;
   }
 
@@ -2051,10 +2145,18 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
 
     const request = pendingSubmissionRequest;
-    const result = await submitContractDraftWithCapability(versionId, token, {
-      expectedRevision: request.expectedRevision,
-      idempotencyKey: request.idempotencyKey
-    });
+    let result: ContractDraftSubmissionResult;
+    try {
+      result = await submitContractDraftWithCapability(versionId, token, {
+        expectedRevision: request.expectedRevision,
+        idempotencyKey: request.idempotencyKey
+      });
+    } catch (error) {
+      if (error instanceof ContractDraftAuthorityRefreshRequiredError) {
+        requireAuthorityRefresh();
+      }
+      throw error;
+    }
     if (contractVersionId.value !== versionId) return null;
     if (result.contractVersionId !== versionId) {
       throw new Error(
@@ -2114,7 +2216,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
         );
         return false;
       }
-      workbench.value = fresh;
+      workbench.value = structuredClone(fresh);
+      workbenchReceipt.value = structuredClone(fresh);
+      authorityRefreshRequired.value = false;
       aggregateSaveState.value = {
         ...aggregateSaveState.value,
         serverRevision: fresh.version.draftRevision
@@ -2219,6 +2323,10 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     await load(versionId);
   }
 
+  function clearAuthoritySnapshot(): void {
+    workbenchReceipt.value = null;
+  }
+
   // -- Draft creation (/contracts/new) ----------------------------------------
 
   const initProjectId = ref("");
@@ -2302,7 +2410,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       }
       loadRequestId += 1;
       contractVersionId.value = null;
-      contractDraftOperationAvailableActions.value = [];
+      workbenchReceipt.value = null;
+      authorityRefreshRequired.value = false;
       pausedRef.value = false;
       conflict.value = null;
     });
@@ -2311,7 +2420,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
   return {
     aggregateModel,
     model,
-    workbench,
+    authoritySnapshot,
     saveState,
     saveError: readonly(saveError),
     conflict,
@@ -2320,13 +2429,13 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     savedRevision: readonly(currentRevision),
     formalSaveCompleted: readonly(formalSaveCompleted),
     lastSavedAt: readonly(lastSavedAt),
-    lease: readonly(lease),
     currentLeaseToken,
-    canEdit,
     pendingLocalRecovery,
     localRecoveryError: readonly(localRecoveryError),
     initializeDraft,
     load,
+    clearAuthoritySnapshot,
+    requireAuthorityRefresh,
     reload: reloadWorkbench,
     markDirty,
     discardLocalState,
