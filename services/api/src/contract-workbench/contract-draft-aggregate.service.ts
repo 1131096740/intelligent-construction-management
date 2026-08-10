@@ -14,6 +14,7 @@ import { lockContractDraftMutationBoundary } from "../contract/contract-draft-li
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ContractWorkbenchService } from "./contract-workbench.service";
+import { projectContractDraftOperationCapabilities } from "./contract-mutation-authority";
 import type {
   SaveContractDraftAggregateDto,
   SaveContractDraftAttachmentDto
@@ -83,7 +84,7 @@ export class ContractDraftAggregateService {
     const isOriginalDraft = version.changeType !== "change" &&
       version.changeType !== "supplement";
     const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
-    const draftOperationAvailableActions = [
+    const draftOperationAvailableActions = projectContractDraftOperationCapabilities([
       ...(isOwner && isEditableDraft ? [
         "acquire_contract_draft_edit_lease",
         ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
@@ -123,7 +124,7 @@ export class ContractDraftAggregateService {
         "transfer_contract_draft"
       ] : []),
       ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
-    ];
+    ]);
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {

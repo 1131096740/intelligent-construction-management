@@ -50,6 +50,10 @@ test("release manifest orchestration builds once then runs each required check o
         "--require-ready"
       ],
       [
+        "scripts/inspect-contract-mutation-authority-manifest.mjs",
+        "--check"
+      ],
+      [
         "scripts/inspect-whole-site-capability-matrix.mjs",
         "--check",
         "--require-ready"
