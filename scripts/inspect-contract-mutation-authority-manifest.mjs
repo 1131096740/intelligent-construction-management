@@ -100,7 +100,10 @@ export function assertRouteUsageMatchesRuntime({ nestManifest, routeUsage }) {
     [...documentedIdentities].some((identity) => !runtimeIdentities.has(identity)) ||
     runtimeRoutes.some((route) =>
       documentedRoutesByIdentity.get(runtimeRouteIdentity(route))
-        ?.contractCutoverLegacyWrite !== route.contractCutoverLegacyWrite
+        ?.contractCutoverLegacyWrite !== route.contractCutoverLegacyWrite ||
+      documentedRoutesByIdentity.get(runtimeRouteIdentity(route))
+        ?.contractCutoverTombstoneWrite !==
+        route.contractCutoverTombstoneWrite
     )
   ) {
     throw cliError("CONTRACT_MUTATION_AUTHORITY_RUNTIME_ROUTE_DRIFT");

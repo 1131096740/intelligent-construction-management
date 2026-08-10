@@ -8,7 +8,8 @@ import { Reflector } from "@nestjs/core";
 import type { AuthenticatedRequest } from "../auth/auth.types";
 import {
   CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
-  CONTRACT_CUTOVER_SURFACE_KEY
+  CONTRACT_CUTOVER_SURFACE_KEY,
+  CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY
 } from "./contract-cutover.decorators";
 
 type ContractCutoverMode =
@@ -58,18 +59,18 @@ export class ContractCutoverGuard implements CanActivate {
       CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
       [context.getHandler(), context.getClass()]
     );
+    const isTombstoneWrite = this.reflector.getAllAndOverride<boolean>(
+      CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY,
+      [context.getHandler(), context.getClass()]
+    );
+    if (isTombstoneWrite) {
+      throw this.clientUpgradeException();
+    }
     if (
       isLegacyWrite &&
       (mode === "release-b-maintenance" || mode === "release-b")
     ) {
-      throw new HttpException(
-        {
-          statusCode: 410,
-          code: "CONTRACT_WORKBENCH_CLIENT_UPGRADE_REQUIRED",
-          message: "合同工作台已升级，请刷新页面后继续办理"
-        },
-        410
-      );
+      throw this.clientUpgradeException();
     }
 
     if (mode === "maintenance") {
@@ -110,6 +111,17 @@ export class ContractCutoverGuard implements CanActivate {
         message: "合同工作台正在升级维护，请稍后刷新重试"
       },
       503
+    );
+  }
+
+  private clientUpgradeException(): HttpException {
+    return new HttpException(
+      {
+        statusCode: 410,
+        code: "CONTRACT_WORKBENCH_CLIENT_UPGRADE_REQUIRED",
+        message: "合同工作台已升级，请刷新页面后继续办理"
+      },
+      410
     );
   }
 }

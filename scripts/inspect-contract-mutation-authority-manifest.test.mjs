@@ -16,6 +16,7 @@ function route(overrides = {}) {
     handler: "command",
     contractCutoverSurface: true,
     contractCutoverLegacyWrite: false,
+    contractCutoverTombstoneWrite: false,
     usage: "page",
     ...overrides
   };
@@ -84,6 +85,43 @@ test("classifies each contract mutation once and projects only executable action
   assert.deepEqual(manifest.actionProjection.advertisedActionKeys, [
     "save_contract_draft"
   ]);
+});
+
+test("does not advertise tombstoned contract mutation writes", () => {
+  const manifest = buildContractMutationAuthorityManifest({
+    routeUsage: {
+      routes: [
+        route({
+          path: "/contract-workbench/:contractVersionId/parties",
+          controller: "BusinessPartyController",
+          handler: "tombstoned",
+          contractCutoverTombstoneWrite: true
+        })
+      ]
+    },
+    classifyRoute,
+    operationTargets: {
+      tombstoned_party_write: {
+        method: "POST",
+        controller: "BusinessPartyController",
+        handler: "tombstoned"
+      }
+    },
+    classifyTarget: classifyRoute
+  });
+
+  assert.equal(manifest.status, "ready");
+  assert.deepEqual(manifest.routes, [{
+    method: "POST",
+    path: "/contract-workbench/:contractVersionId/parties",
+    controller: "BusinessPartyController",
+    handler: "tombstoned",
+    tombstoned: true,
+    authority: "governed_specialized_command",
+    authorityRule: "governed_specialized_command"
+  }]);
+  assert.deepEqual(manifest.actionProjection.advertisedActionKeys, []);
+  assert.equal(manifest.actionProjection.targets[0].advertised, false);
 });
 
 test("blocks route-usage authority drift", () => {
@@ -161,6 +199,16 @@ test("blocks a stale legacy-write flag for a runtime contract mutation", () => {
     () => assertRouteUsageMatchesRuntime({
       nestManifest: [route({ contractCutoverLegacyWrite: true })],
       routeUsage: { routes: [route({ contractCutoverLegacyWrite: false })] }
+    }),
+    (error) => error?.code === "CONTRACT_MUTATION_AUTHORITY_RUNTIME_ROUTE_DRIFT"
+  );
+});
+
+test("blocks a stale tombstone-write flag for a runtime contract mutation", () => {
+  assert.throws(
+    () => assertRouteUsageMatchesRuntime({
+      nestManifest: [route({ contractCutoverTombstoneWrite: true })],
+      routeUsage: { routes: [route({ contractCutoverTombstoneWrite: false })] }
     }),
     (error) => error?.code === "CONTRACT_MUTATION_AUTHORITY_RUNTIME_ROUTE_DRIFT"
   );

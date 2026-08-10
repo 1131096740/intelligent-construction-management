@@ -105,7 +105,8 @@ function collect(controllerClasses, sources, overrides = {}) {
       requiredPositions: "requiredPositions",
       requiredProjectAction: "requiredProjectAction",
       contractCutoverSurface: "contract_cutover_surface",
-      contractCutoverLegacyWrite: "contract_cutover_legacy_write"
+      contractCutoverLegacyWrite: "contract_cutover_legacy_write",
+      contractCutoverTombstoneWrite: "contract_cutover_tombstone_write"
     },
     requestMethodNames: methodNames(),
     roleKeys: ROLE_KEYS,
@@ -144,7 +145,8 @@ test("defaults an undecorated guard surface to authenticated_only", () => {
     requiredProjectAction: null,
     authorizationCombination: null,
     contractCutoverSurface: false,
-    contractCutoverLegacyWrite: false
+    contractCutoverLegacyWrite: false,
+    contractCutoverTombstoneWrite: false
   });
 });
 
@@ -253,7 +255,7 @@ test("marks positions and project action metadata as AND", () => {
   assert.equal(entry.authorizationCombination, "AND");
 });
 
-test("captures contract cutover surface and legacy write metadata", () => {
+test("captures contract cutover surface, legacy and tombstone write metadata", () => {
   class CutoverController {
     save() {}
   }
@@ -262,6 +264,11 @@ test("captures contract cutover surface and legacy write metadata", () => {
   Reflect.defineMetadata("contract_cutover_surface", true, CutoverController);
   Reflect.defineMetadata(
     "contract_cutover_legacy_write",
+    true,
+    CutoverController.prototype.save
+  );
+  Reflect.defineMetadata(
+    "contract_cutover_tombstone_write",
     true,
     CutoverController.prototype.save
   );
@@ -279,6 +286,7 @@ test("captures contract cutover surface and legacy write metadata", () => {
 
   assert.equal(entry.contractCutoverSurface, true);
   assert.equal(entry.contractCutoverLegacyWrite, true);
+  assert.equal(entry.contractCutoverTombstoneWrite, true);
 });
 
 test("expands controller, handler and method arrays and normalizes parameters", () => {

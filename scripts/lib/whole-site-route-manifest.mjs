@@ -424,7 +424,18 @@ export function collectControllerRouteManifest({
             controllerClass
           )
         );
-        if (contractCutoverLegacyWrite && !contractCutoverSurface) {
+        const contractCutoverTombstoneWrite = booleanMetadata(
+          overriddenMetadata(
+            reflector,
+            metadataKeys.contractCutoverTombstoneWrite,
+            handler,
+            controllerClass
+          )
+        );
+        if (
+          (contractCutoverLegacyWrite || contractCutoverTombstoneWrite) &&
+          !contractCutoverSurface
+        ) {
           throw manifestError("ROUTE_MANIFEST_INVALID_GUARD_METADATA");
         }
 
@@ -459,7 +470,8 @@ export function collectControllerRouteManifest({
                     ? "AND"
                     : null,
                 contractCutoverSurface,
-                contractCutoverLegacyWrite
+                contractCutoverLegacyWrite,
+                contractCutoverTombstoneWrite
               });
             }
           }
@@ -694,7 +706,8 @@ export async function inspectBuiltNestRouteManifest({ root }) {
     );
     const {
       CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
-      CONTRACT_CUTOVER_SURFACE_KEY
+      CONTRACT_CUTOVER_SURFACE_KEY,
+      CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY
     } = apiRequire(
       join(
         resolvedRoot,
@@ -738,7 +751,8 @@ export async function inspectBuiltNestRouteManifest({ root }) {
         requiredPositions: REQUIRED_POSITIONS_KEY,
         requiredProjectAction: REQUIRED_PROJECT_ACTION_KEY,
         contractCutoverSurface: CONTRACT_CUTOVER_SURFACE_KEY,
-        contractCutoverLegacyWrite: CONTRACT_CUTOVER_LEGACY_WRITE_KEY
+        contractCutoverLegacyWrite: CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
+        contractCutoverTombstoneWrite: CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY
       },
       requestMethodNames: requestMethodNameMap(RequestMethod),
       roleKeys: ROLE_KEYS,

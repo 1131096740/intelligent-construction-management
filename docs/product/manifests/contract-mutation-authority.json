@@ -28,6 +28,7 @@
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "deleteRow",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -36,6 +37,7 @@
       "path": "/contract-drafts/:contractVersionId",
       "controller": "ContractDraftController",
       "handler": "deleteDraft",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -44,6 +46,7 @@
       "path": "/contract-drafts/:contractVersionId/edit-lease",
       "controller": "ContractDraftController",
       "handler": "releaseEditLease",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -52,6 +55,7 @@
       "path": "/contract-versions/:toContractVersionId/bill-transitions",
       "controller": "ContractBillTransitionController",
       "handler": "discard",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -60,14 +64,16 @@
       "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
       "controller": "BusinessPartyController",
       "handler": "removeContractParty",
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "PATCH",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "updateRow",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -76,6 +82,7 @@
       "path": "/contract-workbench/:contractVersionId",
       "controller": "ContractWorkbenchController",
       "handler": "save",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -84,14 +91,16 @@
       "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
       "controller": "BusinessPartyController",
       "handler": "updateContractPartyRole",
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "PATCH",
       "path": "/projects/:projectId/contract-takeovers/:takeoverId",
       "controller": "ContractTakeoverController",
       "handler": "updateDraft",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -100,6 +109,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId",
       "controller": "ContractTakeoverController",
       "handler": "updateTaxFactRevision",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -108,6 +118,7 @@
       "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/review-result",
       "controller": "ContractTakeoverController",
       "handler": "reviewImportBatch",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -116,6 +127,7 @@
       "path": "/contract-bill-imports/:importId/apply",
       "controller": "ContractBillExcelController",
       "handler": "applyImport",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -124,6 +136,7 @@
       "path": "/contract-bills/:billId/excel-imports",
       "controller": "ContractBillExcelController",
       "handler": "previewImport",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -132,6 +145,7 @@
       "path": "/contract-bills/:billId/rows",
       "controller": "ContractBillController",
       "handler": "addRow",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -140,6 +154,7 @@
       "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
       "controller": "ContractBillController",
       "handler": "cancelRemainder",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -148,6 +163,7 @@
       "path": "/contract-bills/:billId/rows/reorder",
       "controller": "ContractBillController",
       "handler": "reorderRows",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -156,6 +172,7 @@
       "path": "/contract-document-differences/:differenceId/disposition",
       "controller": "ContractDocumentController",
       "handler": "disposeDifference",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -164,6 +181,7 @@
       "path": "/contract-documents/:documentId/retry",
       "controller": "ContractDocumentController",
       "handler": "retry",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -172,6 +190,7 @@
       "path": "/contract-drafts/:contractVersionId/bills/:billKey/import-preview",
       "controller": "ContractDraftBillExcelController",
       "handler": "previewImport",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -180,6 +199,7 @@
       "path": "/contract-drafts/:contractVersionId/edit-lease",
       "controller": "ContractDraftController",
       "handler": "acquireEditLease",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -188,6 +208,7 @@
       "path": "/contract-drafts/:contractVersionId/edit-lease/heartbeat",
       "controller": "ContractDraftController",
       "handler": "heartbeatEditLease",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -196,6 +217,7 @@
       "path": "/contract-drafts/:contractVersionId/edit-lease/takeover",
       "controller": "ContractDraftController",
       "handler": "takeOverEditLease",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -204,6 +226,7 @@
       "path": "/contract-drafts/:contractVersionId/files",
       "controller": "ContractDraftController",
       "handler": "uploadPrivateFile",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -212,6 +235,7 @@
       "path": "/contract-drafts/:contractVersionId/preview-generation",
       "controller": "ContractDraftController",
       "handler": "generatePreview",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -220,6 +244,7 @@
       "path": "/contract-drafts/:contractVersionId/submission",
       "controller": "ContractDraftController",
       "handler": "submitDraft",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -228,6 +253,7 @@
       "path": "/contract-negotiation-rounds/:roundId/close",
       "controller": "ContractDocumentController",
       "handler": "closeNegotiationRound",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -236,6 +262,7 @@
       "path": "/contract-offline-revisions/:revisionId/retry",
       "controller": "ContractDocumentController",
       "handler": "retryOfflineRevision",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -244,6 +271,7 @@
       "path": "/contract-versions/:toContractVersionId/bill-transitions/confirm",
       "controller": "ContractBillTransitionController",
       "handler": "confirm",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -252,6 +280,7 @@
       "path": "/contract-workbench/:contractId/restore",
       "controller": "ContractWorkbenchController",
       "handler": "restore",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -260,6 +289,7 @@
       "path": "/contract-workbench/:contractId/transfer",
       "controller": "ContractWorkbenchController",
       "handler": "transfer",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -268,6 +298,7 @@
       "path": "/contract-workbench/:contractId/void",
       "controller": "ContractWorkbenchController",
       "handler": "void",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -276,6 +307,7 @@
       "path": "/contract-workbench/:contractVersionId/checkpoints",
       "controller": "ContractWorkbenchController",
       "handler": "createCheckpoint",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -284,6 +316,7 @@
       "path": "/contract-workbench/:contractVersionId/checkpoints/:checkpointId/restore",
       "controller": "ContractWorkbenchController",
       "handler": "restoreCheckpoint",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -292,6 +325,7 @@
       "path": "/contract-workbench/:contractVersionId/documents",
       "controller": "ContractDocumentController",
       "handler": "queue",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -300,6 +334,7 @@
       "path": "/contract-workbench/:contractVersionId/negotiation-rounds",
       "controller": "ContractDocumentController",
       "handler": "openNegotiationRound",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -308,6 +343,7 @@
       "path": "/contract-workbench/:contractVersionId/offline-revisions",
       "controller": "ContractDocumentController",
       "handler": "uploadOfflineRevision",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -316,14 +352,16 @@
       "path": "/contract-workbench/:contractVersionId/parties",
       "controller": "BusinessPartyController",
       "handler": "addContractParty",
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",
       "path": "/contract-workbench/:contractVersionId/settlement-mode/confirm",
       "controller": "ContractWorkbenchController",
       "handler": "confirmSettlementMode",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -332,6 +370,7 @@
       "path": "/contract-workbench/:contractVersionId/type-change",
       "controller": "ContractWorkbenchController",
       "handler": "applyTypeChange",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -340,6 +379,7 @@
       "path": "/contract-workbench/:contractVersionId/type-change-preview",
       "controller": "ContractWorkbenchController",
       "handler": "previewTypeChange",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -348,6 +388,7 @@
       "path": "/contracts",
       "controller": "ContractController",
       "handler": "create",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -356,6 +397,7 @@
       "path": "/contracts/:contractVersionId/abandonment",
       "controller": "ContractController",
       "handler": "abandonDraft",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -364,6 +406,7 @@
       "path": "/contracts/:contractVersionId/approval-submission",
       "controller": "ContractController",
       "handler": "submitApproval",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -372,6 +415,7 @@
       "path": "/contracts/:contractVersionId/authorizations",
       "controller": "ContractController",
       "handler": "setAuthorization",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -380,6 +424,7 @@
       "path": "/contracts/:contractVersionId/change-drafts",
       "controller": "ContractController",
       "handler": "createChangeDraft",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -388,6 +433,7 @@
       "path": "/contracts/:contractVersionId/copies",
       "controller": "ContractController",
       "handler": "copyAbandonedDraft",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -396,6 +442,7 @@
       "path": "/contracts/:contractVersionId/formal-files/approval",
       "controller": "ContractController",
       "handler": "uploadFormalApprovalFile",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -404,6 +451,7 @@
       "path": "/projects/:projectId/contract-takeovers",
       "controller": "ContractTakeoverController",
       "handler": "create",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -412,6 +460,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/abandonment",
       "controller": "ContractTakeoverController",
       "handler": "abandonDraft",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -420,6 +469,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirmChangeBaseline",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -428,6 +478,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections",
       "controller": "ContractTakeoverController",
       "handler": "submitCompanyEntityCorrection",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -436,6 +487,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review",
       "controller": "ContractTakeoverController",
       "handler": "reviewCompanyEntityCorrection",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -444,6 +496,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirm",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
     },
@@ -452,6 +505,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirmContractSide",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -460,6 +514,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal",
       "controller": "ContractTakeoverController",
       "handler": "withdrawContractSideConfirmation",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -468,6 +523,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections",
       "controller": "ContractTakeoverController",
       "handler": "recordCorrection",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -476,6 +532,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review",
       "controller": "ContractTakeoverController",
       "handler": "reviewCorrection",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -484,6 +541,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/evidence-files",
       "controller": "ContractTakeoverController",
       "handler": "attachEvidence",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -492,6 +550,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirmFinanceSide",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -500,6 +559,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal",
       "controller": "ContractTakeoverController",
       "handler": "withdrawFinanceSideConfirmation",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -508,6 +568,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files",
       "controller": "ContractTakeoverController",
       "handler": "attachHistoricalPaymentVoucher",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -516,6 +577,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/review-submission",
       "controller": "ContractTakeoverController",
       "handler": "submitReview",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -524,6 +586,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/supplement-return",
       "controller": "ContractTakeoverController",
       "handler": "returnForSupplement",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -532,6 +595,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions",
       "controller": "ContractTakeoverController",
       "handler": "createTaxFactRevision",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -540,6 +604,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/abandonment",
       "controller": "ContractTakeoverController",
       "handler": "abandonTaxFactRevision",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -548,6 +613,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/contract-confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirmTaxFactsByContract",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -556,6 +622,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review",
       "controller": "ContractTakeoverController",
       "handler": "reviewTaxFactsByFinance",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -564,6 +631,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review-submission",
       "controller": "ContractTakeoverController",
       "handler": "submitTaxFactFinanceReview",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -572,6 +640,7 @@
       "path": "/projects/:projectId/contract-takeovers/files",
       "controller": "ContractTakeoverController",
       "handler": "uploadPrivateFile",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -580,6 +649,7 @@
       "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-apply",
       "controller": "ContractTakeoverController",
       "handler": "applyBatchAbandonment",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -588,6 +658,7 @@
       "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-preview",
       "controller": "ContractTakeoverController",
       "handler": "previewBatchAbandonment",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -596,6 +667,7 @@
       "path": "/projects/:projectId/contract-takeovers/import-drafts",
       "controller": "ContractTakeoverController",
       "handler": "createDraftsFromImport",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -604,6 +676,7 @@
       "path": "/projects/:projectId/contract-takeovers/import-precheck",
       "controller": "ContractTakeoverController",
       "handler": "precheckImport",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -612,6 +685,7 @@
       "path": "/projects/:projectId/contract-takeovers/imports/apply",
       "controller": "ContractTakeoverController",
       "handler": "applyExcelImport",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -620,6 +694,7 @@
       "path": "/projects/:projectId/contract-takeovers/imports/preview",
       "controller": "ContractTakeoverController",
       "handler": "previewExcelImport",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -628,6 +703,7 @@
       "path": "/contract-bills/:billId/rows",
       "controller": "ContractBillController",
       "handler": "replaceRows",
+      "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "registered_exit_candidate"
     },
@@ -636,6 +712,7 @@
       "path": "/contract-drafts/:contractVersionId",
       "controller": "ContractDraftController",
       "handler": "saveDraft",
+      "tombstoned": false,
       "authority": "aggregate_member_writer",
       "authorityRule": "contract_draft_aggregate_save"
     },
@@ -644,6 +721,7 @@
       "path": "/contract-versions/:toContractVersionId/bill-transitions",
       "controller": "ContractBillTransitionController",
       "handler": "save",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -652,6 +730,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side",
       "controller": "ContractTakeoverController",
       "handler": "saveContractFacts",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     },
@@ -660,6 +739,7 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side",
       "controller": "ContractTakeoverController",
       "handler": "saveFinanceFacts",
+      "tombstoned": false,
       "authority": "governed_specialized_command",
       "authorityRule": "governed_specialized_command"
     }
