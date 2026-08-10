@@ -10,14 +10,26 @@ const MANIFEST_PATH = new URL(
   import.meta.url
 );
 const WX_LOGIN_ROUTE = "POST /auth/wx-login";
+const DRAFT_DELETION_ROUTE = "DELETE /contract-drafts/:param";
+const PARTY_MUTATION_ROUTES = [
+  "POST /contract-workbench/:param/parties",
+  "PATCH /contract-workbench/:param/parties/:param",
+  "DELETE /contract-workbench/:param/parties/:param"
+];
 
 function readManifest() {
   return JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
 }
 
-test("observation targets track all capability legacy routes plus only wx-login", () => {
+test("observation targets track legacy routes, draft deletion, the party mutation family, plus wx-login", () => {
   const manifest = readManifest();
-  const expectedRoutes = [...DEFAULT_LEGACY_ROUTES, WX_LOGIN_ROUTE];
+  const expectedRoutes = [
+    ...DEFAULT_LEGACY_ROUTES.slice(0, 7),
+    DRAFT_DELETION_ROUTE,
+    ...PARTY_MUTATION_ROUTES,
+    ...DEFAULT_LEGACY_ROUTES.slice(7),
+    WX_LOGIN_ROUTE
+  ];
 
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.apiPrefix, "/api");
@@ -25,7 +37,7 @@ test("observation targets track all capability legacy routes plus only wx-login"
   assert.equal(new Set(manifest.routes).size, manifest.routes.length);
   assert.deepEqual(
     manifest.routes.filter((route) => !DEFAULT_LEGACY_ROUTES.includes(route)),
-    [WX_LOGIN_ROUTE]
+    [DRAFT_DELETION_ROUTE, ...PARTY_MUTATION_ROUTES, WX_LOGIN_ROUTE]
   );
 });
 
