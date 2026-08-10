@@ -40,7 +40,7 @@
 
 ### P0：已删除草稿生命周期
 
-- [~] Issue #54（合同工作台：恢复与原始草稿删除状态安全）已在基线 `c9056943cc62e5143aa28587b47e992522c7a0d4` 的独立 worktree 完成、待提交：恢复较旧本地副本只供人工检查且不再自动排队保存；原始草稿删除请求结果未知或服务端确认待重试时撤销本地租约并冻结 autosave/写入，只有重新读取服务端状态并取得当前租约才恢复可写。已通过目标 Web Vitest 161 项、typecheck、lint 与 `check:ui`；未运行生产检查、迁移、部署或 GitHub Issue 写入。
+- [x] Issue #54（合同工作台：恢复与原始草稿删除状态安全）已由 PR #69 squash 合并至 `main`（合并 SHA `02764934888b5fc73508561a58028baf87937dee`），GitHub Issue #54 已 `CLOSED`（`COMPLETED`）：恢复较旧本地副本只供人工检查且不再自动排队保存；原始草稿删除请求结果未知或服务端确认待重试时撤销本地租约并冻结 autosave/写入，只有重新读取服务端状态并取得当前租约才恢复可写。已通过目标 Web Vitest 161 项、typecheck、lint 与 `check:ui`；未运行生产检查、迁移或部署。
 - [x] 合同草稿删除与签署生命周期规格已收敛至 `docs/specs/2026-08-05-contract-draft-deletion-and-signing-lifecycle.md`。
 - [x] GitHub 父 Issue #7 与 13 张子票 #8–#20 已建立，实施顺序和 `Blocked by` 依赖已冻结；当前仅无 blocker 的 #8 标记为 `ready-for-agent`，#9–#20 已移除该标签并须在各自 blocker 关闭后再逐票启用。
 - [x] 规格已区分即时清理、审批型记录保留、数据库聚合、COS 全版本/删除标记及共享文件解除关联等边界。
