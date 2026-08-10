@@ -1,0 +1,970 @@
+{
+  "schemaVersion": 1,
+  "status": "blocked",
+  "scope": {
+    "mutationMethods": [
+      "DELETE",
+      "PATCH",
+      "POST",
+      "PUT"
+    ],
+    "routeSelector": "contractCutoverSurface=true",
+    "deletionAuthorized": false
+  },
+  "summary": {
+    "routeCount": 80,
+    "authorityCounts": {
+      "aggregate_member_writer": 1,
+      "governed_specialized_command": 55,
+      "exit_candidate": 24
+    },
+    "actionTargetCount": 29,
+    "advertisedActionCount": 22,
+    "blockerCount": 1
+  },
+  "routes": [
+    {
+      "method": "DELETE",
+      "path": "/contract-bills/:billId/rows/:rowKey",
+      "controller": "ContractBillController",
+      "handler": "deleteRow",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "DELETE",
+      "path": "/contract-drafts/:contractVersionId",
+      "controller": "ContractDraftController",
+      "handler": "deleteDraft",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "DELETE",
+      "path": "/contract-drafts/:contractVersionId/edit-lease",
+      "controller": "ContractDraftController",
+      "handler": "releaseEditLease",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "DELETE",
+      "path": "/contract-versions/:toContractVersionId/bill-transitions",
+      "controller": "ContractBillTransitionController",
+      "handler": "discard",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "DELETE",
+      "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
+      "controller": "BusinessPartyController",
+      "handler": "removeContractParty",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-bills/:billId/rows/:rowKey",
+      "controller": "ContractBillController",
+      "handler": "updateRow",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-workbench/:contractVersionId",
+      "controller": "ContractWorkbenchController",
+      "handler": "save",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
+      "controller": "BusinessPartyController",
+      "handler": "updateContractPartyRole",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId",
+      "controller": "ContractTakeoverController",
+      "handler": "updateDraft",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId",
+      "controller": "ContractTakeoverController",
+      "handler": "updateTaxFactRevision",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/review-result",
+      "controller": "ContractTakeoverController",
+      "handler": "reviewImportBatch",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bill-imports/:importId/apply",
+      "controller": "ContractBillExcelController",
+      "handler": "applyImport",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/excel-imports",
+      "controller": "ContractBillExcelController",
+      "handler": "previewImport",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/rows",
+      "controller": "ContractBillController",
+      "handler": "addRow",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/rows/:rowKey/remainder-cancellation",
+      "controller": "ContractBillController",
+      "handler": "cancelRemainder",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-bills/:billId/rows/reorder",
+      "controller": "ContractBillController",
+      "handler": "reorderRows",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-document-differences/:differenceId/disposition",
+      "controller": "ContractDocumentController",
+      "handler": "disposeDifference",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-documents/:documentId/retry",
+      "controller": "ContractDocumentController",
+      "handler": "retry",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/bills/:billKey/import-preview",
+      "controller": "ContractDraftBillExcelController",
+      "handler": "previewImport",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/edit-lease",
+      "controller": "ContractDraftController",
+      "handler": "acquireEditLease",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/edit-lease/heartbeat",
+      "controller": "ContractDraftController",
+      "handler": "heartbeatEditLease",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/edit-lease/takeover",
+      "controller": "ContractDraftController",
+      "handler": "takeOverEditLease",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/files",
+      "controller": "ContractDraftController",
+      "handler": "uploadPrivateFile",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/preview-generation",
+      "controller": "ContractDraftController",
+      "handler": "generatePreview",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-drafts/:contractVersionId/submission",
+      "controller": "ContractDraftController",
+      "handler": "submitDraft",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-negotiation-rounds/:roundId/close",
+      "controller": "ContractDocumentController",
+      "handler": "closeNegotiationRound",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-offline-revisions/:revisionId/retry",
+      "controller": "ContractDocumentController",
+      "handler": "retryOfflineRevision",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-versions/:toContractVersionId/bill-transitions/confirm",
+      "controller": "ContractBillTransitionController",
+      "handler": "confirm",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractId/restore",
+      "controller": "ContractWorkbenchController",
+      "handler": "restore",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractId/transfer",
+      "controller": "ContractWorkbenchController",
+      "handler": "transfer",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractId/void",
+      "controller": "ContractWorkbenchController",
+      "handler": "void",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/checkpoints",
+      "controller": "ContractWorkbenchController",
+      "handler": "createCheckpoint",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/checkpoints/:checkpointId/restore",
+      "controller": "ContractWorkbenchController",
+      "handler": "restoreCheckpoint",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/documents",
+      "controller": "ContractDocumentController",
+      "handler": "queue",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/negotiation-rounds",
+      "controller": "ContractDocumentController",
+      "handler": "openNegotiationRound",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/offline-revisions",
+      "controller": "ContractDocumentController",
+      "handler": "uploadOfflineRevision",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/parties",
+      "controller": "BusinessPartyController",
+      "handler": "addContractParty",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/settlement-mode/confirm",
+      "controller": "ContractWorkbenchController",
+      "handler": "confirmSettlementMode",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/type-change",
+      "controller": "ContractWorkbenchController",
+      "handler": "applyTypeChange",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contract-workbench/:contractVersionId/type-change-preview",
+      "controller": "ContractWorkbenchController",
+      "handler": "previewTypeChange",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts",
+      "controller": "ContractController",
+      "handler": "create",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/abandonment",
+      "controller": "ContractController",
+      "handler": "abandonDraft",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/approval-submission",
+      "controller": "ContractController",
+      "handler": "submitApproval",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/authorizations",
+      "controller": "ContractController",
+      "handler": "setAuthorization",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/change-drafts",
+      "controller": "ContractController",
+      "handler": "createChangeDraft",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/copies",
+      "controller": "ContractController",
+      "handler": "copyAbandonedDraft",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/formal-files/approval",
+      "controller": "ContractController",
+      "handler": "uploadFormalApprovalFile",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers",
+      "controller": "ContractTakeoverController",
+      "handler": "create",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/abandonment",
+      "controller": "ContractTakeoverController",
+      "handler": "abandonDraft",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation",
+      "controller": "ContractTakeoverController",
+      "handler": "confirmChangeBaseline",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections",
+      "controller": "ContractTakeoverController",
+      "handler": "submitCompanyEntityCorrection",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review",
+      "controller": "ContractTakeoverController",
+      "handler": "reviewCompanyEntityCorrection",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
+      "controller": "ContractTakeoverController",
+      "handler": "confirm",
+      "authority": "exit_candidate",
+      "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation",
+      "controller": "ContractTakeoverController",
+      "handler": "confirmContractSide",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal",
+      "controller": "ContractTakeoverController",
+      "handler": "withdrawContractSideConfirmation",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections",
+      "controller": "ContractTakeoverController",
+      "handler": "recordCorrection",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review",
+      "controller": "ContractTakeoverController",
+      "handler": "reviewCorrection",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/evidence-files",
+      "controller": "ContractTakeoverController",
+      "handler": "attachEvidence",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation",
+      "controller": "ContractTakeoverController",
+      "handler": "confirmFinanceSide",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal",
+      "controller": "ContractTakeoverController",
+      "handler": "withdrawFinanceSideConfirmation",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files",
+      "controller": "ContractTakeoverController",
+      "handler": "attachHistoricalPaymentVoucher",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/review-submission",
+      "controller": "ContractTakeoverController",
+      "handler": "submitReview",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/supplement-return",
+      "controller": "ContractTakeoverController",
+      "handler": "returnForSupplement",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions",
+      "controller": "ContractTakeoverController",
+      "handler": "createTaxFactRevision",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/abandonment",
+      "controller": "ContractTakeoverController",
+      "handler": "abandonTaxFactRevision",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/contract-confirmation",
+      "controller": "ContractTakeoverController",
+      "handler": "confirmTaxFactsByContract",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review",
+      "controller": "ContractTakeoverController",
+      "handler": "reviewTaxFactsByFinance",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId/finance-review-submission",
+      "controller": "ContractTakeoverController",
+      "handler": "submitTaxFactFinanceReview",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/files",
+      "controller": "ContractTakeoverController",
+      "handler": "uploadPrivateFile",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-apply",
+      "controller": "ContractTakeoverController",
+      "handler": "applyBatchAbandonment",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-batches/:batchId/draft-abandonment-preview",
+      "controller": "ContractTakeoverController",
+      "handler": "previewBatchAbandonment",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-drafts",
+      "controller": "ContractTakeoverController",
+      "handler": "createDraftsFromImport",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/import-precheck",
+      "controller": "ContractTakeoverController",
+      "handler": "precheckImport",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/imports/apply",
+      "controller": "ContractTakeoverController",
+      "handler": "applyExcelImport",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/contract-takeovers/imports/preview",
+      "controller": "ContractTakeoverController",
+      "handler": "previewExcelImport",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "PUT",
+      "path": "/contract-bills/:billId/rows",
+      "controller": "ContractBillController",
+      "handler": "replaceRows",
+      "authority": "exit_candidate",
+      "authorityRule": "registered_exit_candidate"
+    },
+    {
+      "method": "PUT",
+      "path": "/contract-drafts/:contractVersionId",
+      "controller": "ContractDraftController",
+      "handler": "saveDraft",
+      "authority": "aggregate_member_writer",
+      "authorityRule": "contract_draft_aggregate_save"
+    },
+    {
+      "method": "PUT",
+      "path": "/contract-versions/:toContractVersionId/bill-transitions",
+      "controller": "ContractBillTransitionController",
+      "handler": "save",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/contract-side",
+      "controller": "ContractTakeoverController",
+      "handler": "saveContractFacts",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "PUT",
+      "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-side",
+      "controller": "ContractTakeoverController",
+      "handler": "saveFinanceFacts",
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    }
+  ],
+  "actionProjection": {
+    "targets": [
+      {
+        "key": "acquire_contract_draft_edit_lease",
+        "method": "POST",
+        "controller": "ContractDraftController",
+        "handler": "acquireEditLease",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "apply_contract_type_change",
+        "method": "POST",
+        "controller": "ContractWorkbenchController",
+        "handler": "applyTypeChange",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "check_contract_submission_readiness",
+        "method": "POST",
+        "controller": "ContractController",
+        "handler": "checkReadiness",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "close_contract_negotiation_round",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "closeNegotiationRound",
+        "authority": "exit_candidate",
+        "authorityRule": "legacy_cutover_exit",
+        "advertised": false
+      },
+      {
+        "key": "confirm_contract_bill_transitions",
+        "method": "POST",
+        "controller": "ContractBillTransitionController",
+        "handler": "confirm",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "confirm_contract_counterparty_signed_files",
+        "method": "POST",
+        "controller": "ContractController",
+        "handler": "confirmCounterpartySignedFiles",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "confirm_contract_settlement_mode",
+        "method": "POST",
+        "controller": "ContractWorkbenchController",
+        "handler": "confirmSettlementMode",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "discard_contract_bill_transitions",
+        "method": "DELETE",
+        "controller": "ContractBillTransitionController",
+        "handler": "discard",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "dispose_contract_document_difference",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "disposeDifference",
+        "authority": "exit_candidate",
+        "authorityRule": "legacy_cutover_exit",
+        "advertised": false
+      },
+      {
+        "key": "heartbeat_contract_draft_edit_lease",
+        "method": "POST",
+        "controller": "ContractDraftController",
+        "handler": "heartbeatEditLease",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "open_contract_negotiation_round",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "openNegotiationRound",
+        "authority": "exit_candidate",
+        "authorityRule": "legacy_cutover_exit",
+        "advertised": false
+      },
+      {
+        "key": "open_contract_revision_preview",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "createOfflineRevisionPreviewDownloadTicket",
+        "authority": "exit_candidate",
+        "authorityRule": "registered_exit_candidate",
+        "advertised": false
+      },
+      {
+        "key": "preview_contract_draft_bill_excel_import",
+        "method": "POST",
+        "controller": "ContractDraftBillExcelController",
+        "handler": "previewImport",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "preview_contract_type_change",
+        "method": "POST",
+        "controller": "ContractWorkbenchController",
+        "handler": "previewTypeChange",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "queue_contract_document",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "queue",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "queue_contract_draft_preview",
+        "method": "POST",
+        "controller": "ContractDraftController",
+        "handler": "generatePreview",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "release_contract_draft_edit_lease",
+        "method": "DELETE",
+        "controller": "ContractDraftController",
+        "handler": "releaseEditLease",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "retry_contract_document",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "retry",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "retry_contract_offline_revision",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "retryOfflineRevision",
+        "authority": "exit_candidate",
+        "authorityRule": "legacy_cutover_exit",
+        "advertised": false
+      },
+      {
+        "key": "save_contract_bill_transitions",
+        "method": "PUT",
+        "controller": "ContractBillTransitionController",
+        "handler": "save",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "save_contract_draft",
+        "method": "PUT",
+        "controller": "ContractDraftController",
+        "handler": "saveDraft",
+        "authority": "aggregate_member_writer",
+        "authorityRule": "contract_draft_aggregate_save",
+        "advertised": true
+      },
+      {
+        "key": "set_contract_authorization",
+        "method": "POST",
+        "controller": "ContractController",
+        "handler": "setAuthorization",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "submit_contract_draft",
+        "method": "POST",
+        "controller": "ContractDraftController",
+        "handler": "submitDraft",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "take_over_contract_draft_edit_lease",
+        "method": "POST",
+        "controller": "ContractDraftController",
+        "handler": "takeOverEditLease",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "transfer_contract_draft",
+        "method": "POST",
+        "controller": "ContractWorkbenchController",
+        "handler": "transfer",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "upload_contract_counterparty_signed_files",
+        "method": "POST",
+        "controller": "ContractController",
+        "handler": "uploadCounterpartySignedFiles",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      },
+      {
+        "key": "upload_contract_formal_approval_file",
+        "method": "POST",
+        "controller": "ContractController",
+        "handler": "uploadFormalApprovalFile",
+        "authority": "exit_candidate",
+        "authorityRule": "legacy_cutover_exit",
+        "advertised": false
+      },
+      {
+        "key": "upload_contract_negotiation_revision",
+        "method": "POST",
+        "controller": "ContractDocumentController",
+        "handler": "uploadOfflineRevision",
+        "authority": "exit_candidate",
+        "authorityRule": "legacy_cutover_exit",
+        "advertised": false
+      },
+      {
+        "key": "upload_contract_workbench_private_file",
+        "method": "POST",
+        "controller": "ContractDraftController",
+        "handler": "uploadPrivateFile",
+        "authority": "governed_specialized_command",
+        "authorityRule": "governed_specialized_command",
+        "advertised": true
+      }
+    ],
+    "advertisedActionKeys": [
+      "acquire_contract_draft_edit_lease",
+      "apply_contract_type_change",
+      "check_contract_submission_readiness",
+      "confirm_contract_bill_transitions",
+      "confirm_contract_counterparty_signed_files",
+      "confirm_contract_settlement_mode",
+      "discard_contract_bill_transitions",
+      "heartbeat_contract_draft_edit_lease",
+      "preview_contract_draft_bill_excel_import",
+      "preview_contract_type_change",
+      "queue_contract_document",
+      "queue_contract_draft_preview",
+      "release_contract_draft_edit_lease",
+      "retry_contract_document",
+      "save_contract_bill_transitions",
+      "save_contract_draft",
+      "set_contract_authorization",
+      "submit_contract_draft",
+      "take_over_contract_draft_edit_lease",
+      "transfer_contract_draft",
+      "upload_contract_counterparty_signed_files",
+      "upload_contract_workbench_private_file"
+    ]
+  },
+  "blockers": {
+    "actionAuthorityDrift": [],
+    "actionTargetDrift": [],
+    "invalidActionTargets": [],
+    "invalidRoutes": [],
+    "routeAuthorityDrift": [
+      {
+        "method": "POST",
+        "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
+        "usage": "external_takeover",
+        "authority": "exit_candidate"
+      }
+    ]
+  }
+}

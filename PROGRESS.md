@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-08-05）
+## 当前结论（更新至 2026-08-10）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -42,6 +42,7 @@
 
 - [x] Issue #54（合同工作台：恢复与原始草稿删除状态安全）已由 PR #69 squash 合并至 `main`（合并 SHA `02764934888b5fc73508561a58028baf87937dee`），GitHub Issue #54 已 `CLOSED`（`COMPLETED`）：恢复较旧本地副本只供人工检查且不再自动排队保存；原始草稿删除请求结果未知或服务端确认待重试时撤销本地租约并冻结 autosave/写入，只有重新读取服务端状态并取得当前租约才恢复可写。已通过目标 Web Vitest 161 项、typecheck、lint 与 `check:ui`；未运行生产检查、迁移或部署。
 - [x] Issue #55（合同工作台：单一 authority snapshot）已完成本地实施：`useContractDraft` 对同一份工作台读取收据统一投影 exact contract version、draft revision、capability、lease、readonly 与 lifecycle；页面不再二次读取 capability 后拼装可写结论，版本/修订漂移或 capability 撤销时 fail-closed。#54 的恢复与删除结果未知冻结边界保持不变。目标 Web Vitest 87 项、Web Admin typecheck、全仓 lint、`check:ui` 与 `git diff --check` 已通过；全仓 typecheck 仍受既有 API Prisma client 未生成阻断。未改 API、Schema、迁移、部署或生产数据/COS。
+- [x] Issue #56（合同 mutation authority 收敛）已获授权按当前边界收口：以运行时 route manifest 的 80 条合同 mutation 为唯一分类输入，分别登记 aggregate member writer、受治理专用命令与 exit candidate；`saveDraft` 是唯一 aggregate writer，退出候选不出现在合同草稿 capability projection，未知 action fail-closed。旧 `POST /projects/:projectId/contract-takeovers/:takeoverId/confirmation` 仍被生产工作台调用，且 ADR 0001 要求它全模式 fail-closed，authority manifest 因此保留 `blocked`（1 个 `routeAuthorityDrift`）作为后续 #57 的显式门；本票未移除消费者、tombstone route 或改变 cutover mode。最终 typecheck、lint、`check:ui`、目标 API Jest 39 项、authority manifest Node 测试 5 项与 CI 编排 48 项通过；未改 Schema、迁移、部署、生产数据或 COS。
 - [x] 合同草稿删除与签署生命周期规格已收敛至 `docs/specs/2026-08-05-contract-draft-deletion-and-signing-lifecycle.md`。
 - [x] GitHub 父 Issue #7 与 13 张子票 #8–#20 已建立，实施顺序和 `Blocked by` 依赖已冻结；当前仅无 blocker 的 #8 标记为 `ready-for-agent`，#9–#20 已移除该标签并须在各自 blocker 关闭后再逐票启用。
 - [x] 规格已区分即时清理、审批型记录保留、数据库聚合、COS 全版本/删除标记及共享文件解除关联等边界。
