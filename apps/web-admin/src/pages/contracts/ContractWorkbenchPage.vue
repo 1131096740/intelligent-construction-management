@@ -1305,6 +1305,8 @@ const {
   markDirty,
   discardLocalState,
   suspendAutosaveForLifecycleAction,
+  freezeForPendingPristineDraftDeletion,
+  failClosedAfterUncertainPristineDraftDeletion,
   resumeAutosaveAfterLifecycleAction,
   savedRevision,
   formalSaveCompleted,
@@ -1514,6 +1516,7 @@ async function finishDeletePristineDraft(
   result: ExecuteContractDraftLifecycleActionResult
 ) {
   if (result.status === "retryable") {
+    freezeForPendingPristineDraftDeletion();
     deletePristineDraftRetryPending.value = true;
     deletePristineDraftError.value =
       "草稿已进入待删除状态，但对象清理未完成；请保持在本页并再次确认以重试。";
@@ -1563,7 +1566,7 @@ async function confirmDeletePristineDraft(request: {
     retryPending: deletePristineDraftRetryPending.value,
     isCurrent: contractDraftLifecycleContextCurrent,
     beforeWrite: suspendAutosaveForLifecycleAction,
-    onWriteFailure: resumeAutosaveAfterLifecycleAction,
+    onWriteFailure: failClosedAfterUncertainPristineDraftDeletion,
     onResult: finishDeletePristineDraft,
     onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
     onOperationFailure: setDeletePristineDraftError,
@@ -1722,9 +1725,16 @@ const leaseCanTakeOver = computed(() =>
 );
 const leaseReadonlyMessage = computed(() => {
   if (lease.value.kind === "lost") {
-    return lease.value.reason === "lease_expired"
-      ? "编辑租约已超过有效期，未保存内容仍保留在本机；请刷新后重新取得租约。"
-      : "编辑租约已被其他页面接管，未保存内容仍保留在本机。";
+    if (lease.value.reason === "lease_expired") {
+      return "编辑租约已超过有效期，未保存内容仍保留在本机；请刷新后重新取得租约。";
+    }
+    if (lease.value.reason === "lifecycle_result_unknown") {
+      return "纯净草稿删除结果尚未确认，已冻结本地写入；请刷新并按服务端状态重新确认。";
+    }
+    if (lease.value.reason === "lifecycle_deletion_pending") {
+      return "纯净草稿正在等待删除重试，已冻结本地写入；请按服务端状态重新确认。";
+    }
+    return "编辑租约已被其他页面接管，未保存内容仍保留在本机。";
   }
   if (lease.value.kind === "held_elsewhere") {
     return lease.value.holderDisplayName

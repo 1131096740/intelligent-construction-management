@@ -488,6 +488,10 @@ export interface UseContractDraft {
   discardLocalState: () => boolean;
   /** Pauses editing while a server-side lifecycle action runs. */
   suspendAutosaveForLifecycleAction: () => boolean;
+  /** Freezes local writes while the server reports a pristine draft pending deletion. */
+  freezeForPendingPristineDraftDeletion: () => void;
+  /** Fails closed when a pristine-draft deletion request has no authoritative receipt. */
+  failClosedAfterUncertainPristineDraftDeletion: () => void;
   /** Resumes editing after a failed lifecycle action without losing local edits. */
   resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
@@ -1351,7 +1355,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     pendingLocalRecovery.value = null;
     localRecoveryError.value = "";
     writeBackup();
-    scheduleSave();
     return true;
   }
 
@@ -1595,6 +1598,16 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     cancelScheduledSave();
     pausedRef.value = true;
     return true;
+  }
+
+  function freezeForPendingPristineDraftDeletion(): void {
+    loseLease("lifecycle_deletion_pending");
+    pausedRef.value = true;
+  }
+
+  function failClosedAfterUncertainPristineDraftDeletion(): void {
+    loseLease("lifecycle_result_unknown");
+    pausedRef.value = true;
   }
 
   function resumeAutosaveAfterLifecycleAction(): void {
@@ -2318,6 +2331,8 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     markDirty,
     discardLocalState,
     suspendAutosaveForLifecycleAction,
+    freezeForPendingPristineDraftDeletion,
+    failClosedAfterUncertainPristineDraftDeletion,
     resumeAutosaveAfterLifecycleAction,
     saveNow,
     queuePreviewForCurrentRevision,
