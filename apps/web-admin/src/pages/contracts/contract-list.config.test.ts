@@ -76,10 +76,8 @@ describe("contract ledger page configuration", () => {
     expect(source).toContain('all: "formal_ledger"');
   });
 
-  it("executes only server-advertised workbench actions without forcing an invalid save", () => {
+  it("renders the server-advertised lifecycle confirmation actions", () => {
     const source = readFileSync(new URL("./ContractWorkbenchPage.vue", import.meta.url), "utf8");
-    expect(source).not.toContain("<BusinessDraftAction");
-    expect(source).not.toContain('from "../../components/BusinessDraftAction.vue"');
     expect(source).toContain(
       "contractDraftActionEnabled('delete_pristine_draft')"
     );
@@ -88,41 +86,6 @@ describe("contract ledger page configuration", () => {
     );
     expect(source).toContain('@confirm="confirmDeletePristineDraft"');
     expect(source).toContain('@confirm="confirmAbandonApplication"');
-    expect(source).toContain("useUnsavedChangesGuard");
-    expect(source).toContain("suspendAutosaveForLifecycleAction");
-    expect(source).toContain("const contractDraftAvailableActions = computed(");
-    expect(source).toContain(
-      "() => authoritySnapshot.value?.availableActions ?? null"
-    );
-    expect(source).not.toContain(
-      "const capability = await fetchContractDraftWorkbench(expectedVersionId)"
-    );
-    expect(source).toContain("contractDraftLifecycleContextCurrent");
-    expect(source).toContain("executeDeletePristineContractDraftAction({");
-    expect(source).toContain("executeAbandonContractDraftAction({");
-    expect(source).toContain("const contractDraftLifecycleRevision = computed(");
-    expect(source).toContain(
-      "expectedRevision: contractDraftLifecycleRevision.value"
-    );
-    expect(source).not.toContain(
-      "contractDraftAvailableActions.value = capability.availableActions!"
-    );
-    expect(source).not.toContain(
-      "contractDraftAvailableActions.value = structuredClone("
-    );
-    const deleteActionSource = source.slice(
-      source.indexOf("async function confirmDeletePristineDraft"),
-      source.indexOf("async function confirmAbandonApplication")
-    );
-    const abandonActionSource = source.slice(
-      source.indexOf("async function confirmAbandonApplication"),
-      source.indexOf("// Sections are presentational")
-    );
-    expect(deleteActionSource).not.toContain('action: "delete_pristine_draft"');
-    expect(abandonActionSource).not.toContain('action: "abandon_application"');
-    expect(deleteActionSource).not.toContain("saveNow()");
-    expect(abandonActionSource).not.toContain("saveNow()");
-    expect(source).not.toContain("enabled: true");
   });
 
   it("routes pristine-draft deletion through the exact workbench instead of mutating from the ledger", () => {

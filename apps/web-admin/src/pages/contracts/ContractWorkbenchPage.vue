@@ -1050,9 +1050,7 @@ import {
   applyContractTypeChange,
   checkContractSubmissionReadiness,
   confirmContractSettlementMode,
-  executeAbandonContractDraftAction,
   executeContractBillRemainderCancellation,
-  executeDeletePristineContractDraftAction,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftTransferCapabilities,
   listPublishedContractTemplates,
@@ -1060,10 +1058,8 @@ import {
   transferContractDraft,
   type ContractDraftChangedSection,
   type ContractDraftLifecycleAction,
-  type ContractDraftLifecycleOperationContext,
   type ContractDraftPartyModel,
   type ContractBillRemainderCancellationOperationContext,
-  type ExecuteContractDraftLifecycleActionResult,
   type PublishedContractTemplateReadModel
 } from "../../api/contract-workbench.api";
 
@@ -1265,6 +1261,7 @@ import {
 import {
   ContractDraftAuthorityRefreshRequiredError,
   useContractDraft,
+  type ContractDraftLifecycleCommandOutcome,
   type ContractDraftModel
 } from "./workbench/use-contract-draft";
 
@@ -1302,17 +1299,13 @@ const {
   clearAuthoritySnapshot,
   requireAuthorityRefresh,
   markDirty,
-  discardLocalState,
-  suspendAutosaveForLifecycleAction,
-  freezeForPendingPristineDraftDeletion,
-  failClosedAfterUncertainPristineDraftDeletion,
-  resumeAutosaveAfterLifecycleAction,
   savedRevision,
   formalSaveCompleted,
   lastSavedAt,
   currentLeaseToken,
   pendingLocalRecovery,
   localRecoveryError,
+  lifecycle,
   saveNow,
   queuePreviewForCurrentRevision,
   submitNow,
@@ -1369,22 +1362,21 @@ const contractDraftAvailableActions = computed(
 const contractDraftOperationAvailableActions = computed(
   () => authoritySnapshot.value?.draftOperationAvailableActions ?? []
 );
-const contractDraftLifecycleVersionId = computed(
-  () => authoritySnapshot.value?.contractVersionId ?? ""
-);
-const contractDraftLifecycleRevision = computed(
-  () => authoritySnapshot.value?.draftRevision ?? 0
-);
 const deletePristineDraftConfig =
   businessDraftActionConfig.delete_pristine_draft;
 const abandonApplicationConfig =
   businessDraftActionConfig.abandon_application;
 const deletePristineDraftVisible = ref(false);
 const abandonApplicationVisible = ref(false);
-const contractDraftLifecycleActionBusy = ref(false);
-const deletePristineDraftError = ref("");
-const deletePristineDraftRetryPending = ref(false);
-const abandonApplicationError = ref("");
+const contractDraftLifecycleActionBusy = computed(
+  () => lifecycle.state.value.busy
+);
+const deletePristineDraftError = computed(
+  () => lifecycle.state.value.deleteError
+);
+const abandonApplicationError = computed(
+  () => lifecycle.state.value.abandonError
+);
 let contractWorkbenchComponentAlive = true;
 let contractBillRemainderOperationSequence = 0;
 let activeContractBillRemainderOperationId = 0;
@@ -1433,29 +1425,6 @@ const contractDraftActionSubject = computed(() => ({
     : "结束当前纯净草稿；不影响正式合同"
 }));
 
-const deletePristineDraftCapability = computed(() =>
-  contractDraftAvailableActions.value?.find(
-    (action) => action.key === "delete_pristine_draft" && action.enabled
-  )
-);
-const abandonApplicationCapability = computed(() =>
-  contractDraftAvailableActions.value?.find(
-    (action) => action.key === "abandon_application" && action.enabled
-  )
-);
-const deletePristineDraftRequiresComment = computed(
-  () => deletePristineDraftCapability.value?.requiresComment === true
-);
-const deletePristineDraftRequiresPassword = computed(
-  () => deletePristineDraftCapability.value?.requiresPassword === true
-);
-const abandonApplicationRequiresComment = computed(
-  () => abandonApplicationCapability.value?.requiresComment === true
-);
-const abandonApplicationRequiresPassword = computed(
-  () => abandonApplicationCapability.value?.requiresPassword === true
-);
-
 function contractDraftActionEnabled(key: string) {
   return Boolean(
     contractDraftAvailableActions.value?.some(
@@ -1487,139 +1456,48 @@ function contractDraftActionRequiresPassword(key: ContractDraftLifecycleAction) 
 }
 
 function openDeletePristineDraft() {
-  deletePristineDraftError.value = "";
   deletePristineDraftVisible.value = true;
 }
 
 function openAbandonApplication() {
-  abandonApplicationError.value = "";
   abandonApplicationVisible.value = true;
 }
 
-function contractDraftLifecycleContextCurrent(
-  context: ContractDraftLifecycleOperationContext
-) {
-  return contractWorkbenchComponentAlive &&
-    context.generation === workbenchLoadRequestId &&
-    contractId.value === context.contractId &&
-    queryText(route.query.versionId).trim() === context.versionId &&
-    authoritySnapshot.value?.contractId === context.contractId &&
-    authoritySnapshot.value.contractVersionId === context.versionId &&
-    authoritySnapshot.value.draftRevision === context.expectedRevision;
-}
-
-async function finishContractDraftLifecycleAction(
-  result: ExecuteContractDraftLifecycleActionResult
-) {
-  if (result.status !== "completed") return;
-  discardLocalState();
+async function leaveCompletedContractDraftLifecycle() {
   navigationBypass.value = true;
   await router.push({ path: "/contracts", query: { view: "ended" } });
 }
 
-function hideInvalidContractDraftLifecycleCapability(error: unknown) {
-  const code =
-    error && typeof error === "object" && "code" in error
-      ? String(error.code)
-      : "";
-  if (
-    code === "CONTRACT_DRAFT_LIFECYCLE_INVALID_CONTEXT" ||
-    code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
-    code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH"
-  ) {
+function hideInvalidContractDraftLifecycleCapability(
+  status: ContractDraftLifecycleCommandOutcome["status"]
+) {
+  if (status === "capability_invalid") {
     clearAuthoritySnapshot();
     deletePristineDraftVisible.value = false;
     abandonApplicationVisible.value = false;
   }
 }
 
-async function finishDeletePristineDraft(
-  result: ExecuteContractDraftLifecycleActionResult
-) {
-  if (result.status === "retryable") {
-    freezeForPendingPristineDraftDeletion();
-    deletePristineDraftRetryPending.value = true;
-    deletePristineDraftError.value =
-      "草稿已进入待删除状态，但对象清理未完成；请保持在本页并再次确认以重试。";
-    return;
-  }
-  await finishContractDraftLifecycleAction(result);
-  deletePristineDraftRetryPending.value = false;
-  deletePristineDraftVisible.value = false;
-}
-
-async function finishAbandonApplication(
-  result: ExecuteContractDraftLifecycleActionResult
-) {
-  await finishContractDraftLifecycleAction(result);
-  abandonApplicationVisible.value = false;
-}
-
-function setDeletePristineDraftError(error: unknown) {
-  deletePristineDraftError.value =
-    error instanceof Error ? error.message : "删除草稿失败，请刷新后重试";
-}
-
-function setAbandonApplicationError(error: unknown) {
-  abandonApplicationError.value =
-    error instanceof Error ? error.message : "放弃申请失败，请刷新后重试";
-}
-
-function settleContractDraftLifecycleAction() {
-  contractDraftLifecycleActionBusy.value = false;
-}
-
 async function confirmDeletePristineDraft(request: {
   reason: string;
   password: string;
 }) {
-  contractDraftLifecycleActionBusy.value = true;
-  deletePristineDraftError.value = "";
-  await executeDeletePristineContractDraftAction({
-    generation: workbenchLoadRequestId,
-    contractId: contractId.value,
-    versionId: contractDraftLifecycleVersionId.value,
-    expectedRevision: contractDraftLifecycleRevision.value,
-    reason: request.reason,
-    currentPassword: request.password,
-    expectedRequiresComment: deletePristineDraftRequiresComment.value,
-    expectedRequiresPassword: deletePristineDraftRequiresPassword.value,
-    retryPending: deletePristineDraftRetryPending.value,
-    isCurrent: contractDraftLifecycleContextCurrent,
-    beforeWrite: suspendAutosaveForLifecycleAction,
-    onWriteFailure: failClosedAfterUncertainPristineDraftDeletion,
-    onResult: finishDeletePristineDraft,
-    onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
-    onOperationFailure: setDeletePristineDraftError,
-    onOperationSettled: settleContractDraftLifecycleAction,
-    swallowOperationFailure: true
-  });
+  const outcome = await lifecycle.commands.deletePristineDraft(request);
+  hideInvalidContractDraftLifecycleCapability(outcome.status);
+  if (outcome.status !== "completed") return;
+  deletePristineDraftVisible.value = false;
+  await leaveCompletedContractDraftLifecycle();
 }
 
 async function confirmAbandonApplication(request: {
   reason: string;
   password: string;
 }) {
-  contractDraftLifecycleActionBusy.value = true;
-  abandonApplicationError.value = "";
-  await executeAbandonContractDraftAction({
-    generation: workbenchLoadRequestId,
-    contractId: contractId.value,
-    versionId: contractDraftLifecycleVersionId.value,
-    expectedRevision: contractDraftLifecycleRevision.value,
-    reason: request.reason,
-    currentPassword: request.password,
-    expectedRequiresComment: abandonApplicationRequiresComment.value,
-    expectedRequiresPassword: abandonApplicationRequiresPassword.value,
-    isCurrent: contractDraftLifecycleContextCurrent,
-    beforeWrite: suspendAutosaveForLifecycleAction,
-    onWriteFailure: resumeAutosaveAfterLifecycleAction,
-    onResult: finishAbandonApplication,
-    onCapabilityFailure: hideInvalidContractDraftLifecycleCapability,
-    onOperationFailure: setAbandonApplicationError,
-    onOperationSettled: settleContractDraftLifecycleAction,
-    swallowOperationFailure: true
-  });
+  const outcome = await lifecycle.commands.abandonApplication(request);
+  hideInvalidContractDraftLifecycleCapability(outcome.status);
+  if (outcome.status !== "completed") return;
+  abandonApplicationVisible.value = false;
+  await leaveCompletedContractDraftLifecycle();
 }
 
 // Sections are presentational: they emit a patch instead of mutating the shared
@@ -2119,7 +1997,6 @@ onBeforeUnmount(() => {
   contractWorkbenchComponentAlive = false;
   workbenchLoadRequestId += 1;
   deletePristineDraftVisible.value = false;
-  deletePristineDraftRetryPending.value = false;
   abandonApplicationVisible.value = false;
   clearManualSaveMessage();
   cancelPendingNavigation();
@@ -3038,10 +2915,7 @@ async function loadExpectedWorkbench(id: string) {
   const expectedVersionId = queryText(route.query.versionId).trim();
   clearAuthoritySnapshot();
   deletePristineDraftVisible.value = false;
-  deletePristineDraftRetryPending.value = false;
   abandonApplicationVisible.value = false;
-  deletePristineDraftError.value = "";
-  abandonApplicationError.value = "";
   if (!expectedVersionId) {
     throw new Error("工作台缺少合同版本编号，已停止读取最新草稿");
   }

@@ -11,6 +11,8 @@ import type {
 vi.mock("../../../api/contract-workbench.api", () => ({
   acquireContractDraftEditLease: vi.fn(),
   createWorkbenchDraft: vi.fn(),
+  executeAbandonContractDraftAction: vi.fn(),
+  executeDeletePristineContractDraftAction: vi.fn(),
   fetchContractCreateCapabilities: vi.fn(),
   fetchContractDraftWorkbench: vi.fn(),
   fetchContractDraftOperationCapabilities: vi.fn(),
@@ -25,6 +27,8 @@ vi.mock("../../../api/contract-workbench.api", () => ({
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
+  executeAbandonContractDraftAction,
+  executeDeletePristineContractDraftAction,
   fetchContractCreateCapabilities,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
@@ -47,6 +51,12 @@ import {
 import { canApplyExpectedWorkbenchVersion } from "../contract-change.state";
 
 const mockCreateDraft = vi.mocked(createWorkbenchDraft);
+const mockExecuteAbandonApplication = vi.mocked(
+  executeAbandonContractDraftAction
+);
+const mockExecuteDeletePristineDraft = vi.mocked(
+  executeDeletePristineContractDraftAction
+);
 const mockFetchCreateCapabilities = vi.mocked(fetchContractCreateCapabilities);
 const mockAcquireLease = vi.mocked(acquireContractDraftEditLease);
 const mockFetchOperationCapabilities = vi.mocked(
@@ -1158,13 +1168,6 @@ describe("useContractDraft", () => {
     });
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
 
-    draft.failClosedAfterUncertainPristineDraftDeletion();
-    expect(draft.authoritySnapshot.value).toMatchObject({
-      canWrite: false,
-      readonly: true,
-      lifecycleKind: "pristine_draft",
-      lease: { kind: "lost", reason: "lifecycle_result_unknown" }
-    });
   });
 
   it("rejects a mismatched workbench version without publishing an authority receipt", async () => {
@@ -1857,43 +1860,39 @@ describe("useContractDraft", () => {
       .toContain("自动保存失败的输入");
   });
 
-  it("cancels and resumes autosave without inventing an extra edit", async () => {
-    const draft = makeDraft();
-    mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
-    mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
-    await draft.load("cv-1");
-
-    draft.model.contractName = "生命周期动作前的输入";
-    draft.markDirty();
-    expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(mockSaveDraft).not.toHaveBeenCalled();
-    await expect(draft.saveNow()).resolves.toBe(false);
-
-    draft.resumeAutosaveAfterLifecycleAction();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
-    expect(draft.isDirty.value).toBe(false);
-
-    expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
-    draft.resumeAutosaveAfterLifecycleAction();
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
-  });
-
   it("keeps an uncertain pristine-draft deletion frozen until fresh server state grants a current lease", async () => {
     const draft = makeDraft();
+    const deletable = makeFormallySavedWorkbench({
+      availableActions: [{
+        key: "delete_pristine_draft",
+        label: "删除草稿",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: false,
+        requiresPassword: false
+      }]
+    });
     mockFetchWorkbench
-      .mockResolvedValueOnce(makeFormallySavedWorkbench())
-      .mockResolvedValueOnce(makeFormallySavedWorkbench());
+      .mockResolvedValueOnce(deletable)
+      .mockResolvedValueOnce(deletable);
+    mockExecuteDeletePristineDraft.mockImplementationOnce(async (input) => {
+      expect(input.beforeWrite()).toBe(true);
+      input.onWriteFailure();
+      input.onOperationFailure?.(new Error("删除请求结果未知"));
+      input.onOperationSettled?.();
+    });
     await draft.load("cv-1");
 
     draft.model.contractName = "删除结果未知前的本机输入";
     draft.markDirty();
     expect(draft.currentLeaseToken()).toBe("lease-token");
-    expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
-
-    draft.failClosedAfterUncertainPristineDraftDeletion();
+    await expect(
+      draft.lifecycle.commands.deletePristineDraft({
+        reason: "用户确认删除",
+        password: ""
+      })
+    ).resolves.toEqual({ status: "failed" });
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(mockSaveDraft).not.toHaveBeenCalled();
@@ -1910,28 +1909,203 @@ describe("useContractDraft", () => {
     expect(authorityLease(draft)).toMatchObject({ kind: "held" });
     expect(draft.currentLeaseToken()).toBe("lease-token");
     expect(authorityCanWrite(draft)).toBe(true);
+    expect(draft.lifecycle.state.value).toEqual({
+      busy: false,
+      deleteRetryPending: false,
+      deleteError: "",
+      abandonError: ""
+    });
   });
 
-  it("keeps a retry-pending pristine-draft deletion frozen after the autosave timer advances", async () => {
+  it("owns pristine-draft deletion retry state and commands without page lifecycle choreography", async () => {
     const draft = makeDraft();
-    mockFetchWorkbench.mockResolvedValueOnce(makeFormallySavedWorkbench());
+    mockFetchWorkbench.mockResolvedValueOnce(makeFormallySavedWorkbench({
+      availableActions: [{
+        key: "delete_pristine_draft",
+        label: "删除草稿",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: false,
+        requiresPassword: false
+      }]
+    }));
+    let attempt = 0;
+    mockExecuteDeletePristineDraft.mockImplementation(async (input) => {
+      expect(input.beforeWrite()).toBe(true);
+      attempt += 1;
+      await input.onResult({
+        status: attempt === 1 ? "retryable" : "completed",
+        context: {
+          generation: 1,
+          contractId: "ct-1",
+          versionId: "cv-1",
+          expectedRevision: 3,
+          action: "delete_pristine_draft",
+          reason: "用户确认删除",
+          expectedRequiresComment: false,
+          expectedRequiresPassword: false
+        },
+        preflight: makeWorkbench(),
+        response: attempt === 1
+          ? {
+              contractVersionId: "cv-1",
+              status: "deleting",
+              lifecycleKind: "pristine_draft",
+              retryable: true
+            }
+          : {
+              contractVersionId: "cv-1",
+              status: "deleted",
+              lifecycleKind: "pristine_draft"
+            }
+      });
+      input.onOperationSettled?.();
+    });
     await draft.load("cv-1");
-
-    draft.model.contractName = "待重试删除前的本机输入";
+    draft.model.contractName = "删除前本机输入";
     draft.markDirty();
-    expect(draft.suspendAutosaveForLifecycleAction()).toBe(true);
 
-    draft.freezeForPendingPristineDraftDeletion();
-    await vi.advanceTimersByTimeAsync(2_000);
-
-    expect(mockSaveDraft).not.toHaveBeenCalled();
-    expect(draft.currentLeaseToken()).toBeNull();
+    await expect(
+      draft.lifecycle.commands.deletePristineDraft({
+        reason: "用户确认删除",
+        password: ""
+      })
+    ).resolves.toMatchObject({ status: "retryable" });
+    expect(draft.lifecycle.state.value).toMatchObject({
+      busy: false,
+      deleteRetryPending: true
+    });
+    expect(draft.lifecycle.state.value.deleteError).toContain("清理未完成");
     expect(authorityLease(draft)).toEqual({
       kind: "lost",
       reason: "lifecycle_deletion_pending"
     });
-    expect(authorityCanWrite(draft)).toBe(false);
-    await expect(draft.saveNow()).resolves.toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mockSaveDraft).not.toHaveBeenCalled();
+
+    await expect(
+      draft.lifecycle.commands.deletePristineDraft({
+        reason: "用户确认删除",
+        password: ""
+      })
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(mockExecuteDeletePristineDraft).toHaveBeenCalledTimes(2);
+    expect(draft.lifecycle.state.value).toMatchObject({
+      busy: false,
+      deleteRetryPending: false,
+      deleteError: ""
+    });
+    expect(draft.isDirty.value).toBe(false);
+    expect(draft.authoritySnapshot.value).toBeNull();
+  });
+
+  it("clears lifecycle busy state when a competing governed action settles without callbacks", async () => {
+    const draft = makeDraft();
+    mockFetchWorkbench.mockResolvedValueOnce(makeFormallySavedWorkbench({
+      availableActions: [{
+        key: "delete_pristine_draft",
+        label: "删除草稿",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: false,
+        requiresPassword: false
+      }]
+    }));
+    mockExecuteDeletePristineDraft.mockResolvedValueOnce(undefined);
+    await draft.load("cv-1");
+
+    await expect(
+      draft.lifecycle.commands.deletePristineDraft({
+        reason: "用户确认删除",
+        password: ""
+      })
+    ).resolves.toEqual({ status: "failed" });
+    expect(draft.lifecycle.state.value.busy).toBe(false);
+  });
+
+  it("resumes the save queue after an abandonment failure and clears local state only on completion", async () => {
+    const draft = makeDraft();
+    const approvalDraft = makeFormallySavedWorkbench({
+      availableActions: [{
+        key: "abandon_application",
+        label: "结束申请",
+        kind: "danger",
+        enabled: true,
+        disabledReason: null,
+        requiresComment: true,
+        requiresPassword: false
+      }],
+      version: {
+        ...makeWorkbench().version,
+        draftLifecycleKind: "approval_draft"
+      }
+    });
+    mockFetchWorkbench.mockResolvedValueOnce(approvalDraft);
+    mockSaveDraft.mockResolvedValueOnce(saveResult("cv-1", 4));
+    mockExecuteAbandonApplication
+      .mockImplementationOnce(async (input) => {
+        expect(input.beforeWrite()).toBe(true);
+        input.onWriteFailure();
+        input.onOperationFailure?.(new Error("结束申请网络异常"));
+        input.onOperationSettled?.();
+      })
+      .mockImplementationOnce(async (input) => {
+        expect(input.beforeWrite()).toBe(true);
+        await input.onResult({
+          status: "completed",
+          context: {
+            generation: 1,
+            contractId: "ct-1",
+            versionId: "cv-1",
+            expectedRevision: 4,
+            action: "abandon_application",
+            reason: "不再继续",
+            expectedRequiresComment: true,
+            expectedRequiresPassword: false
+          },
+          preflight: approvalDraft,
+          response: {
+            contractVersionId: "cv-1",
+            status: "abandoned",
+            lifecycleKind: "approval_draft",
+            action: "abandon_application",
+            abandonedAt: "2026-08-11T00:00:00.000Z",
+            abandonedByUserId: "u-1",
+            reason: "不再继续",
+            idempotent: false
+          }
+        });
+        input.onOperationSettled?.();
+      });
+    await draft.load("cv-1");
+    draft.model.contractName = "结束前本机输入";
+    draft.markDirty();
+
+    await expect(
+      draft.lifecycle.commands.abandonApplication({
+        reason: "不再继续",
+        password: ""
+      })
+    ).resolves.toEqual({ status: "failed" });
+    expect(draft.lifecycle.state.value.abandonError).toContain("网络异常");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mockSaveDraft).toHaveBeenCalledTimes(1);
+    expect(draft.authoritySnapshot.value).not.toBeNull();
+
+    await expect(
+      draft.lifecycle.commands.abandonApplication({
+        reason: "不再继续",
+        password: ""
+      })
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(draft.lifecycle.state.value).toMatchObject({
+      busy: false,
+      abandonError: ""
+    });
+    expect(draft.isDirty.value).toBe(false);
+    expect(draft.authoritySnapshot.value).toBeNull();
   });
 
   it("does not retry automatically after a revision conflict", async () => {
