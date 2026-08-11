@@ -23,6 +23,7 @@ import { normalizeContractPdf, type PdfAttachment } from "./pdf-normalizer";
 
 const ERROR_MESSAGE_LIMIT = 2_000;
 const PROCESSING_LEASE_MS = 10 * 60 * 1_000;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const SAFE_PERSISTED_ERROR_MESSAGES = new Set([
   "合同版式版本不存在",
   "合同版式版本已不可预览，请刷新后重试",
@@ -567,6 +568,8 @@ export class ContractDocumentProcessor
           id: string;
           contractId: string;
           draftRevision: number;
+          documentContentRevision: number;
+          documentContentFingerprint: string | null;
           status: string;
           changeType: string | null;
           draftData: Prisma.JsonValue;
@@ -584,7 +587,8 @@ export class ContractDocumentProcessor
           mutationBoundary.contract.voidedAt ||
           mutationBoundary.formalBlockers.length > 0 ||
           !version ||
-          version.draftRevision !== job.sourceRevision ||
+          version.documentContentRevision !== snapshot.documentContentRevision ||
+          version.documentContentFingerprint !== snapshot.documentContentFingerprint ||
           version.status !== "draft" ||
           version.changeType === "historical_takeover" ||
           version.hasHistoricalTakeoverRelation === true
@@ -689,15 +693,14 @@ export class ContractDocumentProcessor
                   pdfFileId: { not: null }
                 }
               : {
+                  id: { not: job.id },
                   contractVersionId: job.contractVersionId,
                   purpose: job.purpose,
-                  sourceRevision: { lt: job.sourceRevision },
                   status: { in: ["success", "stale"] },
                   docxFileId: { not: null },
                   pdfFileId: { not: null }
                 },
           orderBy: [
-            { sourceRevision: "desc" },
             { createdAt: "desc" },
             { id: "desc" }
           ],
@@ -751,7 +754,8 @@ export class ContractDocumentProcessor
           const pointerUpdated = await tx.contractVersion.updateMany({
             where: {
               id: job.contractVersionId,
-              draftRevision: job.sourceRevision,
+              documentContentRevision: snapshot.documentContentRevision,
+              documentContentFingerprint: snapshot.documentContentFingerprint,
               latestDraftPreviewDocumentId:
                 version.latestDraftPreviewDocumentId ?? null
             },
@@ -793,6 +797,9 @@ export class ContractDocumentProcessor
             docxNewFileId: docxFile.id,
             pdfOldFileId,
             pdfNewFileId: pdfFile.id,
+            sourceRevision: job.sourceRevision,
+            documentContentRevision: snapshot.documentContentRevision,
+            documentContentFingerprint: snapshot.documentContentFingerprint,
             replacementKind: predecessorDocumentId
               ? job.purpose === "draft"
                 ? "contract_draft_preview_superseded"
@@ -916,6 +923,10 @@ export class ContractDocumentProcessor
     }
     const snapshot = value as unknown as ContractDocumentInputSnapshot;
     if (
+      !Number.isInteger(snapshot.documentContentRevision) ||
+      snapshot.documentContentRevision < 1 ||
+      typeof snapshot.documentContentFingerprint !== "string" ||
+      !SHA256_PATTERN.test(snapshot.documentContentFingerprint) ||
       typeof snapshot.templateFileId !== "string" ||
       typeof snapshot.outputBaseName !== "string" ||
       !snapshot.outputBaseName.trim() ||

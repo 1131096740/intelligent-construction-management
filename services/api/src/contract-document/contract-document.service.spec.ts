@@ -3,6 +3,11 @@ import { PrismaService } from "../database/prisma.service";
 import { ContractDocumentService, requiredPlaceholderKeys } from "./contract-document.service";
 
 describe("ContractDocumentService", () => {
+  const documentContentFingerprint = "a".repeat(64);
+  const documentContentCoordinates = {
+    documentContentRevision: 3,
+    documentContentFingerprint
+  };
   const audit = { record: jest.fn() };
   const files = {
     assertCanDownloadFile: jest.fn(),
@@ -80,6 +85,7 @@ describe("ContractDocumentService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 7,
+          ...documentContentCoordinates,
           layoutTemplateVersionId: "layout-1",
           amountCents: 1_000_000n,
           invoiceType: "vat_special",
@@ -88,7 +94,13 @@ describe("ContractDocumentService", () => {
           clauseSnapshot: [
             { key: "payment", content: { text: "结算后付款" } }
           ],
-          readinessSnapshot: { checkedRevision: 7, blocking: [], warnings: [] }
+          readinessSnapshot: {
+            checkedRevision: 7,
+            checkedDocumentContentRevision: 3,
+            checkedDocumentContentFingerprint: documentContentFingerprint,
+            blocking: [],
+            warnings: []
+          }
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
@@ -233,6 +245,8 @@ describe("ContractDocumentService", () => {
         sourceRevision: 7,
         purpose: "draft",
         inputSnapshot: expect.objectContaining({
+          documentContentRevision: 3,
+          documentContentFingerprint,
           templateFileId: "layout-file-1",
           outputBaseName: "草稿-001-草稿-修订7",
           requiredKeys: expect.arrayContaining([
@@ -262,6 +276,17 @@ describe("ContractDocumentService", () => {
         })
       })
     });
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "contract.document.queue",
+        metadata: expect.objectContaining({
+          sourceRevision: 7,
+          documentContentRevision: 3,
+          documentContentFingerprint
+        })
+      })
+    );
     expect(files.assertCanDownloadFile).toHaveBeenCalledWith(
       tx,
       "attachment-a",
@@ -450,6 +475,7 @@ describe("ContractDocumentService", () => {
       sourceRevision: 7,
       layoutTemplateVersionId: "layout-1",
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file-1",
         outputBaseName: "HT-20260806-007-外发合同-修订7",
         renderInput: {
@@ -480,11 +506,25 @@ describe("ContractDocumentService", () => {
     });
   });
 
-  it("keeps the previous successful preview available while a newer revision has not succeeded", async () => {
+  it("keeps and exposes a successful preview across metadata-only revisions", async () => {
     const tx = makeTx();
+    tx.contractGeneratedDocument.findMany.mockResolvedValue([{
+      id: "document-1",
+      purpose: "draft",
+      status: "success",
+      sourceRevision: 6,
+      inputSnapshot: documentContentCoordinates
+    }]);
     const { service } = makeService(tx);
 
-    await service.list("version-1", "owner-1");
+    await expect(service.list("version-1", "owner-1")).resolves.toEqual([
+      expect.objectContaining({
+        id: "document-1",
+        status: "success",
+        sourceRevision: 6,
+        ...documentContentCoordinates
+      })
+    ]);
 
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
@@ -533,7 +573,9 @@ describe("ContractDocumentService", () => {
     ).resolves.toEqual({
       generationId: "document-1",
       status: "queued",
-      sourceRevision: 7
+      sourceRevision: 7,
+      documentContentRevision: 3,
+      documentContentFingerprint
     });
     expect(tx.contractGeneratedDocument.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -542,6 +584,8 @@ describe("ContractDocumentService", () => {
         purpose: "draft",
         sourceRevision: 7,
         inputSnapshot: expect.objectContaining({
+          documentContentRevision: 3,
+          documentContentFingerprint,
           attachmentFiles: [expect.objectContaining({ id: "attachment-a" })]
         })
       })
@@ -677,7 +721,11 @@ describe("ContractDocumentService", () => {
     tx.contractGeneratedDocument.findUnique.mockResolvedValue({
       id: "document-existing",
       status: "success",
-      sourceRevision: 7
+      sourceRevision: 7,
+      inputSnapshot: {
+        documentContentRevision: 3,
+        documentContentFingerprint
+      }
     });
     const { service } = makeService(tx);
 
@@ -688,9 +736,37 @@ describe("ContractDocumentService", () => {
     ).resolves.toEqual({
       generationId: "document-existing",
       status: "success",
-      sourceRevision: 7
+      sourceRevision: 7,
+      documentContentRevision: 3,
+      documentContentFingerprint
     });
     expect(tx.contractGeneratedDocument.create).not.toHaveBeenCalled();
+  });
+
+  it("reuses the same preview identity after a metadata-only aggregate revision", async () => {
+    const firstTx = makeTx();
+    const firstVersion = await firstTx.contractVersion.findUnique();
+    const { service: firstService } = makeService(firstTx);
+    await firstService.queueDraftPreview("version-1", "owner-1", {
+      sourceRevision: 7
+    });
+
+    const secondTx = makeTx();
+    secondTx.contractVersion.findUnique.mockResolvedValue({
+      ...firstVersion,
+      draftRevision: 8
+    });
+    const { service: secondService } = makeService(secondTx);
+    await secondService.queueDraftPreview("version-1", "owner-1", {
+      sourceRevision: 8
+    });
+
+    expect(firstTx.contractGeneratedDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey: secondTx.contractGeneratedDocument.create.mock.calls[0]?.[0].data
+          .idempotencyKey
+      })
+    });
   });
 
   it("returns an existing queued, processing, or successful document for the same key", async () => {
@@ -735,7 +811,13 @@ describe("ContractDocumentService", () => {
 
     tx.contractVersion.findUnique.mockResolvedValue({
       ...version,
-      readinessSnapshot: { checkedRevision: 7, blocking: ["合同金额缺失"], warnings: [] }
+      readinessSnapshot: {
+        checkedRevision: 7,
+        checkedDocumentContentRevision: 3,
+        checkedDocumentContentFingerprint: documentContentFingerprint,
+        blocking: ["合同金额缺失"],
+        warnings: []
+      }
     });
     await expect(
       service.queue("version-1", "owner-1", {
@@ -746,7 +828,32 @@ describe("ContractDocumentService", () => {
 
     tx.contractVersion.findUnique.mockResolvedValue({
       ...version,
-      readinessSnapshot: { checkedRevision: 6, blocking: [], warnings: [] }
+      draftRevision: 8,
+      readinessSnapshot: {
+        checkedRevision: 7,
+        checkedDocumentContentRevision: 3,
+        checkedDocumentContentFingerprint: documentContentFingerprint,
+        blocking: [],
+        warnings: []
+      }
+    });
+    await expect(
+      service.queue("version-1", "owner-1", {
+        layoutTemplateVersionId: "layout-1",
+        purpose: "internal_review"
+      })
+    ).resolves.toMatchObject({ id: "document-1" });
+
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...version,
+      draftRevision: 8,
+      readinessSnapshot: {
+        checkedRevision: 8,
+        checkedDocumentContentRevision: 2,
+        checkedDocumentContentFingerprint: "b".repeat(64),
+        blocking: [],
+        warnings: []
+      }
     });
     await expect(
       service.queue("version-1", "owner-1", {
@@ -904,6 +1011,7 @@ describe("ContractDocumentService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 7,
+          ...documentContentCoordinates,
           amountCents: 1_000_000n,
           invoiceType: "vat_general",
           defaultTaxRatePercent: { toString: () => "9" },
@@ -952,6 +1060,7 @@ describe("ContractDocumentService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 7,
+          ...documentContentCoordinates,
           amountCents: 1_000_000n,
           invoiceType: "vat_special",
           defaultTaxRatePercent: { toString: () => "13" },
@@ -1157,6 +1266,7 @@ describe("ContractDocumentService", () => {
           contractId: "contract-1",
           status: "draft",
           draftRevision: 7,
+          ...documentContentCoordinates,
           amountCents: 1_000_000n,
           invoiceType: null,
           defaultTaxRatePercent: null,
@@ -1223,7 +1333,7 @@ describe("ContractDocumentService", () => {
         purpose: "draft",
         sourceRevision: 7,
         status: "failed",
-        inputSnapshot: { attachmentFiles: [] }
+        inputSnapshot: { ...documentContentCoordinates, attachmentFiles: [] }
       })
       .mockResolvedValueOnce({ id: "document-1", status: "queued" });
     const { service } = makeService(tx);
@@ -1242,7 +1352,66 @@ describe("ContractDocumentService", () => {
     });
     expect(audit.record).toHaveBeenCalledWith(
       tx,
-      expect.objectContaining({ action: "contract.document.retry" })
+      expect.objectContaining({
+        action: "contract.document.retry",
+        metadata: documentContentCoordinates
+      })
+    );
+  });
+
+  it("retries a failed document after a metadata-only aggregate revision", async () => {
+    const tx = makeTx();
+    const currentVersion = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...currentVersion,
+      draftRevision: 8
+    });
+    tx.contractGeneratedDocument.findUnique
+      .mockResolvedValueOnce({
+        id: "document-1",
+        contractVersionId: "version-1",
+        layoutTemplateVersionId: "layout-1",
+        purpose: "draft",
+        sourceRevision: 7,
+        status: "failed",
+        inputSnapshot: { ...documentContentCoordinates, attachmentFiles: [] }
+      })
+      .mockResolvedValueOnce({ id: "document-1", status: "queued" });
+    const { service } = makeService(tx);
+
+    await expect(service.retry("document-1", "owner-1")).resolves.toMatchObject({
+      status: "queued"
+    });
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenLastCalledWith({
+      where: { id: "document-1", status: "failed", sourceRevision: 7 },
+      data: expect.objectContaining({ status: "queued" })
+    });
+  });
+
+  it("rejects retry when the frozen document content no longer matches", async () => {
+    const tx = makeTx();
+    const currentVersion = await tx.contractVersion.findUnique();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...currentVersion,
+      documentContentRevision: 4,
+      documentContentFingerprint: "b".repeat(64)
+    });
+    tx.contractGeneratedDocument.findUnique.mockResolvedValue({
+      id: "document-1",
+      contractVersionId: "version-1",
+      layoutTemplateVersionId: "layout-1",
+      purpose: "draft",
+      sourceRevision: 7,
+      status: "failed",
+      inputSnapshot: { ...documentContentCoordinates, attachmentFiles: [] }
+    });
+    const { service } = makeService(tx);
+
+    await expect(service.retry("document-1", "owner-1")).rejects.toThrow(
+      "该合同文档对应的文书内容已过期，请重新生成"
+    );
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "queued" }) })
     );
   });
 
@@ -1355,6 +1524,7 @@ describe("ContractDocumentService", () => {
       sourceRevision: 7,
       status: "failed",
       inputSnapshot: {
+        ...documentContentCoordinates,
         attachmentFiles: [
           {
             id: "attachment-a",
@@ -1400,7 +1570,7 @@ describe("ContractDocumentService", () => {
       purpose: "draft",
       sourceRevision: 7,
       status: "failed",
-      inputSnapshot: { attachmentFiles: [] }
+      inputSnapshot: { ...documentContentCoordinates, attachmentFiles: [] }
     };
     tx.contractGeneratedDocument.findUnique.mockResolvedValue(failed);
     tx.contractLayoutTemplateVersion.findUnique.mockResolvedValue({
@@ -1440,6 +1610,7 @@ describe("ContractDocumentService", () => {
       sourceRevision: 7,
       status: "failed",
       inputSnapshot: {
+        ...documentContentCoordinates,
         attachmentFiles: [{ id: "attachment-a" }]
       }
     });

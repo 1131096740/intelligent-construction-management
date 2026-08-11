@@ -708,7 +708,6 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         data: expect.not.objectContaining({ code: expect.anything() })
       })
     );
-    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
@@ -758,6 +757,41 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         })
       })
     );
+  });
+
+  it("stales generated and preview documents only when document content changes", async () => {
+    const changed = makeSaveService();
+
+    await changed.service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      aggregateInput() as never
+    );
+
+    expect(changed.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "cv-1",
+        status: { in: ["queued", "processing", "success"] }
+      },
+      data: { status: "stale" }
+    });
+
+    const metadataOnly = makeSaveService({
+      fieldChanged: false,
+      referencesChanged: true,
+      documentContentRevision: 7,
+      documentContentFingerprint: "c".repeat(64)
+    });
+
+    await metadataOnly.service.saveAggregate(
+      "cv-1",
+      "owner-1",
+      leaseToken,
+      aggregateInput() as never
+    );
+
+    expect(metadataOnly.tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("persists a missing fingerprint without advancing either revision", async () => {

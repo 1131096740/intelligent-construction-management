@@ -10,6 +10,8 @@ export interface ContractDocumentCanvasRecord {
   purpose?: string;
   status?: string;
   sourceRevision?: number;
+  documentContentRevision?: number | null;
+  documentContentFingerprint?: string | null;
   pdfFileId?: string | null;
   createdAt?: string | Date;
   completedAt?: string | Date | null;
@@ -51,13 +53,17 @@ function hasPdf(document: ContractDocumentCanvasRecord): boolean {
 
 export function contractDocumentCanvasState(
   documents: ContractDocumentCanvasRecord[],
-  draftRevision: number
+  documentContentRevision: number,
+  documentContentFingerprint: string | null
 ): ContractDocumentCanvasState {
+  const matchesCurrentContent = (document: ContractDocumentCanvasRecord) =>
+    document.documentContentRevision === documentContentRevision &&
+    document.documentContentFingerprint === documentContentFingerprint;
   const ready = latest(
     documents,
     (document) =>
       document.status === "success" &&
-      document.sourceRevision === draftRevision &&
+      matchesCurrentContent(document) &&
       hasPdf(document)
   );
   if (ready) return { kind: "ready", document: ready };
@@ -65,7 +71,7 @@ export function contractDocumentCanvasState(
   const processing = latest(
     documents,
     (document) =>
-      document.sourceRevision === draftRevision &&
+      matchesCurrentContent(document) &&
       ACTIVE_STATUSES.has(String(document.status ?? ""))
   );
   if (processing) return { kind: "processing", document: processing };
@@ -73,7 +79,7 @@ export function contractDocumentCanvasState(
   const failed = latest(
     documents,
     (document) =>
-      document.sourceRevision === draftRevision && document.status === "failed"
+      matchesCurrentContent(document) && document.status === "failed"
   );
   if (failed) return { kind: "failed", document: failed };
 

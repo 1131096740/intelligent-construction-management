@@ -1999,6 +1999,8 @@ export class ContractWorkbenchService {
     status: string;
     changeType: string | null;
     draftData: Prisma.JsonValue;
+    documentContentRevision: number;
+    documentContentFingerprint: string | null;
   }) {
     const documents = await this.prisma.contractGeneratedDocument.findMany({
       where: { contractVersionId: version.id },
@@ -2008,11 +2010,25 @@ export class ContractWorkbenchService {
         purpose: true,
         status: true,
         sourceRevision: true,
+        inputSnapshot: true,
         docxFileId: true,
         pdfFileId: true,
         createdAt: true,
         completedAt: true
       }
+    });
+    const documentsWithContentTrace = documents.map((document) => {
+      const { inputSnapshot, ...publicDocument } = document;
+      const trace = this.generatedDocumentContentTrace(inputSnapshot);
+      const contentStale =
+        ["queued", "processing", "success"].includes(document.status) &&
+        (trace.documentContentRevision !== version.documentContentRevision ||
+          trace.documentContentFingerprint !== version.documentContentFingerprint);
+      return {
+        ...publicDocument,
+        ...trace,
+        status: contentStale ? "stale" : document.status
+      };
     });
     const selection = this.companySelectionFromDraft(version.draftData);
     if (
@@ -2020,7 +2036,7 @@ export class ContractWorkbenchService {
       version.changeType === "change" ||
       version.changeType === "supplement"
     ) {
-      return documents;
+      return documentsWithContentTrace;
     }
 
     const entity = await this.prisma.companyEntity.findUnique({
@@ -2032,13 +2048,32 @@ export class ContractWorkbenchService {
       entity.dataStatus === "complete" &&
       entity.currentVersionNo === selection.versionNo
     ) {
-      return documents;
+      return documentsWithContentTrace;
     }
-    return documents.map((document) =>
+    return documentsWithContentTrace.map((document) =>
       ["queued", "processing", "success"].includes(document.status)
         ? { ...document, status: "stale" }
         : document
     );
+  }
+
+  private generatedDocumentContentTrace(value: Prisma.JsonValue) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {
+        documentContentRevision: null,
+        documentContentFingerprint: null
+      };
+    }
+    const snapshot = value as Record<string, unknown>;
+    return {
+      documentContentRevision: Number.isInteger(snapshot.documentContentRevision)
+        ? (snapshot.documentContentRevision as number)
+        : null,
+      documentContentFingerprint:
+        typeof snapshot.documentContentFingerprint === "string"
+          ? snapshot.documentContentFingerprint
+          : null
+    };
   }
 
   private async loadOwnedContract(

@@ -50,6 +50,8 @@ export interface UploadOfflineRevisionInput {
 }
 
 export interface ContractDocumentInputSnapshot {
+  documentContentRevision: number;
+  documentContentFingerprint: string;
   templateFileId: string;
   outputBaseName: string;
   renderInput: { values: Record<string, unknown> };
@@ -62,6 +64,7 @@ export interface ContractDocumentInputSnapshot {
 }
 
 const ACTIVE_DOCUMENT_STATUSES = ["queued", "processing", "success"];
+const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const EDITABLE_VERSION_STATUSES = ["draft"];
 const COMPANY_ENTITY_DRIFT = Symbol("company-entity-drift");
 const DOCX_MIME =
@@ -145,6 +148,7 @@ export class ContractDocumentService {
         if (await this.markOriginalDraftCompanyDrift(tx, version)) {
           return COMPANY_ENTITY_DRIFT;
         }
+        const documentContent = this.versionDocumentContent(version);
 
         const layoutTemplateVersionId = command?.useSavedLayout
           ? version.layoutTemplateVersionId
@@ -167,7 +171,7 @@ export class ContractDocumentService {
         this.assertInternalReviewReady(
           input.purpose,
           version.readinessSnapshot,
-          version.draftRevision
+          documentContent
         );
 
         const attachmentFileIds = command
@@ -188,7 +192,8 @@ export class ContractDocumentService {
 
         contestedKey = this.idempotencyKey(
           version.id,
-          version.draftRevision,
+          documentContent.revision,
+          documentContent.fingerprint,
           layout.id,
           input.purpose,
           attachmentFileIds
@@ -239,6 +244,8 @@ export class ContractDocumentService {
           : [];
         assertContractBillDerivedUnitPrices(rows);
         const inputSnapshot: ContractDocumentInputSnapshot = {
+          documentContentRevision: documentContent.revision,
+          documentContentFingerprint: documentContent.fingerprint,
           templateFileId: layout.docxFileId,
           outputBaseName: `${contract.code ?? contract.temporaryCode ?? contract.name}-${PURPOSE_FILE_LABELS[input.purpose]}-修订${version.draftRevision}`,
           renderInput: {
@@ -284,6 +291,8 @@ export class ContractDocumentService {
           metadata: {
             contractVersionId: version.id,
             sourceRevision: version.draftRevision,
+            documentContentRevision: documentContent.revision,
+            documentContentFingerprint: documentContent.fingerprint,
             purpose: input.purpose
           }
         });
@@ -322,10 +331,13 @@ export class ContractDocumentService {
         useSavedLayout: true
       }
     );
+    const documentContent = this.documentContentSnapshot(document.inputSnapshot);
     return {
       generationId: document.id,
       status: document.status,
-      sourceRevision: document.sourceRevision
+      sourceRevision: document.sourceRevision,
+      documentContentRevision: documentContent.revision,
+      documentContentFingerprint: documentContent.fingerprint
     };
   }
 
@@ -342,9 +354,22 @@ export class ContractDocumentService {
       ) {
         await this.markOriginalDraftCompanyDrift(tx, version);
       }
-      return tx.contractGeneratedDocument.findMany({
+      const documents = await tx.contractGeneratedDocument.findMany({
         where: { contractVersionId },
         orderBy: { createdAt: "desc" }
+      });
+      const currentContent = this.optionalVersionDocumentContent(version);
+      return documents.map((document) => {
+        const trace = this.optionalDocumentContentSnapshot(document.inputSnapshot);
+        const contentStale =
+          ACTIVE_DOCUMENT_STATUSES.includes(document.status) &&
+          (trace.documentContentRevision !== currentContent.documentContentRevision ||
+            trace.documentContentFingerprint !== currentContent.documentContentFingerprint);
+        return {
+          ...document,
+          ...trace,
+          status: contentStale ? "stale" : document.status
+        };
       });
     });
   }
@@ -522,8 +547,15 @@ export class ContractDocumentService {
       if (document.status !== "failed") {
         throw new BadRequestException("只有生成失败的合同文档可以重试");
       }
-      if (document.sourceRevision !== version.draftRevision) {
-        throw new BadRequestException("该合同文档对应的草稿已过期，请重新生成");
+      const snapshot = this.retrySnapshot(document.inputSnapshot);
+      const currentContent = this.versionDocumentContent(version);
+      if (
+        snapshot.documentContentRevision !== currentContent.revision ||
+        snapshot.documentContentFingerprint !== currentContent.fingerprint
+      ) {
+        throw new BadRequestException(
+          "该合同文档对应的文书内容已过期，请重新生成"
+        );
       }
       if (!EDITABLE_VERSION_STATUSES.includes(version.status)) {
         throw new BadRequestException("合同草稿当前不可编辑，不能生成或修订合同文档");
@@ -546,9 +578,8 @@ export class ContractDocumentService {
       this.assertInternalReviewReady(
         document.purpose as ContractDocumentPurpose,
         version.readinessSnapshot,
-        version.draftRevision
+        currentContent
       );
-      const snapshot = this.retrySnapshot(document.inputSnapshot);
       for (const attachment of snapshot.attachmentFiles) {
         await this.files.assertCanDownloadFile(tx, attachment.id, actorUserId);
       }
@@ -578,7 +609,7 @@ export class ContractDocumentService {
         where: {
           id: documentId,
           status: "failed",
-          sourceRevision: version.draftRevision
+          sourceRevision: document.sourceRevision
         },
         data: {
           status: "queued",
@@ -594,7 +625,11 @@ export class ContractDocumentService {
         actorUserId,
         action: "contract.document.retry",
         businessType: "contract_generated_document",
-        businessId: documentId
+        businessId: documentId,
+        metadata: {
+          documentContentRevision: snapshot.documentContentRevision,
+          documentContentFingerprint: snapshot.documentContentFingerprint
+        }
       });
       return tx.contractGeneratedDocument.findUnique({ where: { id: documentId } });
     });
@@ -679,6 +714,9 @@ export class ContractDocumentService {
     }
     const snapshot = value as unknown as ContractDocumentInputSnapshot;
     if (
+      !Number.isInteger(snapshot.documentContentRevision) ||
+      snapshot.documentContentRevision < 1 ||
+      !SHA256_PATTERN.test(snapshot.documentContentFingerprint) ||
       !Array.isArray(snapshot.attachmentFiles) ||
       snapshot.attachmentFiles.some(
         (file) => !file || typeof file.id !== "string" || !file.id
@@ -687,6 +725,86 @@ export class ContractDocumentService {
       throw new BadRequestException("合同文档生成快照异常，请重新生成");
     }
     return snapshot;
+  }
+
+  private versionDocumentContent(version: {
+    documentContentRevision: number;
+    documentContentFingerprint: string | null;
+  }) {
+    if (
+      !Number.isInteger(version.documentContentRevision) ||
+      version.documentContentRevision < 1 ||
+      typeof version.documentContentFingerprint !== "string" ||
+      !SHA256_PATTERN.test(version.documentContentFingerprint)
+    ) {
+      throw new BadRequestException(
+        "合同文书内容摘要尚未建立，请先保存当前合同内容"
+      );
+    }
+    return {
+      revision: version.documentContentRevision,
+      fingerprint: version.documentContentFingerprint
+    };
+  }
+
+  private documentContentSnapshot(value: Prisma.JsonValue) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new BadRequestException("合同文档生成快照异常，请重新生成");
+    }
+    const snapshot = value as {
+      documentContentRevision?: unknown;
+      documentContentFingerprint?: unknown;
+    };
+    if (
+      !Number.isInteger(snapshot.documentContentRevision) ||
+      (snapshot.documentContentRevision as number) < 1 ||
+      typeof snapshot.documentContentFingerprint !== "string" ||
+      !SHA256_PATTERN.test(snapshot.documentContentFingerprint)
+    ) {
+      throw new BadRequestException("合同文档生成快照异常，请重新生成");
+    }
+    return {
+      revision: snapshot.documentContentRevision as number,
+      fingerprint: snapshot.documentContentFingerprint
+    };
+  }
+
+  private optionalDocumentContentSnapshot(value: Prisma.JsonValue) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {
+        documentContentRevision: null,
+        documentContentFingerprint: null
+      };
+    }
+    const snapshot = value as Record<string, unknown>;
+    return {
+      documentContentRevision: Number.isInteger(snapshot.documentContentRevision)
+        ? (snapshot.documentContentRevision as number)
+        : null,
+      documentContentFingerprint:
+        typeof snapshot.documentContentFingerprint === "string" &&
+        SHA256_PATTERN.test(snapshot.documentContentFingerprint)
+          ? snapshot.documentContentFingerprint
+          : null
+    };
+  }
+
+  private optionalVersionDocumentContent(version: {
+    documentContentRevision: number;
+    documentContentFingerprint: string | null;
+  }) {
+    return {
+      documentContentRevision:
+        Number.isInteger(version.documentContentRevision) &&
+        version.documentContentRevision >= 1
+          ? version.documentContentRevision
+          : null,
+      documentContentFingerprint:
+        typeof version.documentContentFingerprint === "string" &&
+        SHA256_PATTERN.test(version.documentContentFingerprint)
+          ? version.documentContentFingerprint
+          : null
+    };
   }
 
   private async loadOwnedVersion(
@@ -796,14 +914,15 @@ export class ContractDocumentService {
   private assertInternalReviewReady(
     purpose: ContractDocumentPurpose,
     snapshot: Prisma.JsonValue,
-    draftRevision: number
+    documentContent: { revision: number; fingerprint: string }
   ) {
     if (purpose !== "internal_review") return;
     if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
       throw new BadRequestException("请先完成合同资料齐全性检查，再生成内部送审稿");
     }
     const readiness = snapshot as {
-      checkedRevision?: unknown;
+      checkedDocumentContentRevision?: unknown;
+      checkedDocumentContentFingerprint?: unknown;
       blocking?: unknown;
       blockingErrors?: unknown;
     };
@@ -813,7 +932,11 @@ export class ContractDocumentService {
       : Array.isArray(readiness.blockingErrors)
         ? readiness.blockingErrors
         : null;
-    if (canonical && readiness.checkedRevision !== draftRevision) {
+    if (
+      canonical &&
+      (readiness.checkedDocumentContentRevision !== documentContent.revision ||
+        readiness.checkedDocumentContentFingerprint !== documentContent.fingerprint)
+    ) {
       throw new BadRequestException("合同资料检查结果已过期，请重新检查后再生成内部送审稿");
     }
     if (!blocking || blocking.length > 0) {
@@ -827,7 +950,8 @@ export class ContractDocumentService {
 
   private idempotencyKey(
     contractVersionId: string,
-    revision: number,
+    documentContentRevision: number,
+    documentContentFingerprint: string,
     layoutTemplateVersionId: string,
     purpose: ContractDocumentPurpose,
     attachmentFileIds: string[]
@@ -836,7 +960,8 @@ export class ContractDocumentService {
       .update(
         JSON.stringify([
           contractVersionId,
-          revision,
+          documentContentRevision,
+          documentContentFingerprint,
           layoutTemplateVersionId,
           purpose,
           attachmentFileIds

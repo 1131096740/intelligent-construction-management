@@ -525,7 +525,8 @@
 
           <ContractDocumentCanvas
             :contract-name="workbench?.contract.name ?? ''"
-            :draft-revision="workbench?.version.draftRevision ?? 0"
+            :document-content-revision="workbench?.version.documentContentRevision ?? 0"
+            :document-content-fingerprint="workbench?.version.documentContentFingerprint ?? null"
             :documents="canvasDocuments"
             @open-documents="selectWorkbenchSection('negotiation_documents')"
           />
