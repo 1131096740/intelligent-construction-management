@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "31affe9f0398db19853cb9832d342f71f075b1591d4b571fbb5068856140e619",
+      "sha256": "24113367bfd39c2048120ec7c2cb315e038d3b915a477bb8c241d94f3f38122d",
       "status": "ready",
       "summary": {
         "routeCount": 452
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "dd5e9fffbb4ab8cb722f2a6ee5aa54db1ce4482bbbc3dbcc1195bfb8b1397e5c",
+      "sha256": "d376dcb84cace63d484f70294c314d685ea1cbbf9a049e96eea9874e801093d6",
       "status": "ready",
       "summary": {
         "routeCount": 452,
@@ -10845,7 +10845,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -10885,7 +10885,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
