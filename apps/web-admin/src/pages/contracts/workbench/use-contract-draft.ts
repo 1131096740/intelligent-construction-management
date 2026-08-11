@@ -22,6 +22,8 @@ import {
 import {
   acquireContractDraftEditLease,
   createWorkbenchDraft,
+  executeAbandonContractDraftAction,
+  executeDeletePristineContractDraftAction,
   fetchContractCreateCapabilities,
   fetchContractDraftOperationCapabilities,
   fetchContractDraftWorkbench,
@@ -34,6 +36,7 @@ import {
   type ContractDraftAttachmentModel,
   type ContractDraftBillModel,
   type ContractDraftChangedSection,
+  type ContractDraftLifecycleOperationContext,
   type ContractDraftNegotiationDocumentsModel,
   type ContractDraftPartyModel,
   type ContractDraftPaymentTermsModel,
@@ -449,6 +452,36 @@ export interface ContractDraftAuthoritySnapshot {
   > | null;
 }
 
+export interface ContractDraftLifecycleState {
+  readonly busy: boolean;
+  readonly deleteRetryPending: boolean;
+  readonly deleteError: string;
+  readonly abandonError: string;
+}
+
+export type ContractDraftLifecycleCommandOutcome = {
+  status:
+    | "completed"
+    | "retryable"
+    | "stale"
+    | "capability_invalid"
+    | "failed";
+};
+
+export interface ContractDraftLifecycleBoundary {
+  readonly state: Readonly<Ref<ContractDraftLifecycleState>>;
+  readonly commands: {
+    deletePristineDraft: (request: {
+      reason: string;
+      password: string;
+    }) => Promise<ContractDraftLifecycleCommandOutcome>;
+    abandonApplication: (request: {
+      reason: string;
+      password: string;
+    }) => Promise<ContractDraftLifecycleCommandOutcome>;
+  };
+}
+
 export interface UseContractDraft {
   aggregateModel: ContractDraftAggregateModel;
   /** Transitional view over aggregateModel.draft for existing section components. */
@@ -474,6 +507,8 @@ export interface UseContractDraft {
   >;
   /** Explains why a discovered local recovery is unsafe to restore. */
   localRecoveryError: Readonly<Ref<string>>;
+  /** Lifecycle state and commands owned by this same draft session. */
+  lifecycle: ContractDraftLifecycleBoundary;
   initializeDraft: InitializeDraftController;
   load: (
     contractVersionId: string
@@ -487,14 +522,6 @@ export interface UseContractDraft {
   markDirty: (section?: ContractDraftChangedSection) => void;
   /** Clears client editing state, but fails closed while a save request is in flight. */
   discardLocalState: () => boolean;
-  /** Pauses editing while a server-side lifecycle action runs. */
-  suspendAutosaveForLifecycleAction: () => boolean;
-  /** Freezes local writes while the server reports a pristine draft pending deletion. */
-  freezeForPendingPristineDraftDeletion: () => void;
-  /** Fails closed when a pristine-draft deletion request has no authoritative receipt. */
-  failClosedAfterUncertainPristineDraftDeletion: () => void;
-  /** Resumes editing after a failed lifecycle action without losing local edits. */
-  resumeAutosaveAfterLifecycleAction: () => void;
   /** Flushes dirty draft data. Clean state is a successful no-op. */
   saveNow: () => Promise<boolean>;
   /** Queues document generation for the latest successfully saved revision. */
@@ -1236,6 +1263,21 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     ContractDraftLocalRecoveryMatch<ContractDraftAggregateModel> | null
   >(null);
   const localRecoveryError = ref("");
+  const lifecycleState = ref<ContractDraftLifecycleState>({
+    busy: false,
+    deleteRetryPending: false,
+    deleteError: "",
+    abandonError: ""
+  });
+
+  function resetLifecycleState(): void {
+    lifecycleState.value = {
+      busy: false,
+      deleteRetryPending: false,
+      deleteError: "",
+      abandonError: ""
+    };
+  }
 
   // Loaded contract-version identity + revision drive every save's optimistic lock.
   const contractVersionId = ref<string | null>(null);
@@ -1697,6 +1739,176 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     scheduleSave();
   }
 
+  function lifecycleContextCurrent(
+    context: ContractDraftLifecycleOperationContext
+  ): boolean {
+    const snapshot = authoritySnapshot.value;
+    return !disposed &&
+      context.generation === loadRequestId &&
+      snapshot?.contractId === context.contractId &&
+      snapshot.contractVersionId === context.versionId &&
+      snapshot.draftRevision === context.expectedRevision;
+  }
+
+  function lifecycleCapabilityInvalid(error: unknown): boolean {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    return code === "CONTRACT_DRAFT_LIFECYCLE_INVALID_CONTEXT" ||
+      code === "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH" ||
+      code === "CONTRACT_DRAFT_LIFECYCLE_RESPONSE_MISMATCH";
+  }
+
+  async function deletePristineDraft(
+    request: { reason: string; password: string }
+  ): Promise<ContractDraftLifecycleCommandOutcome> {
+    const snapshot = authoritySnapshot.value;
+    const action = snapshot?.availableActions.find(
+      (candidate) =>
+        candidate.key === "delete_pristine_draft" && candidate.enabled
+    );
+    if (!snapshot || !action) {
+      clearAuthoritySnapshot();
+      return { status: "capability_invalid" };
+    }
+
+    lifecycleState.value = {
+      ...lifecycleState.value,
+      busy: true,
+      deleteError: ""
+    };
+    let outcome: ContractDraftLifecycleCommandOutcome = { status: "failed" };
+    try {
+      await executeDeletePristineContractDraftAction({
+        generation: loadRequestId,
+        contractId: snapshot.contractId,
+        versionId: snapshot.contractVersionId,
+        expectedRevision: snapshot.draftRevision,
+        reason: request.reason,
+        currentPassword: request.password,
+        expectedRequiresComment: action.requiresComment === true,
+        expectedRequiresPassword: action.requiresPassword === true,
+        retryPending: lifecycleState.value.deleteRetryPending,
+        isCurrent: lifecycleContextCurrent,
+        beforeWrite: suspendAutosaveForLifecycleAction,
+        onWriteFailure: failClosedAfterUncertainPristineDraftDeletion,
+        onResult: (result) => {
+          outcome = { status: result.status };
+          if (result.status === "retryable") {
+            freezeForPendingPristineDraftDeletion();
+            lifecycleState.value = {
+              ...lifecycleState.value,
+              deleteRetryPending: true,
+              deleteError:
+                "草稿已进入待删除状态，但对象清理未完成；请保持在本页并再次确认以重试。"
+            };
+            return;
+          }
+          if (result.status === "completed") {
+            discardLocalState();
+            lifecycleState.value = {
+              ...lifecycleState.value,
+              deleteRetryPending: false,
+              deleteError: ""
+            };
+          }
+        },
+        onCapabilityFailure: (error) => {
+          if (lifecycleCapabilityInvalid(error)) {
+            clearAuthoritySnapshot();
+            outcome = { status: "capability_invalid" };
+          }
+        },
+        onOperationFailure: (error) => {
+          lifecycleState.value = {
+            ...lifecycleState.value,
+            deleteError:
+              error instanceof Error ? error.message : "删除草稿失败，请刷新后重试"
+          };
+        },
+        swallowOperationFailure: true
+      });
+    } finally {
+      lifecycleState.value = {
+        ...lifecycleState.value,
+        busy: false
+      };
+    }
+    return outcome;
+  }
+
+  async function abandonApplication(
+    request: { reason: string; password: string }
+  ): Promise<ContractDraftLifecycleCommandOutcome> {
+    const snapshot = authoritySnapshot.value;
+    const action = snapshot?.availableActions.find(
+      (candidate) =>
+        candidate.key === "abandon_application" && candidate.enabled
+    );
+    if (!snapshot || !action) {
+      clearAuthoritySnapshot();
+      return { status: "capability_invalid" };
+    }
+
+    lifecycleState.value = {
+      ...lifecycleState.value,
+      busy: true,
+      abandonError: ""
+    };
+    let outcome: ContractDraftLifecycleCommandOutcome = { status: "failed" };
+    try {
+      await executeAbandonContractDraftAction({
+        generation: loadRequestId,
+        contractId: snapshot.contractId,
+        versionId: snapshot.contractVersionId,
+        expectedRevision: snapshot.draftRevision,
+        reason: request.reason,
+        currentPassword: request.password,
+        expectedRequiresComment: action.requiresComment === true,
+        expectedRequiresPassword: action.requiresPassword === true,
+        isCurrent: lifecycleContextCurrent,
+        beforeWrite: suspendAutosaveForLifecycleAction,
+        onWriteFailure: resumeAutosaveAfterLifecycleAction,
+        onResult: (result) => {
+          outcome = { status: result.status };
+          if (result.status === "completed") {
+            discardLocalState();
+            lifecycleState.value = {
+              ...lifecycleState.value,
+              abandonError: ""
+            };
+          }
+        },
+        onCapabilityFailure: (error) => {
+          if (lifecycleCapabilityInvalid(error)) {
+            clearAuthoritySnapshot();
+            outcome = { status: "capability_invalid" };
+          }
+        },
+        onOperationFailure: (error) => {
+          lifecycleState.value = {
+            ...lifecycleState.value,
+            abandonError:
+              error instanceof Error ? error.message : "放弃申请失败，请刷新后重试"
+          };
+        },
+        swallowOperationFailure: true
+      });
+    } finally {
+      lifecycleState.value = {
+        ...lifecycleState.value,
+        busy: false
+      };
+    }
+    return outcome;
+  }
+
+  const lifecycle: ContractDraftLifecycleBoundary = {
+    state: readonly(lifecycleState),
+    commands: { deletePristineDraft, abandonApplication }
+  };
+
   // -- Loading ----------------------------------------------------------------
 
   async function load(
@@ -1771,6 +1983,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     pendingSubmissionRequest = null;
     lastSavedAt.value = null;
     saveError.value = "";
+    resetLifecycleState();
     assignAggregateModel(aggregateModel, nextAggregate);
 
     inspectLocalRecovery();
@@ -2462,6 +2675,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     currentLeaseToken,
     pendingLocalRecovery,
     localRecoveryError: readonly(localRecoveryError),
+    lifecycle,
     initializeDraft,
     load,
     clearAuthoritySnapshot,
@@ -2469,10 +2683,6 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     reload: reloadWorkbench,
     markDirty,
     discardLocalState,
-    suspendAutosaveForLifecycleAction,
-    freezeForPendingPristineDraftDeletion,
-    failClosedAfterUncertainPristineDraftDeletion,
-    resumeAutosaveAfterLifecycleAction,
     saveNow,
     queuePreviewForCurrentRevision,
     submitNow,

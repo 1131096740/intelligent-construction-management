@@ -55,14 +55,21 @@ type DraftRuntime = {
     lifecycleKind: WorkbenchSnapshot["lifecycleKind"];
   } | null>;
   savedRevision: Ref<number>;
+  lifecycle: {
+    state: Ref<{
+      busy: boolean;
+      deleteRetryPending: boolean;
+      deleteError: string;
+      abandonError: string;
+    }>;
+    commands: {
+      deletePristineDraft: ReturnType<typeof vi.fn>;
+      abandonApplication: ReturnType<typeof vi.fn>;
+    };
+  };
   load: ReturnType<typeof vi.fn>;
   clearAuthoritySnapshot: ReturnType<typeof vi.fn>;
   requireAuthorityRefresh: ReturnType<typeof vi.fn>;
-  discardLocalState: ReturnType<typeof vi.fn>;
-  suspendAutosaveForLifecycleAction: ReturnType<typeof vi.fn>;
-  freezeForPendingPristineDraftDeletion: ReturnType<typeof vi.fn>;
-  failClosedAfterUncertainPristineDraftDeletion: ReturnType<typeof vi.fn>;
-  resumeAutosaveAfterLifecycleAction: ReturnType<typeof vi.fn>;
 };
 
 type PageBindings = {
@@ -76,7 +83,6 @@ type PageBindings = {
     reason: string;
     password: string;
   }) => Promise<void>;
-  loadExpectedWorkbench: (contractId: string) => Promise<void>;
 };
 
 const lifecycleRuntime = vi.hoisted(() => ({
@@ -236,15 +242,22 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
     savedRevision.value = initial.version.draftRevision;
     return initial;
   });
-  const discardLocalState = vi.fn();
   const clearAuthoritySnapshot = vi.fn(() => {
     workbench.value = null;
   });
   const requireAuthorityRefresh = vi.fn();
-  const suspendAutosaveForLifecycleAction = vi.fn(() => true);
-  const freezeForPendingPristineDraftDeletion = vi.fn();
-  const failClosedAfterUncertainPristineDraftDeletion = vi.fn();
-  const resumeAutosaveAfterLifecycleAction = vi.fn();
+  const lifecycle = {
+    state: ref({
+      busy: false,
+      deleteRetryPending: false,
+      deleteError: "",
+      abandonError: ""
+    }),
+    commands: {
+      deletePristineDraft: vi.fn(),
+      abandonApplication: vi.fn()
+    }
+  };
 
   lifecycleRuntime.draft = {
     aggregateModel,
@@ -273,11 +286,7 @@ function createDraftRuntime(initial: WorkbenchSnapshot): DraftRuntime {
     clearAuthoritySnapshot,
     requireAuthorityRefresh,
     markDirty: vi.fn(),
-    discardLocalState,
-    suspendAutosaveForLifecycleAction,
-    freezeForPendingPristineDraftDeletion,
-    failClosedAfterUncertainPristineDraftDeletion,
-    resumeAutosaveAfterLifecycleAction,
+    lifecycle,
     savedRevision,
     formalSaveCompleted: ref(false),
     lastSavedAt: ref(null),
@@ -314,9 +323,8 @@ function setupPage(initial = workbenchSnapshot()) {
 }
 
 async function preparePage(initial = workbenchSnapshot()) {
-  lifecycleRuntime.fetchWorkbench.mockResolvedValueOnce(initial);
   const page = setupPage(initial);
-  await page.bindings.loadExpectedWorkbench(initial.contract.id);
+  await page.draft.load(initial.version.id);
   return page;
 }
 
@@ -353,78 +361,43 @@ describe("contract draft lifecycle page delegation", () => {
     }
   });
 
-  it("keeps a retryable deletion in the workbench until a later exact retry completes", async () => {
-    const retryable = {
-      status: "retryable",
-      context: {
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "delete_pristine_draft",
-        reason: "用户确认结束"
-      },
-      preflight: workbenchSnapshot(),
-      response: {
-        contractVersionId: "version-a",
-        status: "deleting",
-        lifecycleKind: "pristine_draft",
-        retryable: true
-      }
-    };
-    const completed = {
-      ...retryable,
-      status: "completed",
-      response: {
-        contractVersionId: "version-a",
-        status: "deleted",
-        lifecycleKind: "pristine_draft"
-      }
-    };
-    lifecycleRuntime.executeDeletePristineDraft.mockImplementation(
-      async (input) => {
-        await input.onResult(
-          lifecycleRuntime.executeDeletePristineDraft.mock.calls.length === 1
-            ? retryable
-            : completed
-        );
-        input.onOperationSettled?.();
-      }
-    );
+  it("executes the visible delete action through the existing draft session command", async () => {
     const { bindings, draft, scope } = await preparePage();
+    draft.lifecycle.commands.deletePristineDraft.mockResolvedValue({
+      status: "retryable"
+    });
 
     try {
-      await bindings.confirmDeletePristineDraft(
-        actionRequest("current-password")
+      await bindings.confirmDeletePristineDraft(actionRequest());
+      expect(draft.lifecycle.commands.deletePristineDraft).toHaveBeenCalledWith(
+        actionRequest()
       );
+      expect(lifecycleRuntime.executeDeletePristineDraft).not.toHaveBeenCalled();
+    } finally {
+      scope.stop();
+    }
+  });
 
-      expect(lifecycleRuntime.executeDeletePristineDraft).toHaveBeenCalledWith(
-        expect.objectContaining({
-          generation: 1,
-          contractId: "contract-a",
-          versionId: "version-a",
-          expectedRevision: 12,
-          reason: "  用户确认结束  ",
-          currentPassword: "current-password",
-          retryPending: false,
-          isCurrent: expect.any(Function),
-          beforeWrite: draft.suspendAutosaveForLifecycleAction,
-          onWriteFailure: draft.failClosedAfterUncertainPristineDraftDeletion
-        })
-      );
-      expect(draft.discardLocalState).not.toHaveBeenCalled();
-      expect(draft.freezeForPendingPristineDraftDeletion).toHaveBeenCalledTimes(1);
-      expect(lifecycleRuntime.routerPush).not.toHaveBeenCalled();
+  it("keeps retryable deletion visible and redirects only after the command completes", async () => {
+    const { bindings, draft, scope } = await preparePage();
+    draft.lifecycle.commands.deletePristineDraft
+      .mockImplementationOnce(async () => {
+        draft.lifecycle.state.value = {
+          ...draft.lifecycle.state.value,
+          deleteRetryPending: true,
+          deleteError: "草稿清理未完成，请重试"
+        };
+        return { status: "retryable" };
+      })
+      .mockResolvedValueOnce({ status: "completed" });
+
+    try {
+      await bindings.confirmDeletePristineDraft(actionRequest());
       expect(bindings.deletePristineDraftError.value).toContain("清理未完成");
+      expect(lifecycleRuntime.routerPush).not.toHaveBeenCalled();
 
-      await bindings.confirmDeletePristineDraft(
-        actionRequest("current-password")
-      );
-
-      expect(lifecycleRuntime.executeDeletePristineDraft).toHaveBeenLastCalledWith(
-        expect.objectContaining({ retryPending: true })
-      );
-      expect(draft.discardLocalState).toHaveBeenCalledTimes(1);
+      await bindings.confirmDeletePristineDraft(actionRequest());
+      expect(draft.lifecycle.commands.deletePristineDraft).toHaveBeenCalledTimes(2);
       expect(lifecycleRuntime.routerPush).toHaveBeenCalledWith({
         path: "/contracts",
         query: { view: "ended" }
@@ -434,169 +407,41 @@ describe("contract draft lifecycle page delegation", () => {
     }
   });
 
-  it("delegates repeated confirmation to the global coalescer without duplicate result effects", async () => {
-    const completed = {
-      status: "completed",
-      context: {
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "delete_pristine_draft",
-        reason: "用户确认结束"
-      },
-      preflight: workbenchSnapshot(),
-      response: {
-        contractVersionId: "version-a",
-        status: "abandoned",
-        lifecycleKind: "pristine_draft",
-        action: "delete_pristine_draft"
-      }
-    };
-    let releaseOperation!: () => void;
-    const operation = new Promise<void>((resolve) => {
-      releaseOperation = resolve;
-    });
-    let ownerOperation: Promise<void> | null = null;
-    lifecycleRuntime.executeDeletePristineDraft.mockImplementation((input) => {
-      if (ownerOperation) return ownerOperation;
-      ownerOperation = operation.then(async () => {
-        await input.onResult(completed);
-        input.onOperationSettled();
-      });
-      return ownerOperation;
-    });
-    const { bindings, draft, scope } = await preparePage();
-
-    try {
-      const first = bindings.confirmDeletePristineDraft(actionRequest());
-      const repeated = bindings.confirmDeletePristineDraft(actionRequest());
-
-      expect(lifecycleRuntime.executeDeletePristineDraft).toHaveBeenCalledTimes(2);
-      releaseOperation();
-      await Promise.all([first, repeated]);
-      expect(draft.discardLocalState).toHaveBeenCalledTimes(1);
-      expect(lifecycleRuntime.routerPush).toHaveBeenCalledTimes(1);
-    } finally {
-      scope.stop();
-    }
-  });
-
-  it("binds the approval-draft confirmation to the literal abandon action", async () => {
-    lifecycleRuntime.executeAbandonApplication.mockResolvedValue({
-      status: "stale",
-      context: {
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "abandon_application",
-        reason: "用户确认结束"
-      }
-    });
-    const { bindings, scope } = await preparePage(
+  it("executes the visible approval-draft action through the same session and redirects on completion", async () => {
+    const { bindings, draft, scope } = await preparePage(
       workbenchSnapshot("abandon_application")
     );
+    draft.lifecycle.commands.abandonApplication.mockResolvedValue({
+      status: "completed"
+    });
 
     try {
       await bindings.confirmAbandonApplication(actionRequest());
-      expect(lifecycleRuntime.executeAbandonApplication).toHaveBeenCalledWith(
-        expect.objectContaining({
-          reason: "  用户确认结束  "
-        })
+      expect(draft.lifecycle.commands.abandonApplication).toHaveBeenCalledWith(
+        actionRequest()
       );
+      expect(lifecycleRuntime.routerPush).toHaveBeenCalledWith({
+        path: "/contracts",
+        query: { view: "ended" }
+      });
     } finally {
       scope.stop();
     }
   });
 
-  it("does not discard or redirect when the governed composite reports stale", async () => {
-    const stale = {
-      status: "stale",
-      context: {
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "delete_pristine_draft",
-        reason: "用户确认结束"
-      }
-    };
-    lifecycleRuntime.executeDeletePristineDraft.mockImplementation(
-      async (input) => input.onResult(stale)
-    );
+  it("keeps stale outcomes in place and hides a capability-invalid result", async () => {
     const { bindings, draft, scope } = await preparePage();
+    draft.lifecycle.commands.deletePristineDraft
+      .mockResolvedValueOnce({ status: "stale" })
+      .mockResolvedValueOnce({ status: "capability_invalid" });
 
     try {
       await bindings.confirmDeletePristineDraft(actionRequest());
-      expect(draft.discardLocalState).not.toHaveBeenCalled();
       expect(lifecycleRuntime.routerPush).not.toHaveBeenCalled();
-    } finally {
-      scope.stop();
-    }
-  });
+      expect(bindings.contractDraftAvailableActions.value).not.toBeNull();
 
-  it("hides stale capabilities when the composite rejects a coordinate mismatch", async () => {
-    const mismatch = Object.assign(new Error("读取坐标已变化"), {
-        code: "CONTRACT_DRAFT_LIFECYCLE_PREFLIGHT_MISMATCH"
-      });
-    lifecycleRuntime.executeDeletePristineDraft.mockImplementation(
-      async (input) => {
-        input.onCapabilityFailure(mismatch);
-        input.onOperationFailure(mismatch);
-        input.onOperationSettled();
-      }
-    );
-    const { bindings, scope } = await preparePage();
-
-    try {
       await bindings.confirmDeletePristineDraft(actionRequest());
       expect(bindings.contractDraftAvailableActions.value).toBeNull();
-    } finally {
-      scope.stop();
-    }
-  });
-
-  it("invalidates the API composite context when the workbench unmounts", async () => {
-    lifecycleRuntime.executeDeletePristineDraft.mockResolvedValue({
-      status: "stale",
-      context: {
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "delete_pristine_draft",
-        reason: "用户确认结束"
-      }
-    });
-    const { bindings, scope } = await preparePage();
-
-    try {
-      await bindings.confirmDeletePristineDraft(actionRequest());
-      const input = lifecycleRuntime.executeDeletePristineDraft.mock.calls[0]?.[0];
-      expect(input.isCurrent({
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "delete_pristine_draft",
-        reason: "用户确认结束"
-      })).toBe(true);
-
-      const beforeUnmount =
-        lifecycleRuntime.beforeUnmount.mock.calls.at(-1)?.[0];
-      if (typeof beforeUnmount !== "function") {
-        throw new Error("contract workbench beforeUnmount hook missing");
-      }
-      beforeUnmount();
-      expect(input.isCurrent({
-        generation: 1,
-        contractId: "contract-a",
-        versionId: "version-a",
-        expectedRevision: 12,
-        action: "delete_pristine_draft",
-        reason: "用户确认结束"
-      })).toBe(false);
     } finally {
       scope.stop();
     }

@@ -122,7 +122,6 @@ describe("contract workbench document canvas structure", () => {
     expect(pageSource).not.toContain("discardChanges()");
     expect(pageSource).not.toContain("discardChanges: discardNavigationChanges");
     expect(pageSource).toContain("flushBeforeLeave: saveNow");
-    expect(pageSource).toContain("discardLocalState()");
     expect(pageSource).toContain(':disabled="writeLocked"');
   });
 
