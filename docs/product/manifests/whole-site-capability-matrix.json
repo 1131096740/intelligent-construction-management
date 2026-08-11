@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "24113367bfd39c2048120ec7c2cb315e038d3b915a477bb8c241d94f3f38122d",
+      "sha256": "995c496361ba0076d7a87da504d7ce7f1a4e3ce7290e461d5b31f99cb09239ac",
       "status": "ready",
       "summary": {
         "routeCount": 452
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "d376dcb84cace63d484f70294c314d685ea1cbbf9a049e96eea9874e801093d6",
+      "sha256": "754be11cc6f62ca3c9c12462eb87b8e196594574f4884488b27f81a5d720cadf",
       "status": "ready",
       "summary": {
         "routeCount": 452,
@@ -181,7 +181,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -7140,7 +7140,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -8760,7 +8760,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -8787,7 +8787,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -8883,7 +8883,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -8923,7 +8923,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",
@@ -26461,7 +26461,7 @@
         "authorizationCombination": null,
         "contractCutoverSurface": true,
         "contractCutoverLegacyWrite": false,
-        "contractCutoverTombstoneWrite": false
+        "contractCutoverTombstoneWrite": true
       },
       "usage": "exit_candidate",
       "consumerSurface": "none",

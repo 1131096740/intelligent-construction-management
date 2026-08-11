@@ -28,9 +28,9 @@
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "deleteRow",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "DELETE",
@@ -73,9 +73,9 @@
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
       "handler": "updateRow",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "PATCH",
@@ -127,27 +127,27 @@
       "path": "/contract-bill-imports/:importId/apply",
       "controller": "ContractBillExcelController",
       "handler": "applyImport",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",
       "path": "/contract-bills/:billId/excel-imports",
       "controller": "ContractBillExcelController",
       "handler": "previewImport",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",
       "path": "/contract-bills/:billId/rows",
       "controller": "ContractBillController",
       "handler": "addRow",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",
@@ -163,9 +163,9 @@
       "path": "/contract-bills/:billId/rows/reorder",
       "controller": "ContractBillController",
       "handler": "reorderRows",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",
@@ -703,9 +703,9 @@
       "path": "/contract-bills/:billId/rows",
       "controller": "ContractBillController",
       "handler": "replaceRows",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "PUT",

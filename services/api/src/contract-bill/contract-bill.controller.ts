@@ -2,7 +2,10 @@ import { Body, Controller, Delete, Headers, Param, Patch, Post, Put } from "@nes
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
-import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import {
+  ContractCutoverSurface,
+  ContractCutoverTombstoneWrite
+} from "../contract-cutover/contract-cutover.decorators";
 import { ContractBillService } from "./contract-bill.service";
 import { CancelBillRowRemainderDto } from "./dto/contract-bill.dto";
 import type {
@@ -17,6 +20,7 @@ export class ContractBillController {
   constructor(private readonly bills: ContractBillService) {}
 
   @Post(":billId/rows")
+  @ContractCutoverTombstoneWrite()
   addRow(
     @Param("billId") billId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -26,6 +30,7 @@ export class ContractBillController {
   }
 
   @Patch(":billId/rows/:rowKey")
+  @ContractCutoverTombstoneWrite()
   updateRow(
     @Param("billId") billId: string,
     @Param("rowKey") rowKey: string,
@@ -36,6 +41,7 @@ export class ContractBillController {
   }
 
   @Delete(":billId/rows/:rowKey")
+  @ContractCutoverTombstoneWrite()
   deleteRow(
     @Param("billId") billId: string,
     @Param("rowKey") rowKey: string,
@@ -63,6 +69,7 @@ export class ContractBillController {
   }
 
   @Post(":billId/rows/reorder")
+  @ContractCutoverTombstoneWrite()
   reorderRows(
     @Param("billId") billId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -72,6 +79,7 @@ export class ContractBillController {
   }
 
   @Put(":billId/rows")
+  @ContractCutoverTombstoneWrite()
   replaceRows(
     @Param("billId") billId: string,
     @CurrentUser() user: AuthenticatedUser,

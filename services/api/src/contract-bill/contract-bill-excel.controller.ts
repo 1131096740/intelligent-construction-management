@@ -9,7 +9,10 @@ import {
 } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
-import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
+import {
+  ContractCutoverSurface,
+  ContractCutoverTombstoneWrite
+} from "../contract-cutover/contract-cutover.decorators";
 import {
   ContractBillExcelService,
   type ContractBillExcelImportDto
@@ -43,6 +46,7 @@ export class ContractBillExcelController {
   }
 
   @Post("contract-bills/:billId/excel-imports")
+  @ContractCutoverTombstoneWrite()
   previewImport(
     @Param("billId") billId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -52,6 +56,7 @@ export class ContractBillExcelController {
   }
 
   @Post("contract-bill-imports/:importId/apply")
+  @ContractCutoverTombstoneWrite()
   applyImport(
     @Param("importId") importId: string,
     @CurrentUser() user: AuthenticatedUser
