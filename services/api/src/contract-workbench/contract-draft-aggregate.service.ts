@@ -13,6 +13,7 @@ import { ContractBillService } from "../contract-bill/contract-bill.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
+import { calculateContractDocumentContentFingerprint } from "./contract-document-content";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 import { projectContractDraftOperationCapabilities } from "./contract-mutation-authority";
 import type {
@@ -382,36 +383,183 @@ export class ContractDraftAggregateService {
           effectiveChangedSections.add("negotiation_documents");
         }
 
+        const [
+          documentParties,
+          documentPaymentTerms,
+          documentAttachments,
+          documentBills
+        ] = await Promise.all([
+          tx.contractPartySnapshot.findMany({
+            where: { contractVersionId },
+            orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
+          }),
+          tx.paymentTermsVersion.findFirst({
+            where: { contractVersionId },
+            orderBy: { versionNo: "desc" }
+          }),
+          tx.contractDraftAttachment.findMany({
+            where: { contractVersionId },
+            orderBy: [{ slotKey: "asc" }, { displayOrder: "asc" }]
+          }),
+          tx.contractBill.findMany({
+            where: { contractVersionId },
+            orderBy: { billKey: "asc" }
+          })
+        ]);
+        const [documentPaymentStages, documentBillRows] = await Promise.all([
+          documentPaymentTerms
+            ? tx.paymentTermsStage.findMany({
+                where: { paymentTermsVersionId: documentPaymentTerms.id },
+                orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+              })
+            : Promise.resolve([]),
+          documentBills.length
+            ? tx.contractBillRow.findMany({
+                where: {
+                  contractBillId: { in: documentBills.map((bill) => bill.id) }
+                },
+                orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
+              })
+            : Promise.resolve([])
+        ]);
+
         const changed = effectiveChangedSections.size > 0;
+        const documentContentChangedSections = [...effectiveChangedSections]
+          .filter((section) => section !== "negotiation_documents")
+          .sort();
+        const documentContentChanged = documentContentChangedSections.length > 0;
+        const documentContentRevisionBefore =
+          version.documentContentRevision ?? 1;
+        const documentContentRevision = documentContentChanged
+          ? documentContentRevisionBefore + 1
+          : documentContentRevisionBefore;
+        const calculatedDocumentContentFingerprint =
+          calculateContractDocumentContentFingerprint({
+            templateSnapshot: version.templateSnapshot,
+            layoutTemplateVersionId: input.draft.layoutTemplateVersionId ?? null,
+            parties: documentParties.map((party) => ({
+              roleKey: party.roleKey,
+              displayOrder: party.displayOrder,
+              businessPartyVersionId: party.businessPartyVersionId,
+              snapshot: party.snapshot
+            })),
+            subjectAndScope: fieldResult.storedDraftData,
+            amountAndTax: {
+              pricingNature: input.draft.pricingNature,
+              amountSource: input.draft.amountSource,
+              amountCents: fieldResult.amountCents.toString(),
+              estimatedAmountCents:
+                fieldResult.estimatedAmountCents?.toString() ?? null,
+              amountAdjustmentReason: input.draft.amountAdjustmentReason ?? null,
+              taxFacts: fieldResult.normalizedTaxFacts,
+              bills: documentBills.map((bill) => ({
+                billKey: bill.billKey,
+                name: bill.name,
+                amountRole: bill.amountRole,
+                pricingMode: bill.pricingMode,
+                quantityScale: bill.quantityScale,
+                unitPriceScale: bill.unitPriceScale,
+                schemaSnapshot: bill.schemaSnapshot,
+                sourceExcelFileId: bill.sourceExcelFileId,
+                taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+                taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
+                taxAmountCents: bill.taxAmountCents.toString(),
+                rows: documentBillRows
+                  .filter((row) => row.contractBillId === bill.id)
+                  .map((row) => ({
+                    rowKey: row.rowKey,
+                    sortOrder: row.sortOrder,
+                    itemCode: row.itemCode,
+                    itemName: row.itemName,
+                    specification: row.specification,
+                    unit: row.unit,
+                    quantity: row.quantity?.toString() ?? null,
+                    unitPrice: row.unitPrice?.toString() ?? null,
+                    taxRate: row.taxRate?.toString() ?? null,
+                    taxRateSource: row.taxRateSource,
+                    pricingFactStatus: row.pricingFactStatus,
+                    precisionPolicy: row.precisionPolicy,
+                    taxInclusiveAmountCents:
+                      row.taxInclusiveAmountCents?.toString() ?? null,
+                    taxExclusiveAmountCents:
+                      row.taxExclusiveAmountCents?.toString() ?? null,
+                    taxAmountCents: row.taxAmountCents?.toString() ?? null,
+                    taxExclusiveUnitPrice:
+                      row.taxExclusiveUnitPrice?.toString() ?? null,
+                    isProvisional: row.isProvisional,
+                    settlementBasis: row.settlementBasis,
+                    customData: row.customData
+                  }))
+              }))
+            },
+            paymentTerms: documentPaymentTerms
+              ? {
+                  originalText: documentPaymentTerms.originalText,
+                  stages: documentPaymentStages.map((stage) => ({
+                    name: stage.name,
+                    stageType: stage.stageType,
+                    basis: stage.basis,
+                    ratioBps: stage.ratioBps,
+                    fixedAmountCents: stage.fixedAmountCents?.toString() ?? null,
+                    triggerAnchor: stage.triggerAnchor,
+                    triggerEvent: stage.triggerEvent,
+                    dueDays: stage.dueDays,
+                    advanceDeductionMode: stage.advanceDeductionMode,
+                    advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+                    advanceDeductionStartRatioBps:
+                      stage.advanceDeductionStartRatioBps,
+                    requiresInvoice: stage.requiresInvoice,
+                    allowsEarlyPayment: stage.allowsEarlyPayment,
+                    allowsInstallments: stage.allowsInstallments,
+                    retentionBps: stage.retentionBps,
+                    originalText: stage.originalText
+                  }))
+                }
+              : null,
+            clauses: fieldResult.data.clauseSnapshot,
+            attachments: documentAttachments.map((attachment) => ({
+              slotKey: attachment.slotKey,
+              fileId: attachment.fileId,
+              displayOrder: attachment.displayOrder
+            }))
+          });
+        const documentContentFingerprint = documentContentChanged ||
+          !version.documentContentFingerprint
+          ? calculatedDocumentContentFingerprint
+          : version.documentContentFingerprint;
+        const documentContentWriteRequired = documentContentChanged ||
+          !version.documentContentFingerprint;
         const resultRevision = changed
           ? version.draftRevision + 1
           : version.draftRevision;
-        if (changed) {
-          const parentGate = await tx.contract.updateMany({
-            where: {
-              id: contract.id,
-              ownerUserId: actorUserId,
-              voidedAt: null
-            },
-            data: {
-              ownerUserId: actorUserId,
-              ...(fieldResult.companySelection
-                ? {
-                    companyEntityId: fieldResult.companySelection.id,
-                    companyEntityName: fieldResult.companySelection.name
-                  }
-                : {})
-            }
-          });
-          if (parentGate.count !== 1) {
-            throw new ConflictException({
-              statusCode: 409,
-              code: "DRAFT_REVISION_CONFLICT",
-              message: "合同资料已变化，请刷新后重试",
-              latestRevision: version.draftRevision,
-              conflictReason: "parent_contract_changed",
-              canReacquireLease: false
+        if (changed || documentContentWriteRequired) {
+          if (changed) {
+            const parentGate = await tx.contract.updateMany({
+              where: {
+                id: contract.id,
+                ownerUserId: actorUserId,
+                voidedAt: null
+              },
+              data: {
+                ownerUserId: actorUserId,
+                ...(fieldResult.companySelection
+                  ? {
+                      companyEntityId: fieldResult.companySelection.id,
+                      companyEntityName: fieldResult.companySelection.name
+                    }
+                  : {})
+              }
             });
+            if (parentGate.count !== 1) {
+              throw new ConflictException({
+                statusCode: 409,
+                code: "DRAFT_REVISION_CONFLICT",
+                message: "合同资料已变化，请刷新后重试",
+                latestRevision: version.draftRevision,
+                conflictReason: "parent_contract_changed",
+                canReacquireLease: false
+              });
+            }
           }
           const versionGate = await tx.contractVersion.updateMany({
             where: {
@@ -420,8 +568,21 @@ export class ContractDraftAggregateService {
               status: { in: [...EDITABLE_CONTRACT_DRAFT_STATUSES] }
             },
             data: {
-              ...fieldResult.data,
-              draftRevision: { increment: 1 }
+              ...(changed
+                ? {
+                    ...fieldResult.data,
+                    draftRevision: { increment: 1 }
+                  }
+                : {}),
+              // #63 records document semantics alongside the legacy aggregate
+              // revision. #64/#65 continue to consume draftRevision until their
+              // own migration explicitly moves confirmation validity over.
+              ...(documentContentChanged
+                ? { documentContentRevision: { increment: 1 } }
+                : {}),
+              ...(documentContentChanged || !version.documentContentFingerprint
+                ? { documentContentFingerprint }
+                : {})
             }
           });
           if (versionGate.count !== 1) {
@@ -434,7 +595,7 @@ export class ContractDraftAggregateService {
               canReacquireLease: false
             });
           }
-          if (input.saveKind === "manual") {
+          if (input.saveKind === "manual" && (changed || documentContentWriteRequired)) {
             await this.audit.record(tx, {
               actorUserId,
               action: "contract.draft.save",
@@ -443,7 +604,11 @@ export class ContractDraftAggregateService {
               metadata: {
                 revisionBefore: input.expectedRevision,
                 revisionAfter: resultRevision,
-                effectiveChangedSections: [...effectiveChangedSections].sort()
+                effectiveChangedSections: [...effectiveChangedSections].sort(),
+                documentContentRevisionBefore,
+                documentContentRevisionAfter: documentContentRevision,
+                documentContentFingerprint,
+                documentContentChangedSections
               }
             });
           }
@@ -460,6 +625,9 @@ export class ContractDraftAggregateService {
           contractVersionId,
           draftRevision: resultRevision,
           serverRevision: resultRevision,
+          documentContentRevision,
+          documentContentFingerprint,
+          documentContentChangedSections,
           savedAt: now.toISOString(),
           effectiveChangedSections: [...effectiveChangedSections].sort(),
           amounts: {
@@ -488,7 +656,7 @@ export class ContractDraftAggregateService {
           billRevisions,
           issueCounts: {},
           readiness: null,
-          documentsOutdated: changed,
+          documentsOutdated: documentContentChanged,
           availableActions: [],
           capability: {
             refreshRequired: false,
@@ -500,7 +668,7 @@ export class ContractDraftAggregateService {
             )
           },
           invalidation: {
-            status: changed ? "document_invalidated" : "unchanged"
+            status: documentContentChanged ? "document_invalidated" : "unchanged"
           }
         };
         await tx.contractDraftSaveRequest.create({

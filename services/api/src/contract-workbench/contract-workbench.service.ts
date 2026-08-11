@@ -33,6 +33,7 @@ import { ContractBillLineageService } from "../contract-bill/contract-bill-linea
 import { assertContractBillDerivedUnitPrices } from "../contract-bill/contract-bill-totals";
 import { PrismaService } from "../database/prisma.service";
 import { ContractReadinessService } from "./contract-readiness.service";
+import { calculateContractDocumentContentFingerprint } from "./contract-document-content";
 import {
   moneyCentsToApi,
   parseMoneyCents,
@@ -898,6 +899,7 @@ export class ContractWorkbenchService {
       companySelection,
       amountCents,
       estimatedAmountCents,
+      normalizedTaxFacts: input.taxFacts,
       storedDraftData,
       data: {
         draftData: this.toJson(storedDraftData),
@@ -1616,15 +1618,151 @@ export class ContractWorkbenchService {
           }))
         });
       }
+      const finalBills = await tx.contractBill.findMany({
+        where: { contractVersionId }
+      });
+      const finalAmountCents = version.amountSource === "bill_sum"
+        ? this.sumIncludedBills(finalBills)
+        : version.amountCents;
       if (version.amountSource === "bill_sum") {
-        const finalBills = await tx.contractBill.findMany({
-          where: { contractVersionId }
-        });
         await tx.contractVersion.update({
           where: { id: contractVersionId },
-          data: { amountCents: this.sumIncludedBills(finalBills) }
+          data: { amountCents: finalAmountCents }
         });
       }
+      const [
+        documentParties,
+        documentPaymentTerms,
+        documentAttachments,
+        documentBillRows
+      ] = await Promise.all([
+        tx.contractPartySnapshot.findMany({
+          where: { contractVersionId },
+          orderBy: [{ roleKey: "asc" }, { displayOrder: "asc" }]
+        }),
+        tx.paymentTermsVersion.findFirst({
+          where: { contractVersionId },
+          orderBy: { versionNo: "desc" }
+        }),
+        tx.contractDraftAttachment.findMany({
+          where: { contractVersionId },
+          orderBy: [{ slotKey: "asc" }, { displayOrder: "asc" }]
+        }),
+        finalBills.length
+          ? tx.contractBillRow.findMany({
+              where: { contractBillId: { in: finalBills.map((bill) => bill.id) } },
+              orderBy: [{ contractBillId: "asc" }, { sortOrder: "asc" }]
+            })
+          : Promise.resolve([])
+      ]);
+      const documentPaymentStages = documentPaymentTerms
+        ? await tx.paymentTermsStage.findMany({
+            where: { paymentTermsVersionId: documentPaymentTerms.id },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+          })
+        : [];
+      const documentContentFingerprint =
+        calculateContractDocumentContentFingerprint({
+          templateSnapshot: targetTemplate,
+          layoutTemplateVersionId: version.layoutTemplateVersionId,
+          parties: documentParties.map((party) => ({
+            roleKey: party.roleKey,
+            displayOrder: party.displayOrder,
+            businessPartyVersionId: party.businessPartyVersionId,
+            snapshot: party.snapshot
+          })),
+          subjectAndScope: nextData,
+          amountAndTax: {
+            pricingNature: version.pricingNature,
+            amountSource: version.amountSource,
+            amountCents: finalAmountCents.toString(),
+            estimatedAmountCents: version.estimatedAmountCents?.toString() ?? null,
+            amountAdjustmentReason: version.amountAdjustmentReason,
+            taxFacts: {
+              invoiceType: version.invoiceType,
+              taxMode: version.taxMode,
+              defaultTaxRatePercent:
+                version.defaultTaxRatePercent?.toString() ?? null,
+              source: version.taxFactSource
+            },
+            bills: finalBills.map((bill) => ({
+              billKey: bill.billKey,
+              name: bill.name,
+              amountRole: bill.amountRole,
+              pricingMode: bill.pricingMode,
+              quantityScale: bill.quantityScale,
+              unitPriceScale: bill.unitPriceScale,
+              schemaSnapshot: bill.schemaSnapshot,
+              sourceExcelFileId: bill.sourceExcelFileId,
+              taxInclusiveAmountCents: bill.taxInclusiveAmountCents.toString(),
+              taxExclusiveAmountCents: bill.taxExclusiveAmountCents.toString(),
+              taxAmountCents: bill.taxAmountCents.toString(),
+              rows: documentBillRows
+                .filter((row) => row.contractBillId === bill.id)
+                .map((row) => ({
+                  rowKey: row.rowKey,
+                  sortOrder: row.sortOrder,
+                  itemCode: row.itemCode,
+                  itemName: row.itemName,
+                  specification: row.specification,
+                  unit: row.unit,
+                  quantity: row.quantity?.toString() ?? null,
+                  unitPrice: row.unitPrice?.toString() ?? null,
+                  taxRate: row.taxRate?.toString() ?? null,
+                  taxRateSource: row.taxRateSource,
+                  pricingFactStatus: row.pricingFactStatus,
+                  precisionPolicy: row.precisionPolicy,
+                  taxInclusiveAmountCents:
+                    row.taxInclusiveAmountCents?.toString() ?? null,
+                  taxExclusiveAmountCents:
+                    row.taxExclusiveAmountCents?.toString() ?? null,
+                  taxAmountCents: row.taxAmountCents?.toString() ?? null,
+                  taxExclusiveUnitPrice:
+                    row.taxExclusiveUnitPrice?.toString() ?? null,
+                  isProvisional: row.isProvisional,
+                  settlementBasis: row.settlementBasis,
+                  customData: row.customData
+                }))
+            }))
+          },
+          paymentTerms: documentPaymentTerms
+            ? {
+                originalText: documentPaymentTerms.originalText,
+                stages: documentPaymentStages.map((stage) => ({
+                  name: stage.name,
+                  stageType: stage.stageType,
+                  basis: stage.basis,
+                  ratioBps: stage.ratioBps,
+                  fixedAmountCents: stage.fixedAmountCents?.toString() ?? null,
+                  triggerAnchor: stage.triggerAnchor,
+                  triggerEvent: stage.triggerEvent,
+                  dueDays: stage.dueDays,
+                  advanceDeductionMode: stage.advanceDeductionMode,
+                  advanceDeductionRatioBps: stage.advanceDeductionRatioBps,
+                  advanceDeductionStartRatioBps:
+                    stage.advanceDeductionStartRatioBps,
+                  requiresInvoice: stage.requiresInvoice,
+                  allowsEarlyPayment: stage.allowsEarlyPayment,
+                  allowsInstallments: stage.allowsInstallments,
+                  retentionBps: stage.retentionBps,
+                  originalText: stage.originalText
+                }))
+              }
+            : null,
+          clauses: nextClauses,
+          attachments: documentAttachments.map((attachment) => ({
+            slotKey: attachment.slotKey,
+            fileId: attachment.fileId,
+            displayOrder: attachment.displayOrder
+          }))
+        });
+      await tx.contractVersion.update({
+        where: { id: contractVersionId },
+        data: {
+          documentContentRevision: { increment: 1 },
+          documentContentFingerprint
+        }
+      });
       await this.audit.record(tx, {
         actorUserId,
         action: "contract.draft.type_change",
@@ -1641,7 +1779,10 @@ export class ContractWorkbenchService {
             bills: removedBills
           }),
           revisionBefore: input.expectedRevision,
-          revisionAfter: input.expectedRevision + 1
+          revisionAfter: input.expectedRevision + 1,
+          documentContentRevisionBefore: version.documentContentRevision,
+          documentContentRevisionAfter: version.documentContentRevision + 1,
+          documentContentFingerprint
         }
       });
       return this.toReadModel(

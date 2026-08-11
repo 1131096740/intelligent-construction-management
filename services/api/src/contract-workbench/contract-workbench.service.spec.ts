@@ -163,6 +163,12 @@ describe("ContractWorkbenchService", () => {
         createMany: jest.fn().mockResolvedValue({ count: 0 }),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 })
       },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractDraftAttachment: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 })
       },
@@ -4328,14 +4334,30 @@ describe("ContractWorkbenchService", () => {
             {
               id: "bill-changed-new",
               billKey: "changed_bill",
+              name: "变化清单新定义",
               amountRole: "included",
-              taxInclusiveAmountCents: 0n
+              pricingMode: "tax_inclusive",
+              quantityScale: 2,
+              unitPriceScale: 2,
+              schemaSnapshot: { columns: [{ key: "new", label: "新列", type: "text" }] },
+              sourceExcelFileId: null,
+              taxInclusiveAmountCents: 0n,
+              taxExclusiveAmountCents: 0n,
+              taxAmountCents: 0n
             },
             {
               id: "bill-added",
               billKey: "added_bill",
+              name: "新增清单",
               amountRole: "provisional",
-              taxInclusiveAmountCents: 0n
+              pricingMode: "tax_inclusive",
+              quantityScale: 2,
+              unitPriceScale: 2,
+              schemaSnapshot: { columns: [] },
+              sourceExcelFileId: null,
+              taxInclusiveAmountCents: 0n,
+              taxExclusiveAmountCents: 0n,
+              taxAmountCents: 0n
             }
           ]),
         deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
@@ -4457,6 +4479,13 @@ describe("ContractWorkbenchService", () => {
     expect(tx.contractVersion.update).toHaveBeenCalledWith({
       where: { id: "version-1" },
       data: { amountCents: 300n }
+    });
+    expect(tx.contractVersion.update).toHaveBeenCalledWith({
+      where: { id: "version-1" },
+      data: expect.objectContaining({
+        documentContentRevision: { increment: 1 },
+        documentContentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      })
     });
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
