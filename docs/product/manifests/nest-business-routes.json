@@ -4198,7 +4198,7 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "contractCutoverTombstoneWrite": false
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "POST",
@@ -4216,7 +4216,7 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "contractCutoverTombstoneWrite": false
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "POST",

@@ -307,18 +307,18 @@
       "path": "/contract-workbench/:contractVersionId/checkpoints",
       "controller": "ContractWorkbenchController",
       "handler": "createCheckpoint",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",
       "path": "/contract-workbench/:contractVersionId/checkpoints/:checkpointId/restore",
       "controller": "ContractWorkbenchController",
       "handler": "restoreCheckpoint",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "registered_exit_candidate"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",

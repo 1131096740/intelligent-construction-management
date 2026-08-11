@@ -21,7 +21,8 @@ import type {
 } from "./dto/contract-workbench.dto";
 import {
   ContractCutoverLegacyWrite,
-  ContractCutoverSurface
+  ContractCutoverSurface,
+  ContractCutoverTombstoneWrite
 } from "../contract-cutover/contract-cutover.decorators";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 
@@ -64,6 +65,7 @@ export class ContractWorkbenchController {
   }
 
   @Post(":contractVersionId/checkpoints")
+  @ContractCutoverTombstoneWrite()
   createCheckpoint(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -73,6 +75,7 @@ export class ContractWorkbenchController {
   }
 
   @Post(":contractVersionId/checkpoints/:checkpointId/restore")
+  @ContractCutoverTombstoneWrite()
   restoreCheckpoint(
     @Param("contractVersionId") contractVersionId: string,
     @Param("checkpointId") checkpointId: string,
