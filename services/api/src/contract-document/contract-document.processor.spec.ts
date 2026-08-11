@@ -271,7 +271,27 @@ describe("ContractDocumentProcessor", () => {
     });
   });
 
-  it("converts an offline revision to PDF and persists its deterministic differences", async () => {
+  it.each([
+    {
+      name: "metadata-only aggregate revision",
+      draftRevision: 8,
+      currentContent: documentContentCoordinates,
+      expectedStatus: "succeeded"
+    },
+    {
+      name: "document content change",
+      draftRevision: 7,
+      currentContent: {
+        documentContentRevision: 3,
+        documentContentFingerprint: "b".repeat(64)
+      },
+      expectedStatus: "stale"
+    }
+  ])("processes an offline revision after $name", async ({
+    draftRevision,
+    currentContent,
+    expectedStatus
+  }) => {
     const prisma = makePrisma();
     prisma.contractOfflineRevision.findFirst.mockResolvedValue({
       id: "revision-1",
@@ -294,7 +314,8 @@ describe("ContractDocumentProcessor", () => {
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue(null);
     prisma.contractVersion.findUnique.mockResolvedValue({
       id: "version-1",
-      clauseSnapshot: []
+      clauseSnapshot: [],
+      ...documentContentCoordinates
     });
     prisma.contractNegotiationRound.findUnique.mockResolvedValue({
       id: "round-1",
@@ -312,7 +333,8 @@ describe("ContractDocumentProcessor", () => {
           return [{
             id: "version-1",
             contractId: "contract-1",
-            draftRevision: 7,
+            draftRevision,
+            ...currentContent,
             status: "draft",
             changeType: "original"
           }];
@@ -334,7 +356,8 @@ describe("ContractDocumentProcessor", () => {
         id: "document-source",
         contractVersionId: "version-1",
         sourceRevision: 7,
-        docxFileId: "source-docx"
+        docxFileId: "source-docx",
+        inputSnapshot: queuedDocument().inputSnapshot
       });
     const files = {
       getFileBuffer: jest.fn()
@@ -352,36 +375,42 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
-    expect(prisma.tx.contractDocumentDifference.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({
-        comparisonId: "comparison-1",
-        differenceKey: "difference-key",
-        disposition: "pending"
-      })]
-    });
     expect(prisma.tx.contractOfflineRevision.updateMany).toHaveBeenCalledWith({
       where: { id: "revision-1", status: "processing" },
-      data: expect.objectContaining({
-        status: "succeeded",
-        previewPdfFileId: "revision-preview-pdf"
-      })
+      data: expect.objectContaining({ status: expectedStatus })
     });
-    expect(prisma.tx.contractDocumentComparison.updateMany).toHaveBeenCalledWith({
-      where: { id: "comparison-1", status: "processing" },
-      data: expect.objectContaining({
-        status: "succeeded",
-        algorithmVersion: "contract-docx-patience-v1"
-      })
-    });
-    expect(files.linkFileReplacement).toHaveBeenCalledWith(prisma.tx, {
-      newFileId: "revision-preview-pdf",
-      oldFileId: "previous-preview-pdf",
-      actorUserId: "owner-1"
-    });
-    expect(audit.record).toHaveBeenCalledWith(
-      prisma.tx,
-      expect.objectContaining({ action: "contract.offline_revision.process_success" })
-    );
+    if (expectedStatus === "succeeded") {
+      expect(prisma.tx.contractDocumentDifference.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({
+          comparisonId: "comparison-1",
+          differenceKey: "difference-key",
+          disposition: "pending"
+        })]
+      });
+      expect(prisma.tx.contractDocumentComparison.updateMany).toHaveBeenCalledWith({
+        where: { id: "comparison-1", status: "processing" },
+        data: expect.objectContaining({
+          status: "succeeded",
+          algorithmVersion: "contract-docx-patience-v1"
+        })
+      });
+      expect(files.linkFileReplacement).toHaveBeenCalledWith(prisma.tx, {
+        newFileId: "revision-preview-pdf",
+        oldFileId: "previous-preview-pdf",
+        actorUserId: "owner-1"
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        prisma.tx,
+        expect.objectContaining({ action: "contract.offline_revision.process_success" })
+      );
+    } else {
+      expect(prisma.tx.contractDocumentDifference.createMany).not.toHaveBeenCalled();
+      expect(files.linkFileReplacement).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        prisma.tx,
+        expect.objectContaining({ action: "contract.offline_revision.process_stale" })
+      );
+    }
   });
 
   it("fails both the PDF job and comparison closed when an offline DOCX is malformed", async () => {
@@ -414,7 +443,8 @@ describe("ContractDocumentProcessor", () => {
         id: "document-source",
         contractVersionId: "version-1",
         sourceRevision: 7,
-        docxFileId: "source-docx"
+        docxFileId: "source-docx",
+        inputSnapshot: queuedDocument().inputSnapshot
       });
     mockedExtract.mockImplementationOnce(() => {
       throw new Error("/tmp/private/bad.docx");
@@ -1541,7 +1571,8 @@ describe("ContractDocumentProcessor", () => {
       id: "document-source",
       contractVersionId: "version-1",
       sourceRevision: 7,
-      docxFileId: "source-docx"
+      docxFileId: "source-docx",
+      inputSnapshot: queuedDocument().inputSnapshot
     });
     const terminalQueries: string[] = [];
     prisma.tx.$queryRaw.mockImplementation(
@@ -1553,6 +1584,7 @@ describe("ContractDocumentProcessor", () => {
             id: "version-1",
             contractId: "contract-1",
             draftRevision: 7,
+            ...documentContentCoordinates,
             status: "draft",
             changeType: "original",
             hasHistoricalTakeoverRelation: true,

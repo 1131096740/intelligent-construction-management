@@ -361,7 +361,7 @@
                 v-if="stagedFinalAssociation"
                 class="action-field-hint"
               >
-                已安全上传最终版，业务关联尚未完成；仅可对合同 R{{ stagedFinalAssociation.sourceRevision }} 重试，不会重复上传。
+                已安全上传最终版，业务关联尚未完成；仅可对内容版本 C{{ stagedFinalAssociation.documentContentRevision }} 重试，不会重复上传。
               </p>
             </div>
 
@@ -1472,7 +1472,8 @@ async function uploadContractFinalPrivateFileWithCapability(
   contractId: string,
   contractVersionId: string,
   file: Blob,
-  fileName: string
+  fileName: string,
+  expectedContent: DocumentContentCoordinates
 ) {
   const capability = await fetchContractDetail(contractId);
   const matchesRequestedContract = capability.id === contractId;
@@ -1481,13 +1482,16 @@ async function uploadContractFinalPrivateFileWithCapability(
   if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
   const operationAllowed = capability.availableActionKeys.includes("upload_final_contract");
   if (!operationAllowed) throw new Error("当前用户不能上传合同最终版文件");
+  if (!sameDocumentContent(documentContentCoordinates(capability), expectedContent)) {
+    throw new Error("合同文书内容已变化，请重新选择双方最终版原件");
+  }
   return uploadPrivateFile(file, fileName);
 }
 
 async function associateContractFinalFileWithCapability(
   contractId: string,
   contractVersionId: string,
-  body: Parameters<typeof uploadMutuallySignedContract>[1]
+  staged: StagedFinalAssociation
 ) {
   const capability = await fetchContractDetail(contractId);
   const matchesRequestedContract = capability.id === contractId;
@@ -1496,7 +1500,17 @@ async function associateContractFinalFileWithCapability(
   if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
   const operationAllowed = capability.availableActionKeys.includes("upload_final_contract");
   if (!operationAllowed) throw new Error("当前用户不能关联合同最终版文件");
-  return uploadMutuallySignedContract(contractVersionId, body);
+  if (!sameDocumentContent(documentContentCoordinates(capability), staged)) {
+    throw new Error("合同文书内容已变化，已暂存文件不再对应当前内容");
+  }
+  if (!Number.isInteger(capability.draftRevision) || Number(capability.draftRevision) < 1) {
+    throw new Error("合同聚合修订坐标缺失，请刷新后重试");
+  }
+  return uploadMutuallySignedContract(contractVersionId, {
+    fileId: staged.fileId,
+    sourceRevision: Number(capability.draftRevision),
+    ...staged.declaration
+  });
 }
 
 async function returnContractFinalFileWithCapability(
@@ -1720,9 +1734,55 @@ const contractFinalUploadFiles = ref<UploadFile[]>([]);
 type StagedFinalAssociation = {
   fileId: string;
   contractVersionId: string;
-  sourceRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string;
   declaration: ReturnType<typeof finalDeclarationPayload>;
 };
+type DocumentContentCoordinates = Pick<
+  StagedFinalAssociation,
+  "documentContentRevision" | "documentContentFingerprint"
+>;
+function documentContentCoordinates(
+  detail: ContractDetailReadModel | null
+): DocumentContentCoordinates {
+  if (
+    !detail ||
+    !Number.isInteger(detail.documentContentRevision) ||
+    detail.documentContentRevision < 1 ||
+    typeof detail.documentContentFingerprint !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(detail.documentContentFingerprint)
+  ) {
+    throw new Error("合同文书内容坐标缺失，请刷新后重试");
+  }
+  return {
+    documentContentRevision: detail.documentContentRevision,
+    documentContentFingerprint: detail.documentContentFingerprint
+  };
+}
+function formalDocumentContentCoordinates(
+  file: NonNullable<ContractDetailReadModel["formalFiles"]>[number]
+): DocumentContentCoordinates | null {
+  return Number.isInteger(file.documentContentRevision) &&
+    Number(file.documentContentRevision) > 0 &&
+    typeof file.documentContentFingerprint === "string" &&
+    /^[a-f0-9]{64}$/u.test(file.documentContentFingerprint)
+    ? {
+        documentContentRevision: Number(file.documentContentRevision),
+        documentContentFingerprint: file.documentContentFingerprint
+      }
+    : null;
+}
+function sameDocumentContent(
+  left: DocumentContentCoordinates | null,
+  right: DocumentContentCoordinates | null
+) {
+  return Boolean(
+    left &&
+    right &&
+    left.documentContentRevision === right.documentContentRevision &&
+    left.documentContentFingerprint === right.documentContentFingerprint
+  );
+}
 const stagedFinalAssociations = ref<Record<string, StagedFinalAssociation>>({});
 const stagedFinalAssociation = computed(() => {
   const contractVersionId = contractDetail.value?.contractVersionId;
@@ -2727,12 +2787,20 @@ function requestFinalContractUpload() {
   let contractVersionId = "";
   try {
     contractVersionId = currentContractVersionId();
-    if (!activeApprovalOriginal.value) throw new Error("未找到审批前乙方签章原件，不能上传双方最终版");
+    const detail = contractDetail.value;
+    const approvalOriginal = activeApprovalOriginal.value;
+    const currentContent = documentContentCoordinates(detail);
+    if (!approvalOriginal || !sameDocumentContent(
+      formalDocumentContentCoordinates(approvalOriginal),
+      currentContent
+    )) {
+      throw new Error("未找到当前文书内容对应的审批前乙方签章原件");
+    }
     const staged = stagedFinalAssociation.value;
     if (staged) {
       if (staged.contractVersionId !== currentContractVersionId() ||
-        staged.sourceRevision !== activeApprovalOriginal.value.sourceRevision) {
-        throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版原件");
+        !sameDocumentContent(staged, currentContent)) {
+        throw new Error("已暂存文件不属于当前合同内容，请重新选择双方最终版原件");
       }
     } else {
       if (!selectedContractFinalFile.value) throw new Error("双方最终版原件不能为空");
@@ -3093,9 +3161,14 @@ async function confirmFinalContractUpload() {
     }
     const file = selectedContractFinalFile.value;
     const approvalOriginal = activeApprovalOriginal.value;
-    if (!approvalOriginal) throw new Error("未找到审批前乙方签章原件，不能上传双方最终版");
+    const currentContent = documentContentCoordinates(contractDetail.value);
+    if (!approvalOriginal || !sameDocumentContent(
+      formalDocumentContentCoordinates(approvalOriginal),
+      currentContent
+    )) {
+      throw new Error("未找到当前文书内容对应的审批前乙方签章原件");
+    }
     let staged = stagedFinalAssociations.value[contractVersionId] ?? null;
-    const sourceRevision = staged?.sourceRevision ?? approvalOriginal.sourceRevision;
     const declaration = staged?.declaration ?? finalDeclarationPayload([
       ...finalUploadConfirmations.value
     ]);
@@ -3105,12 +3178,13 @@ async function confirmFinalContractUpload() {
         contractId,
         contractVersionId,
         file,
-        file.name
+        file.name,
+        currentContent
       );
       staged = {
         fileId: uploaded.id,
         contractVersionId,
-        sourceRevision,
+        ...currentContent,
         declaration
       };
       stagedFinalAssociations.value = {
@@ -3123,18 +3197,14 @@ async function confirmFinalContractUpload() {
     }
     if (
       staged.contractVersionId !== contractVersionId ||
-      staged.sourceRevision !== approvalOriginal.sourceRevision
+      !sameDocumentContent(staged, currentContent)
     ) {
-      throw new Error("已暂存文件不属于当前合同修订，请重新选择双方最终版原件");
+      throw new Error("已暂存文件不属于当前合同内容，请重新选择双方最终版原件");
     }
     await associateContractFinalFileWithCapability(
       contractId,
       contractVersionId,
-      {
-        fileId: staged.fileId,
-        sourceRevision: staged.sourceRevision,
-        ...staged.declaration
-      }
+      staged
     );
     const remainingStaged = { ...stagedFinalAssociations.value };
     delete remainingStaged[contractVersionId];

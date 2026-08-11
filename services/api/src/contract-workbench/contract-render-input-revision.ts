@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 export const EDITABLE_CONTRACT_VERSION_STATUSES = ["draft"];
 
-export async function bumpContractRenderInputRevision(
+export async function bumpContractAggregateRevision(
   tx: Prisma.TransactionClient,
   contractVersionId: string,
   expectedRevision: number
@@ -22,14 +22,5 @@ export async function bumpContractRenderInputRevision(
   if (updated.count !== 1) {
     throw new BadRequestException("合同草稿已变化，请刷新后重试");
   }
-  const newRevision = expectedRevision + 1;
-  await tx.contractGeneratedDocument.updateMany({
-    where: {
-      contractVersionId,
-      status: "success",
-      sourceRevision: { lt: newRevision }
-    },
-    data: { status: "stale" }
-  });
-  return newRevision;
+  return expectedRevision + 1;
 }

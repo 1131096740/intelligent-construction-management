@@ -37,6 +37,8 @@ describe("ContractNegotiationService", () => {
       status: "draft",
       changeType: "original",
       draftRevision: 7,
+      documentContentRevision: 3,
+      documentContentFingerprint: "a".repeat(64),
       amountCents: 12_300n,
       draftData: { fieldValues: { signingDate: "2026-07-12" } },
       templateSnapshot: {
@@ -197,11 +199,28 @@ describe("ContractNegotiationService", () => {
 
   it("opens a round from the latest current successful DOCX without accepting a client source", async () => {
     const { service: subject, tx } = service();
+    tx.contractGeneratedDocument.findFirst.mockImplementation(
+      ({ where }: { where: Record<string, unknown> }) => Promise.resolve(
+        "sourceRevision" in where
+          ? null
+          : {
+              id: "generated-1",
+              contractVersionId: "version-1",
+              sourceRevision: 6,
+              status: "success",
+              docxFileId: "generated-docx",
+              inputSnapshot: {
+                documentContentRevision: 3,
+                documentContentFingerprint: "a".repeat(64)
+              }
+            }
+      )
+    );
 
     const result = await subject.openRound("version-1", "owner-1", { note: "首轮磋商" });
     expect(result).toMatchObject({
         id: "round-1",
-        sourceRevision: 7,
+        sourceRevision: 6,
         roundNo: 1,
         status: "open"
       });
@@ -211,7 +230,6 @@ describe("ContractNegotiationService", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           contractVersionId: "version-1",
-          sourceRevision: 7,
           status: "success",
           docxFileId: { not: null }
         })

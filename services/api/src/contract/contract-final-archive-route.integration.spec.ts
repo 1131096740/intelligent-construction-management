@@ -31,6 +31,8 @@ describe("Issue #15 final archive real HTTP integration", () => {
     status: "seal_approved_pending_archive",
     contractGovernanceVersion: 1,
     draftRevision: 1,
+    documentContentRevision: 1,
+    documentContentFingerprint: "c".repeat(64),
     changeType: "original",
     baseVersionId: null
   };
@@ -213,6 +215,7 @@ describe("Issue #15 final archive real HTTP integration", () => {
 
   beforeAll(async () => {
     const formalFiles = {
+      assertReadyForSubmission: jest.fn().mockResolvedValue(original),
       inspectOwnedStoredFinalArchive: jest.fn().mockResolvedValue({
         sha256: "a".repeat(64),
         pageCount: 1,

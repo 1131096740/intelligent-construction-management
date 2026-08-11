@@ -1547,6 +1547,10 @@ describe("ContractReadService", () => {
                   cumulativeIncreaseCents: 8650000n,
                   cumulativeDecreaseCents: 0n,
                   pricingNature: "fixed_total",
+                  draftRevision: 5,
+                  documentContentRevision: 2,
+                  documentContentFingerprint: "d".repeat(64),
+                  contractGovernanceVersion: 1,
                   invoiceType: "vat_special",
                   defaultTaxRatePercent: { toString: () => "13" }
                 },
@@ -1627,8 +1631,38 @@ describe("ContractReadService", () => {
             originalName: "幕墙分包合同-待确认盖章版.pdf",
             mimeType: "application/pdf",
             sizeBytes: 129000
+          },
+          {
+            id: "approval-original-file",
+            originalName: "幕墙分包合同-审批原件.pdf"
           }
         ])
+      },
+      contractSealTask: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      contractFormalFile: {
+        findMany: jest.fn().mockImplementation(({ where }) => Promise.resolve(
+          typeof where.contractVersionId === "string"
+            ? [{
+                id: "approval-original-1",
+                contractVersionId: "contract-version-2",
+                purpose: "approval_original",
+                fileId: "approval-original-file",
+                pageCount: 3,
+                sourceRevision: 4,
+                status: "active",
+                uploadedByUserId: "contract-staff-1",
+                confirmedByUserId: null,
+                confirmedAt: null,
+                declarationSnapshot: {
+                  documentContentRevision: 2,
+                  documentContentFingerprint: "d".repeat(64)
+                }
+              }]
+            : []
+        ))
       },
       user: {
         findMany: jest.fn().mockResolvedValue([
@@ -1668,6 +1702,17 @@ describe("ContractReadService", () => {
     });
     expect(detail.id).toBe("HT-2026-009");
     expect(detail.contractVersionId).toBe("contract-version-2");
+    expect(detail).toMatchObject({
+      draftRevision: 5,
+      documentContentRevision: 2,
+      documentContentFingerprint: "d".repeat(64),
+      formalFiles: [expect.objectContaining({
+        formalFileId: "approval-original-1",
+        sourceRevision: 4,
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      })]
+    });
     expect(detail.title).toBe("HT-2026-009 · 幕墙分包合同");
     expect(detail.baseInfo).toContainEqual({ label: "项目", value: "总部综合楼" });
     expect(detail.baseInfo).toContainEqual({ label: "合同金额", value: "¥986,500.00" });

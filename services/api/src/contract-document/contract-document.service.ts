@@ -438,7 +438,16 @@ export class ContractDocumentService {
             "所选来源文档尚未生成成功或缺少 DOCX 文件"
           );
         }
-        if (source.sourceRevision !== version.draftRevision) {
+        const sourceContent = this.optionalDocumentContentSnapshot(
+          source.inputSnapshot
+        );
+        const currentContent = this.optionalVersionDocumentContent(version);
+        if (
+          sourceContent.documentContentRevision === null ||
+          sourceContent.documentContentFingerprint === null ||
+          sourceContent.documentContentRevision !== currentContent.documentContentRevision ||
+          sourceContent.documentContentFingerprint !== currentContent.documentContentFingerprint
+        ) {
           throw new BadRequestException(
             "所选来源文档已过期，请重新生成后再上传"
           );

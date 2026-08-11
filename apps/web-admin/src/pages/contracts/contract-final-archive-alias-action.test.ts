@@ -4,7 +4,9 @@ import ContractDetailPage from "./ContractDetailPage.vue";
 
 const finalArchiveRuntime = vi.hoisted(() => ({
   confirmFinal: vi.fn(),
+  associateFinal: vi.fn(),
   fetchDetail: vi.fn(),
+  uploadPrivate: vi.fn(),
   route: { params: { contractId: "2a888482-565d-4326-a668-d8072cf480ca" } }
 }));
 
@@ -36,7 +38,9 @@ vi.mock("../../api/core-flow-read.api", async (importOriginal) => {
   return {
     ...original,
     confirmMutuallySignedContract: finalArchiveRuntime.confirmFinal,
-    fetchContractDetail: finalArchiveRuntime.fetchDetail
+    fetchContractDetail: finalArchiveRuntime.fetchDetail,
+    uploadMutuallySignedContract: finalArchiveRuntime.associateFinal,
+    uploadPrivateFile: finalArchiveRuntime.uploadPrivate
   };
 });
 
@@ -44,9 +48,13 @@ finalArchiveRuntime.route = reactive(finalArchiveRuntime.route);
 
 type MutableValue<T> = { value: T };
 type ContractPageBindings = {
+  confirmFinalContractUpload: () => Promise<boolean>;
   confirmFinalContractConfirmation: () => Promise<boolean>;
   contractDetail: MutableValue<unknown>;
+  contractFinalUploadFiles: MutableValue<Array<{ name: string; raw: File }>>;
   finalArchiveConfirmations: MutableValue<string[]>;
+  finalUploadConfirmations: MutableValue<string[]>;
+  requestFinalContractUpload: () => void;
   requestFinalContractConfirmation: () => void;
   sensitiveAction: {
     kind: string | null;
@@ -69,8 +77,12 @@ describe("contract final archive UUID route", () => {
   beforeEach(() => {
     finalArchiveRuntime.route.params.contractId = "2a888482-565d-4326-a668-d8072cf480ca";
     finalArchiveRuntime.confirmFinal.mockReset();
+    finalArchiveRuntime.associateFinal.mockReset();
     finalArchiveRuntime.fetchDetail.mockReset();
+    finalArchiveRuntime.uploadPrivate.mockReset();
     finalArchiveRuntime.confirmFinal.mockResolvedValue({ id: "final-file-a" });
+    finalArchiveRuntime.associateFinal.mockResolvedValue({ id: "final-file-a" });
+    finalArchiveRuntime.uploadPrivate.mockResolvedValue({ id: "uploaded-final-file" });
     finalArchiveRuntime.fetchDetail.mockResolvedValue(finalArchiveDetail());
   });
 
@@ -155,6 +167,61 @@ describe("contract final archive UUID route", () => {
       scope.stop();
     }
   });
+
+  it("uses the current aggregate revision as OCC when document coordinates survive metadata-only drift", async () => {
+    const current = finalUploadDetail({ draftRevision: 5, approvalSourceRevision: 4 });
+    finalArchiveRuntime.fetchDetail.mockResolvedValue(current);
+    const { bindings, scope } = setupFinalArchivePage();
+    try {
+      bindings.contractDetail.value = current;
+      bindings.contractFinalUploadFiles.value = [{
+        name: "双方最终版.pdf",
+        raw: new File(["final"], "双方最终版.pdf", { type: "application/pdf" })
+      }];
+      bindings.finalUploadConfirmations.value = [...confirmations];
+
+      bindings.requestFinalContractUpload();
+      expect(bindings.sensitiveAction.kind).toBe("finalUpload");
+      await expect(bindings.confirmFinalContractUpload()).resolves.toBe(true);
+
+      expect(finalArchiveRuntime.associateFinal).toHaveBeenCalledWith("version-a", {
+        fileId: "uploaded-final-file",
+        sourceRevision: 5,
+        firstPartySignedOrStamped: true,
+        companySealCompleted: true,
+        crossPageSealCompleted: true,
+        signingDateCompleted: true,
+        onlyPermittedSignatureChanges: true,
+        documentOrderConfirmed: true
+      });
+    } finally {
+      scope.stop();
+    }
+  });
+
+  it("stops before private upload when the fresh document coordinates changed", async () => {
+    const current = finalUploadDetail();
+    finalArchiveRuntime.fetchDetail.mockResolvedValueOnce(finalUploadDetail({
+      documentContentRevision: 3,
+      documentContentFingerprint: "e".repeat(64)
+    }));
+    const { bindings, scope } = setupFinalArchivePage();
+    try {
+      bindings.contractDetail.value = current;
+      bindings.contractFinalUploadFiles.value = [{
+        name: "双方最终版.pdf",
+        raw: new File(["final"], "双方最终版.pdf", { type: "application/pdf" })
+      }];
+      bindings.finalUploadConfirmations.value = [...confirmations];
+
+      bindings.requestFinalContractUpload();
+      await expect(bindings.confirmFinalContractUpload()).resolves.toBe(false);
+      expect(finalArchiveRuntime.uploadPrivate).not.toHaveBeenCalled();
+      expect(finalArchiveRuntime.associateFinal).not.toHaveBeenCalled();
+    } finally {
+      scope.stop();
+    }
+  });
 });
 
 function setupFinalArchivePage() {
@@ -225,5 +292,46 @@ function finalArchiveDetail(overrides: {
     disabledReasons: [],
     chainLinks: [],
     changeVersions: []
+  };
+}
+
+function finalUploadDetail(overrides: {
+  approvalSourceRevision?: number;
+  documentContentFingerprint?: string;
+  documentContentRevision?: number;
+  draftRevision?: number;
+} = {}) {
+  const documentContentRevision = overrides.documentContentRevision ?? 2;
+  const documentContentFingerprint = overrides.documentContentFingerprint ?? "d".repeat(64);
+  return {
+    ...finalArchiveDetail({
+      id: "2a888482-565d-4326-a668-d8072cf480ca",
+      availableActionKeys: ["upload_final_contract"]
+    }),
+    draftRevision: overrides.draftRevision ?? 5,
+    documentContentRevision,
+    documentContentFingerprint,
+    formalFiles: [{
+      formalFileId: "approval-original-a",
+      purpose: "approval_original",
+      fileId: "approval-original-file-a",
+      fileName: "审批前乙方签章原件.pdf",
+      pageCount: 3,
+      sourceRevision: overrides.approvalSourceRevision ?? 4,
+      documentContentRevision,
+      documentContentFingerprint,
+      status: "active",
+      uploadedByUserId: "user-a",
+      confirmedByUserId: null,
+      confirmedAt: null
+    }],
+    availableActions: [{
+      key: "upload_final_contract",
+      label: "上传双方最终版",
+      kind: "primary",
+      enabled: true,
+      disabledReason: null,
+      requiredRoles: []
+    }]
   };
 }

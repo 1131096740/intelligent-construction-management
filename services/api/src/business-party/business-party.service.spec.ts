@@ -576,14 +576,7 @@ describe("BusinessPartyService", () => {
         readinessSnapshot: Prisma.DbNull
       }
     });
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "contract-version-1",
-        status: "success",
-        sourceRevision: { lt: 5 }
-      },
-      data: { status: "stale" }
-    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("does not change existing contract snapshot when party record changes", async () => {

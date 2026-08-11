@@ -1449,14 +1449,7 @@ describe("ContractBillExcelService", () => {
     expect(imports[0].status).toBe("applied");
     expect(imports[0].appliedByUserId).toBe("owner-1");
     expect(version.draftRevision).toBe(6);
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: "success",
-        sourceRevision: { lt: 6 }
-      },
-      data: { status: "stale" }
-    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("keeps the original uploaded XLSX file id on the import record", async () => {

@@ -287,14 +287,7 @@ describe("ContractBillService", () => {
     });
     expect(result.bill!.taxInclusiveAmountCents).toBe("33340");
     expect(result.rows[0].quantity).toBe("3.33");
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: "success",
-        sourceRevision: { lt: 6 }
-      },
-      data: { status: "stale" }
-    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 

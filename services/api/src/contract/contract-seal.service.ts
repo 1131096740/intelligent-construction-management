@@ -27,8 +27,15 @@ type GovernedVersion = {
   status: string;
   contractGovernanceVersion: number | null;
   draftRevision?: number;
+  documentContentRevision?: number;
+  documentContentFingerprint?: string | null;
   changeType?: string;
   baseVersionId?: string | null;
+};
+type SigningGovernedVersion = GovernedVersion & {
+  draftRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
 };
 
 type SealTask = {
@@ -226,7 +233,9 @@ export class ContractSealService {
         contractId: true,
         status: true,
         contractGovernanceVersion: true,
-        draftRevision: true
+        draftRevision: true,
+        documentContentRevision: true,
+        documentContentFingerprint: true
       }
     });
     this.assertGoverned(preflightVersion ?? {
@@ -280,15 +289,10 @@ export class ContractSealService {
         task,
         actorUserId
       );
-      const approvalOriginal = await tx.contractFormalFile.findFirst({
-        where: {
-          contractVersionId: version.id,
-          purpose: "approval_original",
-          status: "active",
-          sourceRevision: version.draftRevision
-        },
-        orderBy: { createdAt: "desc" }
-      });
+      const approvalOriginal = await formalFiles.assertReadyForSubmission(
+        tx,
+        version
+      );
       if (!approvalOriginal) {
         throw new BadRequestException("未找到本次审批冻结的合同原件，不能关联双方最终版");
       }
@@ -334,7 +338,7 @@ export class ContractSealService {
           }
         });
       }
-      const declaration = this.finalDeclaration(input);
+      const declaration = this.finalDeclaration(input, version);
       const created = await tx.contractFormalFile.create({
         data: {
           contractVersionId: version.id,
@@ -444,7 +448,9 @@ export class ContractSealService {
         contractId: true,
         status: true,
         contractGovernanceVersion: true,
-        draftRevision: true
+        draftRevision: true,
+        documentContentRevision: true,
+        documentContentFingerprint: true
       }
     });
     this.assertGoverned(preflightVersion ?? {
@@ -497,15 +503,10 @@ export class ContractSealService {
     ) {
       throw new ForbiddenException("上传人与归档确认人不能是同一人");
     }
-    const preflightOriginal = await this.prisma.contractFormalFile.findFirst({
-      where: {
-        contractVersionId,
-        purpose: "approval_original",
-        status: "active",
-        sourceRevision: preflightVersion.draftRevision
-      },
-      orderBy: { createdAt: "desc" }
-    });
+    const preflightOriginal = await this.formalFiles.assertReadyForSubmission(
+      this.prisma as unknown as Prisma.TransactionClient,
+      preflightVersion
+    );
     if (!preflightOriginal) {
       throw new BadRequestException("未找到本次审批冻结的合同原件，不能确认归档");
     }
@@ -553,10 +554,17 @@ export class ContractSealService {
         }
       });
       if (!formal) throw new BadRequestException("未找到待确认的双方最终版合同");
+      const declaration = formal.declarationSnapshot;
+      const declaredContent = declaration &&
+        typeof declaration === "object" &&
+        !Array.isArray(declaration)
+        ? declaration as Prisma.JsonObject
+        : null;
       if (formal.fileId !== preflightFormal.fileId ||
         formal.contentSha256 !== preflightFormal.contentSha256 ||
         formal.pageCount !== preflightFormal.pageCount ||
-        formal.sourceRevision !== version.draftRevision) {
+        declaredContent?.documentContentRevision !== version.documentContentRevision ||
+        declaredContent?.documentContentFingerprint !== version.documentContentFingerprint) {
         throw new BadRequestException("合同最终归档文件或合同修订已变化，请重新核对后确认");
       }
       const selfConfirmedByCurrentDirectorHandler =
@@ -570,15 +578,10 @@ export class ContractSealService {
       if (formal.uploadedByUserId === actorUserId && !selfConfirmedByCurrentDirectorHandler) {
         throw new ForbiddenException("上传人与归档确认人不能是同一人");
       }
-      const approvalOriginal = await tx.contractFormalFile.findFirst({
-        where: {
-          id: preflightOriginal.id,
-          contractVersionId: version.id,
-          purpose: "approval_original",
-          status: "active",
-          sourceRevision: version.draftRevision
-        }
-      });
+      const approvalOriginal = await this.formalFiles!.assertReadyForSubmission(
+        tx,
+        version
+      );
       if (!approvalOriginal || approvalOriginal.fileId !== preflightOriginal.fileId ||
         approvalOriginal.contentSha256 !== preflightOriginal.contentSha256 ||
         approvalOriginal.pageCount !== preflightOriginal.pageCount) {
@@ -604,7 +607,7 @@ export class ContractSealService {
       }
       await this.assertStructuredPaymentStage(tx, version.id);
       const confirmedAt = new Date();
-      const confirmationSnapshot = this.finalDeclaration(input);
+      const confirmationSnapshot = this.finalDeclaration(input, version);
       await tx.contractFormalFile.update({
         where: { id: formal.id },
         data: {
@@ -760,10 +763,13 @@ export class ContractSealService {
     }
   }
 
-  private finalDeclaration(input: CompleteContractSealDto & {
-    onlyPermittedSignatureChanges: boolean;
-    documentOrderConfirmed: boolean;
-  }) {
+  private finalDeclaration(
+    input: CompleteContractSealDto & {
+      onlyPermittedSignatureChanges: boolean;
+      documentOrderConfirmed: boolean;
+    },
+    version: SigningGovernedVersion
+  ) {
     return {
       version: 1,
       firstPartySignedOrStamped: input.firstPartySignedOrStamped,
@@ -771,7 +777,9 @@ export class ContractSealService {
       crossPageSealCompleted: input.crossPageSealCompleted,
       signingDateCompleted: input.signingDateCompleted,
       onlyPermittedSignatureChanges: input.onlyPermittedSignatureChanges,
-      documentOrderConfirmed: input.documentOrderConfirmed
+      documentOrderConfirmed: input.documentOrderConfirmed,
+      documentContentRevision: version.documentContentRevision,
+      documentContentFingerprint: version.documentContentFingerprint
     };
   }
 
@@ -781,6 +789,16 @@ export class ContractSealService {
     }
   }
 
+  private lockVersionAndTask(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    includeSigningFields: true
+  ): Promise<{ version: SigningGovernedVersion; task: SealTask }>;
+  private lockVersionAndTask(
+    tx: Prisma.TransactionClient,
+    contractVersionId: string,
+    includeSigningFields?: false
+  ): Promise<{ version: GovernedVersion; task: SealTask }>;
   private async lockVersionAndTask(
     tx: Prisma.TransactionClient,
     contractVersionId: string,
@@ -796,10 +814,11 @@ export class ContractSealService {
     `);
     const [version] = await tx.$queryRaw<GovernedVersion[]>(Prisma.sql`
       SELECT "id", "contractId", "status", "contractGovernanceVersion"
-        ${includeSigningFields ? Prisma.sql`, "draftRevision", "changeType", "baseVersionId"` : Prisma.empty}
+        ${includeSigningFields ? Prisma.sql`, "draftRevision", "documentContentRevision", "documentContentFingerprint", "changeType", "baseVersionId"` : Prisma.empty}
       FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE
     `);
     if (!version) throw new BadRequestException("未找到合同版本，请刷新合同台账后重试");
+    if (includeSigningFields) this.assertSigningVersion(version);
     const [task] = await tx.$queryRaw<SealTask[]>(Prisma.sql`
       SELECT "id", "contractVersionId", "approvalInstanceId", "handlerUserId", "status"
       FROM "ContractSealTask"
@@ -808,6 +827,21 @@ export class ContractSealService {
     `);
     if (!task) throw new BadRequestException("未找到冻结的用章任务，请联系管理员核对审批结果");
     return { version, task };
+  }
+
+  private assertSigningVersion(
+    version: GovernedVersion
+  ): asserts version is SigningGovernedVersion {
+    if (
+      !Number.isInteger(version.draftRevision) ||
+      Number(version.draftRevision) < 1 ||
+      !Number.isInteger(version.documentContentRevision) ||
+      Number(version.documentContentRevision) < 1 ||
+      (version.documentContentFingerprint !== null &&
+        typeof version.documentContentFingerprint !== "string")
+    ) {
+      throw new BadRequestException("合同签署坐标缺失，请刷新后重试");
+    }
   }
 
   private async canUploadFinal(

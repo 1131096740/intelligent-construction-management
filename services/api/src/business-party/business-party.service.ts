@@ -8,7 +8,7 @@ import type { Prisma } from "@prisma/client";
 import { isDeepStrictEqual } from "node:util";
 import { AuditService } from "../audit/audit.service";
 import { lockContractDraftMutationBoundary } from "../contract/contract-draft-lifecycle";
-import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
+import { bumpContractAggregateRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import type {
   AddContractPartyDto,
@@ -519,7 +519,7 @@ export class BusinessPartyService {
     contract: { id: string },
     actorUserId: string
   ) {
-    const newRevision = await bumpContractRenderInputRevision(
+    const newRevision = await bumpContractAggregateRevision(
       tx,
       version.id,
       version.draftRevision

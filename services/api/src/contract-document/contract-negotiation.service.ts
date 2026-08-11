@@ -15,6 +15,7 @@ import { contractDocumentCandidateMatchesLedger } from "./contract-document-ledg
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const EDITABLE_VERSION_STATUSES = ["draft"];
+const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const DISPOSITIONS = new Set([
   "confirmed",
   "rejected",
@@ -67,12 +68,33 @@ export class ContractNegotiationService {
           where: { contractVersionId: version.id, status: "open" }
         });
         if (open) throw new BadRequestException("当前合同已有开放的磋商轮次，请先处理或关闭");
+        if (
+          !Number.isInteger(version.documentContentRevision) ||
+          version.documentContentRevision < 1 ||
+          !version.documentContentFingerprint ||
+          !SHA256_PATTERN.test(version.documentContentFingerprint)
+        ) {
+          throw new BadRequestException("请先生成当前修订的合同 DOCX，再开启磋商轮次");
+        }
         const source = await tx.contractGeneratedDocument.findFirst({
           where: {
             contractVersionId: version.id,
-            sourceRevision: version.draftRevision,
             status: "success",
-            docxFileId: { not: null }
+            docxFileId: { not: null },
+            AND: [
+              {
+                inputSnapshot: {
+                  path: ["documentContentRevision"],
+                  equals: version.documentContentRevision
+                }
+              },
+              {
+                inputSnapshot: {
+                  path: ["documentContentFingerprint"],
+                  equals: version.documentContentFingerprint
+                }
+              }
+            ]
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }]
         });

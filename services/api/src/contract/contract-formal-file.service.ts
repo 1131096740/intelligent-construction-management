@@ -48,6 +48,13 @@ type GovernedVersion = {
   contractGovernanceVersion: number | null;
   changeType: string;
 };
+type SubmissionGovernedVersion = Pick<
+  GovernedVersion,
+  | "id"
+  | "contractGovernanceVersion"
+  | "documentContentRevision"
+  | "documentContentFingerprint"
+>;
 type GovernedContract = {
   id: string;
   ownerUserId: string | null;
@@ -73,6 +80,10 @@ export class ContractFormalFileService {
         if (input.sourceRevision !== version.draftRevision) {
           throw this.deny("合同草稿已更新，请刷新后重新上传当前版本的正式审批文件", "contract.formal_file.upload_denied");
         }
+        const documentContentSnapshot = this.requireDocumentContentSnapshot(
+          version,
+          "contract.formal_file.upload_denied"
+        );
         this.assertDeclaration(input);
         const authorizationLinks = await tx.contractVersionAuthorizationLink.findMany({
           where: { contractVersionId: version.id },
@@ -176,7 +187,10 @@ export class ContractFormalFileService {
             status: "active",
             uploadedByUserId: actorUserId,
             supersedesId: previous?.id ?? null,
-            declarationSnapshot: this.declaration(input) as Prisma.InputJsonValue,
+            declarationSnapshot: this.declaration(
+              input,
+              documentContentSnapshot
+            ) as Prisma.InputJsonValue,
             declaredByUserId: actorUserId,
             declaredAt: new Date()
           }
@@ -419,7 +433,6 @@ export class ContractFormalFileService {
       where: { id: contractVersionId },
       select: {
         id: true,
-        draftRevision: true,
         documentContentRevision: true,
         documentContentFingerprint: true,
         status: true
@@ -450,7 +463,6 @@ export class ContractFormalFileService {
       ? this.counterpartyDocumentContent(activePreview.confirmationSnapshot)
       : null;
     return {
-      draftRevision: version.draftRevision,
       documentContentRevision: version.documentContentRevision,
       documentContentFingerprint: version.documentContentFingerprint,
       status: version.status,
@@ -483,7 +495,10 @@ export class ContractFormalFileService {
     };
   }
 
-  async assertReadyForSubmission(tx: Prisma.TransactionClient, version: GovernedVersion) {
+  async assertReadyForSubmission(
+    tx: Prisma.TransactionClient,
+    version: SubmissionGovernedVersion
+  ) {
     if (version.contractGovernanceVersion !== 1) return null;
     const formal = await tx.contractFormalFile.findFirst({
       where: {
@@ -496,7 +511,18 @@ export class ContractFormalFileService {
     if (!formal) {
       throw this.deny("请上传乙方已签字盖章的完整合同审批 PDF", "contract.formal_file.submission_denied");
     }
-    if (formal.sourceRevision !== version.draftRevision) {
+    const currentContent = this.requireDocumentContentSnapshot(
+      version,
+      "contract.formal_file.submission_denied"
+    );
+    const formalContent = this.approvalDocumentContent(
+      formal.declarationSnapshot
+    );
+    if (
+      !formalContent ||
+      formalContent.revision !== currentContent.documentContentRevision ||
+      formalContent.fingerprint !== currentContent.documentContentFingerprint
+    ) {
       throw this.deny("正式审批文件已过期，请按当前合同内容重新生成并上传", "contract.formal_file.submission_denied");
     }
     if (!SHA256_PATTERN.test(formal.contentSha256) || formal.pageCount <= 0) {
@@ -926,14 +952,21 @@ export class ContractFormalFileService {
     }
   }
 
-  private declaration(input: UploadContractFormalFileDto) {
+  private declaration(
+    input: UploadContractFormalFileDto,
+    documentContentSnapshot?: {
+      documentContentRevision: number;
+      documentContentFingerprint: string;
+    }
+  ) {
     return {
       counterpartySigned: input.counterpartySigned,
       counterpartyStamped: input.counterpartyStamped,
       crossPageSealCompleted: input.crossPageSealCompleted,
       documentOrderConfirmed: input.documentOrderConfirmed,
       authorizationsBeforeSignaturePageConfirmed: input.authorizationsBeforeSignaturePageConfirmed,
-      documentOrder: "合同正文→全部附件和清单→所需授权委托书→最终签署页"
+      documentOrder: "合同正文→全部附件和清单→所需授权委托书→最终签署页",
+      ...documentContentSnapshot
     };
   }
 
@@ -1235,8 +1268,19 @@ export class ContractFormalFileService {
     return { revision, fingerprint };
   }
 
+  private approvalDocumentContent(value: Prisma.JsonValue): {
+    revision: number;
+    fingerprint: string;
+  } | null {
+    const direct = this.counterpartyDocumentContent(value);
+    if (direct) return direct;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const confirmed = (value as Prisma.JsonObject)._counterparty_confirmed;
+    return this.counterpartyDocumentContent(confirmed ?? null);
+  }
+
   private requireDocumentContentSnapshot(
-    version: GovernedVersion,
+    version: SubmissionGovernedVersion,
     denialAction: string
   ) {
     if (
