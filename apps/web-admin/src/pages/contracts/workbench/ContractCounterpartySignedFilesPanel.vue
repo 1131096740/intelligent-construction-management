@@ -23,9 +23,9 @@
       :message="message"
     />
     <t-alert
-      v-if="revisionDrift"
+      v-if="confirmationInvalid"
       theme="warning"
-      message="草稿内容已修改，原乙方签章确认已失效。请重新上传当前修订的乙方签章文件并再次确认。"
+      message="合同文书内容已修改，原乙方签章确认已失效。请重新上传当前文书内容的乙方签章文件并再次确认。"
     />
     <t-alert
       v-if="submissionHint"
@@ -100,8 +100,14 @@
           </dd>
         </div>
         <div class="fact-block">
-          <dt>修订</dt>
-          <dd>R{{ record.preview.sourceRevision }} / 当前 R{{ record.draftRevision }}</dd>
+          <dt>内容版本</dt>
+          <dd>
+            当前 D{{ record.documentContentRevision }}
+            <template v-if="record.preview.confirmedDocumentContentRevision !== null">
+              · 确认 D{{ record.preview.confirmedDocumentContentRevision }}
+            </template>
+            · 上传时聚合修订 R{{ record.preview.sourceRevision }}（仅并发追踪）
+          </dd>
         </div>
       </template>
     </dl>
@@ -136,10 +142,10 @@ const messageTone = ref<"info" | "success" | "error">("info");
 
 const uploadDisabled = computed(() => props.disabled || busy.value);
 const canSubmit = computed(() => !props.disabled && !busy.value && files.value.some((item) => item.raw));
-const revisionDrift = computed(() => {
+const confirmationInvalid = computed(() => {
   const preview = record.value?.preview;
   if (!preview || !preview.confirmedByUserId) return false;
-  return !preview.confirmationValid || preview.sourceRevision !== record.value?.draftRevision;
+  return !preview.confirmationValid;
 });
 const canConfirm = computed(() => {
   const preview = record.value?.preview;
@@ -147,15 +153,14 @@ const canConfirm = computed(() => {
     !props.disabled &&
     !busy.value &&
     preview &&
-    !revisionDrift.value &&
-    preview.sourceRevision === record.value?.draftRevision
+    !confirmationInvalid.value
   );
 });
 const status = computed(() => {
   const preview = record.value?.preview;
   if (!preview) return { label: "待上传", tone: "default" as const };
   if (!preview.confirmedByUserId) return { label: "已上传待确认", tone: "warning" as const };
-  if (revisionDrift.value) return { label: "已过期", tone: "danger" as const };
+  if (confirmationInvalid.value) return { label: "已过期", tone: "danger" as const };
   return { label: "已确认", tone: "success" as const };
 });
 const submissionHint = computed<{
@@ -170,15 +175,15 @@ const submissionHint = computed<{
       text: "请完成乙方签章文件整体确认后才能提交审批。"
     };
   }
-  if (revisionDrift.value) {
+  if (confirmationInvalid.value) {
     return {
       theme: "warning",
-      text: "乙方签章文件已过期，重新上传并确认当前修订后才能提交审批。"
+      text: "乙方签章文件已过期，重新上传并确认当前合同文书内容后才能提交审批。"
     };
   }
   return {
     theme: "success",
-    text: "乙方签章文件已确认到当前修订，可以提交审批。"
+    text: "乙方签章文件已确认到当前合同文书内容，可以提交审批。"
   };
 });
 
@@ -288,7 +293,7 @@ async function submitFiles() {
     files.value = [];
     reload = true;
     await refresh();
-    showSuccess(`乙方签章文件已提交并冻结到 R${current.version.draftRevision}，请确认预览。`);
+    showSuccess("乙方签章文件已提交并冻结当前合同文书内容，请确认预览。");
   } catch (error) {
     showError(errorText(error, "乙方签章文件提交失败，原文件已保留，请重试。"));
   } finally {
@@ -314,7 +319,7 @@ async function confirmSigned() {
     });
     reload = true;
     await refresh();
-    showSuccess("乙方签章文件已确认并冻结到当前草稿修订。");
+    showSuccess("乙方签章文件已确认并冻结到当前合同文书内容。");
   } catch (error) {
     showError(errorText(error, "乙方签章文件确认失败，请重试。"));
   } finally {

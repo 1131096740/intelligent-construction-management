@@ -882,6 +882,7 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
         const sourcePdfSha256 = createHash("sha256")
           .update(sourcePdfBuffer)
           .digest("hex");
+        const canonicalDocumentContentFingerprint = "f".repeat(64);
         const seedGovernedSubmissionDraft = async (
           contractId: string,
           versionId: string,
@@ -929,6 +930,8 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
               taxMode: "single_rate",
               defaultTaxRatePercent: 13,
               contractGovernanceVersion: 1,
+              documentContentRevision: 1,
+              documentContentFingerprint: canonicalDocumentContentFingerprint,
               layoutTemplateVersionId,
               draftData: {
                 companyEntitySelection: {
@@ -1020,7 +1023,11 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                 sourceRevision: 1,
                 status: "active",
                 uploadedByUserId: ownerId,
-                declarationSnapshot: { kind: "counterparty_signed_original" },
+                declarationSnapshot: {
+                  kind: "counterparty_signed_original",
+                  documentContentRevision: 1,
+                  documentContentFingerprint: canonicalDocumentContentFingerprint
+                },
                 declaredByUserId: ownerId,
                 declaredAt: new Date()
               },
@@ -1034,7 +1041,11 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                 sourceRevision: 1,
                 status: "active",
                 uploadedByUserId: ownerId,
-                declarationSnapshot: { kind: "counterparty_signed_original" },
+                declarationSnapshot: {
+                  kind: "counterparty_signed_original",
+                  documentContentRevision: 1,
+                  documentContentFingerprint: canonicalDocumentContentFingerprint
+                },
                 declaredByUserId: ownerId,
                 declaredAt: new Date()
               },
@@ -1048,12 +1059,20 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
                 sourceRevision: 1,
                 status: "active",
                 uploadedByUserId: ownerId,
-                declarationSnapshot: { kind: "counterparty_signed_preview" },
+                declarationSnapshot: {
+                  kind: "counterparty_signed_preview",
+                  documentContentRevision: 1,
+                  documentContentFingerprint: canonicalDocumentContentFingerprint
+                },
                 declaredByUserId: ownerId,
                 declaredAt: new Date(),
                 confirmedByUserId: ownerId,
                 confirmedAt: new Date(),
-                confirmationSnapshot: { confirmedAtRevision: 1 }
+                confirmationSnapshot: {
+                  confirmedAtRevision: 1,
+                  documentContentRevision: 1,
+                  documentContentFingerprint: canonicalDocumentContentFingerprint
+                }
               }
             ]
           });
@@ -1293,6 +1312,8 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
             declarationSnapshot: {
               _counterparty_confirmed: {
                 formalFileId: submittedFixture.previewFormalFileId,
+                documentContentRevision: 1,
+                documentContentFingerprint: canonicalDocumentContentFingerprint,
                 sourceFiles: [
                   {
                     formalFileId: submittedFixture.originalFormalFileId,
@@ -1312,11 +1333,17 @@ describe("contract lifecycle Nest route and PostgreSQL evidence", () => {
           });
           expect(submittedVersion!.templateSnapshot).toMatchObject({
             submissionSnapshot: {
+              documentContentRevision: 1,
+              documentContentFingerprint: canonicalDocumentContentFingerprint,
               counterpartySignedPreview: {
                 id: submittedFixture.previewFormalFileId,
                 fileId: submittedFixture.previewFileId,
                 contentSha256: sourcePdfSha256,
-                sourceRevision: 1
+                sourceRevision: 1,
+                confirmationSnapshot: {
+                  documentContentRevision: 1,
+                  documentContentFingerprint: canonicalDocumentContentFingerprint
+                }
               },
               governance: {
                 formalFile: {

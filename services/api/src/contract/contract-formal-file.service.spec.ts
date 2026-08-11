@@ -19,6 +19,8 @@ function harness(overrides: Record<string, unknown> = {}) {
     contractId: "contract-1",
     status: "draft",
     draftRevision: 3,
+    documentContentRevision: 2,
+    documentContentFingerprint: "d".repeat(64),
     contractGovernanceVersion: 1
   };
   const file: {
@@ -345,6 +347,8 @@ describe("ContractFormalFileService.counterparty", () => {
       contractId: "contract-1",
       status: "draft",
       draftRevision: 3,
+      documentContentRevision: 2,
+      documentContentFingerprint: "d".repeat(64),
       contractGovernanceVersion: 1
     };
     const formalFacts = {
@@ -467,7 +471,16 @@ describe("ContractFormalFileService.counterparty", () => {
       sourceRevision: 3,
       purpose: "counterparty_signed_preview"
     });
-    expect(previewData.declarationSnapshot).toMatchObject({ mode: "inline_pdf" });
+    expect(previewData.declarationSnapshot).toMatchObject({
+      mode: "inline_pdf",
+      documentContentRevision: 2,
+      documentContentFingerprint: "d".repeat(64)
+    });
+    expect(tx.contractFormalFile.create.mock.calls[0][0].data.declarationSnapshot)
+      .toMatchObject({
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      });
     expect(files.uploadPrivateFile).not.toHaveBeenCalled();
   });
 
@@ -588,7 +601,12 @@ describe("ContractFormalFileService.counterparty", () => {
       contractVersionId: "version-1",
       purpose: "counterparty_signed_preview",
       status: "active",
-      sourceRevision: 3
+      sourceRevision: 3,
+      declarationSnapshot: {
+        kind: "counterparty_signed_preview",
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
     });
     const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
 
@@ -610,14 +628,80 @@ describe("ContractFormalFileService.counterparty", () => {
     expect(tx.contractFormalFile.update).not.toHaveBeenCalled();
   });
 
-  it("确认预览：记录操作者、时间与冻结修订", async () => {
+  it("确认预览：仅聚合 metadata 变化时沿用相同文书内容证据", async () => {
+    const { version, tx, prisma } = counterpartyHarness();
+    version.draftRevision = 4;
+    tx.contractFormalFile.findFirst.mockResolvedValue({
+      id: "preview-1",
+      contractVersionId: "version-1",
+      purpose: "counterparty_signed_preview",
+      status: "active",
+      sourceRevision: 3,
+      declarationSnapshot: {
+        kind: "counterparty_signed_preview",
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
+    });
+    const service = new ContractFormalFileService(
+      prisma as never,
+      undefined,
+      undefined as never
+    );
+
+    await expect(service.confirmCounterpartySigned("version-1", "owner-1", {
+      formalFileId: "preview-1",
+      expectedDraftRevision: 4
+    })).resolves.toMatchObject({
+      confirmedAtRevision: 4,
+      confirmedDocumentContentRevision: 2,
+      confirmedDocumentContentFingerprint: "d".repeat(64),
+      confirmationValid: true
+    });
+  });
+
+  it("确认预览：文书内容变化后拒绝旧预览", async () => {
+    const { version, tx, prisma } = counterpartyHarness();
+    version.documentContentRevision = 3;
+    version.documentContentFingerprint = "e".repeat(64);
+    tx.contractFormalFile.findFirst.mockResolvedValue({
+      id: "preview-1",
+      contractVersionId: "version-1",
+      purpose: "counterparty_signed_preview",
+      status: "active",
+      sourceRevision: 3,
+      declarationSnapshot: {
+        kind: "counterparty_signed_preview",
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
+    });
+    const service = new ContractFormalFileService(
+      prisma as never,
+      undefined,
+      undefined as never
+    );
+
+    await expect(service.confirmCounterpartySigned("version-1", "owner-1", {
+      formalFileId: "preview-1",
+      expectedDraftRevision: 3
+    })).rejects.toThrow("合同文书内容已变化");
+    expect(tx.contractFormalFile.update).not.toHaveBeenCalled();
+  });
+
+  it("确认预览：记录操作者、时间与冻结文书内容证据", async () => {
     const { tx, prisma } = counterpartyHarness();
     tx.contractFormalFile.findFirst.mockResolvedValue({
       id: "preview-1",
       contractVersionId: "version-1",
       purpose: "counterparty_signed_preview",
       status: "active",
-      sourceRevision: 3
+      sourceRevision: 3,
+      declarationSnapshot: {
+        kind: "counterparty_signed_preview",
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
     });
     const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
 
@@ -629,6 +713,8 @@ describe("ContractFormalFileService.counterparty", () => {
       formalFileId: "preview-1",
       confirmedByUserId: "owner-1",
       confirmedAtRevision: 3,
+      confirmedDocumentContentRevision: 2,
+      confirmedDocumentContentFingerprint: "d".repeat(64),
       confirmationValid: true
     });
     expect(tx.contractFormalFile.update).toHaveBeenCalledWith(
@@ -636,17 +722,23 @@ describe("ContractFormalFileService.counterparty", () => {
         where: { id: "preview-1" },
         data: expect.objectContaining({
           confirmedByUserId: "owner-1",
-          confirmationSnapshot: { confirmedAtRevision: 3 }
+          confirmationSnapshot: {
+            confirmedAtRevision: 3,
+            documentContentRevision: 2,
+            documentContentFingerprint: "d".repeat(64)
+          }
         })
       }
     );
   });
 
-  it("list 实时计算确认有效性：草稿修订变更后自动失效", async () => {
+  it("list 实时计算确认有效性：仅聚合 metadata 修订变更后仍然有效", async () => {
     const { prisma } = counterpartyHarness();
     prisma.contractVersion.findUnique.mockResolvedValue({
       id: "version-1",
       draftRevision: 4,
+      documentContentRevision: 2,
+      documentContentFingerprint: "d".repeat(64),
       status: "draft"
     });
     prisma.contractFormalFile.findMany.mockResolvedValue([
@@ -662,7 +754,11 @@ describe("ContractFormalFileService.counterparty", () => {
         uploadedByUserId: "owner-1",
         confirmedByUserId: "owner-1",
         confirmedAt: new Date("2026-01-01T00:00:00Z"),
-        confirmationSnapshot: { confirmedAtRevision: 3 },
+        confirmationSnapshot: {
+          confirmedAtRevision: 3,
+          documentContentRevision: 2,
+          documentContentFingerprint: "d".repeat(64)
+        },
         declarationSnapshot: { kind: "counterparty_signed_preview", mode: "inline_pdf" },
         createdAt: new Date("2026-01-01T00:00:00Z")
       }
@@ -674,15 +770,22 @@ describe("ContractFormalFileService.counterparty", () => {
 
     const result = await service.listCounterpartySigned("version-1");
     expect(result.draftRevision).toBe(4);
-    expect(result.confirmationValid).toBe(false);
-    expect(result.preview).toMatchObject({ confirmationValid: false, confirmedAtRevision: 3 });
+    expect(result.confirmationValid).toBe(true);
+    expect(result.preview).toMatchObject({
+      confirmationValid: true,
+      confirmedAtRevision: 3,
+      confirmedDocumentContentRevision: 2,
+      confirmedDocumentContentFingerprint: "d".repeat(64)
+    });
   });
 
-  it("list 在修订一致且已确认时判定确认有效", async () => {
+  it("list 实时计算确认有效性：文书内容变化后失效", async () => {
     const { prisma } = counterpartyHarness();
     prisma.contractVersion.findUnique.mockResolvedValue({
       id: "version-1",
       draftRevision: 3,
+      documentContentRevision: 3,
+      documentContentFingerprint: "e".repeat(64),
       status: "draft"
     });
     prisma.contractFormalFile.findMany.mockResolvedValue([
@@ -698,7 +801,11 @@ describe("ContractFormalFileService.counterparty", () => {
         uploadedByUserId: "owner-1",
         confirmedByUserId: "owner-1",
         confirmedAt: new Date("2026-01-01T00:00:00Z"),
-        confirmationSnapshot: { confirmedAtRevision: 3 },
+        confirmationSnapshot: {
+          confirmedAtRevision: 3,
+          documentContentRevision: 2,
+          documentContentFingerprint: "d".repeat(64)
+        },
         declarationSnapshot: { kind: "counterparty_signed_preview", mode: "inline_pdf" },
         createdAt: new Date("2026-01-01T00:00:00Z")
       }
@@ -709,8 +816,12 @@ describe("ContractFormalFileService.counterparty", () => {
     const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
 
     const result = await service.listCounterpartySigned("version-1");
-    expect(result.confirmationValid).toBe(true);
-    expect(result.preview).toMatchObject({ confirmationValid: true });
+    expect(result.confirmationValid).toBe(false);
+    expect(result.preview).toMatchObject({
+      confirmationValid: false,
+      confirmedDocumentContentRevision: 2,
+      confirmedDocumentContentFingerprint: "d".repeat(64)
+    });
   });
 
   it("事务失败时尽力清理新生成的预览文件，并映射序列化冲突", async () => {
@@ -757,7 +868,7 @@ describe("ContractFormalFileService.counterparty", () => {
 });
 
 describe("ContractFormalFileService.bridgeFromCounterparty", () => {
-  it("从已确认的乙方签章预览桥接创建审批文件，并使旧 approval_original 失效", async () => {
+  it("提交桥接沿用 metadata-only 变化前的有效签章确认并冻结 fingerprint", async () => {
     const bytes = await pdfBytes();
     const pdf = await PDFDocument.load(bytes);
     const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -770,9 +881,14 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
       status: "active",
       confirmedByUserId: "owner-1",
       uploadedByUserId: "owner-1",
-      confirmationSnapshot: { confirmedAtRevision: 3 }
+      confirmationSnapshot: {
+        confirmedAtRevision: 3,
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
     };
     const { version, file, tx, prisma, files } = harness();
+    version.draftRevision = 4;
     file.sizeBytes = bytes.length;
     file.contentSha256 = sha256;
     files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
@@ -804,12 +920,12 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
       fileId: "file-1",
       contentSha256: sha256,
       pageCount: pdf.getPageCount(),
-      sourceRevision: 3
+      sourceRevision: 4
     }));
     const createData = tx.contractFormalFile.create.mock.calls[0][0].data;
     expect(createData.purpose).toBe("approval_original");
     expect(createData.fileId).toBe("file-1");
-    expect(createData.sourceRevision).toBe(3);
+    expect(createData.sourceRevision).toBe(4);
     expect(createData.uploadedByUserId).toBe("owner-1");
     expect(createData.declaredByUserId).toBe("owner-1");
     expect(createData.supersedesId).toBe("old-formal-1");
@@ -823,6 +939,8 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
     });
     expect(createData.declarationSnapshot._counterparty_confirmed).toMatchObject({
       confirmedAtRevision: 3,
+      documentContentRevision: 2,
+      documentContentFingerprint: "d".repeat(64),
       formalFileId: "preview-1",
       sourceFiles: [
         {
@@ -871,17 +989,21 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
     expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
   });
 
-  it("预览已过期时桥接返回 null", async () => {
+  it("确认文书 fingerprint 与当前内容不同时桥接返回 null", async () => {
     const { version, tx, prisma, files } = harness();
     tx.contractFormalFile.findFirst.mockResolvedValueOnce({
       id: "preview-1",
       fileId: "file-1",
       contentSha256: "a".repeat(64),
       pageCount: 1,
-      sourceRevision: 2,
+      sourceRevision: 3,
       status: "active",
       confirmedByUserId: "owner-1",
-      confirmationSnapshot: { confirmedAtRevision: 2 }
+      confirmationSnapshot: {
+        confirmedAtRevision: 3,
+        documentContentRevision: 2,
+        documentContentFingerprint: "e".repeat(64)
+      }
     });
     const service = new ContractFormalFileService(prisma as never, undefined, files as never);
 
@@ -891,7 +1013,7 @@ describe("ContractFormalFileService.bridgeFromCounterparty", () => {
     expect(tx.contractFormalFile.create).not.toHaveBeenCalled();
   });
 
-  it("确认快照未落到当前修订时桥接返回 null", async () => {
+  it("确认快照缺少文书 fingerprint 时桥接返回 null", async () => {
     const { version, tx, prisma, files } = harness();
     tx.contractFormalFile.findFirst.mockResolvedValueOnce({
       id: "preview-1",

@@ -8,6 +8,8 @@ describe("ContractReadinessService", () => {
     status: "draft",
     changeType: "original",
     draftRevision: 4,
+    documentContentRevision: 2,
+    documentContentFingerprint: "d".repeat(64),
     amountCents: 1_000n,
     amountLimitType: "capped",
     pricingNature: "fixed_total",
@@ -583,7 +585,7 @@ describe("ContractReadinessService", () => {
     ]);
   });
 
-  it("blocks approval until the counterparty signed preview is confirmed at the current revision", async () => {
+  it("blocks approval until the counterparty signed preview is confirmed", async () => {
     const result = await new ContractReadinessService().check(
       tx({
         contractFormalFile: {
@@ -611,7 +613,7 @@ describe("ContractReadinessService", () => {
     );
   });
 
-  it("blocks approval when the counterparty signed preview is stale against the current revision", async () => {
+  it("blocks approval when the counterparty signed preview is stale against current document content", async () => {
     const result = await new ContractReadinessService().check(
       tx({
         contractFormalFile: {
@@ -620,11 +622,15 @@ describe("ContractReadinessService", () => {
             fileId: "file-1",
             contentSha256: "a".repeat(64),
             pageCount: 2,
-            sourceRevision: 3,
+            sourceRevision: 4,
             status: "active",
             declarationSnapshot: {},
             confirmedByUserId: "user-1",
-            confirmationSnapshot: { confirmedAtRevision: 3 }
+            confirmationSnapshot: {
+              confirmedAtRevision: 4,
+              documentContentRevision: 1,
+              documentContentFingerprint: "c".repeat(64)
+            }
           })
         }
       }) as never,
@@ -639,7 +645,7 @@ describe("ContractReadinessService", () => {
     );
   });
 
-  it("allows approval when the counterparty signed preview is confirmed at the current revision", async () => {
+  it("allows approval when only aggregate metadata changed after document confirmation", async () => {
     const result = await new ContractReadinessService().check(
       tx({
         contractFormalFile: {
@@ -648,11 +654,15 @@ describe("ContractReadinessService", () => {
             fileId: "file-1",
             contentSha256: "a".repeat(64),
             pageCount: 2,
-            sourceRevision: 4,
+            sourceRevision: 3,
             status: "active",
             declarationSnapshot: {},
             confirmedByUserId: "user-1",
-            confirmationSnapshot: { confirmedAtRevision: 4 }
+            confirmationSnapshot: {
+              confirmedAtRevision: 3,
+              documentContentRevision: 2,
+              documentContentFingerprint: "d".repeat(64)
+            }
           })
         }
       }) as never,
@@ -661,6 +671,11 @@ describe("ContractReadinessService", () => {
     );
 
     expect(result.blocking.some((item) => item.key.startsWith("counterparty_signed"))).toBe(false);
+    expect(result).toMatchObject({
+      checkedRevision: 4,
+      checkedDocumentContentRevision: 2,
+      checkedDocumentContentFingerprint: "d".repeat(64)
+    });
   });
 
   it("ignores attachment completeness until stage 2", async () => {
@@ -870,6 +885,8 @@ describe("ContractReadinessService", () => {
     expect(result.blocking.some((item) => item.section === "amount")).toBe(false);
     expect(result.blocking.some((item) => item.key.endsWith(".quantity"))).toBe(false);
     expect(snapshot).toMatchObject({
+      documentContentRevision: 2,
+      documentContentFingerprint: "d".repeat(64),
       amountCents: "0",
       taxFacts: {
         invoiceType: "vat_special",
@@ -898,7 +915,11 @@ describe("ContractReadinessService", () => {
           status: "active",
           declarationSnapshot: {},
           confirmedByUserId: "user-1",
-          confirmationSnapshot: { confirmedAtRevision: 3 }
+          confirmationSnapshot: {
+            confirmedAtRevision: 3,
+            documentContentRevision: 1,
+            documentContentFingerprint: "c".repeat(64)
+          }
         })
       }
     });
@@ -951,7 +972,11 @@ describe("ContractReadinessService", () => {
           status: "active",
           declarationSnapshot: {},
           confirmedByUserId: "user-1",
-          confirmationSnapshot: { confirmedAtRevision: 4 }
+          confirmationSnapshot: {
+            confirmedAtRevision: 4,
+            documentContentRevision: 2,
+            documentContentFingerprint: "d".repeat(64)
+          }
         })
       }
     });

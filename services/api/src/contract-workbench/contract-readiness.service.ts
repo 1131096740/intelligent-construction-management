@@ -24,6 +24,8 @@ export interface ContractReadinessResult {
   blocking: ContractReadinessIssue[];
   warnings: ContractReadinessIssue[];
   checkedRevision: number;
+  checkedDocumentContentRevision: number;
+  checkedDocumentContentFingerprint: string | null;
 }
 
 export type ContractWorkbenchSectionId =
@@ -58,6 +60,8 @@ type ReadinessVersion = {
   changeType?: string;
   baseVersionId?: string | null;
   draftRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
   amountCents: bigint;
   amountLimitType: string;
   pricingNature: string;
@@ -700,23 +704,17 @@ export class ContractReadinessService {
           section: "documents",
           message: "请上传乙方签章文件并完成整体确认，再提交审批"
         });
-      } else if (counterpartyPreview.sourceRevision !== version.draftRevision) {
-        blocking.push({
-          key: "counterparty_signed_stale",
-          section: "documents",
-          message: "乙方签章文件已过期，请按当前合同内容重新上传并确认"
-        });
-      } else if (
-        !counterpartyPreview.confirmedByUserId ||
-        !this.isCounterpartyPreviewConfirmed(
-          counterpartyPreview,
-          version.draftRevision
-        )
-      ) {
+      } else if (!counterpartyPreview.confirmedByUserId) {
         blocking.push({
           key: "counterparty_signed_not_confirmed",
           section: "documents",
           message: "请先完成乙方签章文件整体确认，再提交审批"
+        });
+      } else if (!this.isCounterpartyPreviewConfirmed(counterpartyPreview, version)) {
+        blocking.push({
+          key: "counterparty_signed_stale",
+          section: "documents",
+          message: "乙方签章文件已过期，请按当前合同内容重新上传并确认"
         });
       }
     }
@@ -728,7 +726,9 @@ export class ContractReadinessService {
       warnings: warnings.map((issue) =>
         this.withIssueLocation(issue, template.validationSchema, bills, rows)
       ),
-      checkedRevision: version.draftRevision
+      checkedRevision: version.draftRevision,
+      checkedDocumentContentRevision: version.documentContentRevision,
+      checkedDocumentContentFingerprint: version.documentContentFingerprint
     };
   }
 
@@ -846,13 +846,15 @@ export class ContractReadinessService {
 
   private isCounterpartyPreviewConfirmed(
     preview: {
-      sourceRevision: number;
       confirmedByUserId: string | null;
       confirmationSnapshot: Prisma.JsonValue | null;
     },
-    draftRevision: number
+    version: Pick<
+      ReadinessVersion,
+      "documentContentRevision" | "documentContentFingerprint"
+    >
   ) {
-    if (preview.sourceRevision !== draftRevision || !preview.confirmedByUserId) {
+    if (!preview.confirmedByUserId) {
       return false;
     }
     if (
@@ -862,9 +864,12 @@ export class ContractReadinessService {
     ) {
       return false;
     }
-    return (
-      (preview.confirmationSnapshot as Prisma.JsonObject)
-        .confirmedAtRevision === draftRevision
+    const snapshot = preview.confirmationSnapshot as Prisma.JsonObject;
+    return Boolean(
+      version.documentContentFingerprint &&
+      /^[0-9a-f]{64}$/u.test(version.documentContentFingerprint) &&
+      snapshot.documentContentRevision === version.documentContentRevision &&
+      snapshot.documentContentFingerprint === version.documentContentFingerprint
     );
   }
 
@@ -977,6 +982,8 @@ export class ContractReadinessService {
       : null;
     return this.toJsonSafe({
       draftRevision: version.draftRevision,
+      documentContentRevision: version.documentContentRevision,
+      documentContentFingerprint: version.documentContentFingerprint,
       draftData: version.draftData,
       clauses: version.clauseSnapshot,
       amountCents: version.amountCents.toString(),
@@ -1007,7 +1014,8 @@ export class ContractReadinessService {
                   contentSha256: formalFile.contentSha256,
                   pageCount: formalFile.pageCount,
                   sourceRevision: formalFile.sourceRevision,
-                  declarationSnapshot: formalFile.declarationSnapshot
+                  declarationSnapshot: formalFile.declarationSnapshot,
+                  confirmationSnapshot: formalFile.confirmationSnapshot
                 }
               : null
           }
