@@ -57,8 +57,9 @@ describe("historical takeover unsaved-change governance", () => {
 });
 
 describe("historical takeover review recovery", () => {
-  it("keeps confirmation failures inside the dialog and offers a supplement return", () => {
-    expect(page).toContain('v-if="confirmError"');
+  it("removes the legacy confirmation dialog and keeps supplement return", () => {
+    expect(page).not.toContain("confirmSelectedTakeover");
+    expect(page).not.toContain('v-model:visible="confirmVisible"');
     expect(page).toContain('v-model="supplementReturnVisible"');
     expect(page).toContain("returnContractTakeoverForSupplement");
     expect(page).toContain("退回补充");

@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 16,
-    "exportedFunctionCount": 460,
-    "transportWrapperCount": 440,
+    "exportedFunctionCount": 459,
+    "transportWrapperCount": 439,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 462,
+    "mainRequestBindingCount": 461,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 462,
-    "productionConsumerCount": 338,
+    "requestEdgeCount": 461,
+    "productionConsumerCount": 337,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -1686,7 +1686,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2206,
+          "sourceLine": 2219,
           "method": "GET",
           "path": "/contract-bills/:param/excel-template",
           "normalizedPath": "/contract-bills/:param/excel-template",
@@ -1716,7 +1716,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2206,
+          "sourceLine": 2219,
           "method": "GET",
           "path": "/contract-drafts/:param/bills/:param/template",
           "normalizedPath": "/contract-drafts/:param/bills/:param/template",
@@ -1781,10 +1781,11 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
+        "apps/web-admin/src/api/contract-workbench.api.test.ts",
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
       "unreachableConsumers": []
     },
@@ -1812,7 +1813,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1771,
+          "sourceLine": 1784,
           "method": "POST",
           "path": "/contract-bills/:param/rows/:param/remainder-cancellation",
           "normalizedPath": "/contract-bills/:param/rows/:param/remainder-cancellation",
@@ -1877,10 +1878,11 @@
         }
       ],
       "testConsumers": [
-        "apps/web-admin/src/api/contract-workbench.api.test.ts"
+        "apps/web-admin/src/api/contract-workbench.api.test.ts",
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
       ],
       "unreachableConsumers": []
     },
@@ -3995,36 +3997,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "confirmContractTakeover",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 82,
-          "method": "POST",
-          "path": "/projects/:param/contract-takeovers/:param/confirmation",
-          "normalizedPath": "/projects/:param/contract-takeovers/:param/confirmation",
-          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/confirmation",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "confirmContractTakeover",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
       "name": "confirmContractTakeoverChangeBaseline",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -4958,7 +4930,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6952,
+          "sourceLine": 6936,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -4988,7 +4960,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6936,
+          "sourceLine": 6920,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -5018,7 +4990,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6936,
+          "sourceLine": 6920,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -5048,7 +5020,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5354,
+          "sourceLine": 5349,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -5077,7 +5049,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6936,
+          "sourceLine": 6920,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5139,7 +5111,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5244,
+          "sourceLine": 5240,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -5224,7 +5196,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6979,
+          "sourceLine": 6963,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -5253,7 +5225,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6966,
+          "sourceLine": 6950,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5282,7 +5254,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6994,
+          "sourceLine": 6978,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5311,7 +5283,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6936,
+          "sourceLine": 6920,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",

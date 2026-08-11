@@ -380,7 +380,6 @@ describe("ContractTakeoverController", () => {
         "update_takeover",
         "abandon_takeover",
         "submit_review",
-        "confirm_takeover",
         "return_for_supplement",
         "confirm_change_baseline",
         "attach_contract_evidence",

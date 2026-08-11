@@ -12,8 +12,8 @@ import { ContractController } from "../contract/contract.controller";
 import { ContractDraftController } from "../contract-workbench/contract-draft.controller";
 import { ContractWorkbenchController } from "../contract-workbench/contract-workbench.controller";
 import {
-  CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
   CONTRACT_CUTOVER_SURFACE_KEY,
+  CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY,
   ContractCutoverLegacyWrite,
   ContractCutoverSurface
 } from "./contract-cutover.decorators";
@@ -187,16 +187,16 @@ describe("ContractCutoverGuard", () => {
     }
     expect(
       Reflect.getMetadata(
-        CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
+        CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY,
         ContractWorkbenchController.prototype.save
       )
     ).toBe(true);
     expect(
       Reflect.getMetadata(
-        CONTRACT_CUTOVER_LEGACY_WRITE_KEY,
+        CONTRACT_CUTOVER_TOMBSTONE_WRITE_KEY,
         ContractTakeoverController.prototype.confirm
       )
-    ).toBeUndefined();
+    ).toBe(true);
   });
 
   it("marks draft mutations outside the aggregate controllers without blocking read-only tickets", () => {

@@ -1025,7 +1025,7 @@ test("locks the repository baseline to 442 routes and no route-usage blockers", 
 
   assert.equal(manifest.status, "ready");
   assert.deepEqual(externalByController, {
-    ContractTakeoverController: 42,
+    ContractTakeoverController: 41,
     ProjectController: 19
   });
   assert.deepEqual(

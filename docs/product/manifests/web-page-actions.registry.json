@@ -2505,16 +2505,6 @@
       "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "abandonContractTakeover" }]
     },
     {
-      "id": "contract-takeover.confirm",
-      "usage": "background",
-      "routePaths": ["/历史合同接管"],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-      "trigger": { "element": "module", "event": "call", "handler": "confirmContractTakeoverWithCapability" },
-      "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm_takeover" },
-      "wrappers": [{ "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmContractTakeover" }]
-    },
-    {
       "id": "contract-takeover.return-for-supplement",
       "usage": "background",
       "routePaths": ["/历史合同接管"],

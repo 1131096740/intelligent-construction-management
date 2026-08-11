@@ -17,7 +17,7 @@ describe("contract mutation authority", () => {
     ).toThrow("CONTRACT_MUTATION_AUTHORITY_OVERLAP");
   });
 
-  it("retains historical takeover confirmation as a governed command", () => {
+  it("classifies the old historical takeover confirmation as a non-advertised exit", () => {
     expect(
       classifyContractMutationRoute({
         method: "POST",
@@ -25,11 +25,11 @@ describe("contract mutation authority", () => {
         handler: "confirm",
         contractCutoverSurface: true,
         contractCutoverLegacyWrite: false,
-        contractCutoverTombstoneWrite: false
+        contractCutoverTombstoneWrite: true
       })
     ).toEqual({
-      authority: "governed_specialized_command",
-      authorityRule: "governed_specialized_command"
+      authority: "exit_candidate",
+      authorityRule: "tombstoned_cutover_exit"
     });
   });
 

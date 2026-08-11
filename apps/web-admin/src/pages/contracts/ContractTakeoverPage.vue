@@ -927,24 +927,6 @@
                 >
                   退回补充
                 </t-link>
-                <t-link
-                  v-if="canConfirmTakeover(row.takeover) && !takeoverConfirmationEvidenceBlockReason(row.takeover)"
-                  theme="danger"
-                  @click="openConfirm(row.takeover)"
-                >
-                  确认接管
-                </t-link>
-                <t-tooltip
-                  v-else
-                  :content="takeoverConfirmationEvidenceBlockReason(row.takeover) || takeoverActionDisabledReason(row.takeover, 'confirm')"
-                >
-                  <t-link
-                    disabled
-                    theme="danger"
-                  >
-                    确认接管
-                  </t-link>
-                </t-tooltip>
               </template>
             </t-space>
           </template>
@@ -1560,63 +1542,6 @@
       </t-card>
     </div>
 
-    <t-dialog
-      v-if="canConfirmTakeovers"
-      v-model:visible="confirmVisible"
-      header="确认历史合同接管"
-      :confirm-btn="confirmButtonProps"
-      cancel-btn="取消"
-      :close-on-overlay-click="false"
-      @confirm="confirmSelectedTakeover"
-      @close="closeConfirm"
-    >
-      <div class="confirm-body">
-        <t-alert
-          v-if="confirmError"
-          theme="error"
-          title="暂时无法确认接管"
-          :message="confirmError"
-        />
-        <p>
-          {{ confirmTarget ? `${confirmTarget.contractNo} 将进入已接管状态。` : "" }}
-        </p>
-        <template v-if="confirmSummary">
-          <p class="confirm-warning">
-            {{ confirmSummary.consequence }}
-          </p>
-          <dl class="confirm-summary-list">
-            <div
-              v-for="item in confirmSummary.items"
-              :key="item.label"
-            >
-              <dt>{{ item.label }}</dt>
-              <dd>{{ item.value }}</dd>
-            </div>
-          </dl>
-          <p>{{ confirmSummary.levelReviewText }}</p>
-          <p>{{ confirmSummary.riskText }}</p>
-          <p>付款办理提示：{{ confirmSummary.paymentBlockingText }}</p>
-          <p>税务事实缺口：{{ confirmSummary.taxGapText }}</p>
-          <p>后续影响：{{ confirmSummary.taxImpactText }}</p>
-          <p>资料缺口说明：{{ confirmSummary.evidenceGapText }}</p>
-          <p>资料依据：{{ confirmSummary.evidenceText }}</p>
-          <p>复核意见：{{ confirmSummary.reviewText }}</p>
-          <p>验收结论：{{ confirmSummary.acceptanceText }}</p>
-          <p>接管责任人：{{ confirmSummary.responsibleText }}</p>
-        </template>
-        <label>
-          <span>当前登录密码</span>
-          <t-input
-            v-model="confirmationPassword"
-            type="password"
-            autocomplete="current-password"
-            placeholder="请输入当前登录密码"
-          />
-          <small v-if="confirmDisabledReason">{{ confirmDisabledReason }}</small>
-        </label>
-      </div>
-    </t-dialog>
-
     <SensitiveActionDialog
       v-if="canConfirmTakeovers"
       v-model="supplementReturnVisible"
@@ -1823,7 +1748,6 @@ import {
   attachHistoricalPaymentVoucher,
   confirmContractTakeoverContractSide,
   confirmContractTakeoverFinanceSide,
-  confirmContractTakeover,
   confirmContractTakeoverChangeBaseline,
   createPrivateFileDownloadTicket,
   createContractTakeover,
@@ -1906,7 +1830,6 @@ import {
   contractTakeoverRouteSelection,
   createContractTakeoverSelectionRequestOwner,
   canConfirmHistoricalChangeBaseline,
-  canConfirmTakeover,
   canReturnTakeoverForSupplement,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -1928,8 +1851,6 @@ import {
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverBatchAbandonmentDisabledReason,
-  takeoverConfirmDisabledReason,
-  takeoverConfirmationEvidenceBlockReason,
   takeoverDepartmentAccess,
   takeoverEvidenceDownloadDisabledReason,
   takeoverEvidenceUploadDisabledReason,
@@ -2118,19 +2039,6 @@ async function submitContractTakeoverReviewWithCapability(
   const operationAllowed = capability.availableActions.includes("submit_review");
   if (!operationAllowed) throw new Error("当前用户不能提交历史合同接管复核");
   return submitContractTakeoverReview(projectId, takeoverId);
-}
-
-async function confirmContractTakeoverWithCapability(
-  projectId: string,
-  takeoverId: string,
-  body: Parameters<typeof confirmContractTakeover>[2]
-) {
-  const capability = await fetchContractTakeoverProjectCapability(projectId);
-  const matchesRequestedProject = capability.projectId === projectId;
-  if (!matchesRequestedProject) throw new Error("历史合同接管项目已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("confirm_takeover");
-  if (!operationAllowed) throw new Error("当前用户不能确认历史合同接管");
-  return confirmContractTakeover(projectId, takeoverId, body);
 }
 
 async function returnContractTakeoverForSupplementWithCapability(
@@ -2488,7 +2396,6 @@ const batchAbandonDisabledReason = computed(() =>
     : ""
 );
 const editingTakeoverId = ref("");
-const confirming = ref(false);
 const supplementReturning = ref(false);
 const evidenceUploading = ref(false);
 const historicalPaymentVoucherUploading = ref(false);
@@ -2507,8 +2414,6 @@ const taxFactDirty = ref(false);
 const leaveDialogVisible = ref(false);
 let resolvePendingLeave: ((decision: boolean) => void) | null = null;
 const showPrecheckPanel = ref(false);
-const confirmVisible = ref(false);
-const confirmError = ref("");
 const supplementReturnVisible = ref(false);
 const supplementReturnError = ref("");
 const supplementReturnTarget = ref<ContractTakeoverReadModel | null>(null);
@@ -2542,12 +2447,10 @@ const changeBaselineForm = reactive({
   preTakeoverPositiveIncreaseYuan: ""
 });
 let changeBaselineRequestToken = 0;
-const confirmTarget = ref<ContractTakeoverReadModel | null>(null);
 const pendingImportBatchReview = ref<{
   batch: ContractTakeoverImportBatchReadModel;
   status: ContractTakeoverImportBatchReviewStatus;
 } | null>(null);
-const confirmationPassword = ref("");
 const evidencePurpose = ref<ContractTakeoverEvidencePurpose>("historical_contract_scan");
 const evidenceFile = ref<File | null>(null);
 const evidenceInputRef = ref<HTMLInputElement | null>(null);
@@ -3233,20 +3136,6 @@ const selectedPostConfirmationChecklist = computed(() =>
 const selectedPostConfirmationVerification = computed(() =>
   selectedRow.value ? takeoverPostConfirmationVerificationView(selectedRow.value.takeover) : null
 );
-const confirmSummary = computed(() =>
-  confirmTarget.value ? buildTakeoverConfirmationSummary(confirmTarget.value) : null
-);
-const confirmEvidenceBlockReason = computed(() =>
-  confirmTarget.value ? takeoverConfirmationEvidenceBlockReason(confirmTarget.value) : ""
-);
-const confirmDisabledReason = computed(() =>
-  confirmEvidenceBlockReason.value || takeoverConfirmDisabledReason(confirmationPassword.value)
-);
-const confirmButtonProps = computed(() => ({
-  content: "确认接管",
-  loading: confirming.value,
-  disabled: Boolean(confirmDisabledReason.value)
-}));
 const selectedEvidenceUploadDisabledReason = computed(() => {
   const takeover = selectedRow.value?.takeover;
   if (!takeover) return "请先选择需要补充资料的接管合同";
@@ -4971,30 +4860,6 @@ async function submitHistoricalChangeBaseline(values: { password: string }) {
   }
 }
 
-function openConfirm(takeover: ContractTakeoverReadModel) {
-  if (!canConfirmTakeovers.value) {
-    setMessage("当前岗位不能确认历史合同接管", "danger");
-    return;
-  }
-  const evidenceBlockReason = takeoverConfirmationEvidenceBlockReason(takeover);
-  if (evidenceBlockReason) {
-    setMessage(evidenceBlockReason, "danger");
-    return;
-  }
-  confirmTarget.value = takeover;
-  confirmationPassword.value = "";
-  confirmError.value = "";
-  confirmVisible.value = true;
-}
-
-function closeConfirm() {
-  if (!confirming.value) {
-    confirmTarget.value = null;
-    confirmationPassword.value = "";
-    confirmError.value = "";
-  }
-}
-
 function openSupplementReturn(takeover: ContractTakeoverReadModel) {
   if (!canConfirmTakeovers.value) {
     setMessage("当前岗位不能退回历史合同接管资料", "danger");
@@ -5043,45 +4908,6 @@ async function returnSelectedTakeoverForSupplement(values: { reason: string; pas
     supplementReturnError.value = error instanceof Error ? error.message : "退回补充失败";
   } finally {
     supplementReturning.value = false;
-  }
-}
-
-async function confirmSelectedTakeover() {
-  if (!canConfirmTakeovers.value) {
-    setMessage("当前岗位不能确认历史合同接管", "danger");
-    return;
-  }
-  const target = confirmTarget.value;
-  const projectId = selectedProjectId.value;
-  if (!target) {
-    return;
-  }
-  if (!projectId) {
-    setMessage("请先选择项目", "danger");
-    return;
-  }
-  if (confirmDisabledReason.value) {
-    confirmError.value = confirmDisabledReason.value;
-    return;
-  }
-
-  confirming.value = true;
-  confirmError.value = "";
-  try {
-    const updated = await confirmContractTakeoverWithCapability(projectId, target.id, {
-      confirmationPassword: requiredText(confirmationPassword.value, "当前登录密码")
-    });
-    takeovers.value = takeovers.value.map((item) => (item.id === updated.id ? updated : item));
-    selectedTakeoverId.value = updated.id;
-    confirmVisible.value = false;
-    confirmTarget.value = null;
-    confirmationPassword.value = "";
-    confirmError.value = "";
-    setMessage("历史合同已确认接管，后续付款容量将扣减历史余额", "success");
-  } catch (error) {
-    confirmError.value = error instanceof Error ? error.message : "确认接管失败";
-  } finally {
-    confirming.value = false;
   }
 }
 
@@ -5401,16 +5227,14 @@ function todayText(): string {
 }
 
 .project-picker,
-.form-section label,
-.confirm-body label {
+.form-section label {
   min-width: 0;
   display: grid;
   gap: 6px;
 }
 
 .project-picker span,
-.form-section label span,
-.confirm-body label span {
+.form-section label span {
   color: #565f6d;
   font-size: 12px;
   font-weight: 600;
@@ -5778,8 +5602,7 @@ input[type="date"] {
 }
 
 .detail-title span,
-.empty-detail,
-.confirm-body p {
+.empty-detail {
   color: #5f6673;
 }
 
@@ -6135,15 +5958,6 @@ input[type="date"] {
   display: grid;
   place-items: center;
   font-size: 13px;
-}
-
-.confirm-body {
-  display: grid;
-  gap: 12px;
-}
-
-.confirm-body p {
-  margin: 0;
 }
 
 .batch-abandon-preview {

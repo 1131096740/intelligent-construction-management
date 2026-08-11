@@ -90,7 +90,6 @@ import {
   createPrivateFileDownloadTicket,
   getPrivateFileDownloadTicketCapability,
   createSettlementDraft,
-  confirmContractTakeover,
   confirmContractTakeoverContractSide,
   confirmContractTakeoverFinanceSide,
   returnContractTakeoverForSupplement,
@@ -1822,10 +1821,6 @@ describe("core flow read API client", () => {
     await returnContractTakeoverForSupplement("project-1", "takeover-1", {
       reason: "缺少历史付款凭证"
     });
-    await confirmContractTakeover("project-1", "takeover-1", {
-      confirmationPassword: "current-password"
-    });
-
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/projects/project-1/contract-takeovers",
       "/api/projects/project-1/contract-takeovers/import-batches",
@@ -1838,8 +1833,7 @@ describe("core flow read API client", () => {
       "/api/projects/project-1/contract-takeovers/takeover-1/payment-evidence-files",
       "/api/projects/project-1/contract-takeovers/takeover-1/corrections",
       "/api/projects/project-1/contract-takeovers/takeover-1/review-submission",
-      "/api/projects/project-1/contract-takeovers/takeover-1/supplement-return",
-      "/api/projects/project-1/contract-takeovers/takeover-1/confirmation"
+      "/api/projects/project-1/contract-takeovers/takeover-1/supplement-return"
     ]);
     expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
       undefined,
@@ -1847,7 +1841,6 @@ describe("core flow read API client", () => {
       undefined,
       "POST",
       "PATCH",
-      "POST",
       "POST",
       "POST",
       "POST",
@@ -1897,9 +1890,6 @@ describe("core flow read API client", () => {
     );
     expect(fetchMock.mock.calls[11][1]?.body).toBe(
       JSON.stringify({ reason: "缺少历史付款凭证" })
-    );
-    expect(fetchMock.mock.calls[12][1]?.body).toBe(
-      JSON.stringify({ confirmationPassword: "current-password" })
     );
   });
 

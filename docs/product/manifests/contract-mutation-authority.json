@@ -15,8 +15,8 @@
     "routeCount": 80,
     "authorityCounts": {
       "aggregate_member_writer": 1,
-      "governed_specialized_command": 56,
-      "exit_candidate": 23
+      "governed_specialized_command": 55,
+      "exit_candidate": 24
     },
     "actionTargetCount": 29,
     "advertisedActionCount": 22,
@@ -82,9 +82,9 @@
       "path": "/contract-workbench/:contractVersionId",
       "controller": "ContractWorkbenchController",
       "handler": "save",
-      "tombstoned": false,
+      "tombstoned": true,
       "authority": "exit_candidate",
-      "authorityRule": "legacy_cutover_exit"
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "PATCH",
@@ -496,9 +496,9 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirm",
-      "tombstoned": false,
-      "authority": "governed_specialized_command",
-      "authorityRule": "governed_specialized_command"
+      "tombstoned": true,
+      "authority": "exit_candidate",
+      "authorityRule": "tombstoned_cutover_exit"
     },
     {
       "method": "POST",

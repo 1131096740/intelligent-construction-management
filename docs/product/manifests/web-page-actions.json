@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/web-page-actions.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -9,21 +9,21 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 238,
+    "registeredActionCount": 237,
     "pageActionCount": 46,
-    "backgroundActionCount": 192,
+    "backgroundActionCount": 191,
     "reachableVueFileCount": 126,
     "routeRootCount": 47,
     "totalVueFileCount": 144,
     "parsedVueFileCount": 144,
     "reachableProductionModuleCount": 225,
-    "templateEventDirectiveCount": 835,
+    "templateEventDirectiveCount": 832,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 229,
-    "candidateProductionMutationConsumerCount": 229,
-    "acceptedProductionMutationConsumerCount": 229,
-    "productionMutationConsumerPairCount": 229,
-    "blockerCount": 0
+    "coveredProductionMutationConsumerCount": 225,
+    "candidateProductionMutationConsumerCount": 228,
+    "acceptedProductionMutationConsumerCount": 225,
+    "productionMutationConsumerPairCount": 228,
+    "blockerCount": 9
   },
   "evidence": {
     "totalProductionModuleCount": 251,
@@ -1565,7 +1565,7 @@
         "event": "call",
         "handler": "createContractChangeDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1533,
+        "sourceLine": 1547,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1631,7 +1631,7 @@
         "event": "call",
         "handler": "confirmCounterpartySignedFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 245,
+        "sourceLine": 250,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1697,7 +1697,7 @@
         "event": "call",
         "handler": "uploadCounterpartySignedFilesWithCapability",
         "kind": "background_call",
-        "sourceLine": 227,
+        "sourceLine": 232,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1763,7 +1763,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 208,
+        "sourceLine": 213,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1829,7 +1829,7 @@
         "event": "confirm",
         "handler": "confirmContractDocumentDownload",
         "kind": "event",
-        "sourceLine": 183,
+        "sourceLine": 184,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -1895,7 +1895,7 @@
         "event": "call",
         "handler": "queueContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 238,
+        "sourceLine": 239,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -1961,7 +1961,7 @@
         "event": "call",
         "handler": "retryContractDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 275,
+        "sourceLine": 276,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2027,7 +2027,7 @@
         "event": "call",
         "handler": "uploadContractDocumentFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 256,
+        "sourceLine": 257,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2094,7 +2094,7 @@
         "event": "confirm",
         "handler": "confirmAbandonApplication",
         "kind": "event",
-        "sourceLine": 956,
+        "sourceLine": 957,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2128,16 +2128,13 @@
             "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
+          "acceptedProductionConsumers": [],
+          "causalVerified": false,
           "causalProof": {
             "localCallChain": [
-              "confirmAbandonApplication",
-              "executeAbandonContractDraftAction"
+              "confirmAbandonApplication"
             ]
           },
           "ticketFollowups": []
@@ -2164,16 +2161,13 @@
             "requiredProjectAction": "contract.draft.delete"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
+          "acceptedProductionConsumers": [],
+          "causalVerified": false,
           "causalProof": {
             "localCallChain": [
-              "confirmAbandonApplication",
-              "executeAbandonContractDraftAction"
+              "confirmAbandonApplication"
             ]
           },
           "ticketFollowups": []
@@ -2197,7 +2191,7 @@
         "event": "call",
         "handler": "autoSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 186,
+        "sourceLine": 189,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2263,7 +2257,7 @@
         "event": "call",
         "handler": "createWorkbenchDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 91,
+        "sourceLine": 94,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2330,7 +2324,7 @@
         "event": "confirm",
         "handler": "confirmDeletePristineDraft",
         "kind": "event",
-        "sourceLine": 923,
+        "sourceLine": 924,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2364,16 +2358,13 @@
             "requiredProjectAction": "contract.draft.delete"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
+          "acceptedProductionConsumers": [],
+          "causalVerified": false,
           "causalProof": {
             "localCallChain": [
-              "confirmDeletePristineDraft",
-              "executeDeletePristineContractDraftAction"
+              "confirmDeletePristineDraft"
             ]
           },
           "ticketFollowups": []
@@ -2400,16 +2391,13 @@
             "requiredProjectAction": "contract.create"
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
+          "acceptedProductionConsumers": [],
+          "causalVerified": false,
           "causalProof": {
             "localCallChain": [
-              "confirmDeletePristineDraft",
-              "executeDeletePristineContractDraftAction"
+              "confirmDeletePristineDraft"
             ]
           },
           "ticketFollowups": []
@@ -2433,7 +2421,7 @@
         "event": "call",
         "handler": "acquireContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 131,
+        "sourceLine": 134,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2500,7 +2488,7 @@
         "event": "call",
         "handler": "heartbeatContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 144,
+        "sourceLine": 147,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2567,7 +2555,7 @@
         "event": "call",
         "handler": "releaseContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 158,
+        "sourceLine": 161,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2634,7 +2622,7 @@
         "event": "call",
         "handler": "takeOverContractDraftEditLeaseWithCapability",
         "kind": "background_call",
-        "sourceLine": 172,
+        "sourceLine": 175,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2701,7 +2689,7 @@
         "event": "call",
         "handler": "manualSaveContractDraftAggregateWithCapability",
         "kind": "background_call",
-        "sourceLine": 200,
+        "sourceLine": 203,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2768,7 +2756,7 @@
         "event": "call",
         "handler": "queueContractDraftPreviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 214,
+        "sourceLine": 217,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -2835,7 +2823,7 @@
         "event": "call",
         "handler": "transferContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 1150,
+        "sourceLine": 1147,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3032,7 +3020,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1566,
+        "sourceLine": 1580,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3081,7 +3069,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5244,
+              "sourceLine": 5240,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3125,7 +3113,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5244,
+              "sourceLine": 5240,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3149,7 +3137,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1554,
+        "sourceLine": 1568,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3214,7 +3202,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1487,
+        "sourceLine": 1491,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3222,8 +3210,8 @@
         "kind": "available_action_string",
         "source": "capability.availableActionKeys",
         "key": "upload_final_contract",
-        "serverDerived": true,
-        "dominatesTrigger": true
+        "serverDerived": false,
+        "dominatesTrigger": false
       },
       "bindings": [
         {
@@ -3250,14 +3238,11 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
+          "acceptedProductionConsumers": [],
+          "causalVerified": false,
           "causalProof": {
             "localCallChain": [
-              "associateContractFinalFileWithCapability",
-              "uploadMutuallySignedContract"
+              "associateContractFinalFileWithCapability"
             ]
           },
           "ticketFollowups": []
@@ -3279,7 +3264,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1517,
+        "sourceLine": 1531,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3344,7 +3329,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1502,
+        "sourceLine": 1516,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3417,8 +3402,8 @@
         "kind": "available_action_string",
         "source": "capability.availableActionKeys",
         "key": "upload_final_contract",
-        "serverDerived": true,
-        "dominatesTrigger": true
+        "serverDerived": false,
+        "dominatesTrigger": false
       },
       "bindings": [
         {
@@ -3450,14 +3435,11 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
+          "acceptedProductionConsumers": [],
+          "causalVerified": false,
           "causalProof": {
             "localCallChain": [
-              "uploadContractFinalPrivateFileWithCapability",
-              "uploadPrivateFile"
+              "uploadContractFinalPrivateFileWithCapability"
             ]
           },
           "ticketFollowups": []
@@ -3740,7 +3722,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2098,
+        "sourceLine": 2019,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3805,7 +3787,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2057,
+        "sourceLine": 1978,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3870,7 +3852,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 2018,
+        "sourceLine": 1939,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3935,7 +3917,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2162,
+        "sourceLine": 2070,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4000,7 +3982,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2175,
+        "sourceLine": 2083,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4051,71 +4033,6 @@
       ]
     },
     {
-      "id": "contract-takeover.confirm",
-      "usage": "background",
-      "routePaths": [
-        "/历史合同接管"
-      ],
-      "ownerRoutePaths": [
-        "/历史合同接管"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "confirmContractTakeoverWithCapability",
-        "kind": "background_call",
-        "sourceLine": 2123,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "confirm_takeover",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmContractTakeover",
-          "method": "POST",
-          "path": "/projects/:param/contract-takeovers/:param/confirmation",
-          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/confirmation",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
-            "normalizedKey": "POST /projects/:param/contract-takeovers/:param/confirmation",
-            "controller": "ContractTakeoverController",
-            "handler": "confirm",
-            "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.archive.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "confirmContractTakeoverWithCapability",
-              "confirmContractTakeover"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "contract-takeover.confirm-change-baseline",
       "usage": "background",
       "routePaths": [
@@ -4130,7 +4047,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2149,
+        "sourceLine": 2057,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4195,7 +4112,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2214,
+        "sourceLine": 2122,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4260,7 +4177,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2227,
+        "sourceLine": 2135,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4325,7 +4242,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1970,
+        "sourceLine": 1891,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4390,7 +4307,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1994,
+        "sourceLine": 1915,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4455,7 +4372,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2333,
+        "sourceLine": 2241,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4520,7 +4437,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1982,
+        "sourceLine": 1903,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4585,7 +4502,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2043,
+        "sourceLine": 1964,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4650,7 +4567,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 2006,
+        "sourceLine": 1927,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4715,7 +4632,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2136,
+        "sourceLine": 2044,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4780,7 +4697,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2312,
+        "sourceLine": 2220,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4845,7 +4762,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2283,
+        "sourceLine": 2191,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4910,7 +4827,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 2030,
+        "sourceLine": 1951,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -4975,7 +4892,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2188,
+        "sourceLine": 2096,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5040,7 +4957,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2201,
+        "sourceLine": 2109,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5105,7 +5022,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2297,
+        "sourceLine": 2205,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5170,7 +5087,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2270,
+        "sourceLine": 2178,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5235,7 +5152,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2111,
+        "sourceLine": 2032,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5300,7 +5217,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2085,
+        "sourceLine": 2006,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5365,7 +5282,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2072,
+        "sourceLine": 1993,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5432,7 +5349,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2240,
+        "sourceLine": 2148,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5497,7 +5414,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2255,
+        "sourceLine": 2163,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6018,7 +5935,7 @@
         "event": "call",
         "handler": "applyContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1134,
+        "sourceLine": 1131,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6084,7 +6001,7 @@
         "event": "call",
         "handler": "checkContractSubmissionReadinessWithCapability",
         "kind": "background_call",
-        "sourceLine": 1092,
+        "sourceLine": 1089,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6150,7 +6067,7 @@
         "event": "call",
         "handler": "confirmContractSettlementModeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1105,
+        "sourceLine": 1102,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6216,7 +6133,7 @@
         "event": "call",
         "handler": "previewContractTypeChangeWithCapability",
         "kind": "background_call",
-        "sourceLine": 1118,
+        "sourceLine": 1115,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6283,7 +6200,7 @@
         "event": "call",
         "handler": "submitContractDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 227,
+        "sourceLine": 230,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -16807,11 +16724,81 @@
     "duplicateRegistryEntries": [],
     "staleRegistryEntries": [],
     "unresolvedHandlers": [],
-    "unresolvedWrappers": [],
+    "unresolvedWrappers": [
+      {
+        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
+        "actionId": "contract-draft.abandon-application",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "executeAbandonContractDraftAction"
+      },
+      {
+        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
+        "actionId": "contract-draft.delete-pristine",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "executeDeletePristineContractDraftAction"
+      },
+      {
+        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
+        "actionId": "contract-final.associate",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "uploadMutuallySignedContract"
+      },
+      {
+        "code": "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",
+        "actionId": "contract-final.upload-file",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "uploadPrivateFile"
+      }
+    ],
     "unresolvedRoutes": [],
-    "writeWithoutServerCapability": [],
+    "writeWithoutServerCapability": [
+      {
+        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
+        "actionId": "contract-final.associate",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "reason": "capability_not_dominating"
+      },
+      {
+        "code": "AVAILABLE_ACTION_PROVENANCE_UNVERIFIED",
+        "actionId": "contract-final.upload-file",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "reason": "capability_not_dominating"
+      }
+    ],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [],
+    "uncoveredMutationWrappers": [
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "uploadMutuallySignedContract",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/formal-files/final"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "executeAbandonContractDraftAction",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "normalizedKeys": [
+          "POST /contracts/:param/abandonment"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+        "wrapper": "executeDeletePristineContractDraftAction",
+        "sourceFile": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
+        "normalizedKeys": [
+          "DELETE /contract-drafts/:param"
+        ]
+      }
+    ],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": []
