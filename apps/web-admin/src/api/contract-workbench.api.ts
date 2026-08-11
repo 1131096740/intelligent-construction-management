@@ -1061,15 +1061,29 @@ export interface CounterpartySignedPreviewFile {
   confirmedByUserId: string | null;
   confirmedAt: string | null;
   confirmedAtRevision: number | null;
+  confirmedDocumentContentRevision: number | null;
+  confirmedDocumentContentFingerprint: string | null;
   confirmationValid: boolean;
 }
 
 export interface CounterpartySignedReadModel {
   draftRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
   status: string;
   confirmationValid: boolean;
   originalFiles: CounterpartySignedOriginalFile[];
   preview: CounterpartySignedPreviewFile | null;
+}
+
+export interface CounterpartySignedConfirmationReceipt {
+  formalFileId: string;
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+  confirmedAtRevision: number;
+  confirmedDocumentContentRevision: number;
+  confirmedDocumentContentFingerprint: string;
+  confirmationValid: true;
 }
 
 export function uploadCounterpartySignedFiles(
@@ -1083,7 +1097,7 @@ export function confirmCounterpartySignedFile(
   contractVersionId: string,
   body: ConfirmCounterpartySignedFilePayload
 ) {
-  return postJson<unknown>(
+  return postJson<CounterpartySignedConfirmationReceipt>(
     `/contracts/${contractVersionId}/formal-files/counterparty/confirmation`,
     body
   );

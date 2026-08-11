@@ -2693,7 +2693,9 @@ describe("ContractWorkbenchService", () => {
                   message: "付款条款建议复核"
                 }
               ],
-              checkedRevision: 2
+              checkedRevision: 2,
+              checkedDocumentContentRevision: 5,
+              checkedDocumentContentFingerprint: "e".repeat(64)
             }
           })
       },
@@ -2810,7 +2812,9 @@ describe("ContractWorkbenchService", () => {
           message: "付款条款建议复核"
         }
       ],
-      checkedRevision: 2
+      checkedRevision: 2,
+      checkedDocumentContentRevision: 5,
+      checkedDocumentContentFingerprint: "e".repeat(64)
     });
   });
 

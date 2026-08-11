@@ -43,6 +43,8 @@ type GovernedVersion = {
   contractId: string;
   status: string;
   draftRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
   contractGovernanceVersion: number | null;
   changeType: string;
 };
@@ -218,7 +220,8 @@ export class ContractFormalFileService {
     }
   }
 
-  // 接收灵活格式的乙方签章文件（PDF / DOCX / 多张图片），生成规范化预览并冻结到当前草稿修订。
+  // 接收灵活格式的乙方签章文件（PDF / DOCX / 多张图片），生成规范化预览并冻结当前文书内容证据。
+  // draftRevision 仅作为上传命令的聚合并发坐标，不参与后续确认有效性判断。
   // 每个原始文件一条 counterparty_signed 记录，规范化预览一条 counterparty_signed_preview 记录。
   async uploadCounterpartySigned(
     contractVersionId: string,
@@ -233,6 +236,10 @@ export class ContractFormalFileService {
         if (input.sourceRevision !== version.draftRevision) {
           throw this.deny("合同草稿已更新，请刷新后重新上传当前版本的乙方签章文件", "contract.formal_file.counterparty_upload_denied");
         }
+        const documentContentSnapshot = this.requireDocumentContentSnapshot(
+          version,
+          "contract.formal_file.counterparty_upload_denied"
+        );
         await tx.contractFormalFile.updateMany({
           where: {
             contractVersionId: version.id,
@@ -262,7 +269,8 @@ export class ContractFormalFileService {
                 kind: "counterparty_signed_original",
                 originalName: item.file.originalName,
                 mimeType: item.file.mimeType,
-                displayOrder: index
+                displayOrder: index,
+                ...documentContentSnapshot
               },
               declaredByUserId: actorUserId,
               declaredAt: new Date()
@@ -284,7 +292,8 @@ export class ContractFormalFileService {
               kind: "counterparty_signed_preview",
               mode: preview.mode,
               sourceFileIds: input.fileIds,
-              sourceSha256: loaded.map((item) => item.sha256)
+              sourceSha256: loaded.map((item) => item.sha256),
+              ...documentContentSnapshot
             },
             declaredByUserId: actorUserId,
             declaredAt: new Date()
@@ -301,7 +310,8 @@ export class ContractFormalFileService {
             fileIds: input.fileIds,
             previewFileId: preview.fileId,
             pageCount: preview.pageCount,
-            mode: preview.mode
+            mode: preview.mode,
+            ...documentContentSnapshot
           }
         });
         return {
@@ -325,7 +335,7 @@ export class ContractFormalFileService {
     }
   }
 
-  // 对规范化预览做整体确认：确认覆盖该预览对应的所有原始文件，并冻结到当前草稿修订。
+  // 对规范化预览做整体确认：确认覆盖该预览对应的所有原始文件，并冻结文书内容 revision + fingerprint。
   async confirmCounterpartySigned(
     contractVersionId: string,
     actorUserId: string,
@@ -348,15 +358,29 @@ export class ContractFormalFileService {
         if (!preview) {
           throw this.deny("乙方签章预览文件不存在或已过期，请重新上传", "contract.formal_file.counterparty_confirm_denied");
         }
-        if (preview.sourceRevision !== version.draftRevision) {
-          throw this.deny("乙方签章预览已过期，请重新上传当前修订的文件", "contract.formal_file.counterparty_confirm_denied");
+        const documentContentSnapshot = this.requireDocumentContentSnapshot(
+          version,
+          "contract.formal_file.counterparty_confirm_denied"
+        );
+        const previewContent = this.counterpartyDocumentContent(
+          preview.declarationSnapshot
+        );
+        if (
+          !previewContent ||
+          previewContent.revision !== documentContentSnapshot.documentContentRevision ||
+          previewContent.fingerprint !== documentContentSnapshot.documentContentFingerprint
+        ) {
+          throw this.deny("乙方签章预览对应的合同文书内容已变化，请重新上传当前内容的文件", "contract.formal_file.counterparty_confirm_denied");
         }
         const confirmed = await tx.contractFormalFile.update({
           where: { id: preview.id },
           data: {
             confirmedByUserId: actorUserId,
             confirmedAt: new Date(),
-            confirmationSnapshot: { confirmedAtRevision: version.draftRevision }
+            confirmationSnapshot: {
+              confirmedAtRevision: version.draftRevision,
+              ...documentContentSnapshot
+            }
           }
         });
         await this.audit?.record(tx, {
@@ -366,7 +390,8 @@ export class ContractFormalFileService {
           businessId: version.id,
           metadata: {
             formalFileId: confirmed.id,
-            sourceRevision: version.draftRevision
+            sourceRevision: version.draftRevision,
+            ...documentContentSnapshot
           }
         });
         return {
@@ -374,6 +399,8 @@ export class ContractFormalFileService {
           confirmedByUserId: confirmed.confirmedByUserId,
           confirmedAt: confirmed.confirmedAt?.toISOString() ?? null,
           confirmedAtRevision: version.draftRevision,
+          confirmedDocumentContentRevision: documentContentSnapshot.documentContentRevision,
+          confirmedDocumentContentFingerprint: documentContentSnapshot.documentContentFingerprint,
           confirmationValid: true
         };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -386,11 +413,17 @@ export class ContractFormalFileService {
     }
   }
 
-  // 读取乙方签章文件及其规范化预览，实时计算确认有效性（草稿修订变更后自动失效）。
+  // 读取乙方签章文件及其规范化预览，以文书内容 revision + fingerprint 实时计算确认有效性。
   async listCounterpartySigned(contractVersionId: string) {
     const version = await this.prisma.contractVersion.findUnique({
       where: { id: contractVersionId },
-      select: { id: true, draftRevision: true, status: true }
+      select: {
+        id: true,
+        draftRevision: true,
+        documentContentRevision: true,
+        documentContentFingerprint: true,
+        status: true
+      }
     });
     if (!version) throw new BadRequestException("合同草稿不存在，请刷新后重试");
     const rows = await this.prisma.contractFormalFile.findMany({
@@ -413,8 +446,13 @@ export class ContractFormalFileService {
       item.purpose === COUNTERPARTY_PREVIEW_PURPOSE && item.status === "active"
     ) ?? null;
     const confirmationValid = this.isCounterpartyConfirmationValid(version, activePreview);
+    const confirmedContent = activePreview
+      ? this.counterpartyDocumentContent(activePreview.confirmationSnapshot)
+      : null;
     return {
       draftRevision: version.draftRevision,
+      documentContentRevision: version.documentContentRevision,
+      documentContentFingerprint: version.documentContentFingerprint,
       status: version.status,
       confirmationValid,
       originalFiles: activeOriginals.map((item) => ({
@@ -438,6 +476,8 @@ export class ContractFormalFileService {
         confirmedByUserId: activePreview.confirmedByUserId,
         confirmedAt: activePreview.confirmedAt?.toISOString() ?? null,
         confirmedAtRevision: this.counterpartyConfirmationRevision(activePreview.confirmationSnapshot),
+        confirmedDocumentContentRevision: confirmedContent?.revision ?? null,
+        confirmedDocumentContentFingerprint: confirmedContent?.fingerprint ?? null,
         confirmationValid
       } : null
     };
@@ -495,8 +535,7 @@ export class ContractFormalFileService {
       where: {
         contractVersionId: version.id,
         purpose: COUNTERPARTY_SIGNED_PURPOSE,
-        status: "active",
-        sourceRevision: version.draftRevision
+        status: "active"
       },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: {
@@ -555,7 +594,9 @@ export class ContractFormalFileService {
       metadata: {
         approvalOriginalId: created.id,
         counterpartyPreviewFormalFileId: preview.id,
-        sourceRevision: version.draftRevision
+        sourceRevision: version.draftRevision,
+        documentContentRevision: version.documentContentRevision,
+        documentContentFingerprint: version.documentContentFingerprint
       }
     });
     return {
@@ -1137,23 +1178,25 @@ export class ContractFormalFileService {
   }
 
   private isCounterpartyConfirmationValid(
-    version: { draftRevision: number },
+    version: {
+      documentContentRevision: number;
+      documentContentFingerprint: string | null;
+    },
     preview: {
-      sourceRevision: number;
       confirmedByUserId: string | null;
       confirmationSnapshot: Prisma.JsonValue;
     } | null
   ) {
     if (!preview || !preview.confirmedByUserId) return false;
-    if (preview.sourceRevision !== version.draftRevision) return false;
-    if (
-      !preview.confirmationSnapshot ||
-      typeof preview.confirmationSnapshot !== "object" ||
-      Array.isArray(preview.confirmationSnapshot)
-    ) {
-      return false;
-    }
-    return (preview.confirmationSnapshot as Prisma.JsonObject).confirmedAtRevision === version.draftRevision;
+    const confirmedContent = this.counterpartyDocumentContent(
+      preview.confirmationSnapshot
+    );
+    return Boolean(
+      confirmedContent &&
+      version.documentContentFingerprint &&
+      confirmedContent.revision === version.documentContentRevision &&
+      confirmedContent.fingerprint === version.documentContentFingerprint
+    );
   }
 
   private counterpartyDeclarationString(value: Prisma.JsonValue, key: string): string | null {
@@ -1174,7 +1217,45 @@ export class ContractFormalFileService {
     return typeof item === "number" ? item : null;
   }
 
-  // 查询当前草稿修订上已整体确认的乙方签章预览；缺失、过期、未确认或校验失败均返回 null。
+  private counterpartyDocumentContent(value: Prisma.JsonValue): {
+    revision: number;
+    fingerprint: string;
+  } | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const snapshot = value as Prisma.JsonObject;
+    const revision = snapshot.documentContentRevision;
+    const fingerprint = snapshot.documentContentFingerprint;
+    if (
+      typeof revision !== "number" ||
+      typeof fingerprint !== "string" ||
+      !SHA256_PATTERN.test(fingerprint)
+    ) {
+      return null;
+    }
+    return { revision, fingerprint };
+  }
+
+  private requireDocumentContentSnapshot(
+    version: GovernedVersion,
+    denialAction: string
+  ) {
+    if (
+      version.documentContentRevision < 1 ||
+      !version.documentContentFingerprint ||
+      !SHA256_PATTERN.test(version.documentContentFingerprint)
+    ) {
+      throw this.deny(
+        "合同文书内容摘要尚未建立，请先保存当前合同内容",
+        denialAction
+      );
+    }
+    return {
+      documentContentRevision: version.documentContentRevision,
+      documentContentFingerprint: version.documentContentFingerprint
+    };
+  }
+
+  // 查询当前文书内容上已整体确认的乙方签章预览；缺失、过期、未确认或校验失败均返回 null。
   private async findConfirmedCounterpartyPreview(
     tx: Prisma.TransactionClient,
     version: GovernedVersion
@@ -1188,7 +1269,6 @@ export class ContractFormalFileService {
       orderBy: { createdAt: "desc" }
     });
     if (!preview) return null;
-    if (preview.sourceRevision !== version.draftRevision) return null;
     if (!preview.confirmedByUserId) return null;
     if (!this.isCounterpartyConfirmationValid(version, preview)) return null;
     await this.inspectLinkedPdf(
@@ -1215,6 +1295,15 @@ export class ContractFormalFileService {
       sourceRevision: number;
     }>
   ): Prisma.JsonObject {
+    const confirmedContent = this.counterpartyDocumentContent(
+      preview.confirmationSnapshot
+    );
+    if (!confirmedContent) {
+      throw this.deny(
+        "乙方签章确认缺少可追溯的合同文书内容摘要，请重新确认",
+        "contract.formal_file.submission_denied"
+      );
+    }
     return {
       kind: "counterparty_bridge",
       counterpartySigned: true,
@@ -1227,6 +1316,8 @@ export class ContractFormalFileService {
         confirmedAtRevision:
           this.counterpartyConfirmationRevision(preview.confirmationSnapshot) ??
           preview.sourceRevision,
+        documentContentRevision: confirmedContent.revision,
+        documentContentFingerprint: confirmedContent.fingerprint,
         formalFileId: preview.id,
         sourceFiles: sourceFiles.map((source) => ({
           formalFileId: source.id,

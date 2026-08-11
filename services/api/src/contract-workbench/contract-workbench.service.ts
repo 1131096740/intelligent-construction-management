@@ -3390,7 +3390,15 @@ export class ContractWorkbenchService {
       warningMessages,
       blocking,
       warnings,
-      checkedRevision: typeof record["checkedRevision"] === "number" ? record["checkedRevision"] : null
+      checkedRevision: typeof record["checkedRevision"] === "number" ? record["checkedRevision"] : null,
+      checkedDocumentContentRevision:
+        typeof record["checkedDocumentContentRevision"] === "number"
+          ? record["checkedDocumentContentRevision"]
+          : null,
+      checkedDocumentContentFingerprint:
+        typeof record["checkedDocumentContentFingerprint"] === "string"
+          ? record["checkedDocumentContentFingerprint"]
+          : null
     };
   }
 
