@@ -128,7 +128,8 @@
           </t-tag>
         </div>
         <div class="document-meta">
-          状态 {{ documentStatusLabel(document.status) }} · 修订 {{ document.sourceRevision }} ·
+          状态 {{ documentStatusLabel(document.status) }} · 内容 D{{ document.documentContentRevision ?? "—" }} ·
+          聚合 R{{ document.sourceRevision }}（仅追踪） ·
           {{ timeText(document.completedAt ?? document.createdAt) }}
         </div>
         <ul
@@ -332,9 +333,18 @@ let downloadCapabilityRequestId = 0;
 let downloadTicketPromise: Promise<void> | null = null;
 
 const versionId = computed(() => props.workbench?.version.id ?? "");
-const currentRevision = computed(() => props.workbench?.version.draftRevision ?? 0);
+const currentDocumentContentRevision = computed(
+  () => props.workbench?.version.documentContentRevision ?? 0
+);
+const currentDocumentContentFingerprint = computed(
+  () => props.workbench?.version.documentContentFingerprint ?? null
+);
 const documents = computed(() =>
-  documentsWithStaleFlag(rawDocuments.value, currentRevision.value)
+  documentsWithStaleFlag(
+    rawDocuments.value,
+    currentDocumentContentRevision.value,
+    currentDocumentContentFingerprint.value
+  )
 );
 const hasActiveDocument = computed(() =>
   documents.value.some((document) => ["queued", "processing"].includes(document.status))

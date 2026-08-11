@@ -64,6 +64,11 @@ const mockedExtract = extractContractDocx as jest.MockedFunction<
 >;
 
 describe("ContractDocumentProcessor", () => {
+  const documentContentFingerprint = "a".repeat(64);
+  const documentContentCoordinates = {
+    documentContentRevision: 2,
+    documentContentFingerprint
+  };
   const audit = { record: jest.fn() };
 
   beforeEach(() => {
@@ -131,6 +136,7 @@ describe("ContractDocumentProcessor", () => {
               id: "version-1",
               contractId: "contract-1",
               draftRevision: 3,
+              ...documentContentCoordinates,
               status: "draft",
               changeType: "original",
               draftData: {}
@@ -189,6 +195,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "draft",
       sourceRevision: 3,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
@@ -225,6 +232,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "draft",
       sourceRevision: 3,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
@@ -447,7 +455,11 @@ describe("ContractDocumentProcessor", () => {
   it("renders DOCX, converts PDF, normalizes attachments, uploads both files, and marks success", async () => {
     const prisma = makePrisma();
     prisma.tx.$queryRaw.mockResolvedValue([
-      { draftRevision: 8, status: "draft" }
+      {
+        draftRevision: 8,
+        ...documentContentCoordinates,
+        status: "draft"
+      }
     ]);
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
       id: "document-1",
@@ -456,6 +468,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "negotiation",
       sourceRevision: 8,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-对外磋商稿-修订8",
         renderInput: { values: { "contract.name": "合同" } },
@@ -573,15 +586,14 @@ describe("ContractDocumentProcessor", () => {
     });
     expect(prisma.tx.contractGeneratedDocument.findFirst).toHaveBeenCalledWith({
       where: {
+        id: { not: "document-1" },
         contractVersionId: "version-1",
         purpose: "negotiation",
-        sourceRevision: { lt: 8 },
         status: { in: ["success", "stale"] },
         docxFileId: { not: null },
         pdfFileId: { not: null }
       },
       orderBy: [
-        { sourceRevision: "desc" },
         { createdAt: "desc" },
         { id: "desc" }
       ],
@@ -598,7 +610,7 @@ describe("ContractDocumentProcessor", () => {
       prisma.tx,
       expect.objectContaining({
         action: "contract.document.success",
-        metadata: {
+        metadata: expect.objectContaining({
           docxFileId: "docx-file",
           pdfFileId: "pdf-file",
           pageCount: 2,
@@ -608,7 +620,7 @@ describe("ContractDocumentProcessor", () => {
           pdfOldFileId: null,
           pdfNewFileId: "pdf-file",
           replacementKind: null
-        }
+        })
       })
     );
   });
@@ -619,6 +631,7 @@ describe("ContractDocumentProcessor", () => {
       queuedDocument({
         purpose: "external",
         inputSnapshot: {
+          ...documentContentCoordinates,
           templateFileId: "layout-file",
           outputBaseName: "HT-20260806-007-外发合同-修订3",
           renderInput: {
@@ -669,6 +682,7 @@ describe("ContractDocumentProcessor", () => {
       queuedDocument({
         purpose: "external",
         inputSnapshot: {
+          ...documentContentCoordinates,
           templateFileId: "layout-file",
           outputBaseName: "HT-20260806-007-外发合同-修订3",
           renderInput: { values: {} },
@@ -771,7 +785,7 @@ describe("ContractDocumentProcessor", () => {
         prisma.tx,
         expect.objectContaining({
           action: "contract.document.success",
-          metadata: {
+          metadata: expect.objectContaining({
             docxFileId: "docx-file",
             pdfFileId: "pdf-file",
             pageCount: 2,
@@ -781,7 +795,7 @@ describe("ContractDocumentProcessor", () => {
             pdfOldFileId: "pdf-file-old",
             pdfNewFileId: "pdf-file",
             replacementKind: "contract_generated_document_revision"
-          }
+          })
         })
       );
     }
@@ -795,6 +809,7 @@ describe("ContractDocumentProcessor", () => {
     prisma.tx.$queryRaw.mockResolvedValue([
       {
         draftRevision: 3,
+        ...documentContentCoordinates,
         status: "draft",
         changeType: null,
         draftData: {},
@@ -820,7 +835,7 @@ describe("ContractDocumentProcessor", () => {
     expect(prisma.tx.contractVersion.updateMany).toHaveBeenCalledWith({
       where: {
         id: "version-1",
-        draftRevision: 3,
+        ...documentContentCoordinates,
         latestDraftPreviewDocumentId: "document-previous"
       },
       data: { latestDraftPreviewDocumentId: "document-1" }
@@ -1200,6 +1215,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "draft",
       sourceRevision: 2,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-草稿-修订2",
         renderInput: { values: {} },
@@ -1255,6 +1271,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "draft",
       sourceRevision: 3,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
@@ -1298,39 +1315,37 @@ describe("ContractDocumentProcessor", () => {
     });
   });
 
-  it("marks a document stale when the draft revision changes before terminal success", async () => {
+  it("publishes a document when only the aggregate draft revision changed", async () => {
     const prisma = makePrisma();
-    prisma.tx.$queryRaw.mockResolvedValue([
-      { draftRevision: 4, status: "draft" }
-    ]);
-    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
-      id: "document-1",
-      contractVersionId: "version-1",
-      status: "queued",
-      purpose: "draft",
-      sourceRevision: 3,
-      inputSnapshot: {
-        templateFileId: "layout-file",
-        outputBaseName: "草稿-001-草稿-修订3",
-        renderInput: { values: {} },
-        requiredKeys: [],
-        attachmentFiles: []
-      },
-      createdByUserId: "owner-1",
-      createdAt: new Date()
-    });
-    const files = {
-      getFileBuffer: jest.fn().mockResolvedValue({
-        file: { id: "layout-file" },
-        buffer: Buffer.from("template")
-      }),
-      uploadPrivateFile: jest
-        .fn()
-        .mockResolvedValueOnce({ id: "docx-file" })
-        .mockResolvedValueOnce({ id: "pdf-file" }),
-      linkFileReplacement: jest.fn(),
-      discardUnlinkedGeneratedFiles: jest.fn().mockResolvedValue(undefined)
-    };
+    prisma.tx.$queryRaw.mockImplementation(
+      async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            draftRevision: 4,
+            ...documentContentCoordinates,
+            status: "draft",
+            changeType: "original",
+            draftData: {},
+            latestDraftPreviewDocumentId: null
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }];
+        }
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
+      }
+    );
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const files = generatedDocumentFiles();
     const processor = new ContractDocumentProcessor(
       prisma as unknown as PrismaService,
       files as never,
@@ -1339,25 +1354,74 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
-    expect(prisma.tx.$queryRaw).toHaveBeenCalledTimes(3);
-    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "success" }) })
+    );
+    expect(prisma.tx.contractVersion.updateMany).toHaveBeenCalledWith({
       where: {
-        id: "document-1",
-        status: "processing",
-        sourceRevision: 3
+        id: "version-1",
+        documentContentRevision: 2,
+        documentContentFingerprint,
+        latestDraftPreviewDocumentId: null
       },
-      data: {
-        status: "stale",
-        completedAt: expect.any(Date),
-        errorMessage: null
+      data: { latestDraftPreviewDocumentId: "document-1" }
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma.tx,
+      expect.objectContaining({
+        action: "contract.document.success",
+        metadata: expect.objectContaining(documentContentCoordinates)
+      })
+    );
+  });
+
+  it("marks a document stale when its frozen content revision changes", async () => {
+    const prisma = makePrisma();
+    prisma.tx.$queryRaw.mockImplementation(
+      async (query: { strings?: string[] }) => {
+        const sql = query.strings?.join(" ") ?? "";
+        if (sql.includes("FOR UPDATE OF cv")) {
+          return [{
+            id: "version-1",
+            contractId: "contract-1",
+            draftRevision: 3,
+            documentContentRevision: 3,
+            documentContentFingerprint: "b".repeat(64),
+            status: "draft",
+            changeType: "original",
+            draftData: {}
+          }];
+        }
+        if (sql.includes("FOR UPDATE OF c")) {
+          return [{ id: "contract-1", ownerUserId: "owner-1", voidedAt: null }];
+        }
+        return [{
+          hasSignedFormalFile: false,
+          hasActiveSealTask: false,
+          hasArchiveFile: false,
+          hasSettlement: false,
+          hasPaymentRequest: false
+        }];
       }
+    );
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue(queuedDocument());
+    const files = generatedDocumentFiles();
+    const processor = new ContractDocumentProcessor(
+      prisma as unknown as PrismaService,
+      files as never,
+      audit as never
+    );
+
+    await processor.processNext();
+
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: { id: "document-1", status: "processing", sourceRevision: 3 },
+      data: { status: "stale", completedAt: expect.any(Date), errorMessage: null }
     });
     expect(audit.record).not.toHaveBeenCalledWith(
       prisma.tx,
       expect.objectContaining({ action: "contract.document.success" })
     );
-    expect(prisma.tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
-    expect(files.linkFileReplacement).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -1379,6 +1443,7 @@ describe("ContractDocumentProcessor", () => {
             id: "version-1",
             contractId: "contract-1",
             draftRevision: 3,
+            ...documentContentCoordinates,
             status: "draft",
             changeType: "original",
             hasHistoricalTakeoverRelation,
@@ -1564,6 +1629,7 @@ describe("ContractDocumentProcessor", () => {
             id: "version-1",
             contractId: "contract-1",
             draftRevision: 3,
+            ...documentContentCoordinates,
             status: "draft",
             changeType: "original",
             draftData: {
@@ -1625,7 +1691,11 @@ describe("ContractDocumentProcessor", () => {
   it("does not audit terminal success or failure when its CAS loses", async () => {
     const prisma = makePrisma();
     prisma.tx.$queryRaw.mockResolvedValue([
-      { draftRevision: 3, status: "draft" }
+      {
+        draftRevision: 3,
+        ...documentContentCoordinates,
+        status: "draft"
+      }
     ]);
     prisma.tx.contractGeneratedDocument.updateMany.mockResolvedValue({ count: 0 });
     prisma.contractGeneratedDocument.findFirst.mockResolvedValue({
@@ -1635,6 +1705,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "draft",
       sourceRevision: 3,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },
@@ -1664,6 +1735,9 @@ describe("ContractDocumentProcessor", () => {
 
     await processor.processNext();
 
+    expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "success" }) })
+    );
     expect(audit.record).not.toHaveBeenCalled();
     expect(prisma.tx.contractGeneratedDocument.findFirst).not.toHaveBeenCalled();
     expect(files.linkFileReplacement).not.toHaveBeenCalled();
@@ -1679,6 +1753,7 @@ describe("ContractDocumentProcessor", () => {
       purpose: "draft",
       sourceRevision: 3,
       inputSnapshot: {
+        ...documentContentCoordinates,
         templateFileId: "layout-file",
         outputBaseName: "草稿-001-草稿-修订3",
         renderInput: { values: {} },

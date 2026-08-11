@@ -175,9 +175,15 @@ export interface ContractCompanyEntitySelection {
 
 export interface ContractGeneratedDocumentReadModel {
   id: string;
-  name: string;
-  generatedAt: string;
-  cosKey: string;
+  purpose: string;
+  status: string;
+  sourceRevision: number;
+  documentContentRevision: number | null;
+  documentContentFingerprint: string | null;
+  docxFileId: string | null;
+  pdfFileId: string | null;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 export interface ContractReadinessResult {
@@ -236,6 +242,8 @@ export interface ContractWorkbenchReadModel {
     versionNo: number;
     status: string;
     draftRevision: number;
+    documentContentRevision: number;
+    documentContentFingerprint: string | null;
     contractGovernanceVersion?: number | null;
     amountCents: MoneyCents;
     estimatedAmountCents: MoneyCents | null;

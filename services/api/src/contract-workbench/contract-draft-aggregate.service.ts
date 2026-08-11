@@ -574,9 +574,8 @@ export class ContractDraftAggregateService {
                     draftRevision: { increment: 1 }
                   }
                 : {}),
-              // #63 records document semantics alongside the legacy aggregate
-              // revision. #64/#65 continue to consume draftRevision until their
-              // own migration explicitly moves confirmation validity over.
+              // draftRevision remains the aggregate concurrency coordinate;
+              // document consumers use the independently frozen content facts.
               ...(documentContentChanged
                 ? { documentContentRevision: { increment: 1 } }
                 : {}),
@@ -593,6 +592,15 @@ export class ContractDraftAggregateService {
               latestRevision: version.draftRevision,
               conflictReason: "draft_revision_changed",
               canReacquireLease: false
+            });
+          }
+          if (documentContentChanged) {
+            await tx.contractGeneratedDocument.updateMany({
+              where: {
+                contractVersionId,
+                status: { in: ["queued", "processing", "success"] }
+              },
+              data: { status: "stale" }
             });
           }
           if (input.saveKind === "manual" && (changed || documentContentWriteRequired)) {

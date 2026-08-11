@@ -336,18 +336,32 @@ describe("contract bill editor helpers", () => {
     expect(importPreviewRows(preview)).toEqual([{ rowKey: "row-1", itemName: "钢筋" }]);
   });
 
-  it("marks generated documents stale after bill changes", () => {
+  it("uses frozen document content coordinates instead of aggregate revisions", () => {
+    const fingerprint = "a".repeat(64);
     expect(
       documentsWithStaleFlag(
         [
-          { id: "doc-1", status: "success", sourceRevision: 4 },
-          { id: "doc-2", status: "success", sourceRevision: 5 }
+          {
+            id: "doc-1",
+            status: "success",
+            sourceRevision: 4,
+            documentContentRevision: 2,
+            documentContentFingerprint: "b".repeat(64)
+          },
+          {
+            id: "doc-2",
+            status: "success",
+            sourceRevision: 4,
+            documentContentRevision: 3,
+            documentContentFingerprint: fingerprint
+          }
         ],
-        5
+        3,
+        fingerprint
       )
     ).toEqual([
-      { id: "doc-1", status: "success", sourceRevision: 4, stale: true },
-      { id: "doc-2", status: "success", sourceRevision: 5, stale: false }
+      expect.objectContaining({ id: "doc-1", stale: true }),
+      expect.objectContaining({ id: "doc-2", sourceRevision: 4, stale: false })
     ]);
   });
 

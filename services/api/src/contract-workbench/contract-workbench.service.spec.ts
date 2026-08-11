@@ -2406,6 +2406,8 @@ describe("ContractWorkbenchService", () => {
       contractId: "contract-1",
       status: "draft",
       draftRevision: 3,
+      documentContentRevision: 2,
+      documentContentFingerprint: "a".repeat(64),
       changeType: "original",
       draftData: {
         companyEntitySelection: {
@@ -2431,6 +2433,10 @@ describe("ContractWorkbenchService", () => {
           purpose: "draft",
           status: "success",
           sourceRevision: 3,
+          inputSnapshot: {
+            documentContentRevision: 2,
+            documentContentFingerprint: "a".repeat(64)
+          },
           docxFileId: "docx-1",
           pdfFileId: "pdf-1",
           createdAt: new Date("2026-07-17T01:00:00.000Z"),
@@ -2468,8 +2474,14 @@ describe("ContractWorkbenchService", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(result.documents).toEqual([
-      expect.objectContaining({ id: "document-1", status: "stale" })
+      expect.objectContaining({
+        id: "document-1",
+        status: "stale",
+        documentContentRevision: 2,
+        documentContentFingerprint: "a".repeat(64)
+      })
     ]);
+    expect(result.documents[0]).not.toHaveProperty("inputSnapshot");
     expect(result.documents).not.toEqual([
       expect.objectContaining({ status: "success" })
     ]);

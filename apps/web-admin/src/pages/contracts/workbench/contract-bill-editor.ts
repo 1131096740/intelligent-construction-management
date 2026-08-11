@@ -68,6 +68,8 @@ export interface WorkbenchDocument {
   id: string;
   status: string;
   sourceRevision: number;
+  documentContentRevision?: number | null;
+  documentContentFingerprint?: string | null;
   purpose?: string;
   createdAt?: string;
   completedAt?: string | null;
@@ -366,11 +368,15 @@ export function documentWarnings(document: WorkbenchDocument): string[] {
 
 export function documentsWithStaleFlag(
   documents: WorkbenchDocument[],
-  currentRevision: number
+  currentDocumentContentRevision: number,
+  currentDocumentContentFingerprint: string | null
 ) {
   return documents.map((document) => ({
     ...document,
-    stale: document.status === "stale" || document.sourceRevision !== currentRevision
+    stale:
+      document.status === "stale" ||
+      document.documentContentRevision !== currentDocumentContentRevision ||
+      document.documentContentFingerprint !== currentDocumentContentFingerprint
   }));
 }
 

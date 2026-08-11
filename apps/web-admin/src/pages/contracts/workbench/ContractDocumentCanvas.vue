@@ -33,8 +33,8 @@
           </p>
           <dl class="document-meta">
             <div>
-              <dt>草稿修订</dt>
-              <dd>第 {{ state.document?.sourceRevision ?? draftRevision }} 次</dd>
+              <dt>文书内容</dt>
+              <dd>D{{ state.document?.documentContentRevision ?? documentContentRevision }}</dd>
             </div>
             <div>
               <dt>生成时间</dt>
@@ -97,7 +97,8 @@ import {
 
 const props = defineProps<{
   contractName: string;
-  draftRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
   documents: ContractDocumentCanvasRecord[];
 }>();
 
@@ -106,7 +107,11 @@ const emit = defineEmits<{
 }>();
 
 const state = computed(() =>
-  contractDocumentCanvasState(props.documents, props.draftRevision)
+  contractDocumentCanvasState(
+    props.documents,
+    props.documentContentRevision,
+    props.documentContentFingerprint
+  )
 );
 
 const stateLabel = computed(
