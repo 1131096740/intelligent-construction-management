@@ -1201,8 +1201,9 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     }
   }) as ContractDraftAggregateModel;
   const model = aggregateModel.draft;
-  // This receipt is never merged with local edits or save responses. It is the
-  // only workbench projection exposed to the page for authority decisions.
+  // This receipt accepts only complete server authority responses, never local
+  // edits. It is the only workbench projection exposed to the page for authority
+  // decisions.
   const workbenchReceipt = ref<ContractDraftWorkbenchReadModel | null>(null);
   const workbench = ref<ContractDraftWorkbenchReadModel | null>(null);
   const authorityRefreshRequired = ref(false);
@@ -1845,7 +1846,36 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     >
   ): void {
     const currentWorkbench = workbench.value;
-    if (!currentWorkbench) return;
+    const authorityReceipt = workbenchReceipt.value;
+    const capability = result.capability;
+    const invalidationStatus = result.invalidation?.status;
+    const documentsOutdated = invalidationStatus === "document_invalidated";
+    if (
+      !currentWorkbench ||
+      !authorityReceipt ||
+      currentWorkbench.version.id !== result.contractVersionId ||
+      authorityReceipt.version.id !== result.contractVersionId ||
+      !Number.isInteger(result.serverRevision) ||
+      result.serverRevision !== result.draftRevision ||
+      !capability ||
+      capability.refreshRequired ||
+      !Array.isArray(capability.draftOperationAvailableActions) ||
+      !["document_invalidated", "unchanged"].includes(invalidationStatus) ||
+      result.documentsOutdated !== documentsOutdated
+    ) {
+      throw new ContractDraftAuthorityRefreshRequiredError(
+        "合同草稿保存回执缺少当前 authority 状态，请刷新后重试"
+      );
+    }
+    const draftOperationAvailableActions = [
+      ...capability.draftOperationAvailableActions
+    ];
+    currentWorkbench.version.draftRevision = result.serverRevision;
+    authorityReceipt.version.draftRevision = result.serverRevision;
+    currentWorkbench.draftOperationAvailableActions = draftOperationAvailableActions;
+    authorityReceipt.draftOperationAvailableActions = [
+      ...draftOperationAvailableActions
+    ];
     if (
       canMergeAggregateSaveDerivedFacts(savingState, ["draft", "bills"])
     ) {
@@ -1879,7 +1909,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
     if (canMergeAggregateSaveDerivedFacts(savingState, allSections)) {
       currentWorkbench.draft["issueCounts"] = { ...result.issueCounts };
       currentWorkbench.draft["documentsOutdated"] =
-        result.documentsOutdated;
+        documentsOutdated;
     }
   }
 
@@ -1988,7 +2018,7 @@ export function useContractDraft(options: UseContractDraftOptions): UseContractD
       mergeSafeSaveResult(result, responseState);
       aggregateSaveState.value = completeAggregateSave(
         responseState,
-        result.draftRevision,
+        result.serverRevision,
         Date.now()
       );
       formalSaveCompleted.value = true;

@@ -7,7 +7,7 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `995c496361ba0076d7a87da504d7ce7f1a4e3ce7290e461d5b31f99cb09239ac` |
-| webApiWrappers | ready | `d167c2cfcc3bf2e25b14bb9229767dc8accf8d8a0f7849c9215131ced2f6ee57` |
+| webApiWrappers | ready | `a856cf30ae4ae8a221449116547865e1984a1c40c1e63a2e9f820662c6a40fde` |
 | webPageActions | ready | `5afdfa9e95d5b1f64dfc84f5bb0ca7f619c0258a286d40dcce7c54fa8e691158` |
 | routeUsage | ready | `754be11cc6f62ca3c9c12462eb87b8e196594574f4884488b27f81a5d720cadf` |
 

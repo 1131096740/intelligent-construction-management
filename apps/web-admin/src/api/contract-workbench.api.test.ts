@@ -475,7 +475,13 @@ describe("contract workbench API client", () => {
     mockApiFetch.mockResolvedValue(new Response(JSON.stringify({
       message: "合同草稿编辑租约已失效",
       code: "EDIT_LEASE_LOST",
-      conflictReason: "lease_taken_over"
+      conflictReason: "lease_taken_over",
+      serverRevision: 4,
+      capability: {
+        refreshRequired: true,
+        draftOperationAvailableActions: []
+      },
+      invalidation: { status: "refresh_required" }
     }), {
       status: 409,
       headers: { "Content-Type": "application/json" }
@@ -517,7 +523,13 @@ describe("contract workbench API client", () => {
     expect((error as Error).message).not.toContain("raw-lease-token-must-stay-private");
     expect(error).toMatchObject({
       code: "EDIT_LEASE_LOST",
-      conflictReason: "lease_taken_over"
+      conflictReason: "lease_taken_over",
+      serverRevision: 4,
+      capability: {
+        refreshRequired: true,
+        draftOperationAvailableActions: []
+      },
+      invalidation: { status: "refresh_required" }
     });
   });
 
