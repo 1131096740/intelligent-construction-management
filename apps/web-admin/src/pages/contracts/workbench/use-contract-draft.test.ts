@@ -238,6 +238,7 @@ function saveResult(
   return {
     contractVersionId,
     draftRevision,
+    serverRevision: draftRevision,
     savedAt: "2026-07-28T00:00:00.000Z",
     effectiveChangedSections: ["draft"],
     amounts: {
@@ -249,7 +250,12 @@ function saveResult(
     issueCounts: {},
     readiness: null,
     documentsOutdated: true,
-    availableActions: []
+    availableActions: [],
+    capability: {
+      refreshRequired: false,
+      draftOperationAvailableActions: [...DEFAULT_DRAFT_OPERATION_ACTIONS]
+    },
+    invalidation: { status: "document_invalidated" }
   };
 }
 
@@ -1080,7 +1086,7 @@ describe("useContractDraft", () => {
     );
   });
 
-  it("requires a fresh authority receipt after a successful save or capability revision drift", async () => {
+  it("adopts the successful save authority receipt and still fails closed on capability revision drift", async () => {
     const draft = makeDraft();
     const serverSnapshot = makeWorkbench({
       availableActions: [{
@@ -1096,16 +1102,7 @@ describe("useContractDraft", () => {
         draftLifecycleKind: "pristine_draft"
       }
     });
-    const refreshedSnapshot = makeWorkbench({
-      ...serverSnapshot,
-      version: {
-        ...serverSnapshot.version,
-        draftRevision: 4
-      }
-    });
-    mockFetchWorkbench
-      .mockResolvedValueOnce(serverSnapshot)
-      .mockResolvedValueOnce(refreshedSnapshot);
+    mockFetchWorkbench.mockResolvedValueOnce(serverSnapshot);
     mockSaveDraft.mockResolvedValue(saveResult("cv-1", 4));
 
     await draft.load("cv-1");
@@ -1132,23 +1129,17 @@ describe("useContractDraft", () => {
     draft.markDirty();
     await expect(draft.saveNow()).resolves.toBe(true);
     expect(draft.authoritySnapshot.value).toMatchObject({
-      draftRevision: 3,
-      capabilityReceipt: { draftRevision: 3 },
-      refreshRequired: true,
-      canWrite: false,
-      readonly: true,
-      lease: { kind: "held" }
-    });
-    expect(draft.authoritySnapshot.value?.draftOperationAvailableActions).toEqual([]);
-
-    await draft.reload();
-    expect(draft.authoritySnapshot.value).toMatchObject({
       draftRevision: 4,
       capabilityReceipt: { draftRevision: 4 },
       refreshRequired: false,
       canWrite: true,
-      readonly: false
+      readonly: false,
+      lease: { kind: "held" }
     });
+    expect(draft.authoritySnapshot.value?.draftOperationAvailableActions).toEqual(
+      DEFAULT_DRAFT_OPERATION_ACTIONS
+    );
+    expect(mockFetchWorkbench).toHaveBeenCalledTimes(1);
 
     mockFetchOperationCapabilities.mockResolvedValueOnce(makeWorkbench({
       version: {
@@ -1402,9 +1393,7 @@ describe("useContractDraft", () => {
     mockFetchWorkbench
       .mockResolvedValueOnce(makeWorkbench())
       .mockResolvedValueOnce(workbenchReceiptAtRevision(4));
-    mockSaveDraft
-      .mockResolvedValueOnce(saveResult("cv-1", 4))
-      .mockResolvedValueOnce(saveResult("cv-1", 5));
+    mockSaveDraft.mockResolvedValueOnce(saveResult("cv-1", 4));
     vi.setSystemTime(new Date("2026-07-24T10:00:00.000Z"));
 
     await draft.load("cv-1");
@@ -1502,7 +1491,7 @@ describe("useContractDraft", () => {
     expect(mockSaveDraft).toHaveBeenCalledTimes(1);
   });
 
-  it("does not publish save-derived facts as a replacement authority receipt", async () => {
+  it("keeps save-derived facts out of the authority receipt while adopting its revision", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeFormallySavedWorkbench());
     mockSaveDraft.mockResolvedValue({
@@ -1529,7 +1518,12 @@ describe("useContractDraft", () => {
     expect(authorityWorkbench(draft)?.readiness.ready).toBe(false);
     expect(authorityWorkbench(draft)?.draft["issueCounts"]).toBeUndefined();
     expect(authorityWorkbench(draft)?.draft["documentsOutdated"]).toBeUndefined();
-    expect(draft.authoritySnapshot.value?.refreshRequired).toBe(true);
+    expect(draft.authoritySnapshot.value).toMatchObject({
+      draftRevision: 4,
+      capabilityReceipt: { draftRevision: 4 },
+      refreshRequired: false,
+      canWrite: true
+    });
   });
 
   it("keeps lifecycle actions from the authoritative GET instead of trusting a save response", async () => {
@@ -1607,7 +1601,7 @@ describe("useContractDraft", () => {
     expect(draft.isDirty.value).toBe(true);
   });
 
-  it("does not autosave a later edit until a fresh receipt advances its authority revision", async () => {
+  it("fails closed when a later operation capability response is older than the save receipt", async () => {
     const draft = makeDraft();
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
     mockSaveDraft
@@ -1631,7 +1625,7 @@ describe("useContractDraft", () => {
       .toEqual([3]);
     expect(draft.savedRevision.value).toBe(4);
     expect(draft.authoritySnapshot.value).toMatchObject({
-      draftRevision: 3,
+      draftRevision: 4,
       refreshRequired: true,
       canWrite: false
     });
@@ -1725,9 +1719,9 @@ describe("useContractDraft", () => {
     draft.model.contractName = "第一版保存中的输入";
     draft.markDirty();
     const save = draft.saveNow();
-    mockFetchOperationCapabilities.mockResolvedValueOnce(
-      operationCapabilityReceipt("cv-2", 1)
-    );
+    mockFetchOperationCapabilities
+      .mockResolvedValueOnce(operationCapabilityReceipt("cv-1", 4))
+      .mockResolvedValueOnce(operationCapabilityReceipt("cv-2", 1));
     const loadNextVersion = draft.load("cv-2");
 
     expect(mockFetchWorkbench).toHaveBeenCalledTimes(1);
@@ -2634,7 +2628,11 @@ describe("useContractDraft", () => {
 
   it("keeps local edits when an explicit save fails", async () => {
     const draft = makeDraft();
+    let capabilityRevision = 3;
     mockFetchWorkbench.mockResolvedValue(makeWorkbench());
+    mockFetchOperationCapabilities.mockImplementation(async (contractVersionId) =>
+      operationCapabilityReceipt(contractVersionId, capabilityRevision)
+    );
     await draft.load("cv-1");
 
     mockSaveDraft.mockRejectedValueOnce(new Error("网络异常"));
@@ -2651,20 +2649,29 @@ describe("useContractDraft", () => {
     expect(backup).toContain("未保存的改动");
 
     // A non-conflict failure does NOT pause: the next explicit save may retry.
-    mockSaveDraft.mockResolvedValueOnce(saveResult("cv-1", 4));
+    mockSaveDraft
+      .mockImplementationOnce(async () => {
+        capabilityRevision = 4;
+        return saveResult("cv-1", 4);
+      })
+      .mockResolvedValueOnce(saveResult("cv-1", 5));
     draft.model.contractName = "重试的改动";
     draft.markDirty();
     await draft.saveNow();
     // Retry the uncertain request with its original key. The resulting server
-    // revision locks further writes until a fresh authority receipt is loaded.
-    expect(mockSaveDraft).toHaveBeenCalledTimes(2);
+    // authority receipt accepts the server revision without a second GET.
+    expect(mockSaveDraft).toHaveBeenCalledTimes(3);
     expect(mockSaveDraft.mock.calls[1]?.[2].idempotencyKey)
       .toBe(mockSaveDraft.mock.calls[0]?.[2].idempotencyKey);
-    expect(draft.saveState.value).toBe("idle");
-    // The newer local edit remains recoverable until the user reloads and saves it.
-    expect(contractDraftRecoveryText()).toContain("重试的改动");
-    expect(draft.isDirty.value).toBe(true);
-    expect(draft.authoritySnapshot.value?.refreshRequired).toBe(true);
+    expect(draft.saveState.value).toBe("saved");
+    expect(contractDraftRecoveryText()).toBeNull();
+    expect(draft.isDirty.value).toBe(false);
+    expect(draft.authoritySnapshot.value).toMatchObject({
+      draftRevision: 5,
+      capabilityReceipt: { draftRevision: 5 },
+      refreshRequired: false,
+      canWrite: true
+    });
   });
 
   it("pauses after a revision conflict until the user chooses local or server data", async () => {

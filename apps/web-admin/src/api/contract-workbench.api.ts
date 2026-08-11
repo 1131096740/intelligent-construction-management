@@ -28,6 +28,14 @@ async function ensureOk(
   let conflictReason: string | undefined;
   let projectId: string | undefined;
   let takeoverId: string | undefined;
+  let serverRevision: number | undefined;
+  let capability: {
+    refreshRequired: boolean;
+    draftOperationAvailableActions: string[];
+  } | undefined;
+  let invalidation: {
+    status: "document_invalidated" | "unchanged" | "refresh_required";
+  } | undefined;
   try {
     const data = (await response.clone().json()) as {
       message?: unknown;
@@ -35,6 +43,9 @@ async function ensureOk(
       conflictReason?: unknown;
       projectId?: unknown;
       takeoverId?: unknown;
+      serverRevision?: unknown;
+      capability?: unknown;
+      invalidation?: unknown;
     };
     if (preserveConflictDetails && typeof data.code === "string") code = data.code;
     if (preserveConflictDetails && typeof data.conflictReason === "string") {
@@ -45,6 +56,37 @@ async function ensureOk(
     }
     if (preserveConflictDetails && typeof data.takeoverId === "string") {
       takeoverId = data.takeoverId;
+    }
+    const conflictCapability = data.capability;
+    const conflictInvalidation = data.invalidation;
+    if (
+      preserveConflictDetails &&
+      typeof data.serverRevision === "number" &&
+      Number.isInteger(data.serverRevision) &&
+      typeof conflictCapability === "object" &&
+      conflictCapability !== null &&
+      "refreshRequired" in conflictCapability &&
+      typeof conflictCapability.refreshRequired === "boolean" &&
+      "draftOperationAvailableActions" in conflictCapability &&
+      Array.isArray(conflictCapability.draftOperationAvailableActions) &&
+      conflictCapability.draftOperationAvailableActions.every(
+        (action) => typeof action === "string"
+      ) &&
+      typeof conflictInvalidation === "object" &&
+      conflictInvalidation !== null &&
+      "status" in conflictInvalidation &&
+      (conflictInvalidation.status === "document_invalidated" ||
+        conflictInvalidation.status === "unchanged" ||
+        conflictInvalidation.status === "refresh_required")
+    ) {
+      serverRevision = data.serverRevision;
+      capability = {
+        refreshRequired: conflictCapability.refreshRequired,
+        draftOperationAvailableActions: [
+          ...conflictCapability.draftOperationAvailableActions
+        ]
+      };
+      invalidation = { status: conflictInvalidation.status };
     }
     if (typeof data.message === "string") {
       message = formatApiErrorMessage(data.message, response.status, fallback);
@@ -61,11 +103,22 @@ async function ensureOk(
     conflictReason?: string;
     projectId?: string;
     takeoverId?: string;
+    serverRevision?: number;
+    capability?: {
+      refreshRequired: boolean;
+      draftOperationAvailableActions: string[];
+    };
+    invalidation?: {
+      status: "document_invalidated" | "unchanged" | "refresh_required";
+    };
   };
   if (code) error.code = code;
   if (conflictReason) error.conflictReason = conflictReason;
   if (projectId) error.projectId = projectId;
   if (takeoverId) error.takeoverId = takeoverId;
+  if (serverRevision !== undefined) error.serverRevision = serverRevision;
+  if (capability) error.capability = capability;
+  if (invalidation) error.invalidation = invalidation;
   throw error;
 }
 
@@ -333,6 +386,7 @@ export interface SaveContractDraftAggregatePayload {
 export interface SaveContractDraftAggregateResult {
   contractVersionId: string;
   draftRevision: number;
+  serverRevision: number;
   savedAt: string;
   effectiveChangedSections: ContractDraftChangedSection[];
   amounts: {
@@ -345,6 +399,13 @@ export interface SaveContractDraftAggregateResult {
   readiness: unknown;
   documentsOutdated: boolean;
   availableActions: DetailActionReadModel[];
+  capability: {
+    refreshRequired: boolean;
+    draftOperationAvailableActions: string[];
+  };
+  invalidation: {
+    status: "document_invalidated" | "unchanged" | "refresh_required";
+  };
 }
 
 export function fetchContractWorkbench(contractId: string) {

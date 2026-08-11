@@ -500,7 +500,23 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const prisma = {
       $transaction: jest.fn(
         async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)
-      )
+      ),
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          draftRevision: version.draftRevision
+        })
+      },
+      contractDraftEditLease: {
+        findUnique: jest.fn().mockResolvedValue({
+          expiresAt: options.leaseExpiresAt ?? new Date(Date.now() + 120_000)
+        })
+      },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
     };
     const workbench = {
       replacePaymentTermsInTransaction: jest.fn().mockResolvedValue({
@@ -532,6 +548,7 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
     return {
       tx,
+      contract,
       takeoverRelationState,
       prisma,
       workbench,
@@ -628,6 +645,30 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     );
     expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a server revision, capability, and document invalidation receipt", async () => {
+    const { service } = makeSaveService();
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).resolves.toMatchObject({
+      contractVersionId: "cv-1",
+      draftRevision: 8,
+      serverRevision: 8,
+      capability: {
+        refreshRequired: false,
+        draftOperationAvailableActions: expect.arrayContaining([
+          "save_contract_draft"
+        ])
+      },
+      invalidation: { status: "document_invalidated" }
+    });
   });
 
   it("rejects a historical takeover before replaying or writing a generic save", async () => {
@@ -746,6 +787,53 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     expect(second).toEqual(first);
     expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("backfills the public authority facts when replaying a legacy save receipt", async () => {
+    const { service, tx } = makeSaveService();
+    const input = aggregateInput();
+
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    const persistedReceipt = tx.contractDraftSaveRequest.create.mock.calls[0][0].data;
+    Reflect.deleteProperty(persistedReceipt.responseSnapshot, "serverRevision");
+    Reflect.deleteProperty(persistedReceipt.responseSnapshot, "capability");
+    Reflect.deleteProperty(persistedReceipt.responseSnapshot, "invalidation");
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)
+    ).resolves.toMatchObject({
+      draftRevision: 8,
+      serverRevision: 8,
+      capability: {
+        refreshRequired: false,
+        draftOperationAvailableActions: expect.arrayContaining([
+          "save_contract_draft"
+        ])
+      },
+      invalidation: { status: "document_invalidated" }
+    });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restore a transferred owner's write capability from a legacy receipt", async () => {
+    const { service, tx, contract } = makeSaveService();
+    const input = aggregateInput();
+
+    await service.saveAggregate("cv-1", "owner-1", leaseToken, input as never);
+    const persistedReceipt = tx.contractDraftSaveRequest.create.mock.calls[0][0].data;
+    Reflect.deleteProperty(persistedReceipt.responseSnapshot, "serverRevision");
+    Reflect.deleteProperty(persistedReceipt.responseSnapshot, "capability");
+    Reflect.deleteProperty(persistedReceipt.responseSnapshot, "invalidation");
+    contract.ownerUserId = "new-owner-1";
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)
+    ).resolves.toMatchObject({
+      capability: {
+        refreshRequired: false,
+        draftOperationAvailableActions: []
+      }
+    });
   });
 
   it("rejects reuse of the same idempotency key for a different payload", async () => {
@@ -942,8 +1030,14 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         code: "EDIT_LEASE_LOST",
         message: expect.any(String),
         latestRevision: 7,
+        serverRevision: 7,
         conflictReason: "lease_token_mismatch",
-        canReacquireLease: false
+        canReacquireLease: false,
+        capability: {
+          refreshRequired: true,
+          draftOperationAvailableActions: []
+        },
+        invalidation: { status: "refresh_required" }
       }
     });
     expect(tx.contractVersion.updateMany).not.toHaveBeenCalled();
@@ -1008,8 +1102,14 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         code: "DRAFT_REVISION_CONFLICT",
         message: expect.any(String),
         latestRevision: 8,
+        serverRevision: 8,
         conflictReason: "draft_revision_changed",
-        canReacquireLease: false
+        canReacquireLease: false,
+        capability: {
+          refreshRequired: true,
+          draftOperationAvailableActions: []
+        },
+        invalidation: { status: "refresh_required" }
       }
     });
   });

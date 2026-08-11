@@ -76,55 +76,15 @@ export class ContractDraftAggregateService {
       : lease.holderUserId === actorUserId
         ? "held_by_me"
         : "held_by_other";
-    const canTakeOver = leaseState === "held_by_other"
-      ? await this.isContractDirector(actorUserId)
-      : false;
+    const isDirector = await this.isContractDirector(actorUserId);
+    const canTakeOver = leaseState === "held_by_other" && isDirector;
     const isOwner = legacyReadModel.contract.ownerUserId === actorUserId;
-    const isDirector = canTakeOver || await this.isContractDirector(actorUserId);
-    const isOriginalDraft = version.changeType !== "change" &&
-      version.changeType !== "supplement";
-    const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
-    const draftOperationAvailableActions = projectContractDraftOperationCapabilities([
-      ...(isOwner && isEditableDraft ? [
-        "acquire_contract_draft_edit_lease",
-        ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
-        "check_contract_submission_readiness",
-        "close_contract_negotiation_round",
-        "dispose_contract_document_difference",
-        "heartbeat_contract_draft_edit_lease",
-        "open_contract_negotiation_round",
-        "open_contract_revision_preview",
-        "preview_contract_draft_bill_excel_import",
-        ...(isOriginalDraft ? ["preview_contract_type_change"] : []),
-        "queue_contract_document",
-        "queue_contract_draft_preview",
-        "release_contract_draft_edit_lease",
-        "retry_contract_document",
-        "retry_contract_offline_revision",
-        ...(version.baseVersionId ? [
-          "discard_contract_bill_transitions",
-          "save_contract_bill_transitions"
-        ] : []),
-        "save_contract_draft",
-        ...(version.contractGovernanceVersion === 1 ? [
-          "set_contract_authorization"
-        ] : []),
-        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
-        ...(version.contractGovernanceVersion === 1 ? [
-          "upload_contract_formal_approval_file",
-          "upload_contract_counterparty_signed_files",
-          "confirm_contract_counterparty_signed_files"
-        ] : []),
-        "upload_contract_negotiation_revision",
-        "upload_contract_workbench_private_file"
-      ] : []),
-      ...(isDirector ? [
-        ...(version.baseVersionId ? ["confirm_contract_bill_transitions"] : []),
-        "confirm_contract_settlement_mode",
-        "transfer_contract_draft"
-      ] : []),
-      ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
-    ]);
+    const draftOperationAvailableActions = this.projectDraftOperationCapabilities(
+      version,
+      isOwner,
+      isDirector,
+      canTakeOver
+    );
     const legacyWithoutCheckpoints = { ...legacyReadModel };
     Reflect.deleteProperty(legacyWithoutCheckpoints, "checkpoints");
     return {
@@ -238,7 +198,13 @@ export class ContractDraftAggregateService {
               message: "保存幂等键已用于另一份合同草稿请求，请重新保存"
             });
           }
-          return receipt.responseSnapshot;
+          return this.completeIdempotentSaveReceipt(
+            receipt.responseSnapshot,
+            receipt.resultRevision,
+            version,
+            contract.ownerUserId === actorUserId,
+            await this.isContractDirector(actorUserId)
+          );
         }
         await tx.$queryRaw(Prisma.sql`
           SELECT "contractVersionId" FROM "ContractDraftEditLease"
@@ -489,9 +455,11 @@ export class ContractDraftAggregateService {
         for (const bill of refreshedBills) {
           billRevisions[bill.billKey] = bill.revision;
         }
+        const isDirector = await this.isContractDirector(actorUserId);
         const response = {
           contractVersionId,
           draftRevision: resultRevision,
+          serverRevision: resultRevision,
           savedAt: now.toISOString(),
           effectiveChangedSections: [...effectiveChangedSections].sort(),
           amounts: {
@@ -521,7 +489,19 @@ export class ContractDraftAggregateService {
           issueCounts: {},
           readiness: null,
           documentsOutdated: changed,
-          availableActions: []
+          availableActions: [],
+          capability: {
+            refreshRequired: false,
+            draftOperationAvailableActions: this.projectDraftOperationCapabilities(
+              version,
+              true,
+              isDirector,
+              false
+            )
+          },
+          invalidation: {
+            status: changed ? "document_invalidated" : "unchanged"
+          }
         };
         await tx.contractDraftSaveRequest.create({
           data: {
@@ -539,6 +519,11 @@ export class ContractDraftAggregateService {
         return response;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
+      if (error instanceof ConflictException) {
+        throw new ConflictException(
+          await this.conflictReceipt(contractVersionId, input.expectedRevision, error)
+        );
+      }
       const prismaSerializationFailure =
         error instanceof Prisma.PrismaClientKnownRequestError &&
         (
@@ -565,8 +550,14 @@ export class ContractDraftAggregateService {
           code: "DRAFT_REVISION_CONFLICT",
           message: "合同资料已变化，请刷新后重试",
           latestRevision: conflict.latestRevision,
+          serverRevision: conflict.latestRevision,
           conflictReason: "serialization_failure",
-          canReacquireLease: conflict.canReacquireLease
+          canReacquireLease: conflict.canReacquireLease,
+          capability: {
+            refreshRequired: true,
+            draftOperationAvailableActions: []
+          },
+          invalidation: { status: "refresh_required" }
         });
       }
       if (error instanceof BadRequestException) {
@@ -615,6 +606,138 @@ export class ContractDraftAggregateService {
     return !lease || lease.expiresAt.getTime() <= now.getTime();
   }
 
+  private completeIdempotentSaveReceipt(
+    responseSnapshot: unknown,
+    resultRevision: number,
+    version: {
+      status: string;
+      changeType: string;
+      baseVersionId: string | null;
+      contractGovernanceVersion: number | null;
+    },
+    isOwner: boolean,
+    isDirector: boolean
+  ) {
+    if (this.hasCompleteSaveReceipt(responseSnapshot, resultRevision)) {
+      return responseSnapshot;
+    }
+    const snapshot: Record<string, unknown> = typeof responseSnapshot === "object" &&
+      responseSnapshot !== null &&
+      !Array.isArray(responseSnapshot)
+      ? responseSnapshot as Record<string, unknown>
+      : {};
+    return {
+      ...snapshot,
+      draftRevision: resultRevision,
+      serverRevision: resultRevision,
+      capability: {
+        refreshRequired: false,
+        draftOperationAvailableActions: this.projectDraftOperationCapabilities(
+          version,
+          isOwner,
+          isDirector,
+          false
+        )
+      },
+      invalidation: {
+        status: snapshot.documentsOutdated === true
+          ? "document_invalidated"
+          : "unchanged"
+      }
+    };
+  }
+
+  private hasCompleteSaveReceipt(
+    responseSnapshot: unknown,
+    resultRevision: number
+  ): responseSnapshot is Record<string, unknown> {
+    if (
+      typeof responseSnapshot !== "object" ||
+      responseSnapshot === null ||
+      Array.isArray(responseSnapshot)
+    ) {
+      return false;
+    }
+    const snapshot = responseSnapshot as Record<string, unknown>;
+    if (snapshot.serverRevision !== resultRevision) {
+      return false;
+    }
+    const capability = snapshot.capability;
+    const invalidation = snapshot.invalidation;
+    const capabilityFields = capability as Record<string, unknown>;
+    const invalidationFields = invalidation as Record<string, unknown>;
+    return typeof capability === "object" &&
+      capability !== null &&
+      !Array.isArray(capability) &&
+      capabilityFields.refreshRequired === false &&
+      Array.isArray(capabilityFields.draftOperationAvailableActions) &&
+      capabilityFields.draftOperationAvailableActions.every(
+        (action) => typeof action === "string"
+      ) &&
+      typeof invalidation === "object" &&
+      invalidation !== null &&
+      !Array.isArray(invalidation) &&
+      (invalidationFields.status === "document_invalidated" ||
+        invalidationFields.status === "unchanged");
+  }
+
+  private projectDraftOperationCapabilities(
+    version: {
+      status: string;
+      changeType: string;
+      baseVersionId: string | null;
+      contractGovernanceVersion: number | null;
+    },
+    isOwner: boolean,
+    isDirector: boolean,
+    canTakeOver: boolean
+  ) {
+    const isOriginalDraft = version.changeType !== "change" &&
+      version.changeType !== "supplement";
+    const isEditableDraft = EDITABLE_CONTRACT_DRAFT_STATUSES.has(version.status);
+    return projectContractDraftOperationCapabilities([
+      ...(isOwner && isEditableDraft ? [
+        "acquire_contract_draft_edit_lease",
+        ...(isOriginalDraft ? ["apply_contract_type_change"] : []),
+        "check_contract_submission_readiness",
+        "close_contract_negotiation_round",
+        "dispose_contract_document_difference",
+        "heartbeat_contract_draft_edit_lease",
+        "open_contract_negotiation_round",
+        "open_contract_revision_preview",
+        "preview_contract_draft_bill_excel_import",
+        ...(isOriginalDraft ? ["preview_contract_type_change"] : []),
+        "queue_contract_document",
+        "queue_contract_draft_preview",
+        "release_contract_draft_edit_lease",
+        "retry_contract_document",
+        "retry_contract_offline_revision",
+        ...(version.baseVersionId ? [
+          "discard_contract_bill_transitions",
+          "save_contract_bill_transitions"
+        ] : []),
+        "save_contract_draft",
+        ...(version.contractGovernanceVersion === 1 ? [
+          "set_contract_authorization"
+        ] : []),
+        ...(version.status === "draft" ? ["submit_contract_draft"] : []),
+        ...(version.contractGovernanceVersion === 1 ? [
+          "upload_contract_formal_approval_file",
+          "upload_contract_counterparty_signed_files",
+          "confirm_contract_counterparty_signed_files"
+        ] : []),
+        "upload_contract_negotiation_revision",
+        "upload_contract_workbench_private_file"
+      ] : []),
+      ...(isDirector ? [
+        ...(version.baseVersionId ? ["confirm_contract_bill_transitions"] : []),
+        "confirm_contract_settlement_mode",
+        "transfer_contract_draft"
+      ] : []),
+      ...(canTakeOver ? ["take_over_contract_draft_edit_lease"] : [])
+    ]);
+  }
+
   private async loadConflictSnapshot(
     contractVersionId: string,
     fallbackRevision: number
@@ -640,6 +763,33 @@ export class ContractDraftAggregateService {
         canReacquireLease: false
       };
     }
+  }
+
+  private async conflictReceipt(
+    contractVersionId: string,
+    fallbackRevision: number,
+    error: ConflictException
+  ) {
+    const response = error.getResponse();
+    const body = typeof response === "object" && response !== null
+      ? response
+      : { message: response };
+    const conflict = await this.loadConflictSnapshot(
+      contractVersionId,
+      fallbackRevision
+    );
+    return {
+      ...body,
+      statusCode: 409,
+      latestRevision: conflict.latestRevision,
+      serverRevision: conflict.latestRevision,
+      canReacquireLease: conflict.canReacquireLease,
+      capability: {
+        refreshRequired: true,
+        draftOperationAvailableActions: []
+      },
+      invalidation: { status: "refresh_required" }
+    };
   }
 
   private async replaceAttachmentsInTransaction(
