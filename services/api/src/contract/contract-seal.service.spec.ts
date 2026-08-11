@@ -9,6 +9,8 @@ function harness() {
     status: "approved_pending_seal",
     contractGovernanceVersion: 1,
     draftRevision: 4,
+    documentContentRevision: 2,
+    documentContentFingerprint: "d".repeat(64),
     changeType: "original",
     baseVersionId: null
   };
@@ -398,7 +400,6 @@ describe("ContractSealService", () => {
       contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
       contractFormalFile: {
         findFirst: jest.fn()
-          .mockResolvedValueOnce({ id: "approval-original-1", pageCount: 3 })
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce(null),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -407,6 +408,10 @@ describe("ContractSealService", () => {
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) }
     });
     const formalFiles = {
+      assertReadyForSubmission: jest.fn().mockResolvedValue({
+        id: "approval-original-1",
+        pageCount: 3
+      }),
       inspectOwnedStoredFinalArchive: jest.fn().mockResolvedValue({
         sha256: "a".repeat(64),
         pageCount: 7,
@@ -484,7 +489,6 @@ describe("ContractSealService", () => {
       contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
       contractFormalFile: {
         findFirst: jest.fn()
-          .mockResolvedValueOnce({ id: "approval-original-1", pageCount: 3 })
           .mockResolvedValueOnce(null)
           .mockResolvedValueOnce({ id: "final-old-1", fileId: "file-old" }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -493,6 +497,10 @@ describe("ContractSealService", () => {
       contractAuthorization: { findFirst: jest.fn().mockResolvedValue(null) }
     });
     const formalFiles = {
+      assertReadyForSubmission: jest.fn().mockResolvedValue({
+        id: "approval-original-1",
+        pageCount: 3
+      }),
       inspectOwnedStoredFinalArchive: jest.fn().mockResolvedValue({
         sha256: "d".repeat(64),
         pageCount: 1,
@@ -575,6 +583,7 @@ describe("ContractSealService", () => {
   it("合同经办人兼当前合同部主管时可确认自己的最终归档并明确审计", async () => {
     const { tx, prisma, version, task } = harness();
     version.status = "pending_archive_confirm";
+    version.draftRevision = 5;
     task.status = "completed";
     task.handlerUserId = "director-1";
     tx.contractSealTask.findFirst.mockResolvedValue(task);
@@ -584,6 +593,10 @@ describe("ContractSealService", () => {
       contentSha256: "a".repeat(64),
       pageCount: 1,
       sourceRevision: 4,
+      declarationSnapshot: {
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      },
       uploadedByUserId: "director-1"
     };
     const original = {
@@ -591,15 +604,22 @@ describe("ContractSealService", () => {
       fileId: "file-original-1",
       contentSha256: "b".repeat(64),
       pageCount: 3,
-      sourceRevision: 4
+      sourceRevision: 4,
+      declarationSnapshot: {
+        counterpartySigned: true,
+        counterpartyStamped: true,
+        crossPageSealCompleted: true,
+        documentOrderConfirmed: true,
+        authorizationsBeforeSignaturePageConfirmed: true,
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
     };
     Object.assign(tx, {
       contractFormalFile: {
         findFirst: jest.fn()
           .mockResolvedValueOnce(final)
-          .mockResolvedValueOnce(original)
-          .mockResolvedValueOnce(final)
-          .mockResolvedValueOnce(original),
+          .mockResolvedValueOnce(final),
         update: jest.fn().mockImplementation(({ data }) => ({ ...final, ...data }))
       }
     });
@@ -625,6 +645,7 @@ describe("ContractSealService", () => {
       fileSnapshot: { storageStatus: "active", mimeType, sizeBytes, contentSha256: sha256 }
     });
     const formalFiles = {
+      assertReadyForSubmission: jest.fn().mockResolvedValue(original),
       inspectLinkedStoredFinalArchive: jest.fn().mockResolvedValue(
         inspected("a".repeat(64), "image/png", 100, 1)
       ),
@@ -938,6 +959,10 @@ describe("ContractSealService", () => {
       contentSha256: "a".repeat(64),
       pageCount: 3,
       sourceRevision: 4,
+      declarationSnapshot: {
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      },
       uploadedByUserId: "handler-1"
     };
     const original = {
@@ -955,9 +980,7 @@ describe("ContractSealService", () => {
       contractFormalFile: {
         findFirst: jest.fn()
           .mockResolvedValueOnce(final)
-          .mockResolvedValueOnce(original)
           .mockResolvedValueOnce(final)
-          .mockResolvedValueOnce(original)
       }
     });
     tx.$queryRaw.mockResolvedValueOnce([
@@ -987,6 +1010,7 @@ describe("ContractSealService", () => {
       }
     });
     const formalFiles = {
+      assertReadyForSubmission: jest.fn().mockResolvedValue(original),
       inspectLinkedStoredFinalArchive: jest.fn()
         .mockResolvedValueOnce(snapshot("a".repeat(64))),
       inspectLinkedStoredPdf: jest.fn().mockResolvedValue(snapshot("b".repeat(64)))

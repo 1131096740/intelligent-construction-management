@@ -89,7 +89,7 @@ function harness(overrides: Record<string, unknown> = {}) {
 describe("ContractFormalFileService", () => {
   it("关联当前修订的完整乙方签章审批 PDF，并使相同重试幂等", async () => {
     const bytes = await pdfBytes();
-    const { file, tx, prisma, files } = harness();
+    const { file, tx, version, prisma, files } = harness();
     file.sizeBytes = bytes.length;
     file.contentSha256 = createHash("sha256").update(bytes).digest("hex");
     files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
@@ -111,10 +111,20 @@ describe("ContractFormalFileService", () => {
       status: "active"
     });
     const firstData = tx.contractFormalFile.create.mock.calls[0][0].data;
-    expect(firstData).toMatchObject({ purpose: "approval_original" });
-    tx.contractFormalFile.findFirst.mockResolvedValue({ id: "formal-1", ...firstData });
+    expect(firstData).toMatchObject({
+      purpose: "approval_original",
+      declarationSnapshot: expect.objectContaining({
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      })
+    });
+    const created = { id: "formal-1", ...firstData };
+    tx.contractFormalFile.findFirst.mockResolvedValue(created);
     await service.uploadApprovalVersion("version-1", "owner-1", input);
     expect(tx.contractFormalFile.create).toHaveBeenCalledTimes(1);
+    version.draftRevision = 4;
+    await expect(service.assertReadyForSubmission(tx as never, version as never))
+      .resolves.toMatchObject({ id: "formal-1", sourceRevision: 3 });
   });
 
   it("过期修订在读取文件前即被拒绝", async () => {
@@ -232,16 +242,52 @@ describe("ContractFormalFileService", () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 
-  it("提交时只接受当前修订的一条 active 正式文件", async () => {
+  it("提交预检不因 metadata-only 聚合修订误伤内容一致的正式文件", async () => {
+    const bytes = await pdfBytes();
+    const { file, tx, version, prisma, files } = harness();
+    file.sizeBytes = bytes.length;
+    file.contentSha256 = createHash("sha256").update(bytes).digest("hex");
+    files.getFileBuffer.mockResolvedValue({ file, buffer: bytes });
+    tx.contractFormalFile.findFirst.mockResolvedValue({
+      id: "formal-1",
+      fileId: "file-1",
+      contentSha256: file.contentSha256,
+      pageCount: 1,
+      sourceRevision: 2,
+      status: "active",
+      declarationSnapshot: {
+        counterpartySigned: true,
+        counterpartyStamped: true,
+        crossPageSealCompleted: true,
+        documentOrderConfirmed: true,
+        authorizationsBeforeSignaturePageConfirmed: true,
+        documentContentRevision: 2,
+        documentContentFingerprint: "d".repeat(64)
+      }
+    });
+    const service = new ContractFormalFileService(prisma as never, undefined, files as never);
+    await expect(service.assertReadyForSubmission(tx as never, version as never))
+      .resolves.toMatchObject({ id: "formal-1", sourceRevision: 2 });
+  });
+
+  it("提交预检拒绝文书内容坐标不一致的正式文件", async () => {
     const { tx, version, prisma, files } = harness();
     tx.contractFormalFile.findFirst.mockResolvedValue({
       id: "formal-1",
       fileId: "file-1",
       contentSha256: "a".repeat(64),
       pageCount: 2,
-      sourceRevision: 2,
+      sourceRevision: 3,
       status: "active",
-      declarationSnapshot: {}
+      declarationSnapshot: {
+        counterpartySigned: true,
+        counterpartyStamped: true,
+        crossPageSealCompleted: true,
+        documentOrderConfirmed: true,
+        authorizationsBeforeSignaturePageConfirmed: true,
+        documentContentRevision: 1,
+        documentContentFingerprint: "c".repeat(64)
+      }
     });
     const service = new ContractFormalFileService(prisma as never, undefined, files as never);
     await expect(service.assertReadyForSubmission(tx as never, version as never))
@@ -769,7 +815,7 @@ describe("ContractFormalFileService.counterparty", () => {
     const service = new ContractFormalFileService(prisma as never, undefined, undefined as never);
 
     const result = await service.listCounterpartySigned("version-1");
-    expect(result.draftRevision).toBe(4);
+    expect(result).not.toHaveProperty("draftRevision");
     expect(result.confirmationValid).toBe(true);
     expect(result.preview).toMatchObject({
       confirmationValid: true,

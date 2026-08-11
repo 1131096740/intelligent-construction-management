@@ -280,19 +280,50 @@ export class ContractReadService {
         completedByUserId: sealTask.completedByUserId,
         completedAt: sealTask.completedAt?.toISOString() ?? null
       } : null,
-      formalFiles: formalFiles.map((item) => ({
-        formalFileId: item.id,
-        purpose: item.purpose as "approval_original" | "mutually_signed_final",
-        fileId: item.fileId,
-        fileName: names.get(item.fileId) ?? "合同正式文件.pdf",
-        pageCount: item.pageCount,
-        sourceRevision: item.sourceRevision,
-        status: item.status,
-        uploadedByUserId: item.uploadedByUserId,
-        confirmedByUserId: item.confirmedByUserId,
-        confirmedAt: item.confirmedAt?.toISOString() ?? null
-      }))
+      formalFiles: formalFiles.map((item) => {
+        const content = this.formalFileDocumentContent(item.declarationSnapshot);
+        return {
+          formalFileId: item.id,
+          purpose: item.purpose as "approval_original" | "mutually_signed_final",
+          fileId: item.fileId,
+          fileName: names.get(item.fileId) ?? "合同正式文件.pdf",
+          pageCount: item.pageCount,
+          sourceRevision: item.sourceRevision,
+          documentContentRevision: content?.revision ?? null,
+          documentContentFingerprint: content?.fingerprint ?? null,
+          status: item.status,
+          uploadedByUserId: item.uploadedByUserId,
+          confirmedByUserId: item.confirmedByUserId,
+          confirmedAt: item.confirmedAt?.toISOString() ?? null
+        };
+      })
     };
+  }
+
+  private formalFileDocumentContent(value: unknown): {
+    revision: number;
+    fingerprint: string;
+  } | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const snapshot = value as Record<string, unknown>;
+    const direct = this.documentContentCoordinates(snapshot);
+    if (direct) return direct;
+    const confirmed = snapshot["_counterparty_confirmed"];
+    return confirmed && typeof confirmed === "object" && !Array.isArray(confirmed)
+      ? this.documentContentCoordinates(confirmed as Record<string, unknown>)
+      : null;
+  }
+
+  private documentContentCoordinates(value: Record<string, unknown>): {
+    revision: number;
+    fingerprint: string;
+  } | null {
+    const revision = value["documentContentRevision"];
+    const fingerprint = value["documentContentFingerprint"];
+    return Number.isInteger(revision) && (revision as number) > 0 &&
+      typeof fingerprint === "string" && /^[a-f0-9]{64}$/u.test(fingerprint)
+      ? { revision: revision as number, fingerprint }
+      : null;
   }
 
   async listRecent(
@@ -1608,6 +1639,8 @@ export class ContractReadService {
       lifecycleKind: draftLifecycle.lifecycleKind,
       lifecycleBlockers: draftLifecycle.blockers,
       draftRevision: version.draftRevision,
+      documentContentRevision: version.documentContentRevision,
+      documentContentFingerprint: version.documentContentFingerprint,
       lifecycleUpdatedAt: version.updatedAt?.toISOString() ?? contract.updatedAt?.toISOString() ?? "",
       primaryAction: primaryActionKey(availableActions),
       disabledReasons: disabledActionReasons(availableActions),
@@ -1697,6 +1730,8 @@ export class ContractReadService {
       availableActionKeys: [],
       reviewApprovalContext: null,
       withdrawApprovalContext: null,
+      documentContentRevision: 1,
+      documentContentFingerprint: null,
       primaryAction: null,
       disabledReasons: [],
       chainLinks: [

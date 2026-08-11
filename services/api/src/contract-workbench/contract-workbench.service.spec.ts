@@ -350,14 +350,7 @@ describe("ContractWorkbenchService", () => {
         data: expect.objectContaining({ draftRevision: { increment: 1 } })
       })
     );
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: "success",
-        sourceRevision: { lt: 5 }
-      },
-      data: { status: "stale" }
-    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledTimes(1);
   });
 
@@ -579,14 +572,7 @@ describe("ContractWorkbenchService", () => {
         companyEntityName: "云南某建设有限公司"
       })
     }));
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: "success",
-        sourceRevision: { lt: 5 }
-      },
-      data: { status: "stale" }
-    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
   });
 
   it("stores canonical tax facts and mirrors Chinese values into draftData", async () => {
@@ -1543,7 +1529,7 @@ describe("ContractWorkbenchService", () => {
     })).rejects.toThrow("通用合同付款条款必须按合同金额计算");
   });
 
-  it("does not audit a draft save when stale document marking fails", async () => {
+  it("does not use generated-document revision invalidation from the retired save path", async () => {
     const tx = ownedVersionTx({
       contractGeneratedDocument: {
         updateMany: jest.fn().mockRejectedValue(new Error("stale update failed"))
@@ -1551,8 +1537,7 @@ describe("ContractWorkbenchService", () => {
     });
     const service = makeService(tx);
 
-    await expect(
-      service.saveDraft("version-1", "owner-1", {
+    await expect(service.saveDraft("version-1", "owner-1", {
         expectedRevision: 4,
         draftData: { project_name: "新名称" },
         clauses: [],
@@ -1560,11 +1545,10 @@ describe("ContractWorkbenchService", () => {
         amountSource: "manual",
         manualAmountCents: "1000000",
         taxFacts: VALID_TAX_FACTS
-      })
-    ).rejects.toThrow("stale update failed");
+      })).resolves.toBeDefined();
 
-    expect(tx.contract.updateMany).not.toHaveBeenCalled();
-    expect(audit.record).not.toHaveBeenCalled();
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalled();
   });
 
   it("rejects stale autosave without overwriting server data", async () => {
@@ -3457,14 +3441,7 @@ describe("ContractWorkbenchService", () => {
         })
       ]
     });
-    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
-      where: {
-        contractVersionId: "version-1",
-        status: "success",
-        sourceRevision: { lt: 5 }
-      },
-      data: { status: "stale" }
-    });
+    expect(tx.contractGeneratedDocument.updateMany).not.toHaveBeenCalled();
     expect(checkpoints.update).not.toHaveBeenCalled();
     expect(checkpoints.delete).not.toHaveBeenCalled();
     expect(checkpoints.deleteMany).not.toHaveBeenCalled();
@@ -4502,6 +4479,13 @@ describe("ContractWorkbenchService", () => {
         documentContentRevision: { increment: 1 },
         documentContentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
       })
+    });
+    expect(tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith({
+      where: {
+        contractVersionId: "version-1",
+        status: { in: ["queued", "processing", "success"] }
+      },
+      data: { status: "stale" }
     });
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),

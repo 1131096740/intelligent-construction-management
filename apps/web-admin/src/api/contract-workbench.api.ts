@@ -1067,7 +1067,6 @@ export interface CounterpartySignedPreviewFile {
 }
 
 export interface CounterpartySignedReadModel {
-  draftRevision: number;
   documentContentRevision: number;
   documentContentFingerprint: string | null;
   status: string;

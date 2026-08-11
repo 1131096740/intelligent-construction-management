@@ -1842,13 +1842,14 @@ describe("ContractDocumentService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("links a successful generated DOCX before recording its offline revision", async () => {
+  it("links a content-current generated DOCX after a metadata-only aggregate revision", async () => {
     const tx = makeTx();
     tx.contractGeneratedDocument.findUnique.mockResolvedValue({
       id: "document-1",
       contractVersionId: "version-1",
       status: "success",
-      sourceRevision: 7,
+      sourceRevision: 6,
+      inputSnapshot: documentContentCoordinates,
       docxFileId: "generated-docx-1"
     });
     const { service } = makeService(tx);
@@ -1915,6 +1916,7 @@ describe("ContractDocumentService", () => {
       contractVersionId: "version-1",
       status: "success",
       sourceRevision: 7,
+      inputSnapshot: documentContentCoordinates,
       docxFileId: "generated-docx-1"
     });
     files.linkFileReplacement.mockRejectedValueOnce(
@@ -1933,13 +1935,17 @@ describe("ContractDocumentService", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("rejects a successful generated DOCX from an older draft revision", async () => {
+  it("rejects a generated DOCX whose frozen document content changed", async () => {
     const tx = makeTx();
     tx.contractGeneratedDocument.findUnique.mockResolvedValue({
-      id: "document-old-revision",
+      id: "document-old-content",
       contractVersionId: "version-1",
       status: "success",
-      sourceRevision: 6,
+      sourceRevision: 7,
+      inputSnapshot: {
+        documentContentRevision: 2,
+        documentContentFingerprint: "b".repeat(64)
+      },
       docxFileId: "generated-docx-old"
     });
     const { service } = makeService(tx);
@@ -1947,7 +1953,7 @@ describe("ContractDocumentService", () => {
     await expect(
       service.uploadOfflineRevision("version-1", "owner-1", {
         fileId: "revision-file-1",
-        sourceGeneratedDocumentId: "document-old-revision",
+        sourceGeneratedDocumentId: "document-old-content",
         confirmationStatementAccepted: true
       })
     ).rejects.toThrow("所选来源文档已过期，请重新生成后再上传");

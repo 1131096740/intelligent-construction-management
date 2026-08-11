@@ -77,7 +77,7 @@
       class="retry-row"
     >
       <span>{{ stagedRevisionDrift
-        ? `文件对应 R${stagedAssociation?.sourceRevision}，当前已是 R${workbench.version.draftRevision}，不能将旧 PDF 提升为新修订。请重新生成并选择 PDF。`
+        ? `文件对应内容版本 C${stagedAssociation?.documentContentRevision}，当前已是 C${workbench.version.documentContentRevision}，不能关联到已变化的合同内容。请重新生成并选择 PDF。`
         : "文件已安全上传，业务关联尚未完成，重试不会再次上传。" }}</span>
       <t-button
         size="small"
@@ -94,7 +94,8 @@
       v-if="formalFile"
       class="formal-facts"
     >
-      <div><dt>修订</dt><dd>R{{ formalFile.sourceRevision }} / 当前 R{{ workbench.version.draftRevision }}</dd></div>
+      <div><dt>内容版本</dt><dd>C{{ formalContent?.revision ?? "—" }} / 当前 C{{ workbench.version.documentContentRevision }}</dd></div>
+      <div><dt>聚合追踪</dt><dd>R{{ formalFile.sourceRevision }} / 当前 R{{ workbench.version.draftRevision }}</dd></div>
       <div><dt>文件</dt><dd>{{ formalFile.pageCount }} 页 · SHA {{ shaText(formalFile.contentSha256) }}</dd></div>
       <div><dt>来源</dt><dd>本合同工作台上传的原始 PDF</dd></div>
       <div><dt>状态</dt><dd>{{ formalStatus.detail }}</dd></div>
@@ -168,6 +169,8 @@ type StagedFormalAssociation = {
   fileId: string;
   contractVersionId: string;
   sourceRevision: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
   declaration: FormalDeclaration;
 };
 
@@ -203,7 +206,10 @@ const stagedRevisionDrift = computed(() => Boolean(
   stagedAssociation.value &&
   (
     stagedAssociation.value.contractVersionId !== props.workbench.version.id ||
-    stagedAssociation.value.sourceRevision !== props.workbench.version.draftRevision
+    stagedAssociation.value.documentContentRevision !==
+      props.workbench.version.documentContentRevision ||
+    stagedAssociation.value.documentContentFingerprint !==
+      props.workbench.version.documentContentFingerprint
   )
 ));
 const uploadDisabled = computed(() => props.disabled || busy.value || !authorizationReady.value);
@@ -211,14 +217,21 @@ const declarationComplete = computed(() => Object.values(declaration).every(Bool
 const formalFile = computed(() =>
   props.workbench.governance?.formalFiles.find((item) => item.purpose === "approval") ?? null
 );
+const formalContent = computed(() => documentContentOf(
+  formalFile.value?.declarationSnapshot
+));
 const formalStatus = computed(() => {
   const file = formalFile.value;
   if (!file) return { label: "尚未上传", detail: "当前修订尚无完整审批 PDF", tone: "warning" as const };
   if (file.status !== "active") return { label: "已过期或被替代", detail: "需重新上传当前修订文件", tone: "danger" as const };
-  if (file.sourceRevision !== props.workbench.version.draftRevision) {
-    return { label: "已过期", detail: "草稿已修改，该 PDF 不再对应当前修订", tone: "danger" as const };
+  if (
+    !formalContent.value ||
+    formalContent.value.revision !== props.workbench.version.documentContentRevision ||
+    formalContent.value.fingerprint !== props.workbench.version.documentContentFingerprint
+  ) {
+    return { label: "已过期", detail: "合同文书内容已变化，该 PDF 不再有效", tone: "danger" as const };
   }
-  return { label: "当前有效", detail: "文件与当前草稿修订一致", tone: "success" as const };
+  return { label: "当前有效", detail: "文件与当前文书内容一致", tone: "success" as const };
 });
 
 async function uploadApprovalPdf(selected: UploadFile | UploadFile[]): Promise<RequestMethodResponse> {
@@ -242,6 +255,8 @@ async function uploadApprovalPdf(selected: UploadFile | UploadFile[]): Promise<R
       fileId: uploaded.id,
       contractVersionId: current.version.id,
       sourceRevision: current.version.draftRevision,
+      documentContentRevision: current.version.documentContentRevision,
+      documentContentFingerprint: current.version.documentContentFingerprint,
       declaration: { ...declaration }
     };
     await associate(stagedAssociation.value);
@@ -272,11 +287,15 @@ async function retryAssociation() {
     const staged = stagedAssociation.value;
     if (
       staged.contractVersionId !== current.version.id ||
-      staged.sourceRevision !== current.version.draftRevision
+      staged.documentContentRevision !== current.version.documentContentRevision ||
+      staged.documentContentFingerprint !== current.version.documentContentFingerprint
     ) {
-      throw new Error(`原 PDF 对应 R${staged.sourceRevision}，当前草稿已是 R${current.version.draftRevision}，请重新生成并选择 PDF。`);
+      throw new Error(`原 PDF 对应内容版本 C${staged.documentContentRevision}，当前已是 C${current.version.documentContentRevision}，请重新生成并选择 PDF。`);
     }
-    await associate(staged);
+    await associate({
+      ...staged,
+      sourceRevision: current.version.draftRevision
+    });
     stagedAssociation.value = null;
     files.value = [];
     reload = true;
@@ -315,6 +334,27 @@ function declarationSummary(value: unknown) {
     facts["documentOrderConfirmed"] && "页面顺序已确认",
     facts["authorizationsBeforeSignaturePageConfirmed"] && "授权页位置已确认"
   ].filter(Boolean).join("、") || "—";
+}
+
+function documentContentOf(value: unknown): {
+  revision: number;
+  fingerprint: string;
+} | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const snapshot = value as Record<string, unknown>;
+  const directRevision = snapshot["documentContentRevision"];
+  const directFingerprint = snapshot["documentContentFingerprint"];
+  if (typeof directRevision === "number" && typeof directFingerprint === "string") {
+    return { revision: directRevision, fingerprint: directFingerprint };
+  }
+  const confirmed = snapshot["_counterparty_confirmed"];
+  if (!confirmed || typeof confirmed !== "object" || Array.isArray(confirmed)) return null;
+  const confirmedSnapshot = confirmed as Record<string, unknown>;
+  const revision = confirmedSnapshot["documentContentRevision"];
+  const fingerprint = confirmedSnapshot["documentContentFingerprint"];
+  return typeof revision === "number" && typeof fingerprint === "string"
+    ? { revision, fingerprint }
+    : null;
 }
 
 function shaText(value: string) {

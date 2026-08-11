@@ -11,7 +11,7 @@ import {
   normalizeContractBillBoolean
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
-import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
+import { bumpContractAggregateRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { calculateBillRow, moneyCentsToApi } from "../money/decimal-money";
 import {
@@ -763,7 +763,7 @@ export class ContractBillService {
     expectedBillRevision: number
   ) {
     this.assertExpectedRevision(expectedBillRevision);
-    const newRevision = await bumpContractRenderInputRevision(
+    const newRevision = await bumpContractAggregateRevision(
       tx,
       version.id,
       version.draftRevision

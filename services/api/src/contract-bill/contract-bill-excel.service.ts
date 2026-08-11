@@ -13,7 +13,7 @@ import {
 import * as ExcelJS from "exceljs";
 import type { Cell, Row, Worksheet } from "exceljs";
 import { AuditService } from "../audit/audit.service";
-import { bumpContractRenderInputRevision } from "../contract-workbench/contract-render-input-revision";
+import { bumpContractAggregateRevision } from "../contract-workbench/contract-render-input-revision";
 import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { moneyCentsToApi } from "../money/decimal-money";
@@ -1252,7 +1252,7 @@ export class ContractBillExcelService {
     version: { id: string; contractId: string; draftRevision: number },
     actorUserId: string
   ) {
-    const newRevision = await bumpContractRenderInputRevision(
+    const newRevision = await bumpContractAggregateRevision(
       tx,
       version.id,
       version.draftRevision

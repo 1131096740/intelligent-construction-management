@@ -109,6 +109,8 @@ export interface ContractFormalFileReadModel {
   fileName: string;
   pageCount: number;
   sourceRevision: number;
+  documentContentRevision: number | null;
+  documentContentFingerprint: string | null;
   status: string;
   uploadedByUserId: string;
   confirmedByUserId: string | null;
@@ -269,6 +271,8 @@ export interface ContractDetailReadModel {
   lifecycleKind?: "pristine_draft" | "approval_draft" | "formal_record";
   lifecycleBlockers?: string[];
   draftRevision?: number;
+  documentContentRevision: number;
+  documentContentFingerprint: string | null;
   lifecycleUpdatedAt?: string;
   primaryAction: string | null;
   disabledReasons: string[];

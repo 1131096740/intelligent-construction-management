@@ -261,10 +261,23 @@ export class ContractDocumentProcessor
           where: { id: job.negotiationRoundId }
         })
       ]);
+      const sourceInput = source?.inputSnapshot &&
+        typeof source.inputSnapshot === "object" &&
+        !Array.isArray(source.inputSnapshot)
+        ? source.inputSnapshot as Prisma.JsonObject
+        : null;
+      const sourceDocumentContentRevision =
+        sourceInput?.documentContentRevision;
+      const sourceDocumentContentFingerprint =
+        sourceInput?.documentContentFingerprint;
       if (
         !source?.docxFileId ||
         source.contractVersionId !== job.contractVersionId ||
         source.sourceRevision !== job.sourceRevision ||
+        !Number.isInteger(sourceDocumentContentRevision) ||
+        (sourceDocumentContentRevision as number) < 1 ||
+        typeof sourceDocumentContentFingerprint !== "string" ||
+        !SHA256_PATTERN.test(sourceDocumentContentFingerprint) ||
         !version ||
         !round ||
         round.status !== "open" ||
@@ -297,6 +310,8 @@ export class ContractDocumentProcessor
           id: string;
           contractId: string;
           draftRevision: number;
+          documentContentRevision: number;
+          documentContentFingerprint: string | null;
           status: string;
           changeType: string | null;
         }, {
@@ -318,7 +333,8 @@ export class ContractDocumentProcessor
           version.changeType === "historical_takeover" ||
           version.hasHistoricalTakeoverRelation === true ||
           version.status !== "draft" ||
-          version.draftRevision !== job.sourceRevision ||
+          version.documentContentRevision !== sourceDocumentContentRevision ||
+          version.documentContentFingerprint !== sourceDocumentContentFingerprint ||
           !currentRound ||
           currentRound.status !== "open"
         ) {

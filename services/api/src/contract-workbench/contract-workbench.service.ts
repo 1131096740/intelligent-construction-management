@@ -692,11 +692,6 @@ export class ContractWorkbenchService {
           input
         );
       }
-      await this.markOlderSuccessfulDocumentsStale(
-        tx,
-        contractVersionId,
-        input.expectedRevision + 1
-      );
       await this.assertEditableParentCas(
         tx,
         version.contractId,
@@ -1302,11 +1297,6 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
-      await this.markOlderSuccessfulDocumentsStale(
-        tx,
-        contractVersionId,
-        version.draftRevision + 1
-      );
       await this.assertEditableParentCas(
         tx,
         version.contractId,
@@ -1575,11 +1565,13 @@ export class ContractWorkbenchService {
         }
       });
       this.assertCas(updated.count);
-      await this.markOlderSuccessfulDocumentsStale(
-        tx,
-        contractVersionId,
-        input.expectedRevision + 1
-      );
+      await tx.contractGeneratedDocument.updateMany({
+        where: {
+          contractVersionId,
+          status: { in: ["queued", "processing", "success"] }
+        },
+        data: { status: "stale" }
+      });
       await this.assertEditableParentCas(
         tx,
         contract.id,
@@ -2143,21 +2135,6 @@ export class ContractWorkbenchService {
     if (parent.count !== 1) {
       throw new BadRequestException("合同草稿已变化，请刷新后重试");
     }
-  }
-
-  private markOlderSuccessfulDocumentsStale(
-    tx: Prisma.TransactionClient,
-    contractVersionId: string,
-    currentRevision: number
-  ) {
-    return tx.contractGeneratedDocument.updateMany({
-      where: {
-        contractVersionId,
-        status: "success",
-        sourceRevision: { lt: currentRevision }
-      },
-      data: { status: "stale" }
-    });
   }
 
   private async assertCanView(
