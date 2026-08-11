@@ -240,6 +240,8 @@ model ContractVersion {
   businessTemplateVersionId              String?
   layoutTemplateVersionId                String?
   draftRevision                          Int       @default(1)
+  documentContentRevision                Int       @default(1)
+  documentContentFingerprint             String?
   firstSubmittedAt                       DateTime?
   latestDraftPreviewDocumentId           String?
   pricingNature                          String    @default("fixed_total")

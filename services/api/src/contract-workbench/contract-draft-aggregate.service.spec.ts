@@ -356,12 +356,50 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     leaseExpiresAt?: Date;
     leaseMissing?: boolean;
     versionRevision?: number;
+    documentContentRevision?: number;
+    documentContentFingerprint?: string | null;
     versionStatus?: string;
     versionChangeType?: string;
     ownerUserId?: string;
     foundTakeover?: { id: string; projectId: string } | null;
     fieldChanged?: boolean;
+    partiesChanged?: boolean;
+    paymentTermsChanged?: boolean;
     referencesChanged?: boolean;
+    persistedDocumentParties?: Array<{
+      roleKey: string;
+      displayOrder: number;
+      businessPartyVersionId: string | null;
+      snapshot: unknown;
+    }>;
+    persistedPaymentTerms?: { id: string; originalText: string } | null;
+    persistedPaymentStages?: Array<{
+      name: string;
+      stageType: string;
+      basis: string;
+      ratioBps: number | null;
+      fixedAmountCents: bigint | null;
+      triggerAnchor: string;
+      triggerEvent: string;
+      dueDays: number;
+      advanceDeductionMode: string;
+      advanceDeductionRatioBps: number | null;
+      advanceDeductionStartRatioBps: number | null;
+      requiresInvoice: boolean;
+      allowsEarlyPayment: boolean;
+      allowsInstallments: boolean;
+      retentionBps: number | null;
+      originalText: string;
+    }>;
+    normalizedTaxFacts?: {
+      invoiceType: string | null;
+      taxMode: string;
+      defaultTaxRatePercent: string | null;
+      source: "contract_document";
+    };
+    persistedDocumentBills?: unknown[];
+    persistedDocumentBillRows?: unknown[];
+    storedDraftData?: unknown;
     formalEvidence?: Partial<{
       hasSignedFormalFile: boolean;
       hasActiveSealTask: boolean;
@@ -386,6 +424,8 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       contractId: "contract-1",
       status: options.versionStatus ?? "draft",
       draftRevision: options.versionRevision ?? 7,
+      documentContentRevision: options.documentContentRevision ?? 1,
+      documentContentFingerprint: options.documentContentFingerprint ?? null,
       amountCents: 0n,
       amountLimitType: "capped",
       pricingNature: "fixed_total",
@@ -482,7 +522,21 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         )
       },
       contractBill: {
-        findMany: jest.fn().mockResolvedValue([])
+        findMany: jest.fn().mockResolvedValue(options.persistedDocumentBills ?? [])
+      },
+      contractBillRow: {
+        findMany: jest.fn().mockResolvedValue(
+          options.persistedDocumentBillRows ?? []
+        )
+      },
+      contractPartySnapshot: {
+        findMany: jest.fn().mockResolvedValue(options.persistedDocumentParties ?? [])
+      },
+      paymentTermsVersion: {
+        findFirst: jest.fn().mockResolvedValue(options.persistedPaymentTerms ?? null)
+      },
+      paymentTermsStage: {
+        findMany: jest.fn().mockResolvedValue(options.persistedPaymentStages ?? [])
       },
       contractGeneratedDocument: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -520,24 +574,35 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     };
     const workbench = {
       replacePaymentTermsInTransaction: jest.fn().mockResolvedValue({
-        changed: false
+        changed: options.paymentTermsChanged ?? false
       }),
       prepareAggregateDraftFieldsInTransaction: jest.fn().mockResolvedValue({
         changed: options.fieldChanged ?? true,
         workbenchReferencesChanged: options.referencesChanged ?? false,
         companySelection: null,
         amountCents: 1_000_000n,
-        storedDraftData: {},
+        storedDraftData: options.storedDraftData ?? {},
+        normalizedTaxFacts: options.normalizedTaxFacts ?? {
+          invoiceType: "vat_special",
+          taxMode: "single_rate",
+          defaultTaxRatePercent: "13",
+          source: "contract_document" as const
+        },
         data: { draftData: {}, amountCents: 1_000_000n }
       })
     };
-    const bills = { replaceRowsInTransaction: jest.fn() };
+    const bills = {
+      replaceRowsInTransaction: jest.fn().mockResolvedValue({
+        revision: 1,
+        changed: false
+      })
+    };
     const parties = {
       replaceContractPartiesInTransaction: options.failParties
         ? jest.fn().mockRejectedValue(new Error("second aggregate section failed"))
         : options.validationError
           ? jest.fn().mockRejectedValue(new BadRequestException("合同主体快照不完整"))
-        : jest.fn().mockResolvedValue({ changed: false })
+        : jest.fn().mockResolvedValue({ changed: options.partiesChanged ?? false })
     };
     const files = {
       assertCanBindContractDraftAttachments: options.failFiles
@@ -668,6 +733,238 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         ])
       },
       invalidation: { status: "document_invalidated" }
+    });
+  });
+
+  it("returns a canonical document-content revision and fingerprint for a document change", async () => {
+    const { service, tx } = makeSaveService();
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).resolves.toMatchObject({
+      documentContentRevision: 2,
+      documentContentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      documentContentChangedSections: ["draft"]
+    });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          documentContentRevision: { increment: 1 }
+        })
+      })
+    );
+  });
+
+  it("persists a missing fingerprint without advancing either revision", async () => {
+    const { service, tx } = makeSaveService({ fieldChanged: false });
+
+    await expect(
+      service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      )
+    ).resolves.toMatchObject({
+      draftRevision: 7,
+      documentContentRevision: 1,
+      documentContentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      documentsOutdated: false,
+      invalidation: { status: "unchanged" }
+    });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          documentContentFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+        })
+      })
+    );
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          draftRevision: expect.anything(),
+          documentContentRevision: expect.anything()
+        })
+      })
+    );
+  });
+
+  it("fingerprints the persisted party and payment-term snapshots, not transport values", async () => {
+    const persistedDocumentParties = [{
+      roleKey: "party_a",
+      displayOrder: 0,
+      businessPartyVersionId: "party-version-1",
+      snapshot: { name: "已冻结主体" }
+    }];
+    const persistedPaymentTerms = {
+      id: "terms-1",
+      originalText: "验收合格后支付。"
+    };
+    const save = async (partySnapshot: unknown, originalText: string) => {
+      const { service } = makeSaveService({
+        fieldChanged: false,
+        persistedDocumentParties,
+        persistedPaymentTerms
+      });
+      const input = {
+        ...aggregateInput(),
+        parties: [{
+          roleKey: "party_a",
+          displayOrder: 0,
+          businessPartyVersionId: "party-version-1",
+          snapshot: partySnapshot
+        }],
+        paymentTerms: { originalText, stages: [] }
+      };
+      const result = await service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        input as never
+      );
+      return result.documentContentFingerprint;
+    };
+
+    await expect(
+      save({ name: "不可信的请求主体" }, "  验收合格后支付。  ")
+    ).resolves.toBe(
+      await save({ name: "另一份不可信请求主体" }, "验收合格后支付。")
+    );
+  });
+
+  it("fingerprints normalized tax facts instead of equivalent transport spellings", async () => {
+    const normalizedTaxFacts = {
+      invoiceType: "vat_special",
+      taxMode: "single_rate",
+      defaultTaxRatePercent: "9",
+      source: "contract_document" as const
+    };
+    const save = async (defaultTaxRatePercent: string) => {
+      const { service } = makeSaveService({
+        fieldChanged: false,
+        normalizedTaxFacts
+      });
+      const input = aggregateInput();
+      input.draft.taxFacts = {
+        ...input.draft.taxFacts,
+        defaultTaxRatePercent
+      };
+      const result = await service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        input as never
+      );
+      return result.documentContentFingerprint;
+    };
+
+    await expect(save("9.00")).resolves.toBe(await save("9"));
+  });
+
+  it("excludes bill expectedRevision from the persisted document fingerprint", async () => {
+    const persistedDocumentBills = [{
+      id: "bill-1",
+      billKey: "main",
+      name: "主清单",
+      amountRole: "included",
+      pricingMode: "tax_inclusive",
+      quantityScale: 2,
+      unitPriceScale: 2,
+      schemaSnapshot: { columns: [] },
+      sourceExcelFileId: null,
+      taxInclusiveAmountCents: 1_000n,
+      taxExclusiveAmountCents: 900n,
+      taxAmountCents: 100n
+    }];
+    const persistedDocumentBillRows = [{
+      contractBillId: "bill-1",
+      rowKey: "row-1",
+      sortOrder: 0,
+      itemCode: null,
+      itemName: "主项",
+      specification: null,
+      unit: "项",
+      quantity: null,
+      unitPrice: null,
+      taxRate: null,
+      taxRateSource: "version_default",
+      pricingFactStatus: "unconfirmed",
+      precisionPolicy: "two_decimal",
+      taxInclusiveAmountCents: 1_000n,
+      taxExclusiveAmountCents: 900n,
+      taxAmountCents: 100n,
+      taxExclusiveUnitPrice: null,
+      isProvisional: false,
+      settlementBasis: null,
+      customData: {}
+    }];
+    const save = async (expectedRevision: number) => {
+      const { service } = makeSaveService({
+        fieldChanged: false,
+        persistedDocumentBills,
+        persistedDocumentBillRows
+      });
+      const input = {
+        ...aggregateInput(),
+        bills: [{ billKey: "main", expectedRevision, rows: [] }]
+      };
+      const result = await service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        input as never
+      );
+      return result.documentContentFingerprint;
+    };
+
+    await expect(save(1)).resolves.toBe(await save(99));
+  });
+
+  it("advances document content for a party snapshot change", async () => {
+    const { service } = makeSaveService({
+      fieldChanged: false,
+      partiesChanged: true
+    });
+    const input = {
+      ...aggregateInput(),
+      parties: [{
+        roleKey: "party_a",
+        businessPartyId: "party-1",
+        businessPartyVersionId: "party-version-1"
+      }]
+    };
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)
+    ).resolves.toMatchObject({
+      documentContentRevision: 2,
+      documentContentChangedSections: ["parties"]
+    });
+  });
+
+  it("advances document content for payment-term change", async () => {
+    const { service } = makeSaveService({
+      fieldChanged: false,
+      paymentTermsChanged: true
+    });
+    const input = {
+      ...aggregateInput(),
+      paymentTerms: {
+        originalText: "验收合格后支付合同价款。",
+        stages: []
+      }
+    };
+
+    await expect(
+      service.saveAggregate("cv-1", "owner-1", leaseToken, input as never)
+    ).resolves.toMatchObject({
+      documentContentRevision: 2,
+      documentContentChangedSections: ["payment_terms"]
     });
   });
 
@@ -860,7 +1157,10 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
   });
 
   it("does not rewrite business rows or audit an identical aggregate", async () => {
-    const { service, tx, audit } = makeSaveService({ fieldChanged: false });
+    const { service, tx, audit } = makeSaveService({
+      fieldChanged: false,
+      documentContentFingerprint: "b".repeat(64)
+    });
 
     const result = await service.saveAggregate(
       "cv-1",
@@ -879,10 +1179,13 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
     expect(tx.contractDraftSaveRequest.create).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a negotiation-only reference change without mislabeling draft fields", async () => {
-    const { service } = makeSaveService({
+  it("does not advance document content for negotiation read-model metadata", async () => {
+    const fingerprint = "c".repeat(64);
+    const { service, tx, audit } = makeSaveService({
       fieldChanged: false,
-      referencesChanged: true
+      referencesChanged: true,
+      documentContentRevision: 7,
+      documentContentFingerprint: fingerprint
     });
 
     await expect(
@@ -894,8 +1197,72 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
       )
     ).resolves.toMatchObject({
       draftRevision: 8,
-      effectiveChangedSections: ["negotiation_documents"]
+      effectiveChangedSections: ["negotiation_documents"],
+      documentContentRevision: 7,
+      documentContentFingerprint: fingerprint,
+      documentContentChangedSections: [],
+      documentsOutdated: false,
+      invalidation: { status: "unchanged" }
     });
+    expect(tx.contractVersion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          documentContentRevision: expect.anything(),
+          documentContentFingerprint: expect.anything()
+        })
+      })
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          documentContentRevisionBefore: 7,
+          documentContentRevisionAfter: 7,
+          documentContentFingerprint: fingerprint,
+          documentContentChangedSections: []
+        })
+      })
+    );
+  });
+
+  it("excludes persisted workbench references from a missing-fingerprint backfill", async () => {
+    const save = async (workbenchReferences: Record<string, unknown>) => {
+      const { service } = makeSaveService({
+        fieldChanged: false,
+        storedDraftData: { projectName: "同一合同", workbenchReferences }
+      });
+      return service.saveAggregate(
+        "cv-1",
+        "owner-1",
+        leaseToken,
+        aggregateInput() as never
+      );
+    };
+
+    const first = await save({
+      selectedNegotiationRoundId: "round-a",
+      selectedOfflineRevisionId: null,
+      referencedGeneratedDocumentIds: ["document-a"]
+    });
+    const second = await save({
+      selectedNegotiationRoundId: "round-b",
+      selectedOfflineRevisionId: "offline-b",
+      referencedGeneratedDocumentIds: ["document-b"]
+    });
+
+    expect(first).toMatchObject({
+      documentContentRevision: 1,
+      documentsOutdated: false,
+      invalidation: { status: "unchanged" }
+    });
+    expect(second).toMatchObject({
+      documentContentRevision: 1,
+      documentsOutdated: false,
+      invalidation: { status: "unchanged" }
+    });
+    expect(first.documentContentFingerprint).toBe(
+      second.documentContentFingerprint
+    );
   });
 
   it("does not append a permanent audit log for an automatic save", async () => {
@@ -988,7 +1355,9 @@ describe("ContractDraftAggregateService.saveAggregate", () => {
         input as never
       )
     ).resolves.toMatchObject({
-      effectiveChangedSections: ["attachments"]
+      effectiveChangedSections: ["attachments"],
+      documentContentRevision: 2,
+      documentContentChangedSections: ["attachments"]
     });
     expect(tx.contractDraftAttachment.deleteMany).toHaveBeenCalledWith({
       where: { id: { in: ["attachment-a", "attachment-b"] } }
