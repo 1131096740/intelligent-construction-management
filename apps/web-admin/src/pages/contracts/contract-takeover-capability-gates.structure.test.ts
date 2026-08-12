@@ -42,7 +42,6 @@ describe("historical takeover project capability gates", () => {
     ["update_takeover", "updateContractTakeoverWithCapability"],
     ["abandon_takeover", "abandonContractTakeoverWithCapability"],
     ["submit_review", "submitContractTakeoverReviewWithCapability"],
-    ["confirm_takeover", "confirmContractTakeoverWithCapability"],
     ["return_for_supplement", "returnContractTakeoverForSupplementWithCapability"],
     ["confirm_change_baseline", "confirmContractTakeoverChangeBaselineWithCapability"],
     ["attach_contract_evidence", "attachContractTakeoverEvidenceFileWithCapability"],
@@ -73,6 +72,15 @@ describe("historical takeover project capability gates", () => {
     expect(page).toContain(`async function ${helper}(`);
     expect(page).toContain("capability.projectId === projectId");
     expect(page).toContain(`"${action}"`);
+  });
+
+  it("does not advertise or call the legacy whole-takeover confirmation", () => {
+    expect(api).not.toContain("export function confirmContractTakeover(");
+    expect(api).not.toContain("/contract-takeovers/${takeoverId}/confirmation");
+    expect(page).not.toContain("confirmContractTakeoverWithCapability");
+    expect(page).not.toContain('"confirm_takeover"');
+    expect(page).toContain("confirmContractTakeoverContractSideWithCapability");
+    expect(page).toContain("confirmContractTakeoverFinanceSideWithCapability");
   });
 
   it("rechecks exact private-file ACL before creating either download ticket", () => {

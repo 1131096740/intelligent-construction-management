@@ -10,7 +10,6 @@ import {
   companyEntityMatchOptionLabel,
   companyEntityMatchStatus,
   canConfirmHistoricalChangeBaseline,
-  canConfirmTakeover,
   canReturnTakeoverForSupplement,
   canEditTakeover,
   canSubmitTakeoverReview,
@@ -31,8 +30,6 @@ import {
   suggestTakeoverLevel,
   takeoverActionDisabledReason,
   takeoverBatchAbandonmentDisabledReason,
-  takeoverConfirmDisabledReason,
-  takeoverConfirmationEvidenceBlockReason,
   takeoverCorrectionDisabledReason,
   takeoverCorrectionRows,
   takeoverEvidenceDownloadDisabledReason,
@@ -533,31 +530,11 @@ describe("contract takeover page configuration", () => {
     expect(canSubmitTakeoverReview({ takeoverStatus: "pending_review" })).toBe(false);
     expect(canSubmitTakeoverReview({ takeoverStatus: "confirmed" })).toBe(false);
 
-    expect(canConfirmTakeover({ takeoverStatus: "pending_review" })).toBe(true);
-    expect(canConfirmTakeover({ takeoverStatus: "draft" })).toBe(false);
-    expect(canConfirmTakeover({ takeoverStatus: "confirmed" })).toBe(false);
-
     expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "pending_review" })).toBe(false);
     expect(canReturnTakeoverForSupplement({ takeoverStatus: "pending_review" })).toBe(true);
     expect(canReturnTakeoverForSupplement({ takeoverStatus: "draft" })).toBe(false);
-  });
-
-  it("blocks confirmation before the required historical evidence is complete", () => {
-    expect(takeoverConfirmationEvidenceBlockReason(takeover())).toBe(
-      "缺少必需接管资料：历史付款凭证。请先退回补充，补齐后重新提交复核。"
-    );
-    expect(
-      takeoverConfirmationEvidenceBlockReason({
-        ...takeover(),
-        evidenceChecklist: takeover().evidenceChecklist.map((item) => ({
-          ...item,
-          uploaded: true,
-          statusLabel: "已上传"
-        }))
-      })
-    ).toBe("");
   });
 
   it("keeps the initiator first and selectable as the default takeover owner", () => {
@@ -588,12 +565,6 @@ describe("contract takeover page configuration", () => {
     expect(takeoverActionDisabledReason(takeover(), "submit_review")).toBe(
       "已在复核中，无需重复提交"
     );
-    expect(
-      takeoverActionDisabledReason({ ...takeover(), takeoverStatus: "draft" }, "confirm")
-    ).toBe("请先补齐资料并提交复核后，再由主管确认");
-    expect(
-      takeoverActionDisabledReason({ ...takeover(), takeoverStatus: "confirmed" }, "confirm")
-    ).toBe("已完成主管确认，无需重复确认");
   });
 
   it("explains why takeover evidence upload is disabled", () => {
@@ -675,12 +646,6 @@ describe("contract takeover page configuration", () => {
         hasFiles: true
       })
     ).toBe("");
-  });
-
-  it("requires current password before confirming takeover", () => {
-    expect(takeoverConfirmDisabledReason("")).toBe("请填写当前登录密码后再确认接管");
-    expect(takeoverConfirmDisabledReason("   ")).toBe("请填写当前登录密码后再确认接管");
-    expect(takeoverConfirmDisabledReason("current-password")).toBe("");
   });
 
   it("explains when takeover correction records can be submitted", () => {

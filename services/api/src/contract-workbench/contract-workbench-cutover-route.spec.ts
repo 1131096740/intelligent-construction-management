@@ -6,10 +6,11 @@ import { ContractCutoverGuard } from "../contract-cutover/contract-cutover.guard
 import { ContractWorkbenchController } from "./contract-workbench.controller";
 import { ContractWorkbenchService } from "./contract-workbench.service";
 
-describe("合同工作台切换：旧 checkpoint 写入永久 tombstone", () => {
+describe("合同工作台切换：旧写入永久 tombstone", () => {
   let app: INestApplication | undefined;
   const previousMode = process.env.CONTRACT_CUTOVER_MODE;
-  const checkpointWrites = {
+  const workbenchWrites = {
+    saveDraft: jest.fn(),
     createCheckpoint: jest.fn(),
     restoreCheckpoint: jest.fn()
   };
@@ -17,7 +18,7 @@ describe("合同工作台切换：旧 checkpoint 写入永久 tombstone", () => 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [ContractWorkbenchController],
-      providers: [{ provide: ContractWorkbenchService, useValue: checkpointWrites }]
+      providers: [{ provide: ContractWorkbenchService, useValue: workbenchWrites }]
     }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalGuards(new ContractCutoverGuard(new Reflector()));
@@ -47,6 +48,10 @@ describe("合同工作台切换：旧 checkpoint 写入永久 tombstone", () => 
   });
 
   it.each([
+    ["release-a", "PATCH", "/contract-workbench/version-1"],
+    ["maintenance", "PATCH", "/contract-workbench/version-1"],
+    ["release-b-maintenance", "PATCH", "/contract-workbench/version-1"],
+    ["release-b", "PATCH", "/contract-workbench/version-1"],
     ["release-a", "POST", "/contract-workbench/version-1/checkpoints"],
     [
       "release-a",
@@ -76,7 +81,7 @@ describe("合同工作台切换：旧 checkpoint 写入永久 tombstone", () => 
       "/contract-workbench/version-1/checkpoints/checkpoint-1/restore"
     ]
   ])(
-    "在 %s 下旧 checkpoint 写入永久返回 410 且不调用业务写入（%s %s）",
+    "在 %s 下旧工作台写入永久返回 410 且不调用业务写入（%s %s）",
     async (mode, method, path) => {
       process.env.CONTRACT_CUTOVER_MODE = mode;
 
@@ -91,8 +96,9 @@ describe("合同工作台切换：旧 checkpoint 写入永久 tombstone", () => 
         statusCode: 410,
         code: "CONTRACT_WORKBENCH_CLIENT_UPGRADE_REQUIRED"
       });
-      expect(checkpointWrites.createCheckpoint).not.toHaveBeenCalled();
-      expect(checkpointWrites.restoreCheckpoint).not.toHaveBeenCalled();
+      expect(workbenchWrites.saveDraft).not.toHaveBeenCalled();
+      expect(workbenchWrites.createCheckpoint).not.toHaveBeenCalled();
+      expect(workbenchWrites.restoreCheckpoint).not.toHaveBeenCalled();
     }
   );
 });

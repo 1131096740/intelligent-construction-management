@@ -19,7 +19,8 @@ import {
   type BusinessAction
 } from "@jiangkong/shared-domain";
 import {
-  ContractCutoverSurface
+  ContractCutoverSurface,
+  ContractCutoverTombstoneWrite
 } from "../contract-cutover/contract-cutover.decorators";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -89,7 +90,6 @@ const CONTRACT_TAKEOVER_PROJECT_ACTION_RULES = [
   { key: "update_takeover", actions: ["contract.create"] },
   { key: "abandon_takeover", actions: ["contract.create"] },
   { key: "submit_review", actions: ["contract.submit"] },
-  { key: "confirm_takeover", actions: ["contract.archive.confirm"] },
   { key: "return_for_supplement", actions: ["contract.archive.confirm"] },
   { key: "confirm_change_baseline", actions: ["contract.archive.confirm"] },
   {
@@ -670,6 +670,7 @@ export class ContractTakeoverController {
   }
 
   @Post(":takeoverId/confirmation")
+  @ContractCutoverTombstoneWrite()
   @RequireProjectRole("contract.archive.confirm")
   confirm(
     @Param("projectId") projectId: string,

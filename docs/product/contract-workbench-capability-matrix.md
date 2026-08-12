@@ -7,21 +7,21 @@
 | 证据 | 状态 |
 | --- | --- |
 | Controller 源码路由 | 已扫描 197 条 |
-| Web API 请求 | 已扫描 158 条 |
+| Web API 请求 | 已扫描 157 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 452 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 62 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 63 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 105 |
+| matched | 104 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 30 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 62 |
+| exit_candidate | 63 |
 
 ## 不存在的页面 API wrapper
 
@@ -58,7 +58,7 @@
 | GET | `/contract-business-scenarios/recommendations` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/contract-document-differences/:param/disposition` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contract-documents/:param/retry` | retryContractDocument | apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue | matched | 保留 | 否 | — |
-| DELETE | `/contract-drafts/:param` | executeDeletePristineContractDraftAction | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
+| DELETE | `/contract-drafts/:param` | executeDeletePristineContractDraftAction | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | PUT | `/contract-drafts/:param` | saveContractDraftAggregate | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contract-drafts/:param/bills/:param/import-preview` | previewContractDraftBillExcelImport | apps/web-admin/src/pages/contracts/workbench/ContractBillFocusEditor.vue | matched | 保留 | 否 | — |
 | GET | `/contract-drafts/:param/bills/:param/template` | — |  | backend_without_frontend | 补入口 | 否 | — |
@@ -133,7 +133,7 @@
 | GET | `/contracts` | fetchContractLedger | apps/web-admin/src/pages/search/GlobalSearchPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts` | createWorkbenchDraft | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | GET | `/contracts/:param` | fetchContractDetail | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/abandonment` | executeAbandonContractDraftAction | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/abandonment` | executeAbandonContractDraftAction | apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval` | executeContractApprovalReviewAction | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval-delegation` | delegateContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/approval-reminder` | remindContractApproval | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
@@ -185,7 +185,7 @@
 | POST | `/projects/:param/contract-takeovers/:param/change-baseline-confirmation` | confirmContractTakeoverChangeBaseline | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/company-entity-corrections` | submitContractTakeoverCompanyEntityCorrection | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/company-entity-corrections/:param/review` | reviewContractTakeoverCompanyEntityCorrection | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
-| POST | `/projects/:param/contract-takeovers/:param/confirmation` | confirmContractTakeover | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
+| POST | `/projects/:param/contract-takeovers/:param/confirmation` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | PUT | `/projects/:param/contract-takeovers/:param/contract-side` | saveContractTakeoverContractSide | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/contract-side/confirmation` | confirmContractTakeoverContractSide | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |
 | POST | `/projects/:param/contract-takeovers/:param/contract-side/confirmation-withdrawal` | withdrawContractTakeoverContractSideConfirmation | apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue | matched | 保留 | 否 | — |

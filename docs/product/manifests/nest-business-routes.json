@@ -2937,8 +2937,8 @@
       "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": true,
-      "contractCutoverLegacyWrite": true,
-      "contractCutoverTombstoneWrite": false
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "PATCH",
@@ -6159,7 +6159,7 @@
       "authorizationCombination": null,
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
-      "contractCutoverTombstoneWrite": false
+      "contractCutoverTombstoneWrite": true
     },
     {
       "method": "POST",

@@ -947,10 +947,6 @@ export interface ContractTakeoverImportDraftReadModel {
   created: ContractTakeoverReadModel[];
 }
 
-export interface ConfirmContractTakeoverPayload {
-  confirmationPassword: string;
-}
-
 export interface ReturnContractTakeoverForSupplementPayload {
   reason: string;
 }
@@ -5273,7 +5269,6 @@ export type ContractTakeoverProjectAction =
   | "update_takeover"
   | "abandon_takeover"
   | "submit_review"
-  | "confirm_takeover"
   | "return_for_supplement"
   | "confirm_change_baseline"
   | "attach_contract_evidence"
@@ -5694,17 +5689,6 @@ export function returnContractTakeoverForSupplement(
 ) {
   return postJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/supplement-return`,
-    body
-  );
-}
-
-export function confirmContractTakeover(
-  projectId: string,
-  takeoverId: string,
-  body: ConfirmContractTakeoverPayload
-) {
-  return postJson<ContractTakeoverReadModel>(
-    `/projects/${projectId}/contract-takeovers/${takeoverId}/confirmation`,
     body
   );
 }

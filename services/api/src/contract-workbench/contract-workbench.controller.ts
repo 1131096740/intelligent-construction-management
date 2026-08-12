@@ -20,7 +20,6 @@ import type {
   VoidDraftDto
 } from "./dto/contract-workbench.dto";
 import {
-  ContractCutoverLegacyWrite,
   ContractCutoverSurface,
   ContractCutoverTombstoneWrite
 } from "../contract-cutover/contract-cutover.decorators";
@@ -45,7 +44,7 @@ export class ContractWorkbenchController {
   }
 
   @Patch(":contractVersionId")
-  @ContractCutoverLegacyWrite()
+  @ContractCutoverTombstoneWrite()
   save(
     @Param("contractVersionId") contractVersionId: string,
     @CurrentUser() user: AuthenticatedUser,

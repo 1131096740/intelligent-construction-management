@@ -1,15 +1,15 @@
 # 整站能力矩阵
 
-状态：`ready`。本表仅交叉核验四份实施清单，不构成删除或生产写入授权。
+状态：`blocked`。本表仅交叉核验四份实施清单，不构成删除或生产写入授权。
 
 ## 输入证据
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `995c496361ba0076d7a87da504d7ce7f1a4e3ce7290e461d5b31f99cb09239ac` |
-| webApiWrappers | ready | `a856cf30ae4ae8a221449116547865e1984a1c40c1e63a2e9f820662c6a40fde` |
-| webPageActions | ready | `5afdfa9e95d5b1f64dfc84f5bb0ca7f619c0258a286d40dcce7c54fa8e691158` |
-| routeUsage | ready | `754be11cc6f62ca3c9c12462eb87b8e196594574f4884488b27f81a5d720cadf` |
+| nestRoutes | ready | `95ef1cd0027ac78ba194786d2a2c2d5dd9be5ed54025529ddd29fdb446d086bc` |
+| webApiWrappers | ready | `258f4620659424f44d53455b50c0132340f1b2ed9c6dfa6094394f18173d20cb` |
+| webPageActions | blocked | `d823f39c60f6cdea04f26265ad396df1e3ee0a632b516317a8b733486f0f0053` |
+| routeUsage | ready | `58b4e5af55c0b315d67891ea1afcada48ae812f2b1cac445aa583a08f000944a` |
 
 ## 汇总
 
@@ -17,23 +17,23 @@
 | --- | ---: |
 | routeCount | 452 |
 | pageRouteCount | 280 |
-| externalTakeoverRouteCount | 61 |
-| exitCandidateRouteCount | 108 |
+| externalTakeoverRouteCount | 60 |
+| exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 462 |
+| mainRequestBindingCount | 461 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 238 |
-| actionBindingCount | 269 |
-| acceptedActionBindingCount | 249 |
-| unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 229 |
-| coveredProductionMutationConsumerPairCount | 229 |
-| uncoveredProductionMutationConsumerPairCount | 0 |
-| blockerCount | 0 |
+| registeredActionCount | 237 |
+| actionBindingCount | 268 |
+| acceptedActionBindingCount | 244 |
+| unresolvedActionBindingCount | 6 |
+| productionMutationConsumerPairCount | 228 |
+| coveredProductionMutationConsumerPairCount | 225 |
+| uncoveredProductionMutationConsumerPairCount | 3 |
+| blockerCount | 10 |
 
 ## 路由矩阵
 
@@ -41,7 +41,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | DELETE | /approval-delegations/:delegationId | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#revokeApprovalDelegation | — | not_applicable | — |
 | DELETE | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#deleteBillRow | — | not_applicable | — |
-| DELETE | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction | contract-draft.delete-pristine | covered | — |
+| DELETE | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#deletePristineContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction | contract-draft.delete-pristine | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | DELETE | /contract-drafts/:contractVersionId/edit-lease | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#releaseContractDraftEditLease | contract-draft.lease-release | covered | — |
 | DELETE | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardContractBillTransitions | contract-bill-transition.discard | covered | — |
 | DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
@@ -61,7 +61,7 @@
 | GET | /contract-business-scenarios | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#listContractScenarioGovernance | — | not_applicable | — |
 | GET | /contract-business-scenarios/recommendations | page | web_api_wrapper | apps/web-admin/src/api/contract-scenario.api.ts#recommendContractScenarioTemplates | — | not_applicable | — |
 | GET | /contract-drafts/:contractVersionId/bills/:billKey/template | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#downloadContractDraftBillExcelTemplate | — | not_applicable | — |
-| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | — |
+| GET | /contract-drafts/:contractVersionId/workbench | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#executeContractBillRemainderCancellation<br>apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftOperationCapabilities<br>apps/web-admin/src/api/contract-workbench.api.ts#fetchContractDraftWorkbench | contract-bill.remainder-cancellation<br>contract-draft.abandon-application<br>contract-draft.delete-pristine | not_applicable | ACTION_BINDING_UNRESOLVED |
 | GET | /contract-ended-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/contract-ended-retention.api.ts#fetchContractEndedApplicationRetentionPreview | — | not_applicable | — |
 | GET | /contract-layout-template-versions/:versionId/preview-generation | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#getLatestLayoutTemplatePreview | — | not_applicable | — |
 | GET | /contract-layout-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getLayoutTemplate | — | not_applicable | — |
@@ -259,7 +259,7 @@
 | POST | /contract-workbench/:contractVersionId/type-change-preview | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#previewContractTypeChange | contract-workbench.preview-type-change | covered | — |
 | POST | /contract-workbench/:contractVersionId/type-change | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#applyContractTypeChange | contract-workbench.apply-type-change | covered | — |
 | POST | /contract-workbench/:contractId/void | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#voidContractDraft | — | not_applicable | — |
-| POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction | contract-draft.abandon-application | covered | — |
+| POST | /contracts/:contractVersionId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#abandonContractDraft<br>apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction | contract-draft.abandon-application | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateContractApproval | contract-approval.delegate | covered | — |
 | POST | /contracts/:contractVersionId/approval-reminder | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#remindContractApproval | contract-approval.remind | covered | — |
 | POST | /contracts/:contractVersionId/approval-submission | exit_candidate | none | — | — | not_applicable | — |
@@ -275,7 +275,7 @@
 | POST | /contracts/:contractVersionId/formal-files/counterparty/confirmation | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#confirmCounterpartySignedFile | contract-counterparty-signed.confirm | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#uploadCounterpartySignedFiles | contract-counterparty-signed.submit-files | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final/confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmMutuallySignedContract | contract-final.confirm | covered | — |
-| POST | /contracts/:contractVersionId/formal-files/final | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract | contract-final.associate | covered | — |
+| POST | /contracts/:contractVersionId/formal-files/final | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract | contract-final.associate | uncovered | ACTION_BINDING_UNRESOLVED<br>MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/formal-files/final/return | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnMutuallySignedContractForCorrection | contract-final.return | covered | — |
 | POST | /contracts/:contractVersionId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generateContractPdfArchive | contract-archive.generate-pdf | covered | — |
 | POST | /contracts/:contractVersionId/readiness | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness | contract-workbench.check-submission-readiness | covered | — |
@@ -305,7 +305,7 @@
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>contract-document.download-ticket<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file | covered | — |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | contract-archive.upload-file<br>contract-final.upload-file | covered | ACTION_BINDING_UNRESOLVED |
 | POST | /invoice-allocations/:allocationId/reversal | exit_candidate | none | — | — | not_applicable | — |
 | POST | /me/signature/canvas-handoffs/:token/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeCanvasSignatureHandoff | signature.complete-canvas-handoff | covered | — |
 | POST | /me/signature/canvas-handoffs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createCanvasSignatureHandoff | signature.create-canvas-handoff | covered | — |
@@ -350,7 +350,7 @@
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverChangeBaseline | contract-takeover.confirm-change-baseline | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection | contract-takeover.review-company-entity-correction | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverCompanyEntityCorrection | contract-takeover.submit-company-entity-correction | covered | — |
-| POST | /projects/:projectId/contract-takeovers/:takeoverId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeover | contract-takeover.confirm | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/confirmation | exit_candidate | none | — | — | not_applicable | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation-withdrawal | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverContractSideConfirmation | contract-takeover.withdraw-contract-side-confirmation | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/contract-side/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverContractSide | contract-takeover.confirm-contract-side | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCorrection | contract-takeover.review-correction | covered | — |
@@ -508,8 +508,15 @@
 
 ### 未覆盖写入消费者
 
-- 无
+- apps/web-admin/src/api/contract-workbench.api.ts#executeAbandonContractDraftAction → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
+- apps/web-admin/src/api/contract-workbench.api.ts#executeDeletePristineContractDraftAction → apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts
+- apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract → apps/web-admin/src/pages/contracts/ContractDetailPage.vue
 
 ### 未解决动作绑定
 
-- 无
+- contract-draft.abandon-application#0 — causal_unverified, no_accepted_consumer
+- contract-draft.abandon-application#1 — causal_unverified, no_accepted_consumer
+- contract-draft.delete-pristine#0 — causal_unverified, no_accepted_consumer
+- contract-draft.delete-pristine#1 — causal_unverified, no_accepted_consumer
+- contract-final.associate#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger
+- contract-final.upload-file#0 — causal_unverified, no_accepted_consumer, capability_not_server_derived, capability_not_dominating_trigger

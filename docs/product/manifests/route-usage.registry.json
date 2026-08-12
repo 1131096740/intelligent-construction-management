@@ -6,22 +6,22 @@
     "routeCount": 452,
     "classificationOverrideCount": 173,
     "derivedProductionPageCount": 279,
-    "classificationOverrideSha256": "3acd4ec0b16634bfe9fee7a9858033cb789193236e84382f89193b02f685cf6d",
+    "classificationOverrideSha256": "23dd7054af6cef3f8bdf8f43b03a3f8c391f235fd44e4e86127c7057127369be",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
       "page": 280,
-      "external_takeover": 61,
-      "exit_candidate": 108,
+      "external_takeover": 60,
+      "exit_candidate": 109,
       "internal_task": 3,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 329,
+      "web_api_wrapper": 328,
       "auth_store": 5,
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 114
+      "none": 115
     }
   },
   "overrides": [
@@ -712,8 +712,8 @@
     {
       "method": "POST",
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
-      "usage": "external_takeover",
-      "reason": "historical_contract_takeover_external_workbench"
+      "usage": "exit_candidate",
+      "reason": "issue_60_old_takeover_confirmation_tombstone_candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

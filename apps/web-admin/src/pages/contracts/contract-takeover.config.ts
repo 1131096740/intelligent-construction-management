@@ -214,7 +214,7 @@ export interface TakeoverLevelSuggestion {
   reason: string;
 }
 
-export type TakeoverAction = "edit" | "submit_review" | "confirm";
+export type TakeoverAction = "edit" | "submit_review";
 
 export interface ImportPrecheckMessageInput {
   readyRows: number;
@@ -569,24 +569,10 @@ export function canSubmitTakeoverReview(takeover: Pick<ContractTakeoverReadModel
   return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
 }
 
-export function canConfirmTakeover(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
-  return takeover.takeoverStatus === "pending_review";
-}
-
 export function canReturnTakeoverForSupplement(
   takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">
 ) {
   return takeover.takeoverStatus === "pending_review";
-}
-
-export function takeoverConfirmationEvidenceBlockReason(
-  takeover: Pick<ContractTakeoverReadModel, "evidenceChecklist">
-): string {
-  const missingEvidenceLabels = takeover.evidenceChecklist
-    .filter((item) => item.required && !item.uploaded)
-    .map((item) => item.purposeLabel);
-  if (!missingEvidenceLabels.length) return "";
-  return `缺少必需接管资料：${missingEvidenceLabels.join("、")}。请先退回补充，补齐后重新提交复核。`;
 }
 
 export function takeoverResponsibleUserOptions(
@@ -688,15 +674,6 @@ export function takeoverActionDisabledReason(
     if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，无需再提交复核";
     if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能提交复核";
   }
-  if (action === "confirm") {
-    if (canConfirmTakeover(takeover)) return "";
-    if (takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement") {
-      return "请先补齐资料并提交复核后，再由主管确认";
-    }
-    if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，无需重复确认";
-    if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能确认接管";
-  }
-
   return "当前状态不能办理该动作";
 }
 
@@ -747,11 +724,6 @@ export function takeoverEvidenceDownloadDisabledReason(
   if (!draft.availableFileIds.includes(draft.fileId)) return "所选接管资料暂不可下载，请重新选择";
   if (!draft.password.trim()) return "请填写当前登录密码后再下载资料";
   if (!draft.downloadReason.trim()) return "请填写下载原因后再下载资料";
-  return "";
-}
-
-export function takeoverConfirmDisabledReason(password: string): string {
-  if (!password.trim()) return "请填写当前登录密码后再确认接管";
   return "";
 }
 
