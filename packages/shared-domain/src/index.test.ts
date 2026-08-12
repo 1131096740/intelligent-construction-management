@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   contractInvoiceTypeLabel,
   isContractBillCustomColumn,
-  normalizeTaxRatePercent
+  normalizeTaxRatePercent,
+  OPERATING_FACT_KINDS,
+  PRIMARY_COST_CATEGORY_CODES
 } from "./index";
 
 describe("shared-domain public entry", () => {
@@ -10,5 +12,10 @@ describe("shared-domain public entry", () => {
     expect(normalizeTaxRatePercent("13.00")).toBe("13");
     expect(contractInvoiceTypeLabel("vat_special")).toBe("增值税专用发票");
     expect(isContractBillCustomColumn("brand")).toBe(true);
+  });
+
+  it("exports project operating contracts from the public package entry", () => {
+    expect(OPERATING_FACT_KINDS).toContain("owner_payment");
+    expect(PRIMARY_COST_CATEGORY_CODES).toHaveLength(8);
   });
 });
