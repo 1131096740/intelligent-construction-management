@@ -6,7 +6,7 @@ parallel. The stable `Release gates` summary succeeds only when every branch
 passes. This remote check complements the operator Mac's exact-SHA
 `pnpm release:local` receipt; it does not replace the production release gate.
 
-deploy-production.yml is the only GitHub-hosted workflow. It can only be
+`deploy-production.yml` is the only production deployment workflow. It can only be
 started manually after pnpm deploy:local has validated a clean, exact
 origin/main checkout and a complete local release receipt. The runner does
 not install project dependencies, run tests, install browsers, or build the
