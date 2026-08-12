@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "authorizationScope": "cross_manifest_release_evidence_only",
     "deletionAuthorized": false,
@@ -42,8 +42,8 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "d823f39c60f6cdea04f26265ad396df1e3ee0a632b516317a8b733486f0f0053",
-      "status": "blocked",
+      "sha256": "b7cd7db0e674efa7448c5a228c028fa5b60a11b11c9a1376f285350788260a6c",
+      "status": "ready",
       "summary": {
         "registeredActionCount": 237,
         "pageActionCount": 46,
@@ -55,11 +55,11 @@
         "reachableProductionModuleCount": 225,
         "templateEventDirectiveCount": 832,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 225,
+        "coveredProductionMutationConsumerCount": 228,
         "candidateProductionMutationConsumerCount": 228,
-        "acceptedProductionMutationConsumerCount": 225,
+        "acceptedProductionMutationConsumerCount": 228,
         "productionMutationConsumerPairCount": 228,
-        "blockerCount": 9
+        "blockerCount": 0
       }
     },
     "routeUsage": {
@@ -106,129 +106,22 @@
     "duplicateMutationRouteCount": 0,
     "registeredActionCount": 237,
     "actionBindingCount": 268,
-    "acceptedActionBindingCount": 244,
-    "unresolvedActionBindingCount": 6,
+    "acceptedActionBindingCount": 248,
+    "unresolvedActionBindingCount": 0,
     "productionMutationConsumerPairCount": 228,
-    "coveredProductionMutationConsumerPairCount": 225,
-    "uncoveredProductionMutationConsumerPairCount": 3,
-    "blockerCount": 10
+    "coveredProductionMutationConsumerPairCount": 228,
+    "uncoveredProductionMutationConsumerPairCount": 0,
+    "blockerCount": 0
   },
   "blockers": {
-    "upstreamManifestIssues": [
-      {
-        "input": "web_page_actions",
-        "status": "blocked"
-      }
-    ],
+    "upstreamManifestIssues": [],
     "webRequestsWithoutNest": [],
     "authRequestsWithoutNest": [],
     "orphanWrappers": [],
     "duplicateMutationRoutes": [],
     "unclassifiedRoutes": [],
-    "uncoveredMutationConsumers": [
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeAbandonContractDraftAction",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "POST /contracts/:param/abandonment"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeDeletePristineContractDraftAction",
-        "consumer": "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts",
-        "normalizedKeys": [
-          "DELETE /contract-drafts/:param"
-        ]
-      },
-      {
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadMutuallySignedContract",
-        "consumer": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-        "normalizedKeys": [
-          "POST /contracts/:param/formal-files/final"
-        ]
-      }
-    ],
-    "unresolvedActions": [
-      {
-        "actionId": "contract-draft.abandon-application",
-        "bindingIndex": 0,
-        "identity": "contract-draft.abandon-application\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeAbandonContractDraftAction\u0000GET\u0000GET /contract-drafts/:param/workbench\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeAbandonContractDraftAction",
-        "normalizedKey": "GET /contract-drafts/:param/workbench",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer"
-        ]
-      },
-      {
-        "actionId": "contract-draft.abandon-application",
-        "bindingIndex": 1,
-        "identity": "contract-draft.abandon-application\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeAbandonContractDraftAction\u0000POST\u0000POST /contracts/:param/abandonment\u00001",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeAbandonContractDraftAction",
-        "normalizedKey": "POST /contracts/:param/abandonment",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer"
-        ]
-      },
-      {
-        "actionId": "contract-draft.delete-pristine",
-        "bindingIndex": 0,
-        "identity": "contract-draft.delete-pristine\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeDeletePristineContractDraftAction\u0000DELETE\u0000DELETE /contract-drafts/:param\u00000",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeDeletePristineContractDraftAction",
-        "normalizedKey": "DELETE /contract-drafts/:param",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer"
-        ]
-      },
-      {
-        "actionId": "contract-draft.delete-pristine",
-        "bindingIndex": 1,
-        "identity": "contract-draft.delete-pristine\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000executeDeletePristineContractDraftAction\u0000GET\u0000GET /contract-drafts/:param/workbench\u00001",
-        "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-        "wrapper": "executeDeletePristineContractDraftAction",
-        "normalizedKey": "GET /contract-drafts/:param/workbench",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer"
-        ]
-      },
-      {
-        "actionId": "contract-final.associate",
-        "bindingIndex": 0,
-        "identity": "contract-final.associate\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadMutuallySignedContract\u0000POST\u0000POST /contracts/:param/formal-files/final\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadMutuallySignedContract",
-        "normalizedKey": "POST /contracts/:param/formal-files/final",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      },
-      {
-        "actionId": "contract-final.upload-file",
-        "bindingIndex": 0,
-        "identity": "contract-final.upload-file\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadPrivateFile\u0000POST\u0000POST /files\u00000",
-        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-        "wrapper": "uploadPrivateFile",
-        "normalizedKey": "POST /files",
-        "reasonCodes": [
-          "causal_unverified",
-          "no_accepted_consumer",
-          "capability_not_server_derived",
-          "capability_not_dominating_trigger"
-        ]
-      }
-    ]
+    "uncoveredMutationConsumers": [],
+    "unresolvedActions": []
   },
   "routes": [
     {
@@ -382,20 +275,16 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -1434,13 +1323,12 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer"
-          ]
+          "blockerCodes": []
         },
         {
           "actionId": "contract-draft.delete-pristine",
@@ -1461,19 +1349,16 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
           "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer"
-          ]
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "not_applicable",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
@@ -11627,20 +11512,16 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -12649,30 +12530,24 @@
             "kind": "available_action_string",
             "source": "capability.availableActionKeys",
             "key": "upload_final_contract",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "uploadMutuallySignedContract",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
-      "mutationCoverage": "uncovered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED",
-        "MUTATION_CONSUMER_UNCOVERED"
-      ]
+      "mutationCoverage": "covered",
+      "blockerCodes": []
     },
     {
       "route": {
@@ -14911,29 +14786,24 @@
             "kind": "available_action_string",
             "source": "capability.availableActionKeys",
             "key": "upload_final_contract",
-            "serverDerived": false,
-            "dominatesTrigger": false
+            "serverDerived": true,
+            "dominatesTrigger": true
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "uploadPrivateFile",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
           ],
-          "acceptedProductionConsumers": [],
-          "causalVerified": false,
-          "accepted": false,
-          "blockerCodes": [
-            "causal_unverified",
-            "no_accepted_consumer",
-            "capability_not_server_derived",
-            "capability_not_dominating_trigger"
-          ]
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
         }
       ],
       "mutationCoverage": "covered",
-      "blockerCodes": [
-        "ACTION_BINDING_UNRESOLVED"
-      ]
+      "blockerCodes": []
     },
     {
       "route": {
