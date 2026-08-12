@@ -38,6 +38,13 @@
 - [x] Issue #49（本地收据绑定的低分钟手动生产部署）已由 PR #52 合并至 main（merge SHA `a131188418b6913041f02ad1658d3bb28c173f58`）：`pnpm deploy:local` 会校验完整本地收据、精确 HEAD、干净工作树与当前 `origin/main` 后才手动请求 deploy-only workflow；`pnpm deploy:mac-direct` 保留为显式授权备用入口。workflow 仅 `workflow_dispatch`、串行排队且不取消在途发布；服务器端构建、备份、迁移、健康检查、确认与恢复链保持不变。该记录仅说明源码和命令契约已合并，不声明已执行真实 GitHub workflow、SSH 或生产部署。
 - [ ] 文档收敛 PR 合并后，复核最终 worktree/分支拓扑并归档旧 Codex 会话。
 
+### P0：项目经营总账、施工企业经营与历史接管
+
+- [x] 业务规则已完成连续澄清并冻结为正式规格：[`docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md`](docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md)。规格明确项目合并经营账与多公司主体分账、施工企业资金位置、三层经营口径、成本与付款分离、历史接管、统一业务录入、中文业务语言硬门、测试业务归零和直接真实使用边界。
+- [x] 已在精确 `origin/main@202a1e12b70d34d6e486ff1680220ff2b6a2a10c` 上完成只读差距审计：[`docs/progress/2026-08-12-project-operating-ledger-latest-main-gap-audit.md`](docs/progress/2026-08-12-project-operating-ledger-latest-main-gap-audit.md)。审计确认当前主线具备部分可复用基础，但尚无来源唯一经营总账、统一主体分账与资金/利润/对账模型，不能据此宣称该范围已具备上线条件。
+- [x] 实施架构、替换边界、迁移顺序、自动化硬门和候选任务已拆分：[`docs/specs/2026-08-12-project-operating-ledger-implementation-plan-and-task-breakdown.md`](docs/specs/2026-08-12-project-operating-ledger-implementation-plan-and-task-breakdown.md)。候选清单为 1 个父任务、POL-01 至 POL-26 共 26 个子任务；POL-19 另含 5 个有界页面迁移子任务。当前编号仅为文档候选，不代表 GitHub Issue 已创建。
+- [ ] 待本组文档取得可引用 Git SHA 后，按单独授权创建 GitHub 父任务与具有阻塞关系的子任务；在该授权前不创建或修改 Issue，不开始业务代码、Schema、迁移、测试业务归零、部署或生产操作。
+
 ### P0：已删除草稿生命周期
 
 #### Contract Architecture V3 父票 #53：文档验收收口

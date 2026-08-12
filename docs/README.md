@@ -10,6 +10,12 @@
 4. `prd.md`：冻结的实施包 1–5 与上线范围基线。
 5. `docs/progress/2026-08-05-go-live-conditional-go.md`：当前最新发布与残余风险收据。
 
+## 当前规格索引
+
+- 项目经营总账、施工企业经营、历史接管、多公司主体分账、统一业务录入及正式启用规则，以 [`项目经营总账、施工企业经营接管与统一业务录入正式规格`](specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md) 为准。
+- 最新主线源码差距证据见 [`项目经营总账最新主线只读差距审计`](progress/2026-08-12-project-operating-ledger-latest-main-gap-audit.md)；模块、迁移、上线硬门和候选任务依赖见 [`项目经营总账实施方案与候选任务拆分`](specs/2026-08-12-project-operating-ledger-implementation-plan-and-task-breakdown.md)。
+- 合同工作台实施包 1–5 和既有上线范围仍以根目录 `prd.md` 为准；两份规格冲突时，只在前述新增领域范围内由新规格取代旧规则。
+
 ## 目录职责
 
 | 路径 | 分类 | 是否持续维护 | 用途 |
