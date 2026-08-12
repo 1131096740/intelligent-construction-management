@@ -284,10 +284,10 @@ type ContractTakeoverRecord = {
   submittedAt: Date | null;
   confirmedAt: Date | null;
   historicalBalanceConfirmedAt: Date | null;
-  activationIdempotencyKey?: string | null;
-  activatedAt?: Date | null;
-  activatedByUserId?: string | null;
-  historicalInitialSettlementId?: string | null;
+  activationIdempotencyKey: string | null;
+  activatedAt: Date | null;
+  activatedByUserId: string | null;
+  historicalInitialSettlementId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -331,6 +331,8 @@ type ContractTakeoverHistoricalPaymentRow = {
   id: string;
   takeoverId: string;
   rowKey: string;
+  sequenceNo: number;
+  amountCents: bigint;
   status: string;
 };
 
@@ -338,6 +340,44 @@ type ContractTakeoverHistoricalPaymentVoucherRow = {
   id: string;
   historicalPaymentId: string;
   fileId: string;
+  displayOrder: number;
+};
+
+type ContractTakeoverActivationContractRow = {
+  id: string;
+  contractTypeKey: string | null;
+  companyEntityId: string | null;
+  companyEntityName: string | null;
+  companyEntityIsActive: boolean | null;
+  companyEntityDataStatus: string | null;
+  companyEntityVersionId: string | null;
+  companyEntityVersionName: string | null;
+  companyEntityCreditCode: string | null;
+  companyEntityRegisteredAddress: string | null;
+};
+
+type ContractTakeoverActivationVersionRow = {
+  id: string;
+  amountCents: bigint;
+  amountLimitType: string;
+  pricingNature: string;
+  status: string;
+};
+
+type ContractTakeoverActivationTermsRow = {
+  id: string;
+  status: string;
+};
+
+type LockedTakeoverConfirmationAggregate = {
+  takeover: ContractTakeoverRecord;
+  contractFacts: ContractTakeoverContractFactsRow;
+  financeFacts: ContractTakeoverFinanceFactsRow | null;
+  payments: ContractTakeoverHistoricalPaymentRow[];
+  vouchers: ContractTakeoverHistoricalPaymentVoucherRow[];
+  contract: ContractTakeoverActivationContractRow;
+  contractVersion: ContractTakeoverActivationVersionRow;
+  paymentTermsVersion: ContractTakeoverActivationTermsRow;
 };
 
 type ContractTakeoverHistoricalPaymentReadRow = {
@@ -1824,9 +1864,7 @@ export class ContractTakeoverService {
 
         const activation = await this.tryActivateInTransaction(
           tx,
-          aggregate.takeover,
-          aggregate.contractFacts,
-          aggregate.financeFacts,
+          aggregate,
           actorUserId,
           idempotencyKey
         );
@@ -1883,10 +1921,7 @@ export class ContractTakeoverService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2034"
-      ) {
+      if (this.isSerializationConflict(error)) {
         throw new ConflictException(
           "部门确认与其他操作并发冲突，请刷新后重试"
         );
@@ -2051,10 +2086,7 @@ export class ContractTakeoverService {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2034"
-      ) {
+      if (this.isSerializationConflict(error)) {
         throw new ConflictException(
           "确认撤回与其他操作并发冲突，请刷新后重试"
         );
@@ -3005,18 +3037,14 @@ export class ContractTakeoverService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-      const [located] = await tx.$queryRaw<Array<{
-        contractId: string;
-        contractVersionId: string;
-      }>>(Prisma.sql`
-        SELECT "contractId", "contractVersionId"
-        FROM "ContractTakeover"
-        WHERE "id" = ${takeoverId} AND "projectId" = ${projectId}
-      `);
-      if (!located) throw new BadRequestException("未找到历史合同接管记录");
+      const takeover = await this.lockProjectTakeover(
+        tx,
+        projectId,
+        takeoverId
+      );
 
       const contractLocks = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT "id" FROM "Contract" WHERE "id" = ${located.contractId} FOR UPDATE
+        SELECT "id" FROM "Contract" WHERE "id" = ${takeover.contractId} FOR UPDATE
       `);
       if (contractLocks.length !== 1) throw new BadRequestException("历史合同不存在或已失效");
       const [root] = await tx.$queryRaw<Array<{
@@ -3033,16 +3061,7 @@ export class ContractTakeoverService {
                "pricingNature", "amountLimitType",
                "originalBaseAmountCents"
         FROM "ContractVersion"
-        WHERE "id" = ${located.contractVersionId}
-        FOR UPDATE
-      `);
-      const [takeover] = await tx.$queryRaw<Array<{
-        id: string;
-        takeoverStatus: string;
-      }>>(Prisma.sql`
-        SELECT "id", "takeoverStatus"
-        FROM "ContractTakeover"
-        WHERE "id" = ${takeoverId} AND "projectId" = ${projectId}
+        WHERE "id" = ${takeover.contractVersionId}
         FOR UPDATE
       `);
       const directorRows = await tx.$queryRaw<Array<{ userId: string }>>(Prisma.sql`
@@ -3059,7 +3078,7 @@ export class ContractTakeoverService {
       if (directorRows.length !== 1) {
         throw new ForbiddenException("只有公司级合同部主管可以确认历史变更基线");
       }
-      if (!root || !takeover || root.baseVersionId !== null ||
+      if (!root || root.baseVersionId !== null ||
           root.changeType !== "historical_takeover" ||
           takeover.takeoverStatus !== "confirmed" ||
           (root.status !== "effective" && root.status !== "superseded") ||
@@ -3091,7 +3110,7 @@ export class ContractTakeoverService {
         businessId: takeover.id,
         metadata: {
           projectId,
-          contractId: located.contractId,
+          contractId: takeover.contractId,
           contractVersionId: root.id,
           originalBaseAmountCents: originalBaseAmountCents.toString(),
           preTakeoverPositiveIncreaseCents: cumulativeIncreaseCents.toString()
@@ -3107,7 +3126,7 @@ export class ContractTakeoverService {
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (this.isSerializationConflict(error)) {
-        throw new BadRequestException("历史变更基线正在被更新，请刷新后重试");
+        throw new ConflictException("历史变更基线正在被更新，请刷新后重试");
       }
       throw error;
     }
@@ -5066,7 +5085,7 @@ export class ContractTakeoverService {
     tx: Prisma.TransactionClient,
     projectId: string,
     takeoverId: string
-  ) {
+  ): Promise<LockedTakeoverConfirmationAggregate> {
     const takeover = await this.lockProjectTakeover(tx, projectId, takeoverId);
     const [contractFacts] =
       await tx.$queryRaw<ContractTakeoverContractFactsRow[]>(Prisma.sql`
@@ -5085,38 +5104,56 @@ export class ContractTakeoverService {
         WHERE "takeoverId" = ${takeover.id}
         FOR UPDATE
       `);
-    await tx.$queryRaw<ContractTakeoverHistoricalPaymentRow[]>(Prisma.sql`
+    const payments =
+      await tx.$queryRaw<ContractTakeoverHistoricalPaymentRow[]>(Prisma.sql`
       SELECT *
       FROM "ContractTakeoverHistoricalPayment"
       WHERE "takeoverId" = ${takeover.id}
-      ORDER BY "id"
+      ORDER BY "sequenceNo", "id"
       FOR UPDATE
     `);
-    await tx.$queryRaw<ContractTakeoverHistoricalPaymentVoucherRow[]>(Prisma.sql`
+    const vouchers =
+      await tx.$queryRaw<ContractTakeoverHistoricalPaymentVoucherRow[]>(Prisma.sql`
       SELECT voucher.*
       FROM "ContractTakeoverHistoricalPaymentVoucher" voucher
       JOIN "ContractTakeoverHistoricalPayment" payment
         ON payment."id" = voucher."historicalPaymentId"
       WHERE payment."takeoverId" = ${takeover.id}
-      ORDER BY voucher."fileId"
+      ORDER BY payment."sequenceNo", voucher."displayOrder", voucher."id"
       FOR UPDATE OF voucher
     `);
-    const [contract] = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT "id"
-      FROM "Contract"
-      WHERE "id" = ${takeover.contractId}
-      FOR UPDATE
-    `);
+    const [contract] =
+      await tx.$queryRaw<ContractTakeoverActivationContractRow[]>(Prisma.sql`
+        SELECT
+          contract."id",
+          contract."contractTypeKey",
+          contract."companyEntityId",
+          contract."companyEntityName",
+          entity."isActive" AS "companyEntityIsActive",
+          entity."dataStatus" AS "companyEntityDataStatus",
+          entity_version."id" AS "companyEntityVersionId",
+          entity_version."name" AS "companyEntityVersionName",
+          entity_version."unifiedSocialCreditCode" AS "companyEntityCreditCode",
+          entity_version."registeredAddress" AS "companyEntityRegisteredAddress"
+        FROM "Contract" contract
+        LEFT JOIN "CompanyEntity" entity
+          ON entity."id" = contract."companyEntityId"
+        LEFT JOIN "CompanyEntityVersion" entity_version
+          ON entity_version."companyEntityId" = entity."id"
+         AND entity_version."versionNo" = entity."currentVersionNo"
+        WHERE contract."id" = ${takeover.contractId}
+        FOR UPDATE OF contract
+      `);
     const [contractVersion] =
-      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT "id"
+      await tx.$queryRaw<ContractTakeoverActivationVersionRow[]>(Prisma.sql`
+        SELECT "id", "amountCents", "amountLimitType", "pricingNature", "status"
         FROM "ContractVersion"
         WHERE "id" = ${takeover.contractVersionId}
         FOR UPDATE
       `);
     const [paymentTermsVersion] =
-      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT "id"
+      await tx.$queryRaw<ContractTakeoverActivationTermsRow[]>(Prisma.sql`
+        SELECT "id", "status"
         FROM "PaymentTermsVersion"
         WHERE "id" = ${takeover.paymentTermsVersionId}
         FOR UPDATE
@@ -5129,15 +5166,18 @@ export class ContractTakeoverService {
     return {
       takeover,
       contractFacts,
-      financeFacts: financeFacts ?? null
+      financeFacts: financeFacts ?? null,
+      payments,
+      vouchers,
+      contract,
+      contractVersion,
+      paymentTermsVersion
     };
   }
 
   private async tryActivateInTransaction(
     tx: Prisma.TransactionClient,
-    takeover: ContractTakeoverRecord,
-    contractFacts: ContractTakeoverContractFactsRow,
-    financeFacts: ContractTakeoverFinanceFactsRow | null,
+    aggregate: LockedTakeoverConfirmationAggregate,
     actorUserId: string,
     idempotencyKey: string
   ): Promise<{
@@ -5147,6 +5187,7 @@ export class ContractTakeoverService {
       | "awaiting_finance_confirmation"
       | "activated";
   }> {
+    const { contractFacts, financeFacts } = aggregate;
     if (contractFacts.confirmedRevision !== contractFacts.revision) {
       return {
         activated: false,
@@ -5175,9 +5216,9 @@ export class ContractTakeoverService {
         "双部门确认已齐备，但历史接管激活协调服务尚未就绪"
       );
     }
-    return this.activation.tryActivateInTransaction(
+    return this.activation.executePreparedActivation(
       tx,
-      takeover.id,
+      aggregate,
       actorUserId,
       idempotencyKey
     );

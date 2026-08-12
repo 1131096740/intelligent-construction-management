@@ -1420,76 +1420,6 @@ describe("ContractTakeoverService", () => {
     );
   });
 
-  it("confirms finance basis and invokes activation coordination inside the same transaction", async () => {
-    const tx = sideConfirmationTransaction({
-      positionKey: "finance_director",
-      contractFacts: {
-        takeoverId: "takeover-1",
-        revision: 4,
-        financeBasisRevision: 4,
-        confirmedRevision: 4,
-        confirmedByUserId: "contract-director",
-        confirmedAt: new Date("2026-07-29T01:00:00.000Z")
-      }
-    });
-    const prisma = {
-      $transaction: jest.fn(
-        async (
-          callback: (client: typeof tx) => unknown
-        ) => callback(tx)
-      )
-    };
-    const activate = jest.fn().mockResolvedValue({
-      activated: true,
-      activationStatus: "activated"
-    });
-    const service = new ContractTakeoverService(
-      prisma as never,
-      audit as never,
-      auth as never,
-      files as never,
-      { tryActivateInTransaction: activate } as never
-    );
-
-    const result = await service.confirmFinanceSide(
-      "project-1",
-      "takeover-1",
-      confirmSideInput({
-        expectedRevision: 2,
-        basedOnContractRevision: 3,
-        basedOnFinanceBasisRevision: 4
-      }) as never,
-      "finance-director"
-    );
-
-    expect(tx.contractTakeoverFinanceFacts.updateMany).toHaveBeenCalledWith({
-      where: {
-        takeoverId: "takeover-1",
-        revision: 2,
-        confirmedRevision: null
-      },
-      data: expect.objectContaining({
-        confirmedRevision: 2,
-        confirmedContractRevision: 3,
-        confirmedFinanceBasisRevision: 4,
-        confirmedByUserId: "finance-director"
-      })
-    });
-    expect(activate).toHaveBeenCalledTimes(1);
-    expect(activate).toHaveBeenCalledWith(
-      tx,
-      "takeover-1",
-      "finance-director",
-      "33333333-3333-4333-8333-333333333333"
-    );
-    expect(result).toMatchObject({
-      side: "finance",
-      confirmed: true,
-      activated: true,
-      activationStatus: "activated"
-    });
-  });
-
   it.each([
     [
       "contract staff",
@@ -6206,7 +6136,13 @@ describe("ContractTakeoverService", () => {
   }) {
     return {
       $queryRaw: jest.fn()
-        .mockResolvedValueOnce([{ contractId: "contract-1", contractVersionId: "contract-version-1" }])
+        .mockResolvedValueOnce([{
+          id: "takeover-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          takeoverStatus: input?.takeoverStatus ?? "confirmed"
+        }])
         .mockResolvedValueOnce([{ id: "contract-1" }])
         .mockResolvedValueOnce([{
           id: "contract-version-1",
@@ -6219,7 +6155,6 @@ describe("ContractTakeoverService", () => {
           originalBaseAmountCents: input?.existing ?? null,
           ...input?.root
         }])
-        .mockResolvedValueOnce([{ id: "takeover-1", takeoverStatus: input?.takeoverStatus ?? "confirmed" }])
         .mockResolvedValueOnce(input?.director === false ? [] : [{ userId: "director-1" }]),
       contractVersion: {
         updateMany: jest.fn().mockResolvedValue({ count: input?.casCount ?? 1 })

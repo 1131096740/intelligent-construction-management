@@ -10,7 +10,7 @@
 
 ---
 
-## 当前结论（更新至 2026-08-10）
+## 当前结论（更新至 2026-08-12）
 
 - [x] 上线修复候选：`733ddb8192b95d11043c67da8b6e3965ec784680`。
 - [x] 业务发布合并提交：`308c47b51c368a4573c9857411e59a872e1e5062`。
@@ -40,6 +40,7 @@
 
 ### P0：已删除草稿生命周期
 
+- [x] Issue #61（双边确认并发与单一 lifecycle authority）已在固定、detached 且开工前 clean 的基线 `91e49ba56cd9f9ec95b0a99471961664cbea4394` 完成本地 RED→GREEN TDD 与 Standards/Spec 双轴 fixed-point 复核，当前保持未提交：既有 `ContractTakeoverService` 继续作为单一 lifecycle Module authority，以接管根为首的固定锁序一次锁定双方事实、实付、凭证、合同、版本和付款条款；内部 activation Implementation 仅执行已锁定、已判定的 aggregate，不再自行重锁或重判。公共 Interface 仅保留既有合同侧/财务侧 confirmation、双方 withdrawal 与 change-baseline-confirmation 路由；未恢复 #60 旧总确认 POST，未新增公开 test Seam、Adapter、repository、facade 或通用并发框架。真实 PostgreSQL `40001` 与 Prisma `P2034` 均稳定映射 HTTP 409，服务端不自动重试；同幂等键在冲突后由 fresh HTTP request 重放并再次 fresh-read 得到同一最终回执。一次性本机 PostgreSQL 16 容器部署 125 个既有迁移后，公开路由与余额并发套件 5/5 通过并自动清理，覆盖 wait/activate、唯一 confirmation receipt/activation audit/期初结算、两笔历史实付与凭证、600 期初结算 + 100 历史预付款、主体版本冻结，以及确认与撤回/基线确认竞争；四组竞争均由数据库 `PgSleep` barrier 证明真实重叠。contract-takeover 领域回归 344/344、API 全量 6044 passed/76 skipped、typecheck、lint、动态门 manifest 9/9 与 `git diff --check` 通过；双轴复核 0 findings。未新增 Schema/迁移，未访问任何非 localhost 数据库、生产、日志或 COS，未执行 Gate4、部署、push、PR、Issue 写入/关闭、分支或 commit；本地临时数据库证据不代表生产效果。
 - [x] #66 local implementation started（本地实施完成，GitHub Issue 未更新/关闭）：基于新鲜基线 `5c997ec18d38aedb493300a4d7bc9a8885ac8eda` 完成 session extraction deletion test，未保留独立 session candidate，仅深化现有 `useContractDraft.lifecycle` 的只读状态与命令边界；`ContractWorkbenchPage.vue` 删除页面级生命周期编排与重复 authority 状态，最终净删 126 行。公开 seam 的恢复、save queue、删除/重试、lease、readonly 与可见页面动作/结果目标测试 86 项通过，相关结构契约合计 122 项、Web 全套 1950 项、typecheck、lint、`check:ui` 均通过；Standards / Spec 双轴固定点复核均 0 发现。未修改 Schema/迁移，未运行数据库迁移或动态 gate，未执行 GitHub Issue 变更、push/PR/merge、部署、生产访问或 COS 操作，也未启动 #67。
 - [x] Issue #54（合同工作台：恢复与原始草稿删除状态安全）已由 PR #69 squash 合并至 `main`（合并 SHA `02764934888b5fc73508561a58028baf87937dee`），GitHub Issue #54 已 `CLOSED`（`COMPLETED`）：恢复较旧本地副本只供人工检查且不再自动排队保存；原始草稿删除请求结果未知或服务端确认待重试时撤销本地租约并冻结 autosave/写入，只有重新读取服务端状态并取得当前租约才恢复可写。已通过目标 Web Vitest 161 项、typecheck、lint 与 `check:ui`；未运行生产检查、迁移或部署。
 - [x] Issue #55（合同工作台：单一 authority snapshot）已完成本地实施：`useContractDraft` 对同一份工作台读取收据统一投影 exact contract version、draft revision、capability、lease、readonly 与 lifecycle；页面不再二次读取 capability 后拼装可写结论，版本/修订漂移或 capability 撤销时 fail-closed。#54 的恢复与删除结果未知冻结边界保持不变。目标 Web Vitest 87 项、Web Admin typecheck、全仓 lint、`check:ui` 与 `git diff --check` 已通过；全仓 typecheck 仍受既有 API Prisma client 未生成阻断。未改 API、Schema、迁移、部署或生产数据/COS。
