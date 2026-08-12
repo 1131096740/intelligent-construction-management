@@ -45,7 +45,7 @@
 - [x] 已在精确 `origin/main@202a1e12b70d34d6e486ff1680220ff2b6a2a10c` 上完成只读差距审计：[`docs/progress/2026-08-12-project-operating-ledger-latest-main-gap-audit.md`](docs/progress/2026-08-12-project-operating-ledger-latest-main-gap-audit.md)。审计确认当前主线具备部分可复用基础，但尚无来源唯一经营总账、统一主体分账与资金/利润/对账模型，不能据此宣称该范围已具备上线条件。
 - [x] 实施架构、替换边界、迁移顺序、自动化硬门和候选任务已拆分：[`docs/specs/2026-08-12-project-operating-ledger-implementation-plan-and-task-breakdown.md`](docs/specs/2026-08-12-project-operating-ledger-implementation-plan-and-task-breakdown.md)。候选清单为 1 个父任务、POL-01 至 POL-26 共 26 个子任务；POL-19 另含 5 个有界页面迁移子任务，这组编号已用于下述 GitHub Issues。
 - [x] 本组文档已取得可引用提交 `25ce9817e49f62cc2049a7b1d121163a5e10879b`；GitHub 父任务 #93、POL-01 至 POL-18（#94–#111）、POL-19（#112）、POL-19A 至 POL-19E（#113–#117）及 POL-20 至 POL-26（#118–#124）已按 `Part of` 和 `Blocked by` 关系创建。当前仅无阻塞的 #94（POL-01）与 #120（POL-22）带 `ready-for-agent`。
-- [ ] 当前仅将上述权威文档迁移到最新主线候选；尚未开始 POL 业务代码、Schema 或迁移实现，也未执行测试业务归零、部署或生产操作。
+- [~] POL-01（Issue #94）已在 `origin/main@a2d782c949453da498d6a12f05bd9a8b7835d197` 的独立分支完成当前票面实现：新增 shared-domain 经营事实、影响、主体种类/角色、A/B/C 证据等级、施工企业扣费生命周期、七阶段、财务对账状态、八个不可改名一级成本分类及施工企业扣费受控二级分类规则；新增 API 中文失败关闭解析器和穷尽契约测试。目标 shared-domain 测试 6/6、API 契约测试 17/17、shared-domain typecheck/lint、API typecheck/lint 已通过；全量 shared-domain 163/163、Web 1948/1948、API 沙箱外 6060 passed / 76 skipped；本地 Prisma Client 仅为 typecheck/test 前置生成，未执行迁移或数据库写入。Standards/Spec 双轴复审已完成（有效 finding 1 项，已修复并重跑验证）；仍待提交、PR/CI 与 GitHub Issue 收口；未改 Schema/迁移、页面、生产配置，未触碰 #120 的 scripts/Prisma 验证/runbook 路径，未归零、部署或访问生产。
 
 ### P0：已删除草稿生命周期
 

@@ -44,3 +44,4 @@ export * from "./contract-bill-columns";
 export * from "./settlement-workbench";
 export * from "./spot-procurement";
 export * from "./draft-lifecycle";
+export * from "./project-operating-contracts";
