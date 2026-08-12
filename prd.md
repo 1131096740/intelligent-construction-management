@@ -14,6 +14,8 @@
 
 > 阅读提示：本文正文保留规格冻结时的“当前/下一步”时态，用于追溯当时的验收条件，不应覆盖 `PROGRESS.md` 和最新发布收据中的现状。
 
+> 领域补充：项目经营总账、施工企业经营、历史经营接管、多家公司主体分账和统一业务录入，以 [`docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md`](docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md) 为当前正式规格；仅在该新增领域范围内取代本文冲突规则，其他冻结范围继续有效。
+
 ## 1. 执行结论
 
 建工智管采用“实施包 1–5 全部完成、同日全员上线、关键风险先闭环、上线后快速反馈修正”的推进方式：

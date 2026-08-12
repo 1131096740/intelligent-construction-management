@@ -4,6 +4,7 @@
 
 - This is an enterprise construction project management system, not merely a WeChat mini program.
 - Current source of truth: Obsidian `Ai-Obsidian/建工智管/建工智管_第一阶段MVP_产品与架构设计.md`.
+- For project operating ledger, construction-enterprise business, historical operating takeover, multi-company subledgers, unified business entry, and the approved direct-go-live mode, read `docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md`; within that domain it supersedes conflicting older trial-run or takeover rules.
 - Upstream reference: Obsidian `建工智管_完整方案_20260608.md`.
 - Older notes/code describing 6 approval types, 8 roles, WeChat cloud database, or 41 cloud functions are historical references only.
 
@@ -37,6 +38,7 @@ Do not dilute Phase 1 with full material issuing, attendance, HR onboarding/offb
 - The project is in production operation and post-go-live governance under a documented `Conditional Go` decision.
 - The accepted rollback scope is same-host isolated deploy -> rollback -> redeploy. Whole-host failure and cross-host takeover remain known residual risks, not completed evidence.
 - Do not expand new major modules unless `PROGRESS.md` says the real trial run is blocked by them.
+- The project-operating-ledger and unified-entry scope in `docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md` is an explicitly approved product re-scope for planning; it is not by itself authorization to implement, migrate data, clear data, commit, deploy, or write production state.
 - Current priority: production observation, real business sign-off, historical contract takeover, contract master sign-off, draft lifecycle cleanup, and removal of obsolete development/worktree state.
 - Mini-program runtime retirement is approved but not yet implemented. Mobile and desktop target the same responsive Web system; OCR, full OA, invoicing, attendance, HR, safety, and large dashboards stay out of current P0 unless explicitly re-scoped.
 
@@ -117,7 +119,7 @@ Use real business positions, not old generic roles:
 - Cross-domain reusable components live in `apps/web-admin/src/components/`.
 - API calls live in `apps/web-admin/src/api/<domain>.api.ts`; pages must not call `fetch` directly.
 - Pure helpers live in `apps/web-admin/src/lib/` or the nearest existing helper module.
-- Do not introduce a second UI library, low-code runtime, generic workflow engine, or full-site rewrite.
+- Do not introduce a second UI library, low-code runtime, generic workflow engine, or unrelated full-site rewrite. The approved one-time migration of all structured business-entry surfaces to the unified entry engine is limited to the entry layer and follows `docs/specs/2026-08-12-project-operating-ledger-construction-enterprise-takeover-unified-entry.md`; it does not authorize rewriting established business rules, approvals, or ledgers.
 
 ## Engineering Discipline
 
