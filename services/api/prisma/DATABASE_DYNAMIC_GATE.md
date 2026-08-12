@@ -54,8 +54,8 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 收据中的测试数、文件数和组结果只覆盖本次选中范围。`--list --group <组名>` 可在不调用 Git、Docker、
 PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
-入口先生成 Prisma Client 并构建 API，然后按清单串行调用 9 组 runner。已有 8 组保持独立收据；第 9 组由
-`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 8 个子组，覆盖原先缺少编排的 40 条。
+不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 9 组 runner。已有 8 组保持独立收据；第 9 组由
+`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 9 个子组，覆盖原先缺少编排的 42 条。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
 
