@@ -14,54 +14,37 @@ const SETTLEMENT_CONTRACT_TYPE_KEYS = new Set([
   "professional_subcontract"
 ]);
 
-interface LockedTakeover {
+interface PreparedTakeover {
   id: string;
   projectId: string;
   contractId: string;
   contractVersionId: string;
   paymentTermsVersionId: string;
-  activatedAt: Date | null;
-  activationIdempotencyKey: string | null;
-  historicalInitialSettlementId: string | null;
 }
 
-interface LockedContractFacts {
-  takeoverId: string;
-  revision: number;
-  financeBasisRevision: number;
+interface PreparedContractFacts {
   historicalSettledCents: bigint;
   zeroSettlementDeclared: boolean;
-  confirmedRevision: number | null;
 }
 
-interface LockedFinanceFacts {
-  takeoverId: string;
-  revision: number;
-  confirmedRevision: number | null;
-  confirmedFinanceBasisRevision: number | null;
+interface PreparedFinanceFacts {
   zeroPaymentDeclared: boolean;
   excessTreatment: string | null;
 }
 
-interface LockedHistoricalPayment {
+interface PreparedHistoricalPayment {
   id: string;
-  takeoverId: string;
-  sequenceNo: number;
   amountCents: bigint;
   status: string;
 }
 
-interface LockedHistoricalPaymentVoucher {
-  id: string;
+interface PreparedHistoricalPaymentVoucher {
   historicalPaymentId: string;
-  fileId: string;
 }
 
-interface LockedContract {
-  id: string;
+interface PreparedContract {
   contractTypeKey: string | null;
   companyEntityId: string | null;
-  companyEntityName: string | null;
   companyEntityIsActive: boolean | null;
   companyEntityDataStatus: string | null;
   companyEntityVersionId: string | null;
@@ -70,17 +53,19 @@ interface LockedContract {
   companyEntityRegisteredAddress: string | null;
 }
 
-interface LockedContractVersion {
-  id: string;
+interface PreparedContractVersion {
   amountCents: bigint;
   amountLimitType: string;
-  pricingNature: string;
-  status: string;
 }
 
-interface LockedPaymentTermsVersion {
-  id: string;
-  status: string;
+interface PreparedContractTakeoverActivation {
+  takeover: PreparedTakeover;
+  contractFacts: PreparedContractFacts;
+  financeFacts: PreparedFinanceFacts | null;
+  payments: PreparedHistoricalPayment[];
+  vouchers: PreparedHistoricalPaymentVoucher[];
+  contract: PreparedContract;
+  contractVersion: PreparedContractVersion;
 }
 
 export interface ContractTakeoverActivationResult {
@@ -95,136 +80,25 @@ export interface ContractTakeoverActivationResult {
 export class ContractTakeoverActivationService {
   constructor(private readonly audit: AuditService) {}
 
-  async tryActivateInTransaction(
+  async executePreparedActivation(
     tx: Prisma.TransactionClient,
-    takeoverId: string,
+    prepared: PreparedContractTakeoverActivation,
     actorUserId: string,
     idempotencyKey: string
   ): Promise<ContractTakeoverActivationResult> {
-    const [takeover] = await tx.$queryRaw<LockedTakeover[]>(Prisma.sql`
-      SELECT
-        "id",
-        "projectId",
-        "contractId",
-        "contractVersionId",
-        "paymentTermsVersionId",
-        "activatedAt",
-        "activationIdempotencyKey",
-        "historicalInitialSettlementId"
-      FROM "ContractTakeover"
-      WHERE "id" = ${takeoverId}
-      FOR UPDATE
-    `);
-    if (!takeover) {
-      throw new ConflictException("历史接管记录不存在");
+    const {
+      takeover,
+      contractFacts,
+      financeFacts,
+      payments,
+      vouchers,
+      contract,
+      contractVersion
+    } = prepared;
+    if (!financeFacts) {
+      throw new ConflictException("财务侧资料尚未保存，不能激活");
     }
-    if (takeover.activatedAt) {
-      return {
-        activated: true,
-        activationStatus: "activated",
-        activatedAt: takeover.activatedAt.toISOString(),
-        activationIdempotencyKey:
-          takeover.activationIdempotencyKey ?? idempotencyKey,
-        historicalInitialSettlementId:
-          takeover.historicalInitialSettlementId
-      };
-    }
-
-    const [contractFacts] = await tx.$queryRaw<LockedContractFacts[]>(Prisma.sql`
-      SELECT *
-      FROM "ContractTakeoverContractFacts"
-      WHERE "takeoverId" = ${takeoverId}
-      FOR UPDATE
-    `);
-    const [financeFacts] = await tx.$queryRaw<LockedFinanceFacts[]>(Prisma.sql`
-      SELECT *
-      FROM "ContractTakeoverFinanceFacts"
-      WHERE "takeoverId" = ${takeoverId}
-      FOR UPDATE
-    `);
-    const payments = await tx.$queryRaw<LockedHistoricalPayment[]>(Prisma.sql`
-      SELECT *
-      FROM "ContractTakeoverHistoricalPayment"
-      WHERE "takeoverId" = ${takeoverId}
-      ORDER BY "sequenceNo"
-      FOR UPDATE
-    `);
-    const vouchers =
-      await tx.$queryRaw<LockedHistoricalPaymentVoucher[]>(Prisma.sql`
-        SELECT voucher.*
-        FROM "ContractTakeoverHistoricalPaymentVoucher" voucher
-        JOIN "ContractTakeoverHistoricalPayment" payment
-          ON payment."id" = voucher."historicalPaymentId"
-        WHERE payment."takeoverId" = ${takeoverId}
-        ORDER BY payment."sequenceNo", voucher."displayOrder"
-        FOR UPDATE OF voucher
-      `);
-    const [contract] = await tx.$queryRaw<LockedContract[]>(Prisma.sql`
-      SELECT
-        c."id",
-        c."contractTypeKey",
-        c."companyEntityId",
-        c."companyEntityName",
-        entity."isActive" AS "companyEntityIsActive",
-        entity."dataStatus" AS "companyEntityDataStatus",
-        entityVersion."id" AS "companyEntityVersionId",
-        entityVersion."name" AS "companyEntityVersionName",
-        entityVersion."unifiedSocialCreditCode" AS "companyEntityCreditCode",
-        entityVersion."registeredAddress" AS "companyEntityRegisteredAddress"
-      FROM "Contract" c
-      LEFT JOIN "CompanyEntity" entity
-        ON entity."id" = c."companyEntityId"
-      LEFT JOIN "CompanyEntityVersion" entityVersion
-        ON entityVersion."companyEntityId" = entity."id"
-       AND entityVersion."versionNo" = entity."currentVersionNo"
-      WHERE c."id" = ${takeover.contractId}
-      FOR UPDATE OF c
-    `);
-    const [contractVersion] =
-      await tx.$queryRaw<LockedContractVersion[]>(Prisma.sql`
-        SELECT
-          "id",
-          "amountCents",
-          "amountLimitType",
-          "pricingNature",
-          "status"
-        FROM "ContractVersion"
-        WHERE "id" = ${takeover.contractVersionId}
-        FOR UPDATE
-      `);
-    const [paymentTermsVersion] =
-      await tx.$queryRaw<LockedPaymentTermsVersion[]>(Prisma.sql`
-        SELECT "id", "status"
-        FROM "PaymentTermsVersion"
-        WHERE "id" = ${takeover.paymentTermsVersionId}
-        FOR UPDATE
-      `);
-
-    if (
-      !contractFacts ||
-      !financeFacts ||
-      !contract ||
-      !contractVersion ||
-      !paymentTermsVersion
-    ) {
-      throw new ConflictException(
-        "历史接管关联资料不完整，暂不能激活"
-      );
-    }
-    if (contractFacts.confirmedRevision !== contractFacts.revision) {
-      throw new ConflictException("合同侧当前修订尚未确认");
-    }
-    if (financeFacts.confirmedRevision !== financeFacts.revision) {
-      throw new ConflictException("财务侧当前修订尚未确认");
-    }
-    if (
-      financeFacts.confirmedFinanceBasisRevision !==
-      contractFacts.financeBasisRevision
-    ) {
-      throw new ConflictException(
-        "财务确认所依据的合同基线已过期，请重新保存并确认"
-      );
-    }
+    const takeoverId = takeover.id;
     if (payments.some((payment) => payment.status !== "draft")) {
       throw new ConflictException(
         "历史实付明细状态异常，暂不能重复或部分激活"

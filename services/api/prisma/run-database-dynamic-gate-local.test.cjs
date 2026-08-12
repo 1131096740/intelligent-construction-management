@@ -26,11 +26,11 @@ test("manifest derives all 66 pending tests as executable local coverage", () =>
   const result = validateManifest(manifest);
 
   assert.deepEqual(result, {
-    pendingFiles: 33,
+    pendingFiles: 32,
     fullyPendingSuites: 23,
-    partiallyPendingSuites: 10,
+    partiallyPendingSuites: 9,
     pendingTests: 66,
-    coveredFiles: 33,
+    coveredFiles: 32,
     coveredTests: 66,
     remainingFiles: 0,
     remainingTests: 0,

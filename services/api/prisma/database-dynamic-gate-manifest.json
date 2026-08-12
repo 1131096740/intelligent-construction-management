@@ -25,11 +25,11 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 33,
+    "pendingFiles": 32,
     "fullyPendingSuites": 23,
-    "partiallyPendingSuites": 10,
+    "partiallyPendingSuites": 9,
     "pendingTests": 66,
-    "coveredFiles": 33,
+    "coveredFiles": 32,
     "coveredTests": 66,
     "remainingFiles": 0,
     "remainingTests": 0
@@ -213,7 +213,7 @@
         },
         {
           "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",
-          "pendingTests": 1,
+          "pendingTests": 2,
           "suiteStatus": "partial_pending"
         },
         {
@@ -223,11 +223,6 @@
         },
         {
           "path": "services/api/src/database/contract-takeover-balance-concurrency.spec.ts",
-          "pendingTests": 1,
-          "suiteStatus": "partial_pending"
-        },
-        {
-          "path": "services/api/src/database/contract-takeover-activation-postgres.spec.ts",
           "pendingTests": 1,
           "suiteStatus": "partial_pending"
         },

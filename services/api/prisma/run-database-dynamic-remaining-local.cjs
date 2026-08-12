@@ -52,16 +52,13 @@ const GROUPS = [
     database: "jiangkong_contract_takeover_task1_20260729",
     files: [
       "src/database/contract-takeover-confirmation-concurrency.spec.ts",
-      "src/database/contract-takeover-balance-concurrency.spec.ts",
-      "src/database/contract-takeover-activation-postgres.spec.ts"
+      "src/database/contract-takeover-balance-concurrency.spec.ts"
     ],
     flags: {
       RUN_CONTRACT_TAKEOVER_CONFIRMATION_CONCURRENCY: "1",
       CONTRACT_TAKEOVER_CONFIRMATION_DATABASE_URL: "databaseUrl",
       RUN_CONTRACT_TAKEOVER_BALANCE_CONCURRENCY: "1",
-      CONTRACT_TAKEOVER_BALANCE_DATABASE_URL: "databaseUrl",
-      RUN_CONTRACT_TAKEOVER_ACTIVATION_POSTGRES: "1",
-      CONTRACT_TAKEOVER_ACTIVATION_DATABASE_URL: "databaseUrl"
+      CONTRACT_TAKEOVER_BALANCE_DATABASE_URL: "databaseUrl"
     },
     pendingTests: 3
   },
