@@ -5,6 +5,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  rm,
   writeFile
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,6 +15,10 @@ import test from "node:test";
 import {
   inspectWholeSitePageActionManifest,
   renderWholeSitePageActionManifest,
+  verifyDocumentContentCoordinatesFunctionSource,
+  verifyFinalContractDraftRevisionGuardSource,
+  verifyFinalContractWriteGuardSequence,
+  verifySameDocumentContentFunctionSource,
   writeOrCheckWholeSitePageActionManifest
 } from "./lib/whole-site-page-action-manifest.mjs";
 import { runWholeSitePageActionManifestCli } from "./inspect-whole-site-page-action-manifest.mjs";
@@ -262,8 +267,9 @@ function blockerCodes(manifest) {
   return codes;
 }
 
-async function authoritySnapshotFixture() {
+async function authoritySnapshotFixture(t) {
   const root = await mkdtemp(join(tmpdir(), "jgzg-authority-snapshot-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
   await cp(
     join(process.cwd(), "apps/web-admin/src"),
     join(root, "apps/web-admin/src"),
@@ -282,8 +288,365 @@ async function authoritySnapshotFixture() {
   return root;
 }
 
-test("rejects a replaced server read before authority snapshot capture", async () => {
-  const root = await authoritySnapshotFixture();
+test("accepts governed contract draft and final-file write chains", async (t) => {
+  const root = await authoritySnapshotFixture(t);
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+
+  for (const {
+    actionId,
+    consumer
+  } of [
+    {
+      actionId: "contract-draft.delete-pristine",
+      consumer:
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+    },
+    {
+      actionId: "contract-draft.abandon-application",
+      consumer:
+        "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
+    },
+    {
+      actionId: "contract-final.upload-file",
+      consumer:
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+    },
+    {
+      actionId: "contract-final.associate",
+      consumer:
+        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+    }
+  ]) {
+    const action = manifest.actions.find(
+      (candidate) => candidate.id === actionId
+    );
+    assert.ok(action, actionId);
+    assert.equal(action.capability.serverDerived, true, actionId);
+    assert.equal(action.capability.dominatesTrigger, true, actionId);
+    assert.ok(
+      action.bindings.every((binding) => binding.causalVerified),
+      actionId
+    );
+    assert.deepEqual(
+      action.bindings.flatMap((binding) => binding.acceptedProductionConsumers),
+      action.bindings.map(() => consumer),
+      actionId
+    );
+  }
+});
+
+test("rejects tampered contract lifecycle and final-file write chains", async (t) => {
+  const root = await authoritySnapshotFixture(t);
+  const workbenchPath = join(
+    root,
+    "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
+  );
+  const workbenchSource = await readFile(workbenchPath, "utf8");
+  const wrongCommand = workbenchSource.replace(
+    "const outcome = await lifecycle.commands.deletePristineDraft(request);",
+    "const outcome = await lifecycle.commands.abandonApplication(request);"
+  );
+  const shadowedLifecycle = wrongCommand.replace(
+    `async function confirmAbandonApplication(request: {
+  reason: string;
+  password: string;
+}) {
+  const outcome = await lifecycle.commands.abandonApplication(request);`,
+    `async function confirmAbandonApplication(request: {
+  reason: string;
+  password: string;
+}) {
+  const lifecycle = {
+    commands: {
+      abandonApplication: draft.lifecycle.commands.deletePristineDraft
+    }
+  };
+  const outcome = await lifecycle.commands.abandonApplication(request);`
+  );
+  assert.notEqual(shadowedLifecycle, workbenchSource);
+  await writeFile(workbenchPath, shadowedLifecycle);
+
+  const detailPath = join(
+    root,
+    "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+  );
+  const detailSource = await readFile(detailPath, "utf8");
+  const shadowedHelper = detailSource.replace(
+    "  const currentContent = documentContentCoordinatesFromValues(",
+    `  const sameDocumentContent = () => true;
+  const currentContent = documentContentCoordinatesFromValues(`
+  );
+  const removedTerminalWrapper = shadowedHelper.replace(
+    "  return uploadMutuallySignedContract(contractVersionId, {",
+    "  return Promise.resolve({"
+  );
+  assert.notEqual(removedTerminalWrapper, detailSource);
+  await writeFile(detailPath, removedTerminalWrapper);
+
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  for (const actionId of [
+    "contract-draft.delete-pristine",
+    "contract-draft.abandon-application",
+    "contract-final.upload-file",
+    "contract-final.associate"
+  ]) {
+    const action = manifest.actions.find(
+      (candidate) => candidate.id === actionId
+    );
+    assert.ok(action, actionId);
+    assert.equal(action.capability.serverDerived, true, actionId);
+    assert.ok(
+      action.bindings.every(
+        (binding) => !binding.causalVerified
+      ),
+      actionId
+    );
+  }
+  assert.ok(
+    blockerCodes(manifest).has("ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED")
+  );
+});
+
+test("rejects each missing final-contract write guard", async () => {
+  const sourcePath = join(
+    process.cwd(),
+    "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+  );
+  const fileSource = await readFile(sourcePath, "utf8");
+  const handlerSource = (name, nextName) => {
+    const start = fileSource.indexOf(`async function ${name}(`);
+    const end = fileSource.indexOf(`async function ${nextName}(`, start);
+    assert.ok(start >= 0 && end > start, name);
+    return fileSource.slice(start, end);
+  };
+  const sameContentStart = fileSource.indexOf(
+    "function sameDocumentContent("
+  );
+  const sameContentEnd = fileSource.indexOf(
+    "const stagedFinalAssociations",
+    sameContentStart
+  );
+  const sameContentSource = fileSource.slice(
+    sameContentStart,
+    sameContentEnd
+  );
+  assert.equal(
+    verifySameDocumentContentFunctionSource(sameContentSource),
+    true
+  );
+  for (const tampered of [
+    sameContentSource.replace(
+      "return Boolean(",
+      "return true || Boolean("
+    ),
+    sameContentSource.replace(
+      "  return Boolean(",
+      "  if (left) return true;\n  return Boolean("
+    )
+  ]) {
+    assert.notEqual(tampered, sameContentSource);
+    assert.equal(
+      verifySameDocumentContentFunctionSource(tampered),
+      false
+    );
+  }
+  const coordinateStart = fileSource.indexOf(
+    "function documentContentCoordinatesFromValues("
+  );
+  const coordinateEnd = fileSource.indexOf(
+    "function documentContentCoordinates(",
+    coordinateStart
+  );
+  const coordinateSource = fileSource.slice(
+    coordinateStart,
+    coordinateEnd
+  );
+  assert.equal(
+    verifyDocumentContentCoordinatesFunctionSource(
+      coordinateSource
+    ),
+    true
+  );
+  const staleCoordinateSource = coordinateSource.replace(
+    `documentContentRevision: Number(documentContentRevision),
+    documentContentFingerprint`,
+    `documentContentRevision: Number(contractDetail.value?.documentContentRevision),
+    documentContentFingerprint: contractDetail.value?.documentContentFingerprint`
+  );
+  assert.notEqual(staleCoordinateSource, coordinateSource);
+  assert.equal(
+    verifyDocumentContentCoordinatesFunctionSource(
+      staleCoordinateSource
+    ),
+    false
+  );
+  const disabledCoordinateGuard = coordinateSource.replace(
+    `  if (
+    !Number.isInteger(documentContentRevision)`,
+    `  if (
+    false &&
+    !Number.isInteger(documentContentRevision)`
+  );
+  assert.notEqual(disabledCoordinateGuard, coordinateSource);
+  assert.equal(
+    verifyDocumentContentCoordinatesFunctionSource(
+      disabledCoordinateGuard
+    ),
+    false
+  );
+
+  const associationSource = handlerSource(
+    "associateContractFinalFileWithCapability",
+    "returnContractFinalFileWithCapability"
+  );
+  assert.equal(
+    verifyFinalContractDraftRevisionGuardSource(
+      associationSource
+    ),
+    true
+  );
+  const deadGuardSource = associationSource.replace(
+    `  if (!Number.isInteger(capability.draftRevision) || Number(capability.draftRevision) < 1) {
+    throw new Error("合同聚合修订坐标缺失，请刷新后重试");
+  }`,
+    `  if (false) {
+    if (!Number.isInteger(capability.draftRevision) || Number(capability.draftRevision) < 1) {
+      throw new Error("合同聚合修订坐标缺失，请刷新后重试");
+    }
+  }`
+  );
+  assert.notEqual(deadGuardSource, associationSource);
+  assert.equal(
+    verifyFinalContractDraftRevisionGuardSource(
+      deadGuardSource
+    ),
+    false
+  );
+  const cases = [
+    {
+      name: "合同编号",
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability",
+      from: "capability.id === contractId;",
+      to: "true;"
+    },
+    {
+      name: "合同版本",
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability",
+      from: "capability.contractVersionId === contractVersionId;",
+      to: "true;"
+    },
+    {
+      name: "服务端动作",
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability",
+      from: "capability.availableActionKeys.includes(\"upload_final_contract\");",
+      to: "true;"
+    },
+    {
+      name: "内容修订",
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability",
+      fileFrom:
+        "left.documentContentRevision === right.documentContentRevision &&",
+      fileTo: "true &&"
+    },
+    {
+      name: "内容指纹",
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability",
+      fileFrom:
+        "left.documentContentFingerprint === right.documentContentFingerprint",
+      fileTo: "true"
+    },
+    {
+      name: "内容坐标来源",
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability",
+      from: "capability.documentContentRevision",
+      to: "expectedContent.documentContentRevision"
+    },
+    {
+      name: "聚合修订整数",
+      actionId: "contract-final.associate",
+      handler: "associateContractFinalFileWithCapability",
+      next: "returnContractFinalFileWithCapability",
+      from: "Number.isInteger(capability.draftRevision)",
+      to: "true"
+    },
+    {
+      name: "聚合修订正数",
+      actionId: "contract-final.associate",
+      handler: "associateContractFinalFileWithCapability",
+      next: "returnContractFinalFileWithCapability",
+      from: "Number(capability.draftRevision) < 1",
+      to: "false"
+    },
+    {
+      name: "聚合修订传递",
+      actionId: "contract-final.associate",
+      handler: "associateContractFinalFileWithCapability",
+      next: "returnContractFinalFileWithCapability",
+      from: "    sourceRevision\n  });",
+      to: "    sourceRevision: 1\n  });"
+    }
+  ];
+
+  for (const fixture of [
+    {
+      actionId: "contract-final.upload-file",
+      handler: "uploadContractFinalPrivateFileWithCapability",
+      next: "associateContractFinalFileWithCapability"
+    },
+    {
+      actionId: "contract-final.associate",
+      handler: "associateContractFinalFileWithCapability",
+      next: "returnContractFinalFileWithCapability"
+    }
+  ]) {
+    assert.equal(
+      verifyFinalContractWriteGuardSequence({
+        actionId: fixture.actionId,
+        handlerSource: handlerSource(fixture.handler, fixture.next),
+        fileSource
+      }),
+      true,
+      fixture.actionId
+    );
+  }
+
+  for (const fixture of cases) {
+    const originalHandler = handlerSource(
+      fixture.handler,
+      fixture.next
+    );
+    const tamperedHandler = fixture.from
+      ? originalHandler.replace(fixture.from, fixture.to)
+      : originalHandler;
+    const tamperedFile = fixture.fileFrom
+      ? fileSource.replace(fixture.fileFrom, fixture.fileTo)
+      : fileSource;
+    assert.equal(
+      verifyFinalContractWriteGuardSequence({
+        actionId: fixture.actionId,
+        handlerSource: tamperedHandler,
+        fileSource: tamperedFile
+      }),
+      false,
+      fixture.name
+    );
+  }
+});
+
+test("rejects a replaced server read before authority snapshot capture", async (t) => {
+  const root = await authoritySnapshotFixture(t);
   const sourcePath = join(
     root,
     "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"
@@ -307,8 +670,8 @@ test("rejects a replaced server read before authority snapshot capture", async (
   assert.equal(action?.capability.serverDerived, false);
 });
 
-test("rejects a mutation below the authority snapshot receipt", async () => {
-  const root = await authoritySnapshotFixture();
+test("rejects a mutation below the authority snapshot receipt", async (t) => {
+  const root = await authoritySnapshotFixture(t);
   const sourcePath = join(
     root,
     "apps/web-admin/src/pages/contracts/workbench/use-contract-draft.ts"

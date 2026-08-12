@@ -34,6 +34,24 @@ const CONTRACT_DRAFT_COMPOSABLE_PATH =
   `${WEB_SOURCE_ROOT}/pages/contracts/workbench/use-contract-draft.ts`;
 const CONTRACT_WORKBENCH_API_PATH =
   `${WEB_SOURCE_ROOT}/api/contract-workbench.api.ts`;
+const CONTRACT_DRAFT_LIFECYCLE_COMMAND_BY_WRAPPER = new Map([
+  [
+    "executeDeletePristineContractDraftAction",
+    {
+      actionId: "contract-draft.delete-pristine",
+      pageHandler: "confirmDeletePristineDraft",
+      command: "deletePristineDraft"
+    }
+  ],
+  [
+    "executeAbandonContractDraftAction",
+    {
+      actionId: "contract-draft.abandon-application",
+      pageHandler: "confirmAbandonApplication",
+      command: "abandonApplication"
+    }
+  ]
+]);
 const PERMISSIONS_SOURCE_PATH =
   "packages/shared-domain/src/permissions.ts";
 const ACTION_USAGES = new Set(["page_action", "background"]);
@@ -12834,6 +12852,1192 @@ function wrapperCausalProof(
   };
 }
 
+function directCallableNodes(definition, visitor) {
+  const seen = new Set();
+  const visit = (node, parent = null, isRoot = false) => {
+    if (!node || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    if (
+      !isRoot &&
+      [
+        "FunctionDeclaration",
+        "FunctionExpression",
+        "ArrowFunctionExpression"
+      ].includes(node.type)
+    ) {
+      return;
+    }
+    visitor(node, parent);
+    for (const [key, value] of Object.entries(node)) {
+      if (
+        [
+          "parent",
+          "tokens",
+          "comments",
+          "loc",
+          "range"
+        ].includes(key)
+      ) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === "string") {
+            visit(child, node, false);
+          }
+        }
+      } else if (value && typeof value.type === "string") {
+        visit(value, node, false);
+      }
+    }
+  };
+  visit(definition, null, true);
+}
+
+function staticMemberPath(node) {
+  const value = unwrapValueExpression(node);
+  if (value?.type === "Identifier") return value.name;
+  if (
+    value?.type !== "MemberExpression" ||
+    value.computed ||
+    value.property?.type !== "Identifier"
+  ) {
+    return null;
+  }
+  const objectPath = staticMemberPath(value.object);
+  return objectPath
+    ? `${objectPath}.${value.property.name}`
+    : null;
+}
+
+function directAwaitedBoundMemberCallCount(
+  definition,
+  memberPath,
+  rootBinding,
+  symbols
+) {
+  let count = 0;
+  directCallableNodes(definition, (node, parent) => {
+    const rootIdentifier = referenceRootIdentifier(node.callee);
+    if (
+      node.type === "CallExpression" &&
+      staticMemberPath(node.callee) === memberPath &&
+      parent?.type === "AwaitExpression" &&
+      rootIdentifier &&
+      symbols.scopeBindings?.get(rootIdentifier) === rootBinding
+    ) {
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function directAwaitedWrapperCallCount(definition, wrapper, symbols) {
+  let count = 0;
+  directCallableNodes(definition, (node, parent) => {
+    if (
+      node.type !== "CallExpression" ||
+      node.callee?.type !== "Identifier" ||
+      parent?.type !== "AwaitExpression"
+    ) {
+      return;
+    }
+    const call = {
+      kind: "identifier",
+      localName: node.callee.name,
+      bindingIdentifier: node.callee,
+      callNode: node
+    };
+    if (importedCallMatchesWrapper(call, wrapper, symbols)) count += 1;
+  });
+  return count;
+}
+
+function directWrapperCallCount(definition, wrapper, symbols) {
+  let count = 0;
+  directCallableNodes(definition, (node) => {
+    if (callExpressionMatchesWrapper(node, wrapper, symbols)) count += 1;
+  });
+  return count;
+}
+
+function objectPropertyValue(object, name) {
+  if (object?.type !== "ObjectExpression") return null;
+  const matches = (object.properties ?? []).filter(
+    (property) =>
+      property?.type === "Property" &&
+      property.kind === "init" &&
+      propertyKey(property) === name
+  );
+  return matches.length === 1 ? matches[0].value : null;
+}
+
+function returnedContractDraftLifecycleCommand({
+  command,
+  composableSymbols
+}) {
+  const lifecycleBinding = uniqueScopeVariable(
+    composableSymbols.scopeManager,
+    "lifecycle"
+  );
+  if (!lifecycleBinding) return null;
+  const lifecycleObject = uniqueIndexedNode(
+    composableSymbols.declarationsByBinding,
+    lifecycleBinding
+  );
+  const commandsObject = objectPropertyValue(
+    lifecycleObject,
+    "commands"
+  );
+  const commandReference = objectPropertyValue(
+    commandsObject,
+    command
+  );
+  if (commandReference?.type !== "Identifier") return null;
+  const commandBinding = composableSymbols.scopeBindings?.get(
+    commandReference
+  );
+  const commandDefinition = commandBinding
+    ? uniqueIndexedNode(
+        composableSymbols.definitionsByBinding,
+        commandBinding
+      )
+    : null;
+  if (!commandBinding || !commandDefinition) return null;
+
+  const useDraftBindings = topLevelScopeVariables(
+    composableSymbols.scopeManager,
+    "useContractDraft"
+  );
+  if (useDraftBindings.length !== 1) return null;
+  const useDraftDefinition = uniqueIndexedNode(
+    composableSymbols.definitionsByBinding,
+    useDraftBindings[0]
+  );
+  if (!useDraftDefinition) return null;
+  let returned = false;
+  directCallableNodes(useDraftDefinition, (node) => {
+    if (node.type !== "ReturnStatement") return;
+    const lifecycleReference = objectPropertyValue(
+      unwrapValueExpression(node.argument),
+      "lifecycle"
+    );
+    if (
+      lifecycleReference?.type === "Identifier" &&
+      composableSymbols.scopeBindings?.get(lifecycleReference) ===
+        lifecycleBinding
+    ) {
+      returned = true;
+    }
+  });
+  return returned ? commandDefinition : null;
+}
+
+function bindingOwnsIdentifierRange(
+  binding,
+  identifier,
+  { references = false } = {}
+) {
+  if (
+    identifier?.type !== "Identifier" ||
+    !Array.isArray(identifier.range)
+  ) {
+    return false;
+  }
+  const candidates = references
+    ? (binding?.references ?? []).map((reference) => reference.identifier)
+    : binding?.identifiers ?? [];
+  return candidates.some(
+    (candidate) =>
+      candidate?.type === "Identifier" &&
+      candidate.name === identifier.name &&
+      candidate.range?.[0] === identifier.range[0] &&
+      candidate.range?.[1] === identifier.range[1]
+  );
+}
+
+function contractDraftPageLifecycleBinding(context) {
+  const lifecycleBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    "lifecycle"
+  );
+  const draftBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    "draft"
+  );
+  const useDraftBinding =
+    context.symbols.importVariablesByName.get("useContractDraft");
+  const useDraftImport = useDraftBinding
+    ? context.symbols.importsByBinding.get(useDraftBinding)
+    : null;
+  if (
+    lifecycleBindings.length !== 1 ||
+    draftBindings.length !== 1 ||
+    !useDraftBinding ||
+    useDraftImport?.sourceFile !== CONTRACT_DRAFT_COMPOSABLE_PATH ||
+    useDraftImport.importedName !== "useContractDraft"
+  ) {
+    return null;
+  }
+
+  const lifecycleBinding = lifecycleBindings[0];
+  const draftBinding = draftBindings[0];
+  const pageAst = context.asts.get(context.sourceFile);
+  const draftDeclaration = uniqueIndexedNode(
+    context.symbols.declarationsByBinding,
+    draftBinding
+  );
+  const draftCall = unwrapValueExpression(draftDeclaration);
+  if (
+    draftCall?.type !== "CallExpression" ||
+    draftCall.callee?.type !== "Identifier" ||
+    context.symbols.scopeBindings?.get(draftCall.callee) !==
+      useDraftBinding ||
+    (context.symbols.writesByBinding.get(draftBinding) ?? []).length > 0 ||
+    (context.symbols.writesByBinding.get(lifecycleBinding) ?? []).length > 0 ||
+    !pageAst
+  ) {
+    return null;
+  }
+
+  let destructuringCount = 0;
+  walkEstree(pageAst, (node) => {
+    if (
+      node.type !== "VariableDeclarator" ||
+      node.id?.type !== "ObjectPattern" ||
+      node.init?.type !== "Identifier" ||
+      !bindingOwnsIdentifierRange(
+        draftBinding,
+        node.init,
+        { references: true }
+      )
+    ) {
+      return;
+    }
+    const lifecycleProperties = (node.id.properties ?? []).filter(
+      (property) =>
+        property?.type === "Property" &&
+        property.shorthand === true &&
+        propertyKey(property) === "lifecycle" &&
+        property.value?.type === "Identifier" &&
+        bindingOwnsIdentifierRange(
+          lifecycleBinding,
+          property.value
+        )
+    );
+    destructuringCount += lifecycleProperties.length;
+  });
+  return destructuringCount === 1 ? lifecycleBinding : null;
+}
+
+function contractDraftLifecycleSessionCausalProof({
+  action,
+  wrapper,
+  context
+}) {
+  const expected = CONTRACT_DRAFT_LIFECYCLE_COMMAND_BY_WRAPPER.get(
+    wrapper.name
+  );
+  const authorityTrusted = expected
+    ? Boolean(
+        contractDraftAuthoritySnapshotProvenance(
+          action.capability,
+          context
+        )
+      )
+    : false;
+  if (
+    !expected ||
+    action.id !== expected.actionId ||
+    action.sourceFile !== CONTRACT_WORKBENCH_PAGE_PATH ||
+    action.trigger.handler !== expected.pageHandler ||
+    wrapper.apiFile !== CONTRACT_WORKBENCH_API_PATH ||
+    !authorityTrusted
+  ) {
+    return null;
+  }
+  const lifecycleBinding = contractDraftPageLifecycleBinding(context);
+  const pageHandlerBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    expected.pageHandler
+  );
+  const pageHandlerDefinition = pageHandlerBindings.length === 1
+    ? uniqueIndexedNode(
+        context.symbols.definitionsByBinding,
+        pageHandlerBindings[0]
+      )
+    : null;
+  const pageCallCount = pageHandlerDefinition && lifecycleBinding
+    ? directAwaitedBoundMemberCallCount(
+        pageHandlerDefinition,
+        `lifecycle.commands.${expected.command}`,
+        lifecycleBinding,
+        context.symbols
+      )
+    : 0;
+  if (!pageHandlerDefinition || pageCallCount !== 1) {
+    return null;
+  }
+
+  const composableAst = context.asts.get(
+    CONTRACT_DRAFT_COMPOSABLE_PATH
+  );
+  if (!composableAst) return null;
+  const composableSymbols = buildSymbolContext(
+    composableAst,
+    CONTRACT_DRAFT_COMPOSABLE_PATH,
+    context.sourceFileSet
+  );
+  const commandDefinition = returnedContractDraftLifecycleCommand({
+    command: expected.command,
+    composableSymbols
+  });
+  const wrapperCallCount = commandDefinition
+    ? directAwaitedWrapperCallCount(
+        commandDefinition,
+        wrapper,
+        composableSymbols
+      )
+    : 0;
+  if (
+    !commandDefinition ||
+    wrapperCallCount !== 1
+  ) {
+    return null;
+  }
+  return {
+    verified: true,
+    localCallChain: [
+      expected.pageHandler,
+      `lifecycle.commands.${expected.command}`,
+      expected.command,
+      wrapper.name
+    ]
+  };
+}
+
+function normalizedSource(source) {
+  return source.replace(/\s+/gu, " ").trim();
+}
+
+function containsOrderedSourceFragments(source, fragments) {
+  const normalized = normalizedSource(source);
+  let cursor = 0;
+  for (const fragment of fragments.map(normalizedSource)) {
+    const index = normalized.indexOf(fragment, cursor);
+    if (index < 0) return false;
+    cursor = index + fragment.length;
+  }
+  return true;
+}
+
+function finalContractSourceRevisionReachesPayload(
+  terminalCall,
+  symbols
+) {
+  const payload = unwrapValueExpression(terminalCall?.arguments?.[1]);
+  if (payload?.type !== "ObjectExpression") return false;
+  const sourceRevisionProperties = (payload.properties ?? []).filter(
+    (property) =>
+      property?.type === "Property" &&
+      property.kind === "init" &&
+      !property.computed &&
+      propertyKey(property) === "sourceRevision" &&
+      property.value?.type === "Identifier"
+  );
+  if (sourceRevisionProperties.length !== 1) return false;
+  const sourceRevision = sourceRevisionProperties[0].value;
+  const sourceRevisionBinding = symbols.scopeBindings?.get(sourceRevision);
+  const declaration = sourceRevisionBinding
+    ? uniqueIndexedNode(
+        symbols.declarationsByBinding,
+        sourceRevisionBinding
+      )
+    : null;
+  const source = unwrapValueExpression(declaration);
+  const capabilityRevision = source?.arguments?.length === 1
+    ? staticMemberPath(source.arguments[0])
+    : null;
+  const lastProperty = payload.properties?.at(-1);
+  return Boolean(
+    source?.type === "CallExpression" &&
+    source.callee?.type === "Identifier" &&
+    source.callee.name === "Number" &&
+    !symbols.scopeBindings?.get(source.callee) &&
+    capabilityRevision === "capability.draftRevision" &&
+    lastProperty === sourceRevisionProperties[0]
+  );
+}
+
+function directConstBinding(definition, name, symbols) {
+  const matches = [];
+  for (const [index, statement] of (
+    definition?.body?.type === "BlockStatement"
+      ? definition.body.body ?? []
+      : []
+  ).entries()) {
+    if (
+      statement.type !== "VariableDeclaration" ||
+      statement.kind !== "const"
+    ) {
+      continue;
+    }
+    for (const declaration of statement.declarations ?? []) {
+      if (
+        declaration.id?.type !== "Identifier" ||
+        declaration.id.name !== name ||
+        !declaration.init
+      ) {
+        continue;
+      }
+      const binding = symbols.scopeBindings?.get(declaration.id);
+      if (binding) {
+        matches.push({ binding, declaration, index });
+      }
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function directFailClosedBindingGuard(
+  definition,
+  binding,
+  symbols
+) {
+  const matches = [];
+  const statements = definition?.body?.type === "BlockStatement"
+    ? definition.body.body ?? []
+    : [];
+  for (const [index, statement] of statements.entries()) {
+    const test = unwrapValueExpression(statement?.test);
+    const guarded = test?.type === "UnaryExpression" &&
+      test.operator === "!"
+      ? unwrapValueExpression(test.argument)
+      : null;
+    if (
+      statement.type === "IfStatement" &&
+      !statement.alternate &&
+      guarded?.type === "Identifier" &&
+      symbols.scopeBindings?.get(guarded) === binding &&
+      preflightThrowBranchIsSafe(
+        statement.consequent,
+        symbols,
+        new Set()
+      )
+    ) {
+      matches.push(index);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function flattenedStrictConjunction(node) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type === "LogicalExpression" &&
+    value.operator === "&&"
+  ) {
+    const left = flattenedStrictConjunction(value.left);
+    const right = flattenedStrictConjunction(value.right);
+    return left && right ? [...left, ...right] : null;
+  }
+  return value ? [value] : null;
+}
+
+function flattenedStrictDisjunction(node) {
+  const value = unwrapValueExpression(node);
+  if (
+    value?.type === "LogicalExpression" &&
+    value.operator === "||"
+  ) {
+    const left = flattenedStrictDisjunction(value.left);
+    const right = flattenedStrictDisjunction(value.right);
+    return left && right ? [...left, ...right] : null;
+  }
+  return value ? [value] : null;
+}
+
+function sameDocumentContentDefinitionIsExact(
+  definition,
+  symbols
+) {
+  if (
+    definition?.type !== "FunctionDeclaration" ||
+    definition.params?.length !== 2 ||
+    definition.params.some(
+      (parameter) => parameter?.type !== "Identifier"
+    ) ||
+    definition.body?.type !== "BlockStatement" ||
+    definition.body.body?.length !== 1 ||
+    definition.body.body[0]?.type !== "ReturnStatement"
+  ) {
+    return false;
+  }
+  const [leftParameter, rightParameter] = definition.params;
+  const leftBinding = symbols.scopeBindings?.get(leftParameter);
+  const rightBinding = symbols.scopeBindings?.get(rightParameter);
+  const returned = unwrapValueExpression(
+    definition.body.body[0].argument
+  );
+  if (
+    !leftBinding ||
+    !rightBinding ||
+    returned?.type !== "CallExpression" ||
+    !unshadowedRuntimeGlobal(
+      returned.callee,
+      new Set(["Boolean"]),
+      symbols.scopeBindings
+    ) ||
+    returned.arguments?.length !== 1
+  ) {
+    return false;
+  }
+  const terms = flattenedStrictConjunction(
+    returned.arguments[0]
+  );
+  if (!terms || terms.length !== 4) return false;
+
+  const [leftPresent, rightPresent, revision, fingerprint] = terms;
+  const revisionLeftRoot = referenceRootIdentifier(revision?.left);
+  const revisionRightRoot = referenceRootIdentifier(revision?.right);
+  const fingerprintLeftRoot = referenceRootIdentifier(fingerprint?.left);
+  const fingerprintRightRoot = referenceRootIdentifier(fingerprint?.right);
+  return Boolean(
+    leftPresent?.type === "Identifier" &&
+    symbols.scopeBindings?.get(leftPresent) === leftBinding &&
+    rightPresent?.type === "Identifier" &&
+    symbols.scopeBindings?.get(rightPresent) === rightBinding &&
+    revision?.type === "BinaryExpression" &&
+    revision.operator === "===" &&
+    staticMemberPath(revision.left) ===
+      `${leftParameter.name}.documentContentRevision` &&
+    staticMemberPath(revision.right) ===
+      `${rightParameter.name}.documentContentRevision` &&
+    revisionLeftRoot &&
+    revisionRightRoot &&
+    symbols.scopeBindings?.get(revisionLeftRoot) === leftBinding &&
+    symbols.scopeBindings?.get(revisionRightRoot) === rightBinding &&
+    fingerprint?.type === "BinaryExpression" &&
+    fingerprint.operator === "===" &&
+    staticMemberPath(fingerprint.left) ===
+      `${leftParameter.name}.documentContentFingerprint` &&
+    staticMemberPath(fingerprint.right) ===
+      `${rightParameter.name}.documentContentFingerprint` &&
+    fingerprintLeftRoot &&
+    fingerprintRightRoot &&
+    symbols.scopeBindings?.get(fingerprintLeftRoot) === leftBinding &&
+    symbols.scopeBindings?.get(fingerprintRightRoot) === rightBinding
+  );
+}
+
+export function verifySameDocumentContentFunctionSource(functionSource) {
+  try {
+    const path = "same-document-content.ts";
+    const ast = parseSource(path, functionSource);
+    const symbols = buildSymbolContext(
+      ast,
+      path,
+      new Set([path])
+    );
+    const bindings = topLevelScopeVariables(
+      symbols.scopeManager,
+      "sameDocumentContent"
+    );
+    const definition = bindings.length === 1
+      ? uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          bindings[0]
+        )
+      : null;
+    return sameDocumentContentDefinitionIsExact(
+      definition,
+      symbols
+    );
+  } catch {
+    return false;
+  }
+}
+
+function documentContentCoordinatesDefinitionIsExact(
+  definition,
+  symbols
+) {
+  if (
+    definition?.type !== "FunctionDeclaration" ||
+    definition.params?.length !== 2 ||
+    definition.params.some(
+      (parameter) => parameter?.type !== "Identifier"
+    ) ||
+    definition.body?.type !== "BlockStatement" ||
+    definition.body.body?.length !== 2
+  ) {
+    return false;
+  }
+  const [revisionParameter, fingerprintParameter] =
+    definition.params;
+  const revisionBinding = symbols.scopeBindings?.get(
+    revisionParameter
+  );
+  const fingerprintBinding = symbols.scopeBindings?.get(
+    fingerprintParameter
+  );
+  const [guard, terminal] = definition.body.body;
+  if (
+    !revisionBinding ||
+    !fingerprintBinding ||
+    guard?.type !== "IfStatement" ||
+    guard.alternate ||
+    !preflightThrowBranchIsSafe(
+      guard.consequent,
+      symbols,
+      new Set()
+    ) ||
+    terminal?.type !== "ReturnStatement"
+  ) {
+    return false;
+  }
+  const guardTerms = flattenedStrictDisjunction(guard.test);
+  if (!guardTerms || guardTerms.length !== 4) return false;
+  const [invalidInteger, invalidPositive, invalidType, invalidHash] =
+    guardTerms;
+  const integerCall = invalidInteger?.type === "UnaryExpression" &&
+    invalidInteger.operator === "!"
+    ? unwrapValueExpression(invalidInteger.argument)
+    : null;
+  const integerNumberRoot = referenceRootIdentifier(
+    integerCall?.callee
+  );
+  const integerArgument = integerCall?.arguments?.[0];
+  const positiveCall = invalidPositive?.type === "BinaryExpression"
+    ? unwrapValueExpression(invalidPositive.left)
+    : null;
+  const positiveArgument = positiveCall?.arguments?.[0];
+  const typeArgument = invalidType?.type === "BinaryExpression" &&
+    invalidType.left?.type === "UnaryExpression" &&
+    invalidType.left.operator === "typeof"
+    ? unwrapValueExpression(invalidType.left.argument)
+    : null;
+  const hashCall = invalidHash?.type === "UnaryExpression" &&
+    invalidHash.operator === "!"
+    ? unwrapValueExpression(invalidHash.argument)
+    : null;
+  const hashPattern = hashCall?.callee?.type === "MemberExpression"
+    ? unwrapValueExpression(hashCall.callee.object)
+    : null;
+  const hashArgument = hashCall?.arguments?.[0];
+  if (
+    integerCall?.type !== "CallExpression" ||
+    staticMemberPath(integerCall.callee) !== "Number.isInteger" ||
+    !unshadowedRuntimeGlobal(
+      integerNumberRoot,
+      new Set(["Number"]),
+      symbols.scopeBindings
+    ) ||
+    integerCall.arguments?.length !== 1 ||
+    integerArgument?.type !== "Identifier" ||
+    symbols.scopeBindings?.get(integerArgument) !== revisionBinding ||
+    invalidPositive?.type !== "BinaryExpression" ||
+    invalidPositive.operator !== "<" ||
+    positiveCall?.type !== "CallExpression" ||
+    !unshadowedRuntimeGlobal(
+      positiveCall.callee,
+      new Set(["Number"]),
+      symbols.scopeBindings
+    ) ||
+    positiveCall.arguments?.length !== 1 ||
+    positiveArgument?.type !== "Identifier" ||
+    symbols.scopeBindings?.get(positiveArgument) !== revisionBinding ||
+    invalidPositive.right?.type !== "Literal" ||
+    invalidPositive.right.value !== 1 ||
+    invalidType?.type !== "BinaryExpression" ||
+    invalidType.operator !== "!==" ||
+    typeArgument?.type !== "Identifier" ||
+    symbols.scopeBindings?.get(typeArgument) !== fingerprintBinding ||
+    invalidType.right?.type !== "Literal" ||
+    invalidType.right.value !== "string" ||
+    hashCall?.type !== "CallExpression" ||
+    staticMemberProperty(hashCall.callee) !== "test" ||
+    hashPattern?.type !== "Literal" ||
+    hashPattern.regex?.pattern !== "^[a-f0-9]{64}$" ||
+    hashPattern.regex?.flags !== "u" ||
+    hashCall.arguments?.length !== 1 ||
+    hashArgument?.type !== "Identifier" ||
+    symbols.scopeBindings?.get(hashArgument) !== fingerprintBinding
+  ) {
+    return false;
+  }
+
+  const returned = unwrapValueExpression(terminal.argument);
+  if (
+    returned?.type !== "ObjectExpression" ||
+    returned.properties?.length !== 2
+  ) {
+    return false;
+  }
+  const revisionValue = objectPropertyValue(
+    returned,
+    "documentContentRevision"
+  );
+  const fingerprintValue = objectPropertyValue(
+    returned,
+    "documentContentFingerprint"
+  );
+  const revisionArgument = revisionValue?.type === "CallExpression" &&
+    unshadowedRuntimeGlobal(
+      revisionValue.callee,
+      new Set(["Number"]),
+      symbols.scopeBindings
+    ) &&
+    revisionValue.arguments?.length === 1
+    ? revisionValue.arguments[0]
+    : null;
+  return Boolean(
+    revisionArgument?.type === "Identifier" &&
+    symbols.scopeBindings?.get(revisionArgument) === revisionBinding &&
+    fingerprintValue?.type === "Identifier" &&
+    symbols.scopeBindings?.get(fingerprintValue) ===
+      fingerprintBinding
+  );
+}
+
+export function verifyDocumentContentCoordinatesFunctionSource(
+  functionSource
+) {
+  try {
+    const path = "document-content-coordinates.ts";
+    const ast = parseSource(path, functionSource);
+    const symbols = buildSymbolContext(
+      ast,
+      path,
+      new Set([path])
+    );
+    const bindings = topLevelScopeVariables(
+      symbols.scopeManager,
+      "documentContentCoordinatesFromValues"
+    );
+    const definition = bindings.length === 1
+      ? uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          bindings[0]
+        )
+      : null;
+    return documentContentCoordinatesDefinitionIsExact(
+      definition,
+      symbols
+    );
+  } catch {
+    return false;
+  }
+}
+
+function exactDraftRevisionGuardIndex(
+  definition,
+  capabilityBinding,
+  symbols
+) {
+  const matches = [];
+  const statements = definition?.body?.type === "BlockStatement"
+    ? definition.body.body ?? []
+    : [];
+  for (const [index, statement] of statements.entries()) {
+    const test = unwrapValueExpression(statement?.test);
+    const integerGuard = unwrapValueExpression(test?.left);
+    const positiveGuard = unwrapValueExpression(test?.right);
+    const integerCall = integerGuard?.type === "UnaryExpression" &&
+      integerGuard.operator === "!"
+      ? unwrapValueExpression(integerGuard.argument)
+      : null;
+    const integerNumberRoot = referenceRootIdentifier(
+      integerCall?.callee
+    );
+    const integerRevision = integerCall?.arguments?.[0];
+    const integerRevisionRoot = referenceRootIdentifier(
+      integerRevision
+    );
+    const positiveNumberCall = unwrapValueExpression(
+      positiveGuard?.left
+    );
+    const positiveRevision = positiveNumberCall?.arguments?.[0];
+    const positiveRevisionRoot = referenceRootIdentifier(
+      positiveRevision
+    );
+    if (
+      statement.type === "IfStatement" &&
+      !statement.alternate &&
+      test?.type === "LogicalExpression" &&
+      test.operator === "||" &&
+      integerCall?.type === "CallExpression" &&
+      staticMemberPath(integerCall.callee) === "Number.isInteger" &&
+      unshadowedRuntimeGlobal(
+        integerNumberRoot,
+        new Set(["Number"]),
+        symbols.scopeBindings
+      ) &&
+      integerCall.arguments?.length === 1 &&
+      staticMemberPath(integerRevision) ===
+        "capability.draftRevision" &&
+      integerRevisionRoot &&
+      symbols.scopeBindings?.get(integerRevisionRoot) ===
+        capabilityBinding &&
+      positiveGuard?.type === "BinaryExpression" &&
+      positiveGuard.operator === "<" &&
+      positiveNumberCall?.type === "CallExpression" &&
+      unshadowedRuntimeGlobal(
+        positiveNumberCall.callee,
+        new Set(["Number"]),
+        symbols.scopeBindings
+      ) &&
+      positiveNumberCall.arguments?.length === 1 &&
+      staticMemberPath(positiveRevision) ===
+        "capability.draftRevision" &&
+      positiveRevisionRoot &&
+      symbols.scopeBindings?.get(positiveRevisionRoot) ===
+        capabilityBinding &&
+      positiveGuard.right?.type === "Literal" &&
+      positiveGuard.right.value === 1 &&
+      preflightThrowBranchIsSafe(
+        statement.consequent,
+        symbols,
+        new Set()
+      )
+    ) {
+      matches.push(index);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function finalContractDraftRevisionGuardIsExact(
+  definition,
+  symbols
+) {
+  const capability = directConstBinding(
+    definition,
+    "capability",
+    symbols
+  );
+  const sourceRevision = directConstBinding(
+    definition,
+    "sourceRevision",
+    symbols
+  );
+  if (!capability || !sourceRevision) return false;
+  const guardIndex = exactDraftRevisionGuardIndex(
+    definition,
+    capability.binding,
+    symbols
+  );
+  return guardIndex !== null && guardIndex < sourceRevision.index;
+}
+
+export function verifyFinalContractDraftRevisionGuardSource(
+  functionSource
+) {
+  try {
+    const path = "final-contract-association.ts";
+    const ast = parseSource(path, functionSource);
+    const symbols = buildSymbolContext(
+      ast,
+      path,
+      new Set([path])
+    );
+    const bindings = topLevelScopeVariables(
+      symbols.scopeManager,
+      "associateContractFinalFileWithCapability"
+    );
+    const definition = bindings.length === 1
+      ? uniqueIndexedNode(
+          symbols.definitionsByBinding,
+          bindings[0]
+        )
+      : null;
+    return finalContractDraftRevisionGuardIsExact(
+      definition,
+      symbols
+    );
+  } catch {
+    return false;
+  }
+}
+
+function finalContractDocumentGuardBindingProof({
+  actionId,
+  definition,
+  symbols
+}) {
+  const sameContentBindings = topLevelScopeVariables(
+    symbols.scopeManager,
+    "sameDocumentContent"
+  );
+  const coordinateBindings = topLevelScopeVariables(
+    symbols.scopeManager,
+    "documentContentCoordinatesFromValues"
+  );
+  if (
+    sameContentBindings.length !== 1 ||
+    coordinateBindings.length !== 1
+  ) {
+    return false;
+  }
+  const sameContentBinding = sameContentBindings[0];
+  const coordinateBinding = coordinateBindings[0];
+  const sameContentDefinition = uniqueIndexedNode(
+    symbols.definitionsByBinding,
+    sameContentBinding
+  );
+  const coordinateDefinition = uniqueIndexedNode(
+    symbols.definitionsByBinding,
+    coordinateBinding
+  );
+  if (
+    !sameContentDefinition ||
+    !coordinateDefinition ||
+    !sameDocumentContentDefinitionIsExact(
+      sameContentDefinition,
+      symbols
+    ) ||
+    !documentContentCoordinatesDefinitionIsExact(
+      coordinateDefinition,
+      symbols
+    )
+  ) {
+    return false;
+  }
+
+  const capability = directConstBinding(
+    definition,
+    "capability",
+    symbols
+  );
+  const currentContent = directConstBinding(
+    definition,
+    "currentContent",
+    symbols
+  );
+  const contentMatches = directConstBinding(
+    definition,
+    "documentContentMatches",
+    symbols
+  );
+  const expectedName = actionId === "contract-final.upload-file"
+    ? "expectedContent"
+    : actionId === "contract-final.associate"
+      ? "staged"
+      : null;
+  const expectedParameter = (definition.params ?? []).find(
+    (parameter) =>
+      parameter?.type === "Identifier" &&
+      parameter.name === expectedName
+  );
+  const expectedBinding = expectedParameter
+    ? symbols.scopeBindings?.get(expectedParameter)
+    : null;
+  if (
+    !capability ||
+    !currentContent ||
+    !contentMatches ||
+    !expectedBinding
+  ) {
+    return false;
+  }
+
+  const coordinateCall = unwrapValueExpression(
+    currentContent.declaration.init
+  );
+  const coordinateArguments = coordinateCall?.arguments ?? [];
+  const revisionRoot = referenceRootIdentifier(
+    coordinateArguments[0]
+  );
+  const fingerprintRoot = referenceRootIdentifier(
+    coordinateArguments[1]
+  );
+  const matchesCall = unwrapValueExpression(
+    contentMatches.declaration.init
+  );
+  const matchesArguments = matchesCall?.arguments ?? [];
+  const currentReference = matchesArguments[0];
+  const expectedReference = matchesArguments[1];
+  const guardIndex = directFailClosedBindingGuard(
+    definition,
+    contentMatches.binding,
+    symbols
+  );
+  const terminalIndex = definition.body.body.length - 1;
+  return Boolean(
+    coordinateCall?.type === "CallExpression" &&
+    coordinateCall.callee?.type === "Identifier" &&
+    symbols.scopeBindings?.get(coordinateCall.callee) ===
+      coordinateBinding &&
+    coordinateArguments.length === 2 &&
+    staticMemberPath(coordinateArguments[0]) ===
+      "capability.documentContentRevision" &&
+    staticMemberPath(coordinateArguments[1]) ===
+      "capability.documentContentFingerprint" &&
+    revisionRoot &&
+    fingerprintRoot &&
+    symbols.scopeBindings?.get(revisionRoot) === capability.binding &&
+    symbols.scopeBindings?.get(fingerprintRoot) === capability.binding &&
+    matchesCall?.type === "CallExpression" &&
+    matchesCall.callee?.type === "Identifier" &&
+    symbols.scopeBindings?.get(matchesCall.callee) ===
+      sameContentBinding &&
+    matchesArguments.length === 2 &&
+    currentReference?.type === "Identifier" &&
+    symbols.scopeBindings?.get(currentReference) ===
+      currentContent.binding &&
+    expectedReference?.type === "Identifier" &&
+    symbols.scopeBindings?.get(expectedReference) ===
+      expectedBinding &&
+    capability.index < currentContent.index &&
+    currentContent.index < contentMatches.index &&
+    contentMatches.index < guardIndex &&
+    guardIndex < terminalIndex
+  );
+}
+
+export function verifyFinalContractWriteGuardSequence({
+  actionId,
+  handlerSource,
+  fileSource
+}) {
+  const helperVerified = containsOrderedSourceFragments(
+    fileSource,
+    [
+      "function sameDocumentContent(",
+      "left.documentContentRevision === right.documentContentRevision &&",
+      "left.documentContentFingerprint === right.documentContentFingerprint"
+    ]
+  );
+  const action = actionId === "contract-final.upload-file"
+    ? {
+        content: "expectedContent",
+        terminal: "return uploadPrivateFile(file, fileName);"
+      }
+    : actionId === "contract-final.associate"
+      ? {
+          content: "staged",
+          terminal:
+            "return uploadMutuallySignedContract(contractVersionId, { ...staged.declaration, fileId: staged.fileId, sourceRevision });"
+        }
+      : null;
+  if (!action || !helperVerified) return false;
+
+  const commonFragments = [
+    "const capability = await fetchContractDetail(contractId);",
+    "const matchesRequestedContract = capability.id === contractId;",
+    "if (!matchesRequestedContract) throw new Error(",
+    "const matchesRequestedVersion = capability.contractVersionId === contractVersionId;",
+    "if (!matchesRequestedVersion) throw new Error(",
+    "const operationAllowed = capability.availableActionKeys.includes(\"upload_final_contract\");",
+    "if (!operationAllowed) throw new Error(",
+    "const currentContent = documentContentCoordinatesFromValues( capability.documentContentRevision, capability.documentContentFingerprint );",
+    "const documentContentMatches = sameDocumentContent( currentContent,",
+    `${action.content} );`,
+    "if (!documentContentMatches) { throw new Error("
+  ];
+  const associationFragments = actionId === "contract-final.associate"
+    ? [
+        "if (!Number.isInteger(capability.draftRevision) || Number(capability.draftRevision) < 1) { throw new Error(",
+        "const sourceRevision = Number(capability.draftRevision);"
+      ]
+    : [];
+  return containsOrderedSourceFragments(
+    handlerSource,
+    [...commonFragments, ...associationFragments, action.terminal]
+  );
+}
+
+function finalContractWriteCausalProof({
+  action,
+  wrapper,
+  context
+}) {
+  const expected = action.id === "contract-final.upload-file"
+    ? {
+        handler: "uploadContractFinalPrivateFileWithCapability",
+        wrapperApi: `${WEB_SOURCE_ROOT}/api/core-flow-read.api.ts`,
+        wrapperName: "uploadPrivateFile"
+      }
+    : action.id === "contract-final.associate"
+      ? {
+          handler: "associateContractFinalFileWithCapability",
+          wrapperApi: `${WEB_SOURCE_ROOT}/api/core-flow-read.api.ts`,
+          wrapperName: "uploadMutuallySignedContract"
+        }
+      : null;
+  if (
+    !expected ||
+    action.sourceFile !==
+      `${WEB_SOURCE_ROOT}/pages/contracts/ContractDetailPage.vue` ||
+    action.trigger.handler !== expected.handler ||
+    wrapper.apiFile !== expected.wrapperApi ||
+    wrapper.name !== expected.wrapperName
+  ) {
+    return null;
+  }
+  const handlerBindings = topLevelScopeVariables(
+    context.symbols.scopeManager,
+    action.trigger.handler
+  );
+  const definition = handlerBindings.length === 1
+    ? uniqueIndexedNode(
+        context.symbols.definitionsByBinding,
+        handlerBindings[0]
+      )
+    : null;
+  const terminal = definition?.body?.type === "BlockStatement"
+    ? definition.body.body?.at(-1)
+    : null;
+  const terminalCall = terminal?.type === "ReturnStatement"
+    ? unwrapValueExpression(terminal.argument)
+    : null;
+  const handlerSource = definition?.range && isNonEmptyString(context.source)
+    ? context.source.slice(definition.range[0], definition.range[1])
+    : "";
+  if (
+    !definition ||
+    !verifyFinalContractWriteGuardSequence({
+      actionId: action.id,
+      handlerSource,
+      fileSource: context.source
+    }) ||
+    !finalContractDocumentGuardBindingProof({
+      actionId: action.id,
+      definition,
+      symbols: context.symbols
+    }) ||
+    !callExpressionMatchesWrapper(
+      terminalCall,
+      wrapper,
+      context.symbols
+    ) ||
+    (action.id === "contract-final.associate" &&
+      !finalContractDraftRevisionGuardIsExact(
+        definition,
+        context.symbols
+      )) ||
+    (action.id === "contract-final.associate" &&
+      !finalContractSourceRevisionReachesPayload(
+        terminalCall,
+        context.symbols
+      )) ||
+    directWrapperCallCount(
+      definition,
+      wrapper,
+      context.symbols
+    ) !== 1
+  ) {
+    return null;
+  }
+  return {
+    verified: true,
+    localCallChain: [
+      action.trigger.handler,
+      wrapper.name
+    ]
+  };
+}
+
 function serverReadImportNames(symbols, wrapperIndex, sourceFile) {
   const bindings = new Map();
   for (const [localName, binding] of symbols.imports) {
@@ -12946,7 +14150,7 @@ function actionBindings({
         wrapper: declared.name
       });
     }
-    const causalProof = candidate
+    let causalProof = candidate
       ? wrapperCausalProof(
           action.trigger.handler,
           {
@@ -12964,10 +14168,32 @@ function actionBindings({
             capabilityContext
           }
         )
-      : {
+        : {
           verified: false,
           localCallChain: [action.trigger.handler]
         };
+    const finalContractProof = finalContractWriteCausalProof({
+      action,
+      wrapper: {
+        ...wrapper,
+        apiFile: posixPath(wrapper.apiFile)
+      },
+      context: capabilityContext
+    });
+    if (finalContractProof !== null) {
+      causalProof = finalContractProof;
+    } else if (!causalProof.verified) {
+      causalProof =
+        contractDraftLifecycleSessionCausalProof({
+          action,
+          wrapper: {
+            ...wrapper,
+            apiFile: posixPath(wrapper.apiFile)
+          },
+          context: capabilityContext
+        }) ??
+        causalProof;
+    }
     if (!causalProof.verified) {
       blockers.unresolvedWrappers.push({
         code: "ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED",

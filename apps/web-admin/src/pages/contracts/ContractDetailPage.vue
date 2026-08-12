@@ -1482,7 +1482,15 @@ async function uploadContractFinalPrivateFileWithCapability(
   if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
   const operationAllowed = capability.availableActionKeys.includes("upload_final_contract");
   if (!operationAllowed) throw new Error("当前用户不能上传合同最终版文件");
-  if (!sameDocumentContent(documentContentCoordinates(capability), expectedContent)) {
+  const currentContent = documentContentCoordinatesFromValues(
+    capability.documentContentRevision,
+    capability.documentContentFingerprint
+  );
+  const documentContentMatches = sameDocumentContent(
+    currentContent,
+    expectedContent
+  );
+  if (!documentContentMatches) {
     throw new Error("合同文书内容已变化，请重新选择双方最终版原件");
   }
   return uploadPrivateFile(file, fileName);
@@ -1500,16 +1508,25 @@ async function associateContractFinalFileWithCapability(
   if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
   const operationAllowed = capability.availableActionKeys.includes("upload_final_contract");
   if (!operationAllowed) throw new Error("当前用户不能关联合同最终版文件");
-  if (!sameDocumentContent(documentContentCoordinates(capability), staged)) {
+  const currentContent = documentContentCoordinatesFromValues(
+    capability.documentContentRevision,
+    capability.documentContentFingerprint
+  );
+  const documentContentMatches = sameDocumentContent(
+    currentContent,
+    staged
+  );
+  if (!documentContentMatches) {
     throw new Error("合同文书内容已变化，已暂存文件不再对应当前内容");
   }
   if (!Number.isInteger(capability.draftRevision) || Number(capability.draftRevision) < 1) {
     throw new Error("合同聚合修订坐标缺失，请刷新后重试");
   }
+  const sourceRevision = Number(capability.draftRevision);
   return uploadMutuallySignedContract(contractVersionId, {
+    ...staged.declaration,
     fileId: staged.fileId,
-    sourceRevision: Number(capability.draftRevision),
-    ...staged.declaration
+    sourceRevision
   });
 }
 
@@ -1742,22 +1759,33 @@ type DocumentContentCoordinates = Pick<
   StagedFinalAssociation,
   "documentContentRevision" | "documentContentFingerprint"
 >;
-function documentContentCoordinates(
-  detail: ContractDetailReadModel | null
+function documentContentCoordinatesFromValues(
+  documentContentRevision: unknown,
+  documentContentFingerprint: unknown
 ): DocumentContentCoordinates {
   if (
-    !detail ||
-    !Number.isInteger(detail.documentContentRevision) ||
-    detail.documentContentRevision < 1 ||
-    typeof detail.documentContentFingerprint !== "string" ||
-    !/^[a-f0-9]{64}$/u.test(detail.documentContentFingerprint)
+    !Number.isInteger(documentContentRevision) ||
+    Number(documentContentRevision) < 1 ||
+    typeof documentContentFingerprint !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(documentContentFingerprint)
   ) {
     throw new Error("合同文书内容坐标缺失，请刷新后重试");
   }
   return {
-    documentContentRevision: detail.documentContentRevision,
-    documentContentFingerprint: detail.documentContentFingerprint
+    documentContentRevision: Number(documentContentRevision),
+    documentContentFingerprint
   };
+}
+function documentContentCoordinates(
+  detail: ContractDetailReadModel | null
+): DocumentContentCoordinates {
+  if (!detail) {
+    throw new Error("合同文书内容坐标缺失，请刷新后重试");
+  }
+  return documentContentCoordinatesFromValues(
+    detail.documentContentRevision,
+    detail.documentContentFingerprint
+  );
 }
 function formalDocumentContentCoordinates(
   file: NonNullable<ContractDetailReadModel["formalFiles"]>[number]
