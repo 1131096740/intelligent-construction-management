@@ -1,7 +1,10 @@
-# GitHub Actions is deploy-only
+# GitHub Actions responsibilities
 
-Daily development checks and the complete release gate run on the operator's
-Mac. Pull requests and ordinary pushes do not trigger GitHub Actions.
+Pull requests and pushes to `main` run `.github/workflows/ci.yml`. Independent
+quality, unit-test, build/manifest, and PostgreSQL 16 matrix shards execute in
+parallel. The stable `Release gates` summary succeeds only when every branch
+passes. This remote check complements the operator Mac's exact-SHA
+`pnpm release:local` receipt; it does not replace the production release gate.
 
 deploy-production.yml is the only GitHub-hosted workflow. It can only be
 started manually after pnpm deploy:local has validated a clean, exact
@@ -11,6 +14,6 @@ application; it validates the non-sensitive receipt summary, then calls the
 existing server-side backup, migration, deployment, health-check, confirmation,
 and recovery chain.
 
-Keep the Actions overage budget at $0. This allows included monthly minutes
-only and blocks additional charges. Do not add push, pull-request, cache, or
-artifact workflows here without a new explicit decision.
+`deploy-production.yml` remains manually dispatched and does not rebuild or
+retest the application. Restoring CI does not authorize deployment, migration,
+data cleanup, or production access.

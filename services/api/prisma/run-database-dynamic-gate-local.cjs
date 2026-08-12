@@ -244,7 +244,8 @@ function parseArguments(argv) {
   const options = {
     mode: "preview",
     candidateSha: undefined,
-    confirmation: undefined
+    confirmation: undefined,
+    groups: []
   };
   const modes = new Set();
   for (let index = 0; index < argv.length; index += 1) {
@@ -261,6 +262,10 @@ function parseArguments(argv) {
     } else if (argument === "--confirm") {
       options.confirmation = argv[++index];
       if (!options.confirmation) fail("--confirm 缺少值");
+    } else if (argument === "--group") {
+      const group = argv[++index];
+      if (!group) fail("--group 缺少数据库组名称");
+      options.groups.push(group);
     } else {
       fail(`未知参数：${argument}`);
     }
@@ -271,6 +276,29 @@ function parseArguments(argv) {
     fail("--candidate-sha 与 --confirm 只能和 --execute 一起使用");
   }
   return options;
+}
+
+function selectCoveredGroups(manifest, requestedGroups) {
+  if (requestedGroups.length === 0) return manifest.coveredGroups;
+  const uniqueGroups = new Set(requestedGroups);
+  if (uniqueGroups.size !== requestedGroups.length) {
+    fail("数据库组不能重复选择");
+  }
+  const knownGroups = new Set(manifest.coveredGroups.map((group) => group.id));
+  const unknownGroups = requestedGroups.filter((group) => !knownGroups.has(group));
+  if (unknownGroups.length > 0) {
+    fail(`未知数据库组：${unknownGroups.join(", ")}`);
+  }
+  return manifest.coveredGroups.filter((group) => uniqueGroups.has(group.id));
+}
+
+function selectedCoverage(groups) {
+  return {
+    pendingFiles: groups.reduce((total, group) => total + group.testFiles.length, 0),
+    pendingTests: groups.reduce((total, group) => total + group.pendingTests, 0),
+    coveredFiles: groups.reduce((total, group) => total + group.testFiles.length, 0),
+    coveredTests: groups.reduce((total, group) => total + group.pendingTests, 0)
+  };
 }
 
 function assertExecutionArguments(options, manifest) {
@@ -466,6 +494,8 @@ async function runPreflight(environment) {
 async function executeGate({ manifest, options, sourceEnv = process.env }) {
   assertExecutionArguments(options, manifest);
   assertSafeExecutionEnvironment(sourceEnv);
+  const coveredGroups = selectCoveredGroups(manifest, options.groups);
+  const coverage = selectedCoverage(coveredGroups);
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-gate-")
   );
@@ -491,7 +521,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
     await runPreflight(childEnvironment);
 
-    for (const group of manifest.coveredGroups) {
+    for (const group of coveredGroups) {
       await assertRepositoryState(candidateSha, probeEnvironment);
       const groupStartedAt = Date.now();
       const resolved = resolveGroupCommand(group);
@@ -532,8 +562,8 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       terminalMigration: manifest.migrationBaseline.terminalMigration,
       containerImage: manifest.migrationBaseline.containerImage,
       containerImageId: dockerReceipt.imageId,
-      coveredTests: manifest.inventory.coveredTests,
-      coveredFiles: manifest.inventory.coveredFiles,
+      coveredTests: coverage.coveredTests,
+      coveredFiles: coverage.coveredFiles,
       remainingTests: manifest.inventory.remainingTests,
       remainingFiles: manifest.inventory.remainingFiles,
       groups: groupReceipts
@@ -545,24 +575,26 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
   }
 }
 
-function preview(manifest, validation, mode) {
+function preview(manifest, validation, options) {
+  const coveredGroups = selectCoveredGroups(manifest, options.groups);
+  const coverage = selectedCoverage(coveredGroups);
   const payload = {
     schemaVersion: 1,
     gate: manifest.id,
-    mode,
+    mode: options.mode,
     executed: false,
     manifestValid: true,
     migrationCount: validation.migrationCount,
     terminalMigration: validation.terminalMigration,
-    pendingFiles: validation.pendingFiles,
-    pendingTests: validation.pendingTests,
-    coveredFiles: validation.coveredFiles,
-    coveredTests: validation.coveredTests,
+    pendingFiles: coverage.pendingFiles,
+    pendingTests: coverage.pendingTests,
+    coveredFiles: coverage.coveredFiles,
+    coveredTests: coverage.coveredTests,
     remainingFiles: validation.remainingFiles,
     remainingTests: validation.remainingTests
   };
-  if (mode === "list") {
-    payload.coveredGroups = manifest.coveredGroups.map((group) => ({
+  if (options.mode === "list") {
+    payload.coveredGroups = coveredGroups.map((group) => ({
       id: group.id,
       pendingTests: group.pendingTests,
       testFiles: group.testFiles.map((file) => file.path),
@@ -577,7 +609,7 @@ function preview(manifest, validation, mode) {
     }));
   }
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-  if (mode === "preview") {
+  if (options.mode === "preview") {
     process.stdout.write(
       "仅完成只读预览，未调用 git、Docker、PostgreSQL 或测试 runner。\n" +
         "执行前请先使用 --validate-manifest 或 --list；动态执行还必须显式提供候选 SHA 与确认串。\n"
@@ -593,7 +625,7 @@ async function main(argv = process.argv.slice(2)) {
   if (options.mode === "execute") {
     return executeGate({ manifest, options });
   }
-  return preview(manifest, validation, options.mode);
+  return preview(manifest, validation, options);
 }
 
 if (require.main === module) {
@@ -621,5 +653,6 @@ module.exports = {
   parseArguments,
   resolveGroupCommand,
   root,
+  selectCoveredGroups,
   validateManifest
 };

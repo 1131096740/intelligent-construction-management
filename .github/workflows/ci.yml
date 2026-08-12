@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install frozen dependencies
+        run: CI=true pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @jiangkong/api exec prisma generate
+
+      - name: Verify CI orchestration contract
+        run: pnpm test:ci-orchestration
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
+      - name: Typecheck
+        run: |
+          pnpm typecheck
+          pnpm --filter @jiangkong/web-admin typecheck:e2e
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Verify business error and operations safety gates
+        run: |
+          node services/api/scripts/check-business-errors.self-test.cjs
+          pnpm --filter @jiangkong/api check:business-errors
+          bash scripts/ops/go-live-safety-self-test.sh
+
+  unit-test-gates:
+    name: Unit test gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install frozen dependencies
+        run: CI=true pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @jiangkong/api exec prisma generate
+
+      - name: Test
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: pnpm test
+
+  build-manifest-gates:
+    name: Build and manifest gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install frozen dependencies
+        run: CI=true pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @jiangkong/api exec prisma generate
+
+      - name: Build Web production application
+        run: pnpm --filter @jiangkong/web-admin build
+
+      - name: Verify Web UI governance
+        run: pnpm --filter @jiangkong/web-admin check:ui
+
+      - name: Verify capability and usage manifests
+        run: pnpm inspect:release-manifests
+
+  postgresql16-dynamic-gates:
+    name: PostgreSQL 16 dynamic gate (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - project_financing_quota
+          - contract_template_scenario
+          - contract_settlement_v2
+          - payment_execution
+          - project_expense_execution
+          - project_expense_finance
+          - project_expense_receipt
+          - settlement_draft_lifecycle
+          - remaining_dynamic_postgresql16
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+
+      - name: Install frozen dependencies
+        run: CI=true pnpm install --frozen-lockfile
+
+      - name: Prepare PostgreSQL 16 dynamic gate image
+        run: docker pull postgres:16
+
+      - name: Run exact-SHA PostgreSQL dynamic gate shard
+        env:
+          DYNAMIC_GROUP: ${{ matrix.group }}
+        run: |
+          candidate_sha="$(git rev-parse HEAD)"
+          node services/api/prisma/run-database-dynamic-gate-local.cjs \
+            --execute \
+            --group "$DYNAMIC_GROUP" \
+            --candidate-sha "$candidate_sha" \
+            --confirm LOCAL_PG16_DYNAMIC_GATE
+
+  release-gates:
+    name: Release gates
+    if: ${{ always() }}
+    needs: [quality-gates, unit-test-gates, build-manifest-gates, postgresql16-dynamic-gates]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert all release gates passed
+        env:
+          QUALITY_RESULT: ${{ needs['quality-gates'].result }}
+          TEST_RESULT: ${{ needs['unit-test-gates'].result }}
+          BUILD_RESULT: ${{ needs['build-manifest-gates'].result }}
+          DYNAMIC_RESULT: ${{ needs['postgresql16-dynamic-gates'].result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          test "$TEST_RESULT" = success
+          test "$BUILD_RESULT" = success
+          test "$DYNAMIC_RESULT" = success
