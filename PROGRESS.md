@@ -40,6 +40,34 @@
 
 ### P0：已删除草稿生命周期
 
+#### Contract Architecture V3 父票 #53：文档验收收口
+
+- [x] 2026-08-12 fresh fetch 后在干净、detached 的独立 worktree 复核：`origin/main` 与 `HEAD` 均为 `835885fc193e9170eb0d9179c18b122c37cf7ae3`。GitHub 只读事实为 #54–#67 全部 `CLOSED`（`COMPLETED`），对应 PR #69、#71、#72、#77、#81–#88、#90、#91 全部已合并；其 merge SHA 均为该精确 HEAD 的祖先，PR #91 的 merge commit 即该 HEAD，并关闭 #61。
+- [x] 父票 8 个 user stories 的源码/契约验收账本如下；“完成”只表示父规格在该 SHA 上具备可追溯的合并实现，不表示生产观察、迁移、发布或物理删除已完成。
+
+| Story | 状态 | 合并证据与验收结论 |
+| --- | --- | --- |
+| 1. 恢复数据只允许显式保存 | [x] | #54 / PR #69 与 #66 / PR #88；恢复数据只供检查，继续由 `useContractDraft` 的显式命令保存。 |
+| 2. 删除结果不确定时冻结 autosave | [x] | #54 / PR #69；`deleting`、待重试和结果未知均保持冻结，fresh server state 与 current lease 决定是否恢复可写。 |
+| 3. 单一 version/revision/lease/capability snapshot | [x] | #55 / PR #71、#62 / PR #83、#66 / PR #88；页面不再拼接第二份 authority，完整回执漂移时 fail-closed。 |
+| 4. 签章确认只随文书内容变化失效 | [x] | #63–#65 / PR #84–#86 与 #67 / PR #87；`documentContentRevision` + canonical fingerprint 承担文书有效性，metadata-only `draftRevision` 不误伤确认。 |
+| 5. 双边确认并发下最多激活一次 | [x] | #61 / PR #91；公开 side-confirmation 路由、固定锁序、幂等回放及 PostgreSQL 冲突映射已合并。 |
+| 6. 旧客户端在 cutover 后一致收到 410 | [x] | #57–#60 / PR #77、#81、#82、#90；目标旧写入均为 all-mode tombstone，旧 authority 不再投影。 |
+| 7. tombstone 可观察后才允许物理删除 | [x] | #56–#60；运行时 route/authority manifest 保留可观察 tombstone 分类。生产观察与物理删除仍未执行，继续要求独立授权。 |
+| 8. route usage、cutover、迁移与 exact-SHA release 分别授权 | [x] | 父规格的授权分层保持有效；本次只把文档验收绑定到 `835885fc193e9170eb0d9179c18b122c37cf7ae3`，不构成 exact-SHA 生产发布收口。 |
+
+- [x] 父票限定的 4 个 public seams 已在该 SHA 上逐项复核：
+
+| Public seam | 当前验收事实 |
+| --- | --- |
+| `ContractDraftAggregateService.saveAggregate` | 仍是完整 aggregate snapshot 的唯一普通成员 writer，覆盖 snapshot、lease、revision、idempotency、invalidation 与 receipt；#62、#63 已合并。 |
+| `useContractDraft` | 继续统一拥有 recovery、save queue、deletion/retry、lease、readonly 与 lifecycle authority；#54、#55、#66 已合并，未保留第二个 session owner。 |
+| Takeover side-confirmation interface | 保留合同侧/财务侧 confirmation、双方 withdrawal 与 change-baseline-confirmation public routes；#61 / PR #91 合并后，旧总确认 POST 仍保持 #60 的 tombstone。 |
+| Runtime route manifest / capability projection | `contract-mutation-authority.json` 为 `ready`：80 routes、1 个 aggregate writer、55 个 governed commands、24 个 exit candidates、0 blocker；`route-usage.json` 的 14 条 V3 目标旧写入带 tombstone 标记，且不可用动作不再广告。 |
+
+- [x] 明确保留非生产边界：本收口没有修改业务代码、路由、测试、Schema、迁移或 ADR，没有写入/关闭 GitHub Issue #53，没有读取生产日志或执行生产检查、Gate 4、迁移、部署、route 物理删除、push 或 PR；本地文档 commit 不产生生产效果，也不授予下一步动作。#53 继续保持 `OPEN`，关闭 Issue 需另行授权。
+- [x] 下列 #54–#67 详细条目保留各票实施时点的验证收据；其中“未推送 / 未建 PR / 未关闭”等原时点边界不再代表当前 Git 状态，当前合并结论以本节 fresh 核验为准。
+
 - [x] Issue #61（双边确认并发与单一 lifecycle authority）已在固定、detached 且开工前 clean 的基线 `91e49ba56cd9f9ec95b0a99471961664cbea4394` 完成本地 RED→GREEN TDD 与 Standards/Spec 双轴 fixed-point 复核，当前保持未提交：既有 `ContractTakeoverService` 继续作为单一 lifecycle Module authority，以接管根为首的固定锁序一次锁定双方事实、实付、凭证、合同、版本和付款条款；内部 activation Implementation 仅执行已锁定、已判定的 aggregate，不再自行重锁或重判。公共 Interface 仅保留既有合同侧/财务侧 confirmation、双方 withdrawal 与 change-baseline-confirmation 路由；未恢复 #60 旧总确认 POST，未新增公开 test Seam、Adapter、repository、facade 或通用并发框架。真实 PostgreSQL `40001` 与 Prisma `P2034` 均稳定映射 HTTP 409，服务端不自动重试；同幂等键在冲突后由 fresh HTTP request 重放并再次 fresh-read 得到同一最终回执。一次性本机 PostgreSQL 16 容器部署 125 个既有迁移后，公开路由与余额并发套件 5/5 通过并自动清理，覆盖 wait/activate、唯一 confirmation receipt/activation audit/期初结算、两笔历史实付与凭证、600 期初结算 + 100 历史预付款、主体版本冻结，以及确认与撤回/基线确认竞争；四组竞争均由数据库 `PgSleep` barrier 证明真实重叠。contract-takeover 领域回归 344/344、API 全量 6044 passed/76 skipped、typecheck、lint、动态门 manifest 9/9 与 `git diff --check` 通过；双轴复核 0 findings。未新增 Schema/迁移，未访问任何非 localhost 数据库、生产、日志或 COS，未执行 Gate4、部署、push、PR、Issue 写入/关闭、分支或 commit；本地临时数据库证据不代表生产效果。
 - [x] #66 local implementation started（本地实施完成，GitHub Issue 未更新/关闭）：基于新鲜基线 `5c997ec18d38aedb493300a4d7bc9a8885ac8eda` 完成 session extraction deletion test，未保留独立 session candidate，仅深化现有 `useContractDraft.lifecycle` 的只读状态与命令边界；`ContractWorkbenchPage.vue` 删除页面级生命周期编排与重复 authority 状态，最终净删 126 行。公开 seam 的恢复、save queue、删除/重试、lease、readonly 与可见页面动作/结果目标测试 86 项通过，相关结构契约合计 122 项、Web 全套 1950 项、typecheck、lint、`check:ui` 均通过；Standards / Spec 双轴固定点复核均 0 发现。未修改 Schema/迁移，未运行数据库迁移或动态 gate，未执行 GitHub Issue 变更、push/PR/merge、部署、生产访问或 COS 操作，也未启动 #67。
 - [x] Issue #54（合同工作台：恢复与原始草稿删除状态安全）已由 PR #69 squash 合并至 `main`（合并 SHA `02764934888b5fc73508561a58028baf87937dee`），GitHub Issue #54 已 `CLOSED`（`COMPLETED`）：恢复较旧本地副本只供人工检查且不再自动排队保存；原始草稿删除请求结果未知或服务端确认待重试时撤销本地租约并冻结 autosave/写入，只有重新读取服务端状态并取得当前租约才恢复可写。已通过目标 Web Vitest 161 项、typecheck、lint 与 `check:ui`；未运行生产检查、迁移或部署。
