@@ -26,6 +26,7 @@ const {
   createDryRunReceipt,
   executeBusinessZeroing,
   expectedConfirmation,
+  parsePrismaNullableLifecycleFields,
   selectFormalObservationFields,
   sha256,
   validateAuthorizationEnvelope,
@@ -669,6 +670,12 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     { lifecycleStatus: "effective", workflowState: "approved" }
   );
 
+  const nullableLifecycleFields = parsePrismaNullableLifecycleFields(
+    readFileSync(path.resolve(__dirname, "../prisma/schema.prisma"), "utf8")
+  );
+  assert.ok(nullableLifecycleFields.has("endedAt"));
+  assert.ok(nullableLifecycleFields.has("settlementModeConfirmedByUserId"));
+
   const draftInventory = inventory({
     tables: inventory().tables.map((table) =>
       table.name === "Contract"
@@ -679,32 +686,9 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
                 id: "c1",
                 status: "draft",
                 signingSubjectType: "our_company",
-                activatedAt: null,
-                approvedAt: null,
-                closedAt: null,
-                completedAt: null,
-                confirmedAt: null,
-                effectiveAt: null,
-                endedAt: null,
-                executedAt: null,
-                factsFrozenAt: null,
-                firstSubmittedAt: null,
-                frozenAt: null,
-                historicalBalanceConfirmedAt: null,
-                invalidatedAt: null,
-                lockedAt: null,
-                periodEnd: null,
-                publishedAt: null,
-                purchaseExecutedAt: null,
-                receiptConfirmedAt: null,
-                releasedAt: null,
-                settlementClosedAt: null,
-                settlementModeConfirmedAt: null,
-                sourceEffectiveAt: null,
-                submittedAt: null,
-                taxFactsFrozenAt: null,
-                validUntil: null,
-                voidedAt: null
+                ...Object.fromEntries(
+                  [...nullableLifecycleFields].map((field) => [field, null])
+                )
               }
             ]
           }

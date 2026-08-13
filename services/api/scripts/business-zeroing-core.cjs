@@ -2,6 +2,8 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { readFileSync } = require("node:fs");
+const path = require("node:path");
 
 const REPORT_TTL_MS = 30 * 60 * 1000;
 const POLICY_ID = "pol-22-business-zeroing-v1";
@@ -29,34 +31,6 @@ const PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST = Object.freeze({
   takeoverStatus: new Set(["draft"]),
   taxFactStatus: new Set(["draft", "pending_finance_review", "unconfirmed"])
 });
-const KNOWN_NULLABLE_LIFECYCLE_TIMESTAMP_FIELDS = new Set([
-  "activatedAt",
-  "approvedAt",
-  "closedAt",
-  "completedAt",
-  "confirmedAt",
-  "effectiveAt",
-  "endedAt",
-  "executedAt",
-  "factsFrozenAt",
-  "firstSubmittedAt",
-  "frozenAt",
-  "historicalBalanceConfirmedAt",
-  "invalidatedAt",
-  "lockedAt",
-  "periodEnd",
-  "publishedAt",
-  "purchaseExecutedAt",
-  "receiptConfirmedAt",
-  "releasedAt",
-  "settlementClosedAt",
-  "settlementModeConfirmedAt",
-  "sourceEffectiveAt",
-  "submittedAt",
-  "taxFactsFrozenAt",
-  "validUntil",
-  "voidedAt"
-]);
 const FORMAL_LIFECYCLE_FIELD_TOKENS = new Set([
   "active", "activated", "approval", "approved", "archive", "archived",
   "close", "closed", "complete", "completed", "confirm", "confirmed",
@@ -75,6 +49,19 @@ function isFormalLifecycleField(field) {
     .split(/[^a-z0-9]+/u)
     .some((token) => FORMAL_LIFECYCLE_FIELD_TOKENS.has(token));
 }
+
+function parsePrismaNullableLifecycleFields(schemaSource) {
+  invariant(typeof schemaSource === "string" && schemaSource.trim(), "Prisma Schema 为空");
+  return new Set(
+    [...schemaSource.matchAll(/^\s+([A-Za-z][A-Za-z0-9_]*)\s+[^\s]+\?/gmu)]
+      .map((match) => match[1])
+      .filter(isFormalLifecycleField)
+  );
+}
+
+const KNOWN_NULLABLE_LIFECYCLE_FIELDS = parsePrismaNullableLifecycleFields(
+  readFileSync(path.resolve(__dirname, "../prisma/schema.prisma"), "utf8")
+);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -580,7 +567,7 @@ function observedFormalProtection(tableName, row) {
     const value = row[field];
     if (field === "status") continue;
     if (value === false) continue;
-    if (value === null && KNOWN_NULLABLE_LIFECYCLE_TIMESTAMP_FIELDS.has(field)) {
+    if (value === null && KNOWN_NULLABLE_LIFECYCLE_FIELDS.has(field)) {
       continue;
     }
     const allowedValues = PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST[field];
@@ -2583,6 +2570,7 @@ module.exports = {
   createDryRunReceipt,
   executeBusinessZeroing,
   expectedConfirmation,
+  parsePrismaNullableLifecycleFields,
   selectFormalObservationFields,
   sha256,
   inspectDeletedObjectScopes,
