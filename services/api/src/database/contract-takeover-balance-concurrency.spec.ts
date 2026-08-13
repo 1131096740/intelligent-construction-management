@@ -265,6 +265,18 @@ async function seedBalanceFacts(
       name: "历史余额并发测试项目"
     }
   });
+  await client.projectAffiliateAssignment.create({
+    data: {
+      id: `balance-construction-enterprise-${suffix}`,
+      projectId: ids.project,
+      businessPartyId: `balance-party-${suffix}`,
+      businessPartyVersionId: `balance-party-version-${suffix}`,
+      affiliateNameSnapshot: "历史余额测试施工企业",
+      effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+      changeReason: "数据库测试夹具",
+      assignedByUserId: ids.actor
+    }
+  });
   await client.contract.create({
     data: {
       id: ids.contract,

@@ -13,7 +13,7 @@ import { SettlementSubmissionService } from "../settlement/settlement-submission
 
 const DATABASE_NAME =
   "jiangkong_settlement_draft_lifecycle_concurrency";
-const EXPECTED_MIGRATION_COUNT = 125;
+const EXPECTED_MIGRATION_COUNT = 126;
 
 describe("settlement draft lifecycle database concurrency", () => {
   const integrationTest =
@@ -311,6 +311,23 @@ async function seedCore(client: PrismaClientType, fixture: Fixture) {
       ${`${fixture.prefix}_project_code`},
       '结算生命周期并发验收项目',
       TRUE,
+      NOW()
+    )
+  `);
+  await client.$executeRaw(Prisma.sql`
+    INSERT INTO "ProjectAffiliateAssignment" (
+      "id", "projectId", "businessPartyId", "businessPartyVersionId",
+      "affiliateNameSnapshot", "effectiveFrom", "changeReason",
+      "assignedByUserId", "updatedAt"
+    ) VALUES (
+      ${`${fixture.projectId}_construction_enterprise`},
+      ${fixture.projectId},
+      ${`${fixture.projectId}_party`},
+      ${`${fixture.projectId}_party_version`},
+      '结算生命周期并发验收施工企业',
+      '2020-01-01',
+      '数据库测试夹具',
+      ${fixture.ownerUserId},
       NOW()
     )
   `);

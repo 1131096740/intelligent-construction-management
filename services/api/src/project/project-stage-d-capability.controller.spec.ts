@@ -26,10 +26,33 @@ describe("project stage D capability controller wiring", () => {
     [
       "uploadAffiliateBusinessEvidencePrivateFile",
       "project.affiliate_business_fact.evidence_supplement"
-    ]
+    ],
+    ["updateOperatingProfile", "project.operating_profile.manage"],
+    ["participatingCompanyOptions", "project.operating_profile.manage"],
+    ["constructionEnterpriseOptions", "project.operating_profile.manage"],
+    ["assignConstructionEnterprise", "project.operating_profile.manage"],
+    ["addParticipatingCompany", "project.operating_profile.manage"],
+    ["deactivateParticipatingCompany", "project.operating_profile.manage"],
+    ["removeParticipatingCompany", "project.operating_profile.manage"],
+    ["assignAffiliate", "project.operating_profile.manage"]
   ])("guards %s with %s", (method, action) => {
     const handler = (ProjectController.prototype as unknown as Record<string, object>)[method];
     expect(Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, handler)).toBe(action);
+  });
+
+  it("keeps operating-profile input DTOs as runtime validation metatypes", () => {
+    const updateTypes = Reflect.getMetadata(
+      "design:paramtypes",
+      ProjectController.prototype,
+      "updateOperatingProfile"
+    );
+    const participantTypes = Reflect.getMetadata(
+      "design:paramtypes",
+      ProjectController.prototype,
+      "addParticipatingCompany"
+    );
+    expect(updateTypes).toEqual(expect.arrayContaining([expect.any(Function)]));
+    expect(participantTypes).toEqual(expect.arrayContaining([expect.any(Function)]));
   });
 
   it.each([

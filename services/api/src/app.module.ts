@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { APP_FILTER } from "@nestjs/core";
 import { ArchiveModule } from "./archive/archive.module";
 import { ApprovalModule } from "./approval/approval.module";
 import { AuditModule } from "./audit/audit.module";
@@ -26,6 +27,7 @@ import { PaymentModule } from "./payment/payment.module";
 import { PdfModule } from "./pdf/pdf.module";
 import { ProjectExpenseModule } from "./project-expense/project-expense.module";
 import { ProjectModule } from "./project/project.module";
+import { ProjectOperatingConstraintFilter } from "./project/project-operating-constraint.filter";
 import { SettlementModule } from "./settlement/settlement.module";
 import { SpotProcurementModule } from "./spot-procurement/spot-procurement.module";
 
@@ -60,6 +62,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     AuthModule,
     PdfModule
   ],
-  controllers: [HealthController]
+  controllers: [HealthController],
+  providers: [{ provide: APP_FILTER, useClass: ProjectOperatingConstraintFilter }]
 })
 export class AppModule {}

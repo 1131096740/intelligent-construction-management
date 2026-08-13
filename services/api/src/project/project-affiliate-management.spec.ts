@@ -17,7 +17,7 @@ describe("ProjectService affiliate mapping", () => {
         effectiveFrom: "2099-01-01T00:00:00.000Z",
         changeReason: "错误地提前登记未来映射"
       })
-    ).rejects.toThrow("挂靠关系生效时间不能晚于当前时间");
+    ).rejects.toThrow("施工企业生效时间不能晚于当前时间");
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -169,6 +169,61 @@ describe("ProjectService affiliate mapping", () => {
     expect(tx.projectProxyPayment.updateMany).not.toHaveBeenCalled();
     expect(tx.settlement.updateMany).not.toHaveBeenCalled();
     expect(tx.fileObject.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects changing the construction enterprise after the first formal operating fact", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{
+          id: "project-1",
+          isActive: true,
+          constructionEnterpriseLockedAt: new Date("2020-08-14T01:00:00.000Z")
+        }])
+        .mockResolvedValueOnce([{
+          id: "assignment-current",
+          businessPartyId: "party-current",
+          businessPartyVersionId: "party-version-current",
+          effectiveFrom: new Date("2020-08-01T00:00:00.000Z")
+        }]),
+      businessPartyVersion: { findUnique: jest.fn() },
+      businessParty: { findUnique: jest.fn() },
+      projectAffiliateAssignment: {
+        updateMany: jest.fn(),
+        create: jest.fn()
+      }
+    };
+    const service = new ProjectService(transactionPrisma(tx) as never);
+
+    await expect(
+      service.assignAffiliate("project-1", "chairman-1", {
+        businessPartyVersionId: "party-version-new",
+        effectiveFrom: "2020-08-14T00:00:00.000Z",
+        changeReason: "尝试更换施工企业"
+      })
+    ).rejects.toThrow("项目已有正式经营事实，施工企业已经锁定，不能普通设置或更换");
+
+    expect(tx.projectAffiliateAssignment.updateMany).not.toHaveBeenCalled();
+    expect(tx.projectAffiliateAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects first-time construction-enterprise assignment after a formal fact already locked the project", async () => {
+    const tx = {
+      $queryRaw: jest.fn()
+        .mockResolvedValueOnce([{
+          id: "project-1",
+          isActive: true,
+          constructionEnterpriseLockedAt: new Date("2026-08-13T00:00:00.000Z")
+        }])
+        .mockResolvedValueOnce([])
+    };
+    const service = new ProjectService(transactionPrisma(tx) as never);
+
+    await expect(service.assignAffiliate("project-1", "finance-1", {
+      businessPartyVersionId: "party-version-1",
+      effectiveFrom: "2020-08-13T00:00:00.000Z",
+      changeReason: "事后补绑"
+    })).rejects.toThrow("项目已有正式经营事实，施工企业已经锁定，不能普通设置或更换");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
   it("freezes the current affiliate snapshot into a new owner master contract", async () => {

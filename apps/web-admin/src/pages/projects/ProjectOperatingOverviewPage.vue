@@ -768,6 +768,13 @@
         <AffiliateCompanyContractPanel :project-id="selectedProjectId" />
         <AffiliateBusinessLedgerPanel :project-id="selectedProjectId" />
       </t-tab-panel>
+      <t-tab-panel
+        v-if="selectedProjectId"
+        value="settings"
+        label="项目设置"
+      >
+        <ProjectOperatingProfilePanel :project-id="selectedProjectId" />
+      </t-tab-panel>
     </t-tabs>
 
     <SensitiveActionDialog
@@ -842,6 +849,7 @@ import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
 import AffiliateCompanyContractPanel from "./components/AffiliateCompanyContractPanel.vue";
 import ProjectFinancingQuotaPanel from "./components/ProjectFinancingQuotaPanel.vue";
+import ProjectOperatingProfilePanel from "./components/ProjectOperatingProfilePanel.vue";
 import {
   expensePaymentMethodLabel,
   expensePaymentMethodOptions,

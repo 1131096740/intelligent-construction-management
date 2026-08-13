@@ -10,6 +10,12 @@ import {
 } from "./permissions";
 
 describe("permission policy table", () => {
+  it("reserves project operating profile maintenance for project finance roles", () => {
+    expect(canPerform("project.operating_profile.manage", ["finance_staff"])).toBe(true);
+    expect(canPerform("project.operating_profile.manage", ["finance_director"])).toBe(true);
+    expect(canPerform("project.operating_profile.manage", ["project_manager"])).toBe(false);
+  });
+
   it("defines required roles for every business action", () => {
     for (const action of BUSINESS_ACTIONS) {
       expect(ACTION_REQUIRED_ROLES[action].length).toBeGreaterThan(0);

@@ -696,6 +696,18 @@ async function seedProjectCash(
       name: `项目资金实库夹具 ${marker}`
     }
   });
+  await client.projectAffiliateAssignment.create({
+    data: {
+      id: `pf-live-construction-enterprise-${marker}`,
+      projectId,
+      businessPartyId: `pf-live-party-${marker}`,
+      businessPartyVersionId: `pf-live-party-version-${marker}`,
+      affiliateNameSnapshot: "项目资金实库测试施工企业",
+      effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+      changeReason: "数据库测试夹具",
+      assignedByUserId: actorUserId
+    }
+  });
   await client.projectReceipt.create({
     data: {
       id: `pf-live-receipt-${marker}`,
