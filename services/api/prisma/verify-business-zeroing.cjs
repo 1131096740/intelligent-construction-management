@@ -740,9 +740,30 @@ async function verifyBusinessZeroing(
   );
   assert.deepEqual(
     executionAuditRows.map((row) => row.status),
-    ["started", "object_deletion_progress", "completion_pending", "completed"]
+    [
+      "started",
+      "object_recovery_planned",
+      "object_deletion_progress",
+      "completion_pending",
+      "completed"
+    ]
   );
-  assert.equal(afterCounts.audits, beforeCounts.audits + executionAuditRows.length);
+  const terminalAuditRows = await prisma.$queryRawUnsafe(
+    `SELECT "metadata"->>'status' AS "status"
+       FROM "AuditLog"
+      WHERE "action" = 'test_business_zeroing.terminal_commit'
+        AND "businessType" = 'test_business_zeroing'
+        AND "businessId" = $1`,
+    batchId
+  );
+  assert.deepEqual(
+    terminalAuditRows.map((row) => row.status),
+    ["terminal_committed"]
+  );
+  assert.equal(
+    afterCounts.audits,
+    beforeCounts.audits + executionAuditRows.length + terminalAuditRows.length
+  );
   await assert.rejects(() => readFile(path.join(storageRoot, OBJECT_KEY)), /ENOENT/u);
   const localDisposition = receipt.objectDispositions.find(
     (item) => item.kind === "local_quarantine" && item.objectKey === OBJECT_KEY

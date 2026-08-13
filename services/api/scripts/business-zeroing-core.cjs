@@ -32,15 +32,21 @@ const PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST = Object.freeze({
   taxFactStatus: new Set(["draft", "pending_finance_review", "unconfirmed"])
 });
 const FORMAL_LIFECYCLE_FIELD_TOKENS = new Set([
+  "abandon", "abandoned",
   "active", "activated", "approval", "approved", "archive", "archived",
   "close", "closed", "complete", "completed", "confirm", "confirmed",
+  "discard", "discarded", "dispose", "disposed",
   "effective", "enable", "enabled", "end", "ended", "execute", "executed",
   "expire", "expired", "final", "formal", "freeze", "frozen", "invalid",
   "invalidated", "lock", "locked", "paid", "publish", "published", "release",
-  "released", "repaid", "seal", "sealed", "sign", "signed", "state",
+  "released", "reject", "rejected", "repaid", "resolve", "resolved", "reverse",
+  "reversed", "revoke", "revoked", "seal", "sealed", "sign", "signed", "state",
   "status", "submit", "submitted", "valid", "void", "voided", "workflow",
-  "lifecycle", "phase"
+  "lifecycle", "phase", "apply", "applied", "terminate", "terminated"
 ]);
+
+const NULLABLE_LIFECYCLE_EVENT_FIELD =
+  /(?:At|ByUserId|Reason|Status|State|Phase)$/u;
 
 function isFormalLifecycleField(field) {
   return String(field)
@@ -50,18 +56,49 @@ function isFormalLifecycleField(field) {
     .some((token) => FORMAL_LIFECYCLE_FIELD_TOKENS.has(token));
 }
 
-function parsePrismaNullableLifecycleFields(schemaSource) {
+function parsePrismaNullableLifecycleRegistry(schemaSource) {
   invariant(typeof schemaSource === "string" && schemaSource.trim(), "Prisma Schema 为空");
+  const registry = new Map();
+  let modelName;
+  for (const sourceLine of schemaSource.split(/\r?\n/u)) {
+    const line = sourceLine.replace(/\/\/.*$/u, "");
+    const model = line.match(/^\s*model\s+([A-Za-z][A-Za-z0-9_]*)\s*\{/u);
+    if (model) {
+      modelName = model[1];
+      registry.set(modelName, new Set());
+      continue;
+    }
+    if (modelName && /^\s*\}/u.test(line)) {
+      modelName = undefined;
+      continue;
+    }
+    if (!modelName) continue;
+    const field = line.match(/^\s+([A-Za-z][A-Za-z0-9_]*)\s+([^\s]+)\?/u);
+    if (
+      field &&
+      (NULLABLE_LIFECYCLE_EVENT_FIELD.test(field[1]) ||
+        isFormalLifecycleField(field[1]))
+    ) {
+      registry.get(modelName).add(field[1]);
+    }
+  }
+  return registry;
+}
+
+function parsePrismaNullableLifecycleFields(schemaSource) {
   return new Set(
-    [...schemaSource.matchAll(/^\s+([A-Za-z][A-Za-z0-9_]*)\s+[^\s]+\?/gmu)]
-      .map((match) => match[1])
-      .filter(isFormalLifecycleField)
+    [...parsePrismaNullableLifecycleRegistry(schemaSource).values()]
+      .flatMap((fields) => [...fields])
   );
 }
 
-const KNOWN_NULLABLE_LIFECYCLE_FIELDS = parsePrismaNullableLifecycleFields(
+const KNOWN_NULLABLE_LIFECYCLE_REGISTRY = parsePrismaNullableLifecycleRegistry(
   readFileSync(path.resolve(__dirname, "../prisma/schema.prisma"), "utf8")
 );
+
+function isKnownNullableLifecycleField(tableName, field) {
+  return KNOWN_NULLABLE_LIFECYCLE_REGISTRY.get(tableName)?.has(field) === true;
+}
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -528,14 +565,15 @@ function recordContentSha256(tableName, row, { preservation = false } = {}) {
   return value;
 }
 
-function selectFormalObservationFields(row) {
+function selectFormalObservationFields(row, tableName) {
   return Object.fromEntries(
     Object.entries(row ?? {}).filter(
       ([field]) =>
         field === "status" ||
         field === "code" ||
         field === "formalCode" ||
-        isFormalLifecycleField(field)
+        isFormalLifecycleField(field) ||
+        isKnownNullableLifecycleField(tableName, field)
     )
   );
 }
@@ -563,11 +601,15 @@ function observedFormalProtection(tableName, row) {
   if (["BusinessDailySequence", "ContractNumberTombstone"].includes(tableName)) {
     return null;
   }
-  for (const field of Object.keys(row).filter(isFormalLifecycleField)) {
+  for (const field of Object.keys(row).filter(
+    (candidate) =>
+      isFormalLifecycleField(candidate) ||
+      isKnownNullableLifecycleField(tableName, candidate)
+  )) {
     const value = row[field];
     if (field === "status") continue;
     if (value === false) continue;
-    if (value === null && KNOWN_NULLABLE_LIFECYCLE_FIELDS.has(field)) {
+    if (value === null && isKnownNullableLifecycleField(tableName, field)) {
       continue;
     }
     const allowedValues = PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST[field];
@@ -1527,8 +1569,14 @@ function assertFreshReport(original, fresh, label) {
   invariant(fresh.status === "ready" && fresh.blockers.length === 0, `${label}预检未就绪`);
 }
 
-async function createDryRunReceipt({ report, currentReport }) {
+async function createDryRunReceipt({ report, currentReport, now = new Date() }) {
   verifyPreflightReport(report);
+  const observedAt = new Date(now);
+  invariant(Number.isFinite(observedAt.getTime()), "dry-run 当前时间无效");
+  invariant(
+    new Date(report.expiresAt).getTime() >= observedAt.getTime(),
+    "dry-run 预检报告已过期"
+  );
   assertFreshReport(report, currentReport, "dry-run 新鲜");
   const candidates = orderedCandidates(report);
   return {
@@ -2363,12 +2411,14 @@ async function executeBusinessZeroing({
     }
     const lockedPostcheck = await buildLockedPostcheckReport(tx);
     verifyPostcheck(report, lockedPostcheck);
+    writeFreezeLease = await verifyActiveWriteFreeze();
     validateApplyArguments(args, report, currentTime());
   });
 
   let receipt;
   let completionLeaseFinalized = false;
   const objectDispositions = [];
+  const recoveryObjectDispositions = [];
   const remainingObjectScopes = () => {
     const completed = new Set(
       objectDispositions.map((item) => `${item.bucket}:${item.objectKey}`)
@@ -2406,6 +2456,7 @@ async function executeBusinessZeroing({
       startedAt: startedAt.toISOString(),
       observedAt: observedAt.toISOString(),
       completedObjectDispositions: [...objectDispositions],
+      recoveryObjectDispositions: [...recoveryObjectDispositions],
       remainingObjectScopes: remainingObjectScopes(),
       ...(safeFailure ? { safeFailure } : {})
     };
@@ -2418,7 +2469,34 @@ async function executeBusinessZeroing({
       const disposition = await storage.deleteExactObject({
         bucket: file.bucket,
         objectKey: file.objectKey,
-        expectedSnapshot: file.objectSnapshot
+        expectedSnapshot: file.objectSnapshot,
+        persistRecoveryDisposition: async (plannedDisposition) => {
+          invariant(
+            plannedDisposition?.kind === "local_quarantine" &&
+              plannedDisposition.status === "quarantine_planned" &&
+              plannedDisposition.objectKey === file.objectKey &&
+              typeof plannedDisposition.quarantineObjectKey === "string" &&
+              plannedDisposition.quarantineObjectKey.trim(),
+            "本地对象 typed recovery disposition 无效"
+          );
+          const recovery = {
+            businessType: file.businessType,
+            bucket: file.bucket,
+            ...plannedDisposition
+          };
+          recoveryObjectDispositions.push(recovery);
+          const plannedReceipt = recoveryReceipt(
+            "object_recovery_planned",
+            currentTime()
+          );
+          await persistReceipt(plannedReceipt);
+          await database.appendAudit({
+            ...auditBase,
+            status: "object_recovery_planned",
+            receiptSha256: plannedReceipt.receiptSha256,
+            executionReceipt: plannedReceipt
+          });
+        }
       });
       validateObjectDeletionDisposition(file, disposition);
       objectDispositions.push({
@@ -2516,24 +2594,37 @@ async function executeBusinessZeroing({
       sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
       "收据持久化后外部写冻结租约验证结果已漂移"
     );
-    const persistenceResults = await Promise.allSettled([
-      database.appendAudit({
+    const terminalCommitSha256 = sha256({
+      batchId: receipt.batchId,
+      reportSha256: receipt.reportSha256,
+      candidateSha256: receipt.candidateSha256,
+      receiptSha256: receipt.receiptSha256,
+      writeFreezeLeaseEnvelopeSha256:
+        receipt.writeFreezeLeaseEnvelopeSha256,
+      fenceToken: receipt.writeFreezeLease.fenceToken,
+      generation: receipt.writeFreezeLease.generation
+    });
+    invariant(
+      typeof database.commitTerminalAudit === "function",
+      "受控执行必须配置事务化权威终态提交端"
+    );
+    await database.commitTerminalAudit({
+      event: {
         ...auditBase,
         status: "completed",
         postcheck: postcheckResult,
+        terminalCommitSha256,
         receiptSha256: receipt.receiptSha256,
         executionReceipt: receipt
-      })
-    ]);
-    const failedPersistence = persistenceResults.find(
-      (result) => result.status === "rejected"
-    );
-    if (failedPersistence) throw failedPersistence.reason;
-    writeFreezeLease = await verifyActiveWriteFreeze();
-    invariant(
-      sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
-      "完成审计持久化后外部写冻结租约验证结果已漂移"
-    );
+      },
+      verifyLease: async () => {
+        writeFreezeLease = await verifyActiveWriteFreeze();
+        invariant(
+          sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
+          "权威终态提交时外部写冻结租约验证结果已漂移"
+        );
+      }
+    });
     completionLeaseFinalized = true;
     return receipt;
   } catch (error) {
@@ -2571,6 +2662,7 @@ module.exports = {
   executeBusinessZeroing,
   expectedConfirmation,
   parsePrismaNullableLifecycleFields,
+  parsePrismaNullableLifecycleRegistry,
   selectFormalObservationFields,
   sha256,
   inspectDeletedObjectScopes,

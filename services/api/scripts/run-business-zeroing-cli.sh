@@ -36,16 +36,12 @@ exec node - "$script_directory/$entrypoint" "$script_directory/business-zeroing-
 
 const entrypoint = process.argv[2];
 const cliLibrary = process.argv[3];
-process.argv = [process.argv[0], entrypoint, ...process.argv.slice(4)];
+const argv = process.argv.slice(4);
 
-const { assertCleanNodeRuntime } = require(cliLibrary);
-assertCleanNodeRuntime();
+const { runTrustedCommand } = require(cliLibrary);
 
 const command = require(entrypoint);
-if (!command || typeof command.runMain !== "function") {
-  throw new Error("受信启动器目标未导出 runMain");
-}
-Promise.resolve(command.runMain()).catch((error) => {
+Promise.resolve(runTrustedCommand(command, { entrypoint, argv })).catch((error) => {
   process.stderr.write(
     `归零工具受信启动器已安全阻断：${error instanceof Error ? error.message : String(error)}\n`
   );

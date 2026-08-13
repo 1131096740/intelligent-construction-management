@@ -182,7 +182,12 @@ function createExactObjectStorage(testHooks = {}) {
       }
       return { status: "absent", observedGenerationCount: 0 };
     },
-    async deleteExactObject({ bucket, objectKey, expectedSnapshot }) {
+    async deleteExactObject({
+      bucket,
+      objectKey,
+      expectedSnapshot,
+      persistRecoveryDisposition
+    }) {
       invariant(typeof bucket === "string" && bucket.trim(), "文件 bucket 缺失");
       invariant(typeof objectKey === "string" && objectKey.trim(), "精确对象键缺失");
       const configuredCosBucket = process.env.COS_BUCKET?.trim();
@@ -246,6 +251,17 @@ function createExactObjectStorage(testHooks = {}) {
         path.dirname(target),
         `.${path.basename(target)}.pol22-${randomUUID()}.quarantine`
       );
+      const recoveryDisposition = {
+        kind: "local_quarantine",
+        status: "quarantine_planned",
+        objectKey,
+        quarantineObjectKey: path.relative(localStorageRoot(), quarantine)
+      };
+      invariant(
+        typeof persistRecoveryDisposition === "function",
+        "本地对象删除缺少 typed recovery disposition 持久化端"
+      );
+      await persistRecoveryDisposition(recoveryDisposition);
       await rename(target, quarantine);
       let quarantinedSnapshot;
       try {

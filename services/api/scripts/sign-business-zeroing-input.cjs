@@ -6,6 +6,7 @@ if (require.main === module) {
 }
 
 const {
+  assertTrustedLauncherCapability,
   outputJson,
   parseOptions,
   readJson,
@@ -33,7 +34,8 @@ function main() {
   outputJson({ ...input, receiptSha256: sha256(input) }, args.output);
 }
 
-function runMain() {
+function runMain(capability) {
+  assertTrustedLauncherCapability(capability);
   try {
     main();
   } catch (error) {

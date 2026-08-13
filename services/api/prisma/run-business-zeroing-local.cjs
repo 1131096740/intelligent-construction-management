@@ -23,7 +23,10 @@ const {
   createProbeEnvironment
 } = require("./run-database-dynamic-gate-local.cjs");
 const { verifyBusinessZeroing } = require("./verify-business-zeroing.cjs");
-const { currentCodeIdentity } = require("../scripts/business-zeroing-cli.cjs");
+const {
+  assertTrustedLauncherCapability,
+  currentCodeIdentity
+} = require("../scripts/business-zeroing-cli.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const databaseName = "jiangkong_pol22_zeroing_local";
@@ -199,7 +202,8 @@ async function main() {
   }
 }
 
-async function runMain() {
+async function runMain(capability) {
+  assertTrustedLauncherCapability(capability);
   try {
     await main();
   } catch (error) {

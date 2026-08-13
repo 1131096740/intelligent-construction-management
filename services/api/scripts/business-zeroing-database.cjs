@@ -327,7 +327,7 @@ async function loadPrimaryKeyRows(client, tableName, primaryKeyColumns) {
     const canonicalRow = JSON.parse(row.rowCanonicalJson);
     return {
       ...row.primaryKey,
-      ...selectFormalObservationFields(canonicalRow),
+      ...selectFormalObservationFields(canonicalRow, tableName),
       rowSha256: createHash("sha256").update(row.rowCanonicalJson).digest("hex"),
       preservationSha256: createHash("sha256")
         .update(row.preservationCanonicalJson)
@@ -618,15 +618,15 @@ async function verifyBusinessZeroingExecutionAudit(client, receipt) {
         AND "businessId" = $3
       ORDER BY "createdAt" DESC, "id" DESC
       LIMIT 1`,
-    "test_business_zeroing.controlled_execution",
+    "test_business_zeroing.terminal_commit",
     "test_business_zeroing",
     receipt.batchId
   );
-  invariant(rows.length === 1, "数据库中缺少本批次已完成的受控执行审计");
+  invariant(rows.length === 1, "数据库中缺少本批次权威终态完成标记");
   const metadata = rows[0].metadata;
   invariant(
-    metadata?.status === "completed",
-    "本批次最新受控执行审计未完成或已被失败事件作废"
+    metadata?.status === "terminal_committed",
+    "本批次权威终态完成标记无效"
   );
   for (const [field, expected, label] of [
     ["environment", receipt.environment, "环境"],
@@ -644,6 +644,20 @@ async function verifyBusinessZeroingExecutionAudit(client, receipt) {
     invariant(metadata?.[field] === expected, `受控执行审计${label}绑定不匹配`);
   }
   invariant(metadata.postcheck?.status === "passed", "受控执行审计后置核验未通过");
+  invariant(
+    metadata.terminalCommitSha256 ===
+      sha256({
+        batchId: receipt.batchId,
+        reportSha256: receipt.reportSha256,
+        candidateSha256: receipt.candidateSha256,
+        receiptSha256: receipt.receiptSha256,
+        writeFreezeLeaseEnvelopeSha256:
+          receipt.writeFreezeLeaseEnvelopeSha256,
+        fenceToken: receipt.writeFreezeLease?.fenceToken,
+        generation: receipt.writeFreezeLease?.generation
+      }),
+    "本批次权威终态完成标记绑定不匹配"
+  );
   invariant(
     sha256(metadata.executionReceipt) === sha256(receipt),
     "受控执行审计未保留完整最终执行收据"
@@ -667,7 +681,7 @@ function createBusinessZeroingDatabase(prisma, policy) {
       `INSERT INTO "AuditLog" ("id", "action", "businessType", "businessId", "metadata", "createdAt")
        VALUES ($1, $2, $3, $4, $5::jsonb, NOW())`,
       randomUUID(),
-      "test_business_zeroing.controlled_execution",
+      event.databaseAction ?? "test_business_zeroing.controlled_execution",
       "test_business_zeroing",
       event.batchId,
       JSON.stringify(event)
@@ -713,6 +727,35 @@ function createBusinessZeroingDatabase(prisma, policy) {
               return tx.$executeRawUnsafe(statement.sql, ...statement.values);
             }
           });
+        },
+        { isolationLevel: "Serializable", maxWait: 10_000, timeout: 1_200_000 }
+      );
+    },
+    async commitTerminalAudit({ event, verifyLease }) {
+      invariant(typeof verifyLease === "function", "权威终态提交缺少 lease 复核端");
+      return prisma.$transaction(
+        async (tx) => {
+          await query(
+            tx,
+            `SELECT pg_advisory_xact_lock(${EXECUTION_LOCK_ID}) IS NULL AS "locked"`
+          );
+          const existing = await query(
+            tx,
+            `SELECT "id" FROM "AuditLog"
+              WHERE "action" = $1 AND "businessType" = $2 AND "businessId" = $3
+              LIMIT 1`,
+            "test_business_zeroing.terminal_commit",
+            "test_business_zeroing",
+            event.batchId
+          );
+          invariant(existing.length === 0, "本批次权威终态已存在，禁止重复提交");
+          await appendAuditWithClient(tx, event);
+          await appendAuditWithClient(tx, {
+            ...event,
+            databaseAction: "test_business_zeroing.terminal_commit",
+            status: "terminal_committed"
+          });
+          await verifyLease();
         },
         { isolationLevel: "Serializable", maxWait: 10_000, timeout: 1_200_000 }
       );

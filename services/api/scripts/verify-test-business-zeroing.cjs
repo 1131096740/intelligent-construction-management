@@ -7,6 +7,7 @@ if (require.main === module) {
 }
 
 const {
+  assertTrustedLauncherCapability,
   outputJson,
   parseOptions,
   readJson,
@@ -116,7 +117,8 @@ async function main() {
   }
 }
 
-async function runMain() {
+async function runMain(capability) {
+  assertTrustedLauncherCapability(capability);
   try {
     await main();
   } catch (error) {

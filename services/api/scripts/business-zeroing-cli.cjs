@@ -18,7 +18,7 @@ const {
   writeSync,
   writeFileSync
 } = require("node:fs");
-const { join, relative, resolve } = require("node:path");
+const { dirname, join, relative, resolve } = require("node:path");
 
 const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 const TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH =
@@ -49,6 +49,7 @@ const EXECUTION_FILES = Object.freeze([
   "services/api/scripts/verify-test-business-zeroing.cjs"
 ]);
 const EXECUTION_DIRECTORIES = Object.freeze(["services/api/dist"]);
+const TRUSTED_LAUNCHER_CAPABILITY = Object.freeze(Object.create(null));
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -79,6 +80,24 @@ function assertCleanNodeRuntime({ env = process.env, execArgv = process.execArgv
     Array.isArray(execArgv) && execArgv.length === 0,
     "Node 启动参数可改变未指纹执行语义，归零工具拒绝启动"
   );
+}
+
+function assertTrustedLauncherCapability(capability) {
+  invariant(
+    capability === TRUSTED_LAUNCHER_CAPABILITY,
+    "归零工具缺少受信启动器 capability，拒绝进入业务逻辑"
+  );
+  assertCleanNodeRuntime();
+}
+
+function runTrustedCommand(command, { entrypoint, argv }) {
+  assertCleanNodeRuntime();
+  invariant(process.argv[1] === "-", "受信启动器必须使用固定 stdin dispatcher");
+  invariant(command && typeof command.runMain === "function", "受信启动器目标无效");
+  invariant(typeof entrypoint === "string" && entrypoint.trim(), "受信启动器入口缺失");
+  invariant(Array.isArray(argv), "受信启动器参数无效");
+  process.argv = [process.argv[0], entrypoint, ...argv];
+  return command.runMain(TRUSTED_LAUNCHER_CAPABILITY);
 }
 
 function parseOptions(argv, definition) {
@@ -418,6 +437,92 @@ function hashExecutionFiles(
   return hash.digest("hex");
 }
 
+function updateRuntimeFileHash(hash, label, filePath, { rejectSymlink = false } = {}) {
+  const metadata = lstatSync(filePath);
+  invariant(
+    !rejectSymlink || !metadata.isSymbolicLink(),
+    `${label}不得为符号链接`
+  );
+  invariant(metadata.isFile(), `${label}必须为普通文件`);
+  const canonicalPath = realpathSync(filePath);
+  const canonicalMetadata = lstatSync(canonicalPath);
+  invariant(
+    !canonicalMetadata.isSymbolicLink() && canonicalMetadata.isFile(),
+    `${label}解析后必须为普通文件`
+  );
+  hash.update(label, "utf8");
+  hash.update(Buffer.from([0]));
+  hash.update(canonicalPath, "utf8");
+  hash.update(Buffer.from([0]));
+  hash.update(readFileSync(canonicalPath));
+  hash.update(Buffer.from([0]));
+}
+
+function updateRuntimeDirectoryHash(hash, label, directoryPath) {
+  const canonicalRoot = realpathSync(directoryPath);
+  const rootMetadata = lstatSync(canonicalRoot);
+  invariant(
+    !rootMetadata.isSymbolicLink() && rootMetadata.isDirectory(),
+    `${label}解析后必须为普通目录`
+  );
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
+      (left, right) => left.name.localeCompare(right.name)
+    )) {
+      const absolutePath = join(directory, entry.name);
+      const metadata = lstatSync(absolutePath);
+      invariant(
+        !entry.isSymbolicLink() && !metadata.isSymbolicLink(),
+        `${label}包含符号链接：${absolutePath}`
+      );
+      if (metadata.isDirectory()) visit(absolutePath);
+      else {
+        invariant(metadata.isFile(), `${label}包含非普通文件：${absolutePath}`);
+        updateRuntimeFileHash(
+          hash,
+          `${label}:${relative(canonicalRoot, absolutePath)}`,
+          absolutePath
+        );
+      }
+    }
+  };
+  hash.update(`${label}:realpath`, "utf8");
+  hash.update(Buffer.from([0]));
+  hash.update(canonicalRoot, "utf8");
+  hash.update(Buffer.from([0]));
+  visit(canonicalRoot);
+}
+
+function resolveRuntimeExecutionFiles() {
+  const apiRoot = resolve(REPOSITORY_ROOT, "services/api");
+  const prismaClientEntrypoint = require.resolve("@prisma/client", {
+    paths: [apiRoot]
+  });
+  const prismaClientDirectory = realpathSync(dirname(prismaClientEntrypoint));
+  const generatedClientEntrypoint = require.resolve(".prisma/client/default", {
+    paths: [prismaClientDirectory]
+  });
+  return {
+    nodeExecutable: process.execPath,
+    prismaClientDirectory,
+    generatedClientDirectory: realpathSync(dirname(generatedClientEntrypoint))
+  };
+}
+
+function hashRuntimeExecutionFiles({
+  nodeExecutable,
+  prismaClientDirectory,
+  generatedClientDirectory
+} = resolveRuntimeExecutionFiles()) {
+  const hash = createHash("sha256");
+  updateRuntimeFileHash(hash, "Node executable", nodeExecutable, {
+    rejectSymlink: true
+  });
+  updateRuntimeDirectoryHash(hash, "@prisma/client", prismaClientDirectory);
+  updateRuntimeDirectoryHash(hash, "Prisma generated client and query engine", generatedClientDirectory);
+  return hash.digest("hex");
+}
+
 function currentCodeIdentity() {
   const repositoryRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
     cwd: REPOSITORY_ROOT,
@@ -445,7 +550,10 @@ function currentCodeIdentity() {
   assertCleanRepositoryStatus(status);
   return {
     codeSha: sha,
-    executionCodeSha256: hashExecutionFiles(REPOSITORY_ROOT)
+    executionCodeSha256: canonicalSha256({
+      repositoryExecutionSha256: hashExecutionFiles(REPOSITORY_ROOT),
+      runtimeExecutionSha256: hashRuntimeExecutionFiles()
+    })
   };
 }
 
@@ -459,11 +567,13 @@ function safeFailure(error) {
 
 module.exports = {
   assertCleanNodeRuntime,
+  assertTrustedLauncherCapability,
   currentCodeSha,
   currentCodeIdentity,
   EXECUTION_DIRECTORIES,
   EXECUTION_FILES,
   hashExecutionFiles,
+  hashRuntimeExecutionFiles,
   outputJson,
   parseOptions,
   readJson,
@@ -474,6 +584,7 @@ module.exports = {
   readTrustedWriteFreezeLease,
   readTrustedExecutionIdentity,
   reserveJsonOutput,
+  runTrustedCommand,
   assertCleanRepositoryStatus,
   TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
   TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,

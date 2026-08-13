@@ -27,6 +27,7 @@ const {
   executeBusinessZeroing,
   expectedConfirmation,
   parsePrismaNullableLifecycleFields,
+  parsePrismaNullableLifecycleRegistry,
   selectFormalObservationFields,
   sha256,
   validateAuthorizationEnvelope,
@@ -40,6 +41,7 @@ const {
 const {
   assertCleanNodeRuntime,
   assertCleanRepositoryStatus,
+  hashRuntimeExecutionFiles,
   hashExecutionFiles,
   reserveJsonOutput,
   validateTrustedExecutionIdentity
@@ -479,6 +481,19 @@ const smallPolicy = Object.freeze({
   ]
 });
 
+function withTerminalAuditCommit(database) {
+  return {
+    ...database,
+    async commitTerminalAudit({ event, verifyLease }) {
+      await verifyLease();
+      await database.appendAudit({
+        ...event,
+        status: "terminal_committed"
+      });
+    }
+  };
+}
+
 test("已签名删除决定与执行授权不能替代逐主键独立测试来源证明", () => {
   const effectiveInventory = inventory({
     tables: inventory().tables.map((table) =>
@@ -627,7 +642,16 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     { id: "c1", status: "draft", unknownLifecycleAt: null },
     { id: "c1", status: "draft", endedAt: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", archivedAt: "2026-08-13T00:30:00.000Z" },
-    { id: "c1", status: "draft", firstSubmittedAt: "2026-08-13T00:30:00.000Z" }
+    { id: "c1", status: "draft", firstSubmittedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", revokedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", rejectedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", appliedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", abandonedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", terminatedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", reversedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", discardedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", disposedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", resolvedAt: "2026-08-13T00:30:00.000Z" }
   ]) {
     const protectedInventory = inventory({
       tables: inventory().tables.map((table) =>
@@ -670,11 +694,30 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     { lifecycleStatus: "effective", workflowState: "approved" }
   );
 
-  const nullableLifecycleFields = parsePrismaNullableLifecycleFields(
-    readFileSync(path.resolve(__dirname, "../prisma/schema.prisma"), "utf8")
+  const schemaSource = readFileSync(
+    path.resolve(__dirname, "../prisma/schema.prisma"),
+    "utf8"
   );
+  const nullableLifecycleFields = parsePrismaNullableLifecycleFields(schemaSource);
+  const nullableLifecycleRegistry = parsePrismaNullableLifecycleRegistry(schemaSource);
   assert.ok(nullableLifecycleFields.has("endedAt"));
   assert.ok(nullableLifecycleFields.has("settlementModeConfirmedByUserId"));
+  for (const [model, field] of [
+    ["RefreshToken", "revokedAt"],
+    ["SpotProcurementAbnormalTermination", "rejectedAt"],
+    ["ContractTakeoverCorrection", "appliedAt"],
+    ["ContractVersion", "abandonedAt"],
+    ["ProjectFinancingQuota", "terminatedAt"],
+    ["NoInvoiceConfirmation", "reversedAt"],
+    ["SettlementTemplateVersion", "discardedAt"],
+    ["ContractDocumentDifference", "disposedAt"],
+    ["SpotProcurementDiscrepancy", "resolvedAt"]
+  ]) {
+    assert.ok(
+      nullableLifecycleRegistry.get(model)?.has(field),
+      `${model}.${field} 必须在按表绑定的 Schema 生命周期注册表中`
+    );
+  }
 
   const draftInventory = inventory({
     tables: inventory().tables.map((table) =>
@@ -687,7 +730,9 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
                 status: "draft",
                 signingSubjectType: "our_company",
                 ...Object.fromEntries(
-                  [...nullableLifecycleFields].map((field) => [field, null])
+                  [...nullableLifecycleRegistry.get("Contract")].map(
+                    (field) => [field, null]
+                  )
                 )
               }
             ]
@@ -1770,7 +1815,12 @@ test("候选与保留记录绑定完整行哈希且同数量替换审计会失�
     generatedAt: "2026-08-13T01:01:00.000Z"
   });
   await assert.rejects(
-    () => createDryRunReceipt({ report: before, currentReport: driftedCandidate }),
+    () =>
+      createDryRunReceipt({
+        report: before,
+        currentReport: driftedCandidate,
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
     /独立测试来源工件已漂移|状态指纹已漂移/u
   );
 });
@@ -1941,6 +1991,21 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
       });
       assert.equal(direct.status, 1, directEntry);
       assert.match(direct.stderr, /直接 Node 入口已禁用/u);
+
+      const required = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          "delete process.env.NODE_OPTIONS;delete process.env.NODE_PATH;" +
+            "process.execArgv.length=0;" +
+            `const command=require(${JSON.stringify(directEntry)});` +
+            "Promise.resolve(command.runMain()).catch((error)=>{" +
+            "process.stderr.write(String(error && error.message || error));process.exitCode=1;});"
+        ],
+        { encoding: "utf8", env: cleanEnvironment }
+      );
+      assert.notEqual(required.status, 0, directEntry);
+      assert.match(required.stderr, /受信启动器 capability|启动参数/u);
     }
     for (const [command, outputPattern] of [
       ["inspect", /默认只读预检/u],
@@ -1988,6 +2053,35 @@ test("实际执行代码指纹拒绝 dist 符号链接与仓库外运行内容",
   }
 });
 
+test("实际执行指纹绑定 Node、Prisma generated client、query engine 与依赖字节", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-runtime-hash-"));
+  try {
+    const nodeExecutable = path.join(temporaryRoot, "node");
+    const prismaClient = path.join(temporaryRoot, "@prisma-client");
+    const generatedClient = path.join(temporaryRoot, "generated-client");
+    await writeFile(nodeExecutable, "node-runtime-v1", "utf8");
+    await mkdir(path.join(prismaClient, "runtime"), { recursive: true });
+    await mkdir(generatedClient, { recursive: true });
+    await writeFile(path.join(prismaClient, "runtime", "library.js"), "runtime-v1", "utf8");
+    await writeFile(path.join(generatedClient, "index.js"), "generated-v1", "utf8");
+    const engine = path.join(generatedClient, "libquery_engine.fixture.node");
+    await writeFile(engine, "engine-v1", "utf8");
+    const inputs = {
+      nodeExecutable,
+      prismaClientDirectory: prismaClient,
+      generatedClientDirectory: generatedClient
+    };
+    const before = hashRuntimeExecutionFiles(inputs);
+    await writeFile(engine, "engine-tampered", "utf8");
+    assert.notEqual(hashRuntimeExecutionFiles(inputs), before);
+    await rm(nodeExecutable);
+    await symlink(path.join(prismaClient, "runtime", "library.js"), nodeExecutable);
+    assert.throws(() => hashRuntimeExecutionFiles(inputs), /Node.*符号链接/u);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("独立后置核验要求数据库存在与执行收据精确绑定的完成审计", async () => {
   const receipt = {
     batchId: "pol22-isolated-001",
@@ -2006,7 +2100,7 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
     receiptSha256: "5".repeat(64)
   };
   const metadata = {
-    status: "completed",
+    status: "terminal_committed",
     postcheck: { status: "passed" },
     environment: receipt.environment,
     codeSha: receipt.codeSha,
@@ -2019,7 +2113,17 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
     authorizationPublicKeySha256: receipt.authorization.publicKeySha256,
     authorizationPayloadSha256: receipt.authorization.payloadSha256,
     receiptSha256: receipt.receiptSha256,
-    executionReceipt: receipt
+    executionReceipt: receipt,
+    terminalCommitSha256: sha256({
+      batchId: receipt.batchId,
+      reportSha256: receipt.reportSha256,
+      candidateSha256: receipt.candidateSha256,
+      receiptSha256: receipt.receiptSha256,
+      writeFreezeLeaseEnvelopeSha256:
+        receipt.writeFreezeLeaseEnvelopeSha256,
+      fenceToken: receipt.writeFreezeLease?.fenceToken,
+      generation: receipt.writeFreezeLease?.generation
+    })
   };
   const client = { async $queryRawUnsafe() { return [{ metadata }]; } };
   assert.deepEqual(await verifyBusinessZeroingExecutionAudit(client, receipt), {
@@ -2031,7 +2135,7 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
         { async $queryRawUnsafe() { return []; } },
         receipt
       ),
-    /缺少本批次已完成/u
+    /缺少本批次权威终态完成标记/u
   );
   await assert.rejects(
     () =>
@@ -2055,7 +2159,7 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
         },
         receipt
       ),
-    /最新受控执行审计未完成|已被失败事件作废/u
+    /权威终态完成标记/u
   );
 });
 
@@ -2109,7 +2213,8 @@ test("本地精确对象在内容或时间漂移后拒绝删除", async () => {
     const result = await storage.deleteExactObject({
       bucket: "private-local",
       objectKey,
-      expectedSnapshot: freshSnapshot
+      expectedSnapshot: freshSnapshot,
+      persistRecoveryDisposition: async () => {}
     });
     await assert.rejects(() => stat(target), /ENOENT/u);
     assert.equal(result.status, "object_key_removed_recovery_artifact_retained");
@@ -2155,7 +2260,8 @@ test("本地精确对象比较后被替换时原子隔离验证拒绝误删新�
         deletingStorage.deleteExactObject({
           bucket: "private-local",
           objectKey,
-          expectedSnapshot: snapshot
+          expectedSnapshot: snapshot,
+          persistRecoveryDisposition: async () => {}
         }),
       /原子隔离对象.*漂移/u
     );
@@ -2204,7 +2310,8 @@ test("本地精确对象被同内容同时间的新 inode 替换时仍拒绝删�
         deletingStorage.deleteExactObject({
           bucket: "private-local",
           objectKey,
-          expectedSnapshot: snapshot
+          expectedSnapshot: snapshot,
+          persistRecoveryDisposition: async () => {}
         }),
       /原子隔离对象.*漂移/u
     );
@@ -2245,7 +2352,8 @@ test("本地对象旧 FD 在隔离后写入时不会被物理删除", async () =
     const result = await storage.deleteExactObject({
       bucket: "private-local",
       objectKey,
-      expectedSnapshot: snapshot
+      expectedSnapshot: snapshot,
+      persistRecoveryDisposition: async () => {}
     });
     await writer.truncate(0);
     await writer.writeFile("written-after-quarantine", "utf8");
@@ -2264,6 +2372,65 @@ test("本地对象旧 FD 在隔离后写入时不会被物理删除", async () =
     );
   } finally {
     await writer?.close().catch(() => undefined);
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("本地 quarantine rename 后异常仍保留预写的 typed recovery disposition", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-quarantine-recovery-"));
+  const previous = {
+    FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT,
+    FILE_STORAGE_DRIVER: process.env.FILE_STORAGE_DRIVER,
+    COS_BUCKET: process.env.COS_BUCKET
+  };
+  try {
+    process.env.FILE_STORAGE_ROOT = temporaryRoot;
+    delete process.env.FILE_STORAGE_DRIVER;
+    delete process.env.COS_BUCKET;
+    const objectKey = "uploads/recovery-fixture.pdf";
+    const target = path.join(temporaryRoot, objectKey);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, "approved", "utf8");
+    const storage = createExactObjectStorage({
+      afterLocalQuarantineVerified: async () => {
+        throw new Error("isolated crash after rename");
+      }
+    });
+    const snapshot = await storage.inspectExactObject({
+      bucket: "private-local",
+      objectKey,
+      maxModifiedAt: new Date(Date.now() + 60_000).toISOString()
+    });
+    const recovery = [];
+
+    await assert.rejects(
+      () =>
+        storage.deleteExactObject({
+          bucket: "private-local",
+          objectKey,
+          expectedSnapshot: snapshot,
+          persistRecoveryDisposition: async (disposition) => {
+            recovery.push(disposition);
+          }
+        }),
+      /isolated crash after rename/u
+    );
+    assert.equal(recovery.length, 1);
+    assert.deepEqual(
+      Object.keys(recovery[0]).sort(),
+      ["kind", "objectKey", "quarantineObjectKey", "status"].sort()
+    );
+    assert.equal(recovery[0].status, "quarantine_planned");
+    assert.equal(
+      readFileSync(path.join(temporaryRoot, recovery[0].quarantineObjectKey), "utf8"),
+      "approved"
+    );
+    await assert.rejects(() => stat(target), /ENOENT/u);
+  } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -2388,6 +2555,7 @@ test("dry-run 只返回逐主键步骤且不调用数据库或文件写接口", 
   const receipt = await createDryRunReceipt({
     report,
     currentReport: report,
+    now: new Date("2026-08-13T01:05:00.000Z"),
     onWrite: () => calls.push("write")
   });
 
@@ -2401,6 +2569,35 @@ test("dry-run 只返回逐主键步骤且不调用数据库或文件写接口", 
     ]
   );
   assert.deepEqual(calls, []);
+});
+
+test("dry-run 对已过期的预检报告 fail-closed", async () => {
+  const report = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory(),
+    decisions: decisionManifest([
+      {
+        businessType: "项目基本资料",
+        table: "Project",
+        primaryKey: { id: "p1" },
+        decision: "preserve",
+        reason: "正式项目保留"
+      }
+    ]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  await assert.rejects(
+    () =>
+      createDryRunReceipt({
+        report,
+        currentReport: report,
+        now: new Date("2026-08-13T01:31:00.000Z")
+      }),
+    /预检报告已过期/u
+  );
 });
 
 test("受控执行只向适配器传递锁内复核过的逐主键和精确对象键", async () => {
@@ -2483,7 +2680,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
   const receipt = await executeBusinessZeroing({
     args,
     report: before,
-    database,
+    database: withTerminalAuditCommit(database),
     storage,
     buildLockedReport: async () => before,
     buildLockedPostcheckReport: async () => after,
@@ -2588,7 +2785,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     ["audit", "object_deletion_progress"],
     ["object-rescan", "private", "uploads/f1.pdf"],
     ["audit", "completion_pending"],
-    ["audit", "completed"]
+    ["audit", "terminal_committed"]
   ]);
 
   await assert.rejects(
@@ -2596,7 +2793,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       executeBusinessZeroing({
         args,
         report: before,
-        database: {
+        database: withTerminalAuditCommit({
           async transaction(work) {
             return work({
               async appendAudit() {},
@@ -2605,7 +2802,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
             });
           },
           async appendAudit() {}
-        },
+        }),
         storage: { async deleteExactObject() {} },
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => after,
@@ -2660,7 +2857,7 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
       executeBusinessZeroing({
         args: controlledArgs(before),
         report: before,
-        database: {
+        database: withTerminalAuditCommit({
           async transaction(work) {
             return work({
               async appendAudit() {},
@@ -2669,9 +2866,11 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
             });
           },
           async appendAudit(event) {
-            if (event.status === "completed") throw new Error("isolated completed audit failure");
+            if (event.status === "terminal_committed") {
+              throw new Error("isolated completed audit failure");
+            }
           }
-        },
+        }),
         storage: {
           async deleteExactObject(input) {
             return {
@@ -2705,6 +2904,50 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
         WRITE_FREEZE_KEYS.publicKey
       ),
     /未证明受控执行完成|完整字段|未完成/u
+  );
+});
+
+test("终态 lease 失败且降级写失败时未权威提交的 completed 不可验收", async () => {
+  const receipt = {
+    batchId: "pol22-isolated-terminal-failure",
+    environment: "isolated-pol22",
+    codeSha: SHA_40,
+    executionCodeSha256: EXECUTION_SHA_64,
+    deploymentIdentitySha256: DEPLOYMENT_SHA_64,
+    executorIdentity: EXECUTOR_IDENTITY,
+    reportSha256: "1".repeat(64),
+    candidateSha256: "2".repeat(64),
+    authorization: {
+      authorizationRef: "Issue #122 independent authorization",
+      publicKeySha256: "3".repeat(64),
+      payloadSha256: "4".repeat(64)
+    },
+    receiptSha256: "5".repeat(64)
+  };
+  const uncommittedCompleted = {
+    status: "completed",
+    postcheck: { status: "passed" },
+    environment: receipt.environment,
+    codeSha: receipt.codeSha,
+    executionCodeSha256: receipt.executionCodeSha256,
+    deploymentIdentitySha256: receipt.deploymentIdentitySha256,
+    executorIdentity: receipt.executorIdentity,
+    reportSha256: receipt.reportSha256,
+    candidateSha256: receipt.candidateSha256,
+    authorizationRef: receipt.authorization.authorizationRef,
+    authorizationPublicKeySha256: receipt.authorization.publicKeySha256,
+    authorizationPayloadSha256: receipt.authorization.payloadSha256,
+    receiptSha256: receipt.receiptSha256,
+    executionReceipt: receipt
+  };
+
+  await assert.rejects(
+    () =>
+      verifyBusinessZeroingExecutionAudit(
+        { async $queryRawUnsafe() { return [{ metadata: uncommittedCompleted }]; } },
+        receipt
+      ),
+    /权威终态|完成标记/u
   );
 });
 
@@ -3019,7 +3262,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
   const receipt = await executeBusinessZeroing({
     args: controlledArgs(before),
     report: before,
-    database: {
+    database: withTerminalAuditCommit({
       async transaction(work) {
         return work({
           async appendAudit() {},
@@ -3028,7 +3271,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
         });
       },
       async appendAudit() {}
-    },
+    }),
     storage: {
       async deleteExactObject(input) {
         return {
@@ -3122,6 +3365,80 @@ test("候选删除若经触发器伤及保留资料会在同一事务提交前�
   assert.ok(calls.includes("delete:Contract"));
   assert.ok(!calls.includes("commit"));
   assert.ok(!calls.includes("object"));
+});
+
+test("锁内删除后 lease 撤销会在事务提交前回滚且不进入对象操作", async () => {
+  const decisions = decisionManifest([
+    {
+      businessType: "项目基本资料",
+      table: "Project",
+      primaryKey: { id: "p1" },
+      decision: "preserve",
+      reason: "正式项目保留"
+    }
+  ]);
+  const before = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory(),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  const after = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: inventory().tables.map((table) =>
+        ["Contract", "FileObject"].includes(table.name)
+          ? { ...table, rows: [] }
+          : table
+      ),
+      fileBindings: []
+    }),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:10:00.000Z",
+    allowMissingDeletedDecisions: true
+  });
+  let leaseChecks = 0;
+  let committed = false;
+  let objectCalls = 0;
+
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args: controlledArgs(before),
+        report: before,
+        database: {
+          async transaction(work) {
+            await work({
+              async appendAudit() {},
+              async deleteExactRecord() { return 1; },
+              async resetExactSequence() { return 1; }
+            });
+            committed = true;
+          },
+          async appendAudit() {}
+        },
+        storage: {
+          async deleteExactObject() { objectCalls += 1; }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => {},
+        verifyWriteFreezeLease: async (input) => {
+          leaseChecks += 1;
+          if (leaseChecks === 3) throw new Error("锁内 lease 已撤销");
+          return createWriteFreezeVerifier()(input);
+        },
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /锁内 lease 已撤销/u
+  );
+  assert.equal(committed, false);
+  assert.equal(objectCalls, 0);
 });
 
 test("锁内状态漂移、空主键和 broad object key 都会在任何写入前阻断", async () => {
