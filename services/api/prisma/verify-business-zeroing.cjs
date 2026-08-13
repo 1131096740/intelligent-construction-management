@@ -5,7 +5,7 @@ const { assertCleanNodeRuntime } = require("../scripts/business-zeroing-cli.cjs"
 assertCleanNodeRuntime();
 const assert = require("node:assert/strict");
 const { createHash, generateKeyPairSync, sign } = require("node:crypto");
-const { mkdir, readFile, writeFile } = require("node:fs/promises");
+const { mkdir, readFile, rm, writeFile } = require("node:fs/promises");
 const { userInfo } = require("node:os");
 const path = require("node:path");
 const {
