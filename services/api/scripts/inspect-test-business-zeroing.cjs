@@ -7,20 +7,20 @@ if (require.main === module) {
 }
 
 const {
-  assertTrustedLauncherCapability,
+  createTrustedEntrypoint,
   currentCodeIdentity,
   outputJson,
   parseOptions,
   readJson,
   readTrustedExecutionIdentity,
   readTrustedTestProvenancePublicKey,
-  readTrustedTestProvenanceRegistry,
-  safeFailure
+  readTrustedTestProvenanceRegistry
 } = require("./business-zeroing-cli.cjs");
 const { buildPreflightReport } = require("./business-zeroing-core.cjs");
+const { execFileSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const { createReadStream } = require("node:fs");
-const { lstat, realpath } = require("node:fs/promises");
+const { lstat, open, realpath } = require("node:fs/promises");
 const path = require("node:path");
 const { inspectDatabaseInventory } = require("./business-zeroing-database.cjs");
 const { BUSINESS_ZEROING_POLICY } = require("./business-zeroing-policy.cjs");
@@ -85,6 +85,44 @@ async function verifyBackupArtifacts(receipt) {
     const actualSha256 = await fileSha256(canonicalLocation);
     if (actualSha256 !== receipt[field]?.sha256) {
       throw new Error(`${label}工件 SHA-256 校验失败`);
+    }
+    if (field === "databaseBackup") {
+      const handle = await open(canonicalLocation, "r");
+      try {
+        const signature = Buffer.alloc(5);
+        const { bytesRead } = await handle.read(signature, 0, signature.length, 0);
+        if (bytesRead !== signature.length || signature.toString("ascii") !== "PGDMP") {
+          throw new Error("数据库备份工件不是 PostgreSQL custom-format dump");
+        }
+      } finally {
+        await handle.close();
+      }
+    } else {
+      let archiveEntries;
+      try {
+        archiveEntries = execFileSync("/usr/bin/tar", ["-tf", canonicalLocation], {
+          encoding: "utf8",
+          maxBuffer: 4 * 1024 * 1024,
+          timeout: 30_000
+        })
+          .split(/\r?\n/u)
+          .filter(Boolean)
+          .map((entry) => entry.replace(/^\.\//u, ""));
+      } catch {
+        throw new Error("私有文件备份工件不是可审计 tar 归档");
+      }
+      const archivedFiles = new Set(archiveEntries.filter((entry) => !entry.endsWith("/")));
+      if (
+        sourceObjects.some(
+          (object) =>
+            typeof object.objectKey !== "string" ||
+            object.objectKey.startsWith("/") ||
+            object.objectKey.split("/").includes("..") ||
+            !archivedFiles.has(object.objectKey)
+        )
+      ) {
+        throw new Error("私有文件 tar 归档未覆盖逐对象恢复清单");
+      }
     }
   }
 }
@@ -195,15 +233,7 @@ async function main() {
   }
 }
 
-async function runMain(capability) {
-  assertTrustedLauncherCapability(capability);
-  try {
-    await main();
-  } catch (error) {
-    process.stderr.write(`测试业务归零只读预检已安全阻断：${safeFailure(error)}\n`);
-    process.exitCode = 1;
-  }
-}
+const runMain = createTrustedEntrypoint(main, "测试业务归零只读预检已安全阻断");
 
 module.exports = {
   DEFINITION,

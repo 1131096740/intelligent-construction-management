@@ -6,11 +6,10 @@ if (require.main === module) {
 }
 
 const {
-  assertTrustedLauncherCapability,
+  createTrustedEntrypoint,
   outputJson,
   parseOptions,
-  readJson,
-  safeFailure
+  readJson
 } = require("./business-zeroing-cli.cjs");
 const { sha256 } = require("./business-zeroing-core.cjs");
 
@@ -34,14 +33,6 @@ function main() {
   outputJson({ ...input, receiptSha256: sha256(input) }, args.output);
 }
 
-function runMain(capability) {
-  assertTrustedLauncherCapability(capability);
-  try {
-    main();
-  } catch (error) {
-    process.stderr.write(`归零输入签名失败：${safeFailure(error)}\n`);
-    process.exitCode = 1;
-  }
-}
+const runMain = createTrustedEntrypoint(main, "归零输入签名失败");
 
 module.exports = { runMain };

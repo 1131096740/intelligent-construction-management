@@ -7,14 +7,13 @@ if (require.main === module) {
 }
 
 const {
-  assertTrustedLauncherCapability,
+  createTrustedEntrypoint,
   outputJson,
   parseOptions,
   readJson,
   readTrustedAuthorizationPublicKey,
   readTrustedExecutionIdentity,
-  readTrustedWriteFreezePublicKey,
-  safeFailure
+  readTrustedWriteFreezePublicKey
 } = require("./business-zeroing-cli.cjs");
 const {
   inspectDeletedObjectScopes,
@@ -117,14 +116,6 @@ async function main() {
   }
 }
 
-async function runMain(capability) {
-  assertTrustedLauncherCapability(capability);
-  try {
-    await main();
-  } catch (error) {
-    process.stderr.write(`测试业务归零后置核验未通过：${safeFailure(error)}\n`);
-    process.exitCode = 1;
-  }
-}
+const runMain = createTrustedEntrypoint(main, "测试业务归零后置核验未通过");
 
 module.exports = { DEFINITION, help, runMain };

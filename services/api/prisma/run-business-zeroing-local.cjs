@@ -25,7 +25,7 @@ const {
 } = require("./run-database-dynamic-gate-local.cjs");
 const { verifyBusinessZeroing } = require("./verify-business-zeroing.cjs");
 const {
-  assertTrustedLauncherCapability,
+  createTrustedEntrypoint,
   currentCodeIdentity
 } = require("../scripts/business-zeroing-cli.cjs");
 
@@ -416,17 +416,7 @@ async function main() {
   }
 }
 
-async function runMain(capability) {
-  assertTrustedLauncherCapability(capability);
-  try {
-    await main();
-  } catch (error) {
-    process.stderr.write(
-      `POL-22 本地隔离验证失败：${error instanceof Error ? error.message : String(error)}\n`
-    );
-    process.exitCode = 1;
-  }
-}
+const runMain = createTrustedEntrypoint(main, "POL-22 本地隔离验证失败");
 
 module.exports = {
   createPinnedDockerEnvironment,

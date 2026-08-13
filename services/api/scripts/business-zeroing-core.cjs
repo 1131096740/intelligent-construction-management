@@ -7,6 +7,26 @@ const path = require("node:path");
 
 const REPORT_TTL_MS = 30 * 60 * 1000;
 const POLICY_ID = "pol-22-business-zeroing-v1";
+const WRITE_FREEZE_LEASE_PAYLOAD_FIELDS = Object.freeze([
+  "batchId",
+  "candidateSha256",
+  "environment",
+  "expiresAt",
+  "fenceToken",
+  "generation",
+  "holderDeploymentIdentitySha256",
+  "holderExecutorIdentity",
+  "issuedAt",
+  "issuer",
+  "leaseId",
+  "objectDeletionManifestSha256",
+  "reportSha256",
+  "revokedAt",
+  "schemaVersion",
+  "scopes",
+  "status",
+  "testProvenanceRegistrySha256"
+]);
 const HAN_PATTERN = /[\u3400-\u9fff]/u;
 const PREFORMAL_STATUS_ALLOWLIST = new Set([
   "approval_pending",
@@ -1827,29 +1847,10 @@ function validateWriteFreezeLeaseEnvelope(
   } catch {
     throw new Error("外部写冻结租约 payload 不是合法 JSON");
   }
-  const payloadFields = [
-    "batchId",
-    "candidateSha256",
-    "environment",
-    "expiresAt",
-    "fenceToken",
-    "generation",
-    "holderDeploymentIdentitySha256",
-    "holderExecutorIdentity",
-    "issuedAt",
-    "issuer",
-    "leaseId",
-    "objectDeletionManifestSha256",
-    "reportSha256",
-    "revokedAt",
-    "schemaVersion",
-    "scopes",
-    "status",
-    "testProvenanceRegistrySha256"
-  ];
   invariant(
     payload?.schemaVersion === 1 &&
-      JSON.stringify(Object.keys(payload).sort()) === JSON.stringify(payloadFields),
+      JSON.stringify(Object.keys(payload).sort()) ===
+        JSON.stringify(WRITE_FREEZE_LEASE_PAYLOAD_FIELDS),
     "外部写冻结租约 payload 字段不精确"
   );
   invariant(
@@ -2656,6 +2657,7 @@ async function executeBusinessZeroing({
 
 module.exports = {
   POLICY_ID,
+  WRITE_FREEZE_LEASE_PAYLOAD_FIELDS,
   buildPreflightReport,
   canonicalize,
   createDryRunReceipt,

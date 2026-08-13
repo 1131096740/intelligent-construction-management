@@ -205,7 +205,7 @@ payload 必须精确包含：`schemaVersion`、`authorizationRef`、`issuer`、`
 
 执行入口只从固定路径 `/etc/jiangkong/pol22-zeroing-authorization-public-key.pem` 读取由 root 持有、非符号链接、不可被组/其他用户写入的 Ed25519 公钥。命令行不能覆盖该信任锚；POL-22 不安装该文件，因此默认保持执行禁用。后续 #122 必须由独立控制面预置正确公钥并另行授权，不能把私钥放到执行主机。
 
-单次对象重扫不能证明扫描后没有并发写入，因此 apply 还必须从固定 root 所有路径 `/etc/jiangkong/pol22-zeroing-write-freeze-public-key.pem` 和 `/etc/jiangkong/pol22-zeroing-write-freeze-lease.json` 读取外部控制面签发的写冻结租约。POL-22 不安装、不自签也不自行建立该租约；缺失、签名或固定公钥不匹配、过期、撤销、状态非 `active` 均在任何写入前失败关闭。后续 #122 必须先取得独立维护窗口，并让数据库业务写与私有对象写入口共同遵守该 fence。租约 payload 字段必须精确为 `schemaVersion`、`leaseId`、`issuer`、`status=active`、`revokedAt=null`、`environment`、`batchId`、`reportSha256`、`candidateSha256`、`objectDeletionManifestSha256`、`holderDeploymentIdentitySha256`、`holderExecutorIdentity`、`fenceToken`、`generation`、`scopes=["database_business_writes","private_object_writes"]`、`issuedAt` 和 `expiresAt`；租约摘要还必须被独立执行授权绑定。
+单次对象重扫不能证明扫描后没有并发写入，因此 apply 还必须从固定 root 所有路径 `/etc/jiangkong/pol22-zeroing-write-freeze-public-key.pem` 和 `/etc/jiangkong/pol22-zeroing-write-freeze-lease.json` 读取外部控制面签发的写冻结租约。POL-22 不安装、不自签也不自行建立该租约；缺失、签名或固定公钥不匹配、过期、撤销、状态非 `active` 均在任何写入前失败关闭。后续 #122 必须先取得独立维护窗口，并让数据库业务写与私有对象写入口共同遵守该 fence。租约 payload 字段必须精确为 `schemaVersion`、`leaseId`、`issuer`、`status=active`、`revokedAt=null`、`environment`、`batchId`、`reportSha256`、`candidateSha256`、`objectDeletionManifestSha256`、`testProvenanceRegistrySha256`、`holderDeploymentIdentitySha256`、`holderExecutorIdentity`、`fenceToken`、`generation`、`scopes=["database_business_writes","private_object_writes"]`、`issuedAt` 和 `expiresAt`；租约摘要还必须被独立执行授权绑定。
 
 ```bash
 sh services/api/scripts/run-business-zeroing-cli.sh execute \

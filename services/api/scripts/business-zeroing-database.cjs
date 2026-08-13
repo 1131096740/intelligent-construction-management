@@ -7,11 +7,56 @@ const {
   sha256
 } = require("./business-zeroing-core.cjs");
 const {
-  BUSINESS_ZEROING_LOGICAL_RELATIONS
+  BUSINESS_ZEROING_LOGICAL_RELATIONS,
+  reviewedBusinessTables
 } = require("./business-zeroing-policy.cjs");
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const EXECUTION_LOCK_ID = 220026;
+
+function findRegisteredBusinessRelation(foreignKey) {
+  return BUSINESS_ZEROING_LOGICAL_RELATIONS.find((relation) => {
+    if (
+      relation.childTable !== foreignKey.childTable ||
+      relation.parentTable !== foreignKey.parentTable
+    ) {
+      return false;
+    }
+    const childColumns = relation.childColumns ?? [relation.childColumn];
+    const parentColumns = relation.parentColumns ?? [relation.parentColumn];
+    return (
+      childColumns.every((column) => foreignKey.childColumns.includes(column)) &&
+      parentColumns.every((column) => foreignKey.parentColumns.includes(column))
+    );
+  });
+}
+
+function classifyBusinessAggregateForeignKey(foreignKey) {
+  const registeredRelation = findRegisteredBusinessRelation(foreignKey);
+  if (registeredRelation) {
+    return {
+      protectsChildLifecycle: registeredRelation.protectsChildLifecycle === true,
+      schemaBlocker: null
+    };
+  }
+  if (
+    Object.hasOwn(reviewedBusinessTables, foreignKey.childTable) &&
+    Object.hasOwn(reviewedBusinessTables, foreignKey.parentTable)
+  ) {
+    return {
+      protectsChildLifecycle: false,
+      schemaBlocker: {
+        code: "UNREGISTERED_BUSINESS_AGGREGATE_RELATION",
+        foreignKey: foreignKey.name,
+        childTable: foreignKey.childTable,
+        childColumns: foreignKey.childColumns,
+        parentTable: foreignKey.parentTable,
+        parentColumns: foreignKey.parentColumns
+      }
+    };
+  }
+  return { protectsChildLifecycle: false, schemaBlocker: null };
+}
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -396,6 +441,7 @@ async function loadForeignKeyEvidence(client, schema) {
   const references = [];
   const dangling = [];
   for (const foreignKey of schema.foreignKeys) {
+    const aggregateClassification = classifyBusinessAggregateForeignKey(foreignKey);
     const childPrimaryKey = schema.primaryKeys.get(foreignKey.childTable);
     const parentPrimaryKey = schema.primaryKeys.get(foreignKey.parentTable);
     invariant(childPrimaryKey?.length > 0, `${foreignKey.childTable} 外键子表缺少主键`);
@@ -425,7 +471,8 @@ async function loadForeignKeyEvidence(client, schema) {
         childTable: foreignKey.childTable,
         childPrimaryKey: row.childPrimaryKey,
         parentTable: foreignKey.parentTable,
-        parentPrimaryKey: row.parentPrimaryKey
+        parentPrimaryKey: row.parentPrimaryKey,
+        protectsChildLifecycle: aggregateClassification.protectsChildLifecycle
       });
     }
     const missing = await query(
@@ -566,6 +613,9 @@ async function inspectDatabaseInventory(client, { environment, lockTables = fals
       table: foreignKey.childTable,
       columns: foreignKey.childColumns
     }));
+  const unregisteredBusinessAggregateRelations = schema.foreignKeys
+    .map((foreignKey) => classifyBusinessAggregateForeignKey(foreignKey).schemaBlocker)
+    .filter(Boolean);
   const activeTriggerStates =
     schema.identity.sessionReplicationRole === "replica" ? ["R", "A"] : ["O", "A"];
   const deleteGuardTriggers = schema.triggers
@@ -603,7 +653,8 @@ async function inspectDatabaseInventory(client, { environment, lockTables = fals
     ],
     deleteGuardTriggers,
     schemaBlockers: [
-      ...unregisteredFileForeignKeys
+      ...unregisteredFileForeignKeys,
+      ...unregisteredBusinessAggregateRelations
     ]
   };
 }
@@ -753,16 +804,21 @@ function createBusinessZeroingDatabase(prisma, policy) {
             tx,
             `SELECT pg_advisory_xact_lock(${EXECUTION_LOCK_ID}) IS NULL AS "locked"`
           );
-          const existing = await query(
-            tx,
-            `SELECT "id" FROM "AuditLog"
-              WHERE "action" = $1 AND "businessType" = $2 AND "businessId" = $3
-              LIMIT 1`,
-            "test_business_zeroing.terminal_commit",
-            "test_business_zeroing",
-            event.batchId
-          );
-          invariant(existing.length === 0, "本批次权威终态已存在，禁止重复提交");
+          const loadExistingTerminalState = (action) =>
+            query(
+              tx,
+              `SELECT "id" FROM "AuditLog"
+                WHERE "action" = $1 AND "businessType" = $2 AND "businessId" = $3`,
+              action,
+              "test_business_zeroing",
+              event.batchId
+            );
+          const [existingCompleted, existingTerminal] = await Promise.all([
+            loadExistingTerminalState("test_business_zeroing.controlled_execution"),
+            loadExistingTerminalState("test_business_zeroing.terminal_commit")
+          ]);
+          invariant(existingCompleted.length === 0, "本批次 completed 审计已存在，禁止重复提交");
+          invariant(existingTerminal.length === 0, "本批次权威终态已存在，禁止重复提交");
           await appendAuditWithClient(tx, event);
           await appendAuditWithClient(tx, {
             ...event,
@@ -786,6 +842,7 @@ module.exports = {
   computeSchemaDigest,
   computeDeletionOrder,
   createBusinessZeroingDatabase,
+  classifyBusinessAggregateForeignKey,
   inspectDatabaseInventory,
   quoteIdentifier,
   verifyBusinessZeroingExecutionAudit

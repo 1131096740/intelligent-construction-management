@@ -19,6 +19,7 @@ const {
   writeFileSync
 } = require("node:fs");
 const { dirname, join, relative, resolve } = require("node:path");
+const { builtinModules } = require("node:module");
 
 const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 const TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH =
@@ -88,6 +89,20 @@ function assertTrustedLauncherCapability(capability) {
     "归零工具缺少受信启动器 capability，拒绝进入业务逻辑"
   );
   assertCleanNodeRuntime();
+}
+
+function createTrustedEntrypoint(main, failurePrefix) {
+  invariant(typeof main === "function", "受信启动器业务入口无效");
+  invariant(typeof failurePrefix === "string" && failurePrefix, "受信启动器失败前缀缺失");
+  return async function runMain(capability) {
+    assertTrustedLauncherCapability(capability);
+    try {
+      await main();
+    } catch (error) {
+      process.stderr.write(`${failurePrefix}：${safeFailure(error)}\n`);
+      process.exitCode = 1;
+    }
+  };
 }
 
 function assertTrustedLauncherParent() {
@@ -586,6 +601,95 @@ function locateRuntimePackage(packageName, searchPaths, required = true) {
   return null;
 }
 
+function runtimePackageName(specifier) {
+  if (
+    !specifier ||
+    specifier.startsWith(".") ||
+    specifier.startsWith("/") ||
+    specifier.startsWith("node:") ||
+    builtinModules.includes(specifier)
+  ) {
+    return null;
+  }
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+}
+
+function listRuntimeSourceFiles(directory) {
+  const files = [];
+  const visit = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true }).sort((left, right) =>
+      left.name.localeCompare(right.name)
+    )) {
+      if (entry.name === "node_modules") continue;
+      const absolutePath = join(current, entry.name);
+      const metadata = lstatSync(absolutePath);
+      invariant(
+        !entry.isSymbolicLink() && !metadata.isSymbolicLink(),
+        `实际运行依赖包含符号链接：${absolutePath}`
+      );
+      if (metadata.isDirectory()) visit(absolutePath);
+      else if (metadata.isFile() && /\.(?:cjs|mjs|js)$/u.test(entry.name)) files.push(absolutePath);
+      else invariant(metadata.isFile(), `实际运行依赖包含非普通文件：${absolutePath}`);
+    }
+  };
+  visit(directory);
+  return files;
+}
+
+function resolveRuntimeDependencyClosure(entryFiles, searchPaths) {
+  const pendingFiles = [...entryFiles];
+  const visitedFiles = new Set();
+  const dependencyDirectories = new Set();
+  const dependencyManifests = new Map();
+  const specifierPatterns = [
+    /\brequire(?:\.resolve)?\(\s*["']([^"']+)["']\s*\)/gu,
+    /\bimport(?:\s+[^;]+?\s+from\s+|\s*\(\s*)["']([^"']+)["']/gu
+  ];
+  while (pendingFiles.length > 0) {
+    const filePath = realpathSync(pendingFiles.shift());
+    if (visitedFiles.has(filePath)) continue;
+    const metadata = lstatSync(filePath);
+    invariant(!metadata.isSymbolicLink() && metadata.isFile(), `实际运行入口必须为普通文件：${filePath}`);
+    visitedFiles.add(filePath);
+    const source = readFileSync(filePath, "utf8");
+    const owningDependency = [...dependencyDirectories].find(
+      (directory) => filePath === directory || filePath.startsWith(`${directory}/`)
+    );
+    const owningManifest = owningDependency
+      ? dependencyManifests.get(owningDependency)
+      : null;
+    const specifiers = specifierPatterns.flatMap((pattern) =>
+      [...source.matchAll(pattern)].map((match) => match[1])
+    );
+    for (const specifier of specifiers) {
+      const packageName = runtimePackageName(specifier);
+      if (specifier.startsWith("node:") || builtinModules.includes(specifier)) continue;
+      if (
+        packageName &&
+        owningManifest &&
+        !Object.hasOwn(owningManifest.dependencies ?? {}, packageName)
+      ) {
+        continue;
+      }
+      let resolvedEntrypoint;
+      try {
+        resolvedEntrypoint = require.resolve(specifier, {
+          paths: [dirname(filePath), ...searchPaths]
+        });
+      } catch {
+        throw new Error(`必需实际运行依赖缺失：${packageName ?? specifier}`);
+      }
+      if (/\.(?:cjs|mjs|js)$/u.test(resolvedEntrypoint)) pendingFiles.push(resolvedEntrypoint);
+      if (!packageName || packageName === "@prisma/client") continue;
+      const located = locateRuntimePackage(packageName, [dirname(filePath), ...searchPaths], true);
+      dependencyDirectories.add(located.directory);
+      dependencyManifests.set(located.directory, located.manifest);
+    }
+  }
+  return [...dependencyDirectories].sort();
+}
+
 function resolveRuntimeExecutionFiles() {
   const apiRoot = resolve(REPOSITORY_ROOT, "services/api");
   const prismaClientEntrypoint = require.resolve("@prisma/client", {
@@ -595,42 +699,14 @@ function resolveRuntimeExecutionFiles() {
   const generatedClientEntrypoint = require.resolve(".prisma/client/default", {
     paths: [prismaClientDirectory]
   });
-  const apiManifest = JSON.parse(readFileSync(join(apiRoot, "package.json"), "utf8"));
-  const queue = Object.keys(apiManifest.dependencies ?? {})
-    .filter((packageName) => packageName !== "@prisma/client")
-    .map((packageName) => ({ packageName, searchPaths: [apiRoot], required: true }));
-  const dependencyDirectories = [];
-  const visitedDirectories = new Set();
-  while (queue.length > 0) {
-    const request = queue.shift();
-    const located = locateRuntimePackage(
-      request.packageName,
-      request.searchPaths,
-      request.required
-    );
-    if (!located || visitedDirectories.has(located.directory)) continue;
-    visitedDirectories.add(located.directory);
-    dependencyDirectories.push(located.directory);
-    const requiredDependencies = Object.keys(located.manifest.dependencies ?? {});
-    const optionalDependencies = new Set(
-      Object.keys(located.manifest.optionalDependencies ?? {})
-    );
-    const peerDependencies = Object.keys(located.manifest.peerDependencies ?? {});
-    for (const packageName of new Set([
-      ...requiredDependencies,
-      ...optionalDependencies,
-      ...peerDependencies
-    ])) {
-      if (packageName === "@prisma/client") continue;
-      queue.push({
-        packageName,
-        searchPaths: [located.directory, apiRoot],
-        required:
-          requiredDependencies.includes(packageName) &&
-          !optionalDependencies.has(packageName)
-      });
-    }
-  }
+  const entryFiles = EXECUTION_FILES
+    .filter((fileName) => /\.(?:cjs|mjs|js)$/u.test(fileName))
+    .map((fileName) => resolve(REPOSITORY_ROOT, fileName));
+  entryFiles.push(
+    resolve(REPOSITORY_ROOT, "services/api/dist/file/file.service.js"),
+    resolve(REPOSITORY_ROOT, "services/api/dist/file/versioned-object-storage.js")
+  );
+  const dependencyDirectories = resolveRuntimeDependencyClosure(entryFiles, [apiRoot]);
   return {
     nodeExecutable: process.execPath,
     prismaClientDirectory,
@@ -704,9 +780,9 @@ function safeFailure(error) {
   return error instanceof Error ? error.message : "未知错误";
 }
 
-module.exports = {
+const exportedApi = {
   assertCleanNodeRuntime,
-  assertTrustedLauncherCapability,
+  createTrustedEntrypoint,
   currentCodeSha,
   currentCodeIdentity,
   EXECUTION_DIRECTORIES,
@@ -714,6 +790,8 @@ module.exports = {
   hashExecutionFiles,
   locateRuntimePackage,
   hashRuntimeExecutionFiles,
+  resolveRuntimeDependencyClosure,
+  resolveRuntimeExecutionFiles,
   outputJson,
   parseOptions,
   readJson,
@@ -734,6 +812,17 @@ module.exports = {
   validateTrustedExecutionIdentity,
   safeFailure
 };
+Object.defineProperty(exportedApi, "createTrustedEntrypoint", {
+  value: createTrustedEntrypoint,
+  enumerable: true,
+  writable: false,
+  configurable: false
+});
+Object.defineProperty(module, "exports", {
+  value: exportedApi,
+  writable: false,
+  configurable: false
+});
 
 if (require.main === module) {
   dispatchTrustedLauncher(process.argv.slice(2)).catch((error) => {

@@ -25,6 +25,7 @@ const path = require("node:path");
 const test = require("node:test");
 const {
   buildPreflightReport: buildPreflightReportRaw,
+  WRITE_FREEZE_LEASE_PAYLOAD_FIELDS,
   createDryRunReceipt,
   executeBusinessZeroing,
   expectedConfirmation,
@@ -47,6 +48,8 @@ const {
   hashExecutionFiles,
   locateRuntimePackage,
   reserveJsonOutput,
+  resolveRuntimeDependencyClosure,
+  resolveRuntimeExecutionFiles,
   validateTrustedExecutionIdentity
 } = require("./business-zeroing-cli.cjs");
 const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
@@ -68,8 +71,10 @@ const {
   buildExactDeleteStatement,
   buildExactRowSnapshotStatement,
   buildExactSequenceResetStatement,
+  classifyBusinessAggregateForeignKey,
   computeDeletionOrder,
   computeSchemaDigest,
+  createBusinessZeroingDatabase,
   verifyBusinessZeroingExecutionAudit
 } = require("./business-zeroing-database.cjs");
 
@@ -891,7 +896,11 @@ test("真实 Prisma 正式聚合关系必须全部登记父生命周期保护", 
     ["SettlementLine", "settlementId", "Settlement"],
     ["PaymentExecutionAllocation", "paymentExecutionId", "PaymentExecution"],
     ["InvoiceLine", "invoiceRecordId", "InvoiceRecord"],
-    ["ExpenseClaimLine", "expenseClaimId", "ExpenseClaim"]
+    ["ExpenseClaimLine", "expenseClaimId", "ExpenseClaim"],
+    ["InvoiceAllocation", "invoiceLineId", "InvoiceLine"],
+    ["ExpenseClaimAttachment", "expenseClaimId", "ExpenseClaim"],
+    ["ExpenseClaimPaymentExecution", "expenseClaimId", "ExpenseClaim"],
+    ["SettlementLineAttachment", "settlementLineId", "SettlementLine"]
   ]) {
     assert.match(schemaSource, new RegExp(`model ${childTable} \\{[\\s\\S]*?\\n  ${childColumn}\\s`, "u"));
     assert.ok(
@@ -905,6 +914,27 @@ test("真实 Prisma 正式聚合关系必须全部登记父生命周期保护", 
       `${childTable}.${childColumn}->${parentTable} 未登记正式聚合保护`
     );
   }
+
+  assert.deepEqual(
+    classifyBusinessAggregateForeignKey({
+      name: "future_formal_child_parent_fkey",
+      childTable: "SettlementLineAttachment",
+      childColumns: ["futureParentId"],
+      parentTable: "SettlementLine",
+      parentColumns: ["id"]
+    }),
+    {
+      protectsChildLifecycle: false,
+      schemaBlocker: {
+        code: "UNREGISTERED_BUSINESS_AGGREGATE_RELATION",
+        foreignKey: "future_formal_child_parent_fkey",
+        childTable: "SettlementLineAttachment",
+        childColumns: ["futureParentId"],
+        parentTable: "SettlementLine",
+        parentColumns: ["id"]
+      }
+    }
+  );
 });
 
 test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", () => {
@@ -1677,6 +1707,16 @@ test("执行门要求 apply、精确绑定、外部签名授权与二次确认",
   );
 });
 
+test("写冻结租约实现与 runbook 共享精确字段契约", () => {
+  const runbook = readFileSync(
+    path.resolve(__dirname, "../../../docs/runbooks/test-business-zeroing-controlled-tool.md"),
+    "utf8"
+  );
+  for (const field of WRITE_FREEZE_LEASE_PAYLOAD_FIELDS) {
+    assert.match(runbook, new RegExp(`租约 payload 字段必须精确为[^\\n]*${field}`, "u"));
+  }
+});
+
 test("后置核验要求候选清零、保留数量不漂移且无孤儿或悬空关联", () => {
   const decisions = decisionManifest([
     {
@@ -1861,7 +1901,7 @@ test("候选与保留记录绑定完整行哈希且同数量替换审计会失�
   );
 });
 
-test("备份工件必须真实存在且字节校验和匹配", async () => {
+test("伪造文本 dump 与 tar 即使自报恢复通过也必须阻断", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-backup-test-"));
   try {
     const databasePath = path.join(temporaryRoot, "database.dump");
@@ -1893,9 +1933,11 @@ test("备份工件必须真实存在且字节校验和匹配", async () => {
         }
       }
     });
-    await assert.doesNotReject(() => verifyBackupArtifacts(receipt));
-    await writeFile(databasePath, "tampered", "utf8");
-    await assert.rejects(() => verifyBackupArtifacts(receipt), /SHA-256 校验失败/u);
+    await assert.rejects(() => verifyBackupArtifacts(receipt), /PostgreSQL custom/u);
+    const customHeader = Buffer.from("PGDMP fake payload", "utf8");
+    await writeFile(databasePath, customHeader);
+    receipt.databaseBackup.sha256 = createHash("sha256").update(customHeader).digest("hex");
+    await assert.rejects(() => verifyBackupArtifacts(receipt), /tar 归档/u);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -2274,6 +2316,35 @@ test("未指纹 node -e 不得伪造受信 launcher capability", () => {
   }
 });
 
+test("require-cache monkeypatch 不得绕过受信 launcher capability", () => {
+  for (const mutation of [
+    "require(cliPath).assertTrustedLauncherCapability = () => {};",
+    "require(cliPath); require.cache[cliPath].exports = {createTrustedEntrypoint:(main)=>main};"
+  ]) {
+    const script = [
+      `const cliPath = require.resolve(${JSON.stringify(path.join(__dirname, "business-zeroing-cli.cjs"))});`,
+      `const signPath = require.resolve(${JSON.stringify(path.join(__dirname, "sign-business-zeroing-input.cjs"))});`,
+      mutation,
+      "delete require.cache[signPath];",
+      "const sign = require(signPath);",
+      "Promise.resolve(sign.runMain()).catch((error) => {",
+      "  process.stderr.write(String(error && error.message || error));",
+      "  process.exitCode = 1;",
+      "});"
+    ].join("\n");
+    const result = spawnSync(process.execPath, ["-e", script, "--", "--help"], {
+      cwd: path.resolve(__dirname, "../../.."),
+      encoding: "utf8",
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !["NODE_OPTIONS", "NODE_PATH"].includes(key))
+      )
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /受信启动器 capability/u);
+    assert.doesNotMatch(result.stdout, /签发/u);
+  }
+});
+
 test("受信启动器 capability 工件为 0600 且命令结束后无残留", async () => {
   const capabilityRoot = await mkdtemp(path.join(tmpdir(), "pol22-capability-root-"));
   try {
@@ -2383,7 +2454,69 @@ test("实际执行指纹绑定 Node、Prisma generated client、query engine 与
   }
 });
 
-test("manifest-only 生产依赖纳入真实运行闭包指纹", () => {
+test("真实加载依赖闭包不包含 manifest-only 包且递归依赖仍纳入", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-runtime-closure-"));
+  try {
+    const entrypoint = path.join(temporaryRoot, "entry.cjs");
+    const loadedDirectory = path.join(temporaryRoot, "node_modules", "loaded-package");
+    const childDirectory = path.join(temporaryRoot, "node_modules", "child-package");
+    const unusedDirectory = path.join(temporaryRoot, "node_modules", "manifest-only");
+    for (const [directory, name, source] of [
+      [loadedDirectory, "loaded-package", "module.exports = require('child-package');\n"],
+      [childDirectory, "child-package", "module.exports = 'child';\n"],
+      [unusedDirectory, "manifest-only", "module.exports = 'unused';\n"]
+    ]) {
+      await mkdir(directory, { recursive: true });
+      await writeFile(
+        path.join(directory, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          main: "index.js",
+          ...(name === "loaded-package"
+            ? { dependencies: { "child-package": "1.0.0" } }
+            : {})
+        }),
+        "utf8"
+      );
+      await writeFile(path.join(directory, "index.js"), source, "utf8");
+    }
+    await writeFile(entrypoint, "require('loaded-package');\n", "utf8");
+
+    const closure = resolveRuntimeDependencyClosure([entrypoint], [temporaryRoot]);
+    assert.deepEqual(
+      closure.map((directory) => path.basename(directory)).sort(),
+      ["child-package", "loaded-package"]
+    );
+    const runtimeInputs = {
+      nodeExecutable: process.execPath,
+      prismaClientDirectory: loadedDirectory,
+      generatedClientDirectory: childDirectory,
+      dependencyDirectories: closure
+    };
+    const before = hashRuntimeExecutionFiles(runtimeInputs);
+    await writeFile(path.join(unusedDirectory, "index.js"), "module.exports='changed';\n", "utf8");
+    assert.equal(hashRuntimeExecutionFiles(runtimeInputs), before);
+    await writeFile(path.join(childDirectory, "index.js"), "module.exports='changed';\n", "utf8");
+    assert.notEqual(hashRuntimeExecutionFiles(runtimeInputs), before);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("当前真实运行依赖闭包可生成不可变指纹", () => {
+  const actual = resolveRuntimeExecutionFiles();
+  assert.ok(
+    actual.dependencyDirectories.some((directory) =>
+      /(?:^|\/)@nestjs\/common$/u.test(directory)
+    )
+  );
+  assert.ok(
+    actual.dependencyDirectories.some((directory) =>
+      /(?:^|\/)@jiangkong\/shared-domain$/u.test(directory) ||
+      /(?:^|\/)packages\/shared-domain$/u.test(directory)
+    )
+  );
   assert.match(hashRuntimeExecutionFiles(), /^[0-9a-f]{64}$/u);
 });
 
@@ -2574,6 +2707,43 @@ test("后置审计要求 completed 与 terminal marker 各精确一条", async (
       }
     ]
   );
+});
+
+test("终态提交遇到预存 completed 且无 terminal 时必须回滚", async () => {
+  const insertedEvents = [];
+  const transactionClient = {
+    async $queryRawUnsafe(sql, ...values) {
+      if (/pg_advisory_xact_lock/u.test(sql)) return [{ locked: true }];
+      if (/SELECT "id" FROM "AuditLog"/u.test(sql)) {
+        return values[0] === "test_business_zeroing.controlled_execution"
+          ? [{ id: "existing-completed" }]
+          : [];
+      }
+      if (/INSERT INTO "AuditLog"/u.test(sql)) {
+        insertedEvents.push(JSON.parse(values[4]));
+        return [];
+      }
+      throw new Error(`未处理 SQL：${sql}`);
+    }
+  };
+  const database = createBusinessZeroingDatabase(
+    {
+      async $transaction(work) {
+        return work(transactionClient);
+      }
+    },
+    BUSINESS_ZEROING_POLICY
+  );
+
+  await assert.rejects(
+    () =>
+      database.commitTerminalAudit({
+        event: { batchId: "pol22-existing-completed", status: "completed" },
+        verifyLease: async () => undefined
+      }),
+    /completed.*已存在/u
+  );
+  assert.deepEqual(insertedEvents, []);
 });
 
 test("受控输出必须预先独占预留且以 0600 落盘", async () => {
