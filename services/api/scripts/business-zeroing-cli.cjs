@@ -546,6 +546,46 @@ function updateRuntimeDirectoryHash(hash, label, directoryPath, ignoredNames = n
   visit(canonicalRoot);
 }
 
+function locateRuntimePackage(packageName, searchPaths, required = true) {
+  let entrypoint;
+  try {
+    entrypoint = require.resolve(packageName, { paths: searchPaths });
+  } catch {}
+  if (entrypoint) {
+    let current = realpathSync(dirname(entrypoint));
+    for (;;) {
+      const manifestPath = join(current, "package.json");
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (manifest.name === packageName) return { directory: current, manifest };
+      } catch {}
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  const candidates = new Set();
+  for (const searchPath of searchPaths) {
+    let current = realpathSync(searchPath);
+    for (;;) {
+      candidates.add(join(current, "node_modules", packageName));
+      candidates.add(join(current, packageName));
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      const directory = realpathSync(candidate);
+      const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+      if (manifest.name === packageName) return { directory, manifest };
+    } catch {}
+  }
+  invariant(!required, `必需实际运行依赖缺失：${packageName}`);
+  return null;
+}
+
 function resolveRuntimeExecutionFiles() {
   const apiRoot = resolve(REPOSITORY_ROOT, "services/api");
   const prismaClientEntrypoint = require.resolve("@prisma/client", {
@@ -556,26 +596,6 @@ function resolveRuntimeExecutionFiles() {
     paths: [prismaClientDirectory]
   });
   const apiManifest = JSON.parse(readFileSync(join(apiRoot, "package.json"), "utf8"));
-  const locatePackage = (packageName, searchPaths, required) => {
-    let entrypoint;
-    try {
-      entrypoint = require.resolve(packageName, { paths: searchPaths });
-    } catch (error) {
-      if (!required) return null;
-      throw error;
-    }
-    let current = realpathSync(dirname(entrypoint));
-    for (;;) {
-      const manifestPath = join(current, "package.json");
-      try {
-        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-        if (manifest.name === packageName) return { directory: current, manifest };
-      } catch {}
-      const parent = dirname(current);
-      invariant(parent !== current, `无法定位实际运行依赖：${packageName}`);
-      current = parent;
-    }
-  };
   const queue = Object.keys(apiManifest.dependencies ?? {})
     .filter((packageName) => packageName !== "@prisma/client")
     .map((packageName) => ({ packageName, searchPaths: [apiRoot], required: true }));
@@ -583,7 +603,7 @@ function resolveRuntimeExecutionFiles() {
   const visitedDirectories = new Set();
   while (queue.length > 0) {
     const request = queue.shift();
-    const located = locatePackage(
+    const located = locateRuntimePackage(
       request.packageName,
       request.searchPaths,
       request.required
@@ -692,6 +712,7 @@ module.exports = {
   EXECUTION_DIRECTORIES,
   EXECUTION_FILES,
   hashExecutionFiles,
+  locateRuntimePackage,
   hashRuntimeExecutionFiles,
   outputJson,
   parseOptions,

@@ -12,6 +12,7 @@ const {
   open,
   readFile,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -44,6 +45,7 @@ const {
   assertCleanRepositoryStatus,
   hashRuntimeExecutionFiles,
   hashExecutionFiles,
+  locateRuntimePackage,
   reserveJsonOutput,
   validateTrustedExecutionIdentity
 } = require("./business-zeroing-cli.cjs");
@@ -2342,6 +2344,51 @@ test("实际执行指纹绑定 Node、Prisma generated client、query engine 与
     await rm(nodeExecutable);
     await symlink(path.join(prismaClient, "runtime", "library.js"), nodeExecutable);
     assert.throws(() => hashRuntimeExecutionFiles(inputs), /Node.*符号链接/u);
+    assert.throws(
+      () =>
+        hashRuntimeExecutionFiles({
+          ...inputs,
+          nodeExecutable: path.join(temporaryRoot, "missing-required-runtime")
+        }),
+      /ENOENT|缺失/u
+    );
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("manifest-only 生产依赖纳入真实运行闭包指纹", () => {
+  assert.match(hashRuntimeExecutionFiles(), /^[0-9a-f]{64}$/u);
+});
+
+test("manifest-only 包可按真实依赖目录定位，必需依赖缺失仍失败关闭", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-manifest-only-"));
+  const parentDirectory = path.join(temporaryRoot, "node_modules", "parent-package");
+  const manifestOnlyDirectory = path.join(
+    temporaryRoot,
+    "node_modules",
+    "manifest-only"
+  );
+  try {
+    await mkdir(parentDirectory, { recursive: true });
+    await mkdir(manifestOnlyDirectory, { recursive: true });
+    await writeFile(
+      path.join(manifestOnlyDirectory, "package.json"),
+      JSON.stringify({ name: "manifest-only", version: "1.0.0" }),
+      "utf8"
+    );
+    assert.equal(
+      locateRuntimePackage("manifest-only", [parentDirectory], true).directory,
+      await realpath(manifestOnlyDirectory)
+    );
+    assert.throws(
+      () => locateRuntimePackage("missing-required-runtime", [parentDirectory], true),
+      /必需实际运行依赖缺失/u
+    );
+    assert.equal(
+      locateRuntimePackage("missing-optional-runtime", [parentDirectory], false),
+      null
+    );
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
