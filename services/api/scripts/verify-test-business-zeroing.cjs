@@ -3,9 +3,11 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 const {
+  inspectDeletedObjectScopes,
   validateExecutionReceipt,
   verifyPostcheck
 } = require("./business-zeroing-core.cjs");
+const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
 const {
   outputJson,
   parseOptions,
@@ -20,6 +22,7 @@ const DEFINITION = {
   executionReceipt: { flag: "--execution-receipt", type: "value" },
   environment: { flag: "--environment", type: "value" },
   decisionManifest: { flag: "--decision-manifest", type: "value" },
+  testProvenance: { flag: "--test-provenance", type: "value" },
   backupReceipt: { flag: "--backup-receipt", type: "value" },
   output: { flag: "--output", type: "value" }
 };
@@ -30,6 +33,7 @@ function help() {
     "node verify-test-business-zeroing.cjs --before-report <执行前报告>",
     "  --execution-receipt <受控执行收据>",
     "  --environment <精确环境> --decision-manifest <决定清单>",
+    "  --test-provenance <独立测试来源工件>",
     "  --backup-receipt <备份恢复收据> [--output <新收据路径>]"
   ].join("\n");
 }
@@ -55,6 +59,7 @@ async function main() {
     const after = await inspectWithClient(prisma, {
       environment: args.environment,
       decisionManifestPath: args.decisionManifest,
+      testProvenancePath: args.testProvenance,
       backupReceiptPath: args.backupReceipt,
       trustedExecutionIdentity,
       allowMissingDeletedDecisions: true
@@ -64,11 +69,16 @@ async function main() {
       before,
       authorizationPublicKey
     );
+    const objectRescan = await inspectDeletedObjectScopes(
+      before,
+      createExactObjectStorage()
+    );
     const result = verifyPostcheck(
       before,
       after,
       executionReceipt,
-      authorizationPublicKey
+      authorizationPublicKey,
+      { phase: "final", objectRescan }
     );
     await verifyBusinessZeroingExecutionAudit(prisma, executionReceipt);
     outputJson(
@@ -87,7 +97,8 @@ async function main() {
         candidateCount: after.deletionCandidates.length,
         blockerCount: after.blockers.length,
         orphanFileCount: after.orphanFiles.length,
-        danglingForeignKeyCount: after.danglingForeignKeys.length
+        danglingForeignKeyCount: after.danglingForeignKeys.length,
+        objectScopeCount: result.objectScopeCount
       },
       args.output
     );

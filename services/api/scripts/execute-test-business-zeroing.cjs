@@ -26,6 +26,7 @@ const DEFINITION = {
   report: { flag: "--report", type: "value" },
   environment: { flag: "--environment", type: "value" },
   decisionManifest: { flag: "--decision-manifest", type: "value" },
+  testProvenance: { flag: "--test-provenance", type: "value" },
   backupReceipt: { flag: "--backup-receipt", type: "value" },
   batchId: { flag: "--batch-id", type: "value" },
   expectedDatabaseFingerprint: {
@@ -48,7 +49,8 @@ function help() {
   return [
     "默认 dry-run（不写数据库、不删文件）：",
     "node execute-test-business-zeroing.cjs --report <报告> --environment <精确环境>",
-    "  --decision-manifest <决定清单> --backup-receipt <备份恢复收据>",
+    "  --decision-manifest <决定清单> --test-provenance <独立测试来源工件>",
+    "  --backup-receipt <备份恢复收据>",
     "",
     "受控执行另需全部显式门：",
     "  --apply --batch-id <id> --expected-database-fingerprint <sha256>",
@@ -77,6 +79,7 @@ async function main() {
   const inspectionOptions = {
     environment: args.environment,
     decisionManifestPath: args.decisionManifest,
+    testProvenancePath: args.testProvenance,
     backupReceiptPath: args.backupReceipt,
     trustedExecutionIdentity
   };

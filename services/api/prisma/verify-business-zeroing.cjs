@@ -11,8 +11,10 @@ const {
   createDryRunReceipt,
   executeBusinessZeroing,
   expectedConfirmation,
+  inspectDeletedObjectScopes,
   sha256,
-  validateExecutionReceipt
+  validateExecutionReceipt,
+  verifyPostcheck
 } = require("../scripts/business-zeroing-core.cjs");
 const { verifyBackupArtifacts } = require("../scripts/inspect-test-business-zeroing.cjs");
 const {
@@ -65,9 +67,77 @@ function createAuthorization(report, batchId, privateKey, issuedAt, expiresAt) {
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
       decisionManifestSha256: report.decisionManifestSha256,
+      testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+      trustedTestProvenancePublicKeySha256:
+        report.trustedTestProvenancePublicKeySha256,
+      objectDeletionManifestSha256: report.objectDeletionManifestSha256,
       backupReceiptSha256: report.backupReceiptSha256,
       batchId,
       confirmation: expectedConfirmation(batchId)
+    }),
+    "utf8"
+  );
+  return {
+    schemaVersion: 1,
+    algorithm: "Ed25519",
+    payload: payload.toString("base64"),
+    signature: sign(null, payload, privateKey).toString("base64")
+  };
+}
+
+function fixtureRecordKey(table, primaryKey) {
+  return `${table}:${sha256(primaryKey)}`;
+}
+
+function createTestProvenance(
+  sourceInventory,
+  decisions,
+  trustedFixtureKeys,
+  privateKey,
+  issuedAt
+) {
+  const records = [];
+  for (const table of sourceInventory.tables) {
+    for (const row of table.rows) {
+      const primaryKey = Object.fromEntries(
+        table.primaryKey.map((column) => [column, String(row[column])])
+      );
+      const key = fixtureRecordKey(table.name, primaryKey);
+      if (!trustedFixtureKeys.has(key)) continue;
+      assert.equal(
+        decisions.records.find(
+          (record) =>
+            record.table === table.name &&
+            fixtureRecordKey(record.table, record.primaryKey) === key
+        )?.decision,
+        "delete"
+      );
+      records.push({
+        table: table.name,
+        primaryKey,
+        rowSha256: row.rowSha256,
+        sourceKind: "isolated_fixture_registry",
+        sourceRef: `dynamic-fixture:${table.name}:${sha256(primaryKey)}`,
+        evidenceSha256: sha256({
+          registry: "pol22-dynamic-fixtures-v1",
+          table: table.name,
+          primaryKey,
+          rowSha256: row.rowSha256
+        })
+      });
+    }
+  }
+  assert.equal(records.length, trustedFixtureKeys.size);
+  const payload = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      registryRef: "POL-22 isolated dynamic fixture registry v1",
+      issuer: "POL-22 隔离动态测试来源签发者",
+      issuedAt,
+      policyId: BUSINESS_ZEROING_POLICY.id,
+      environment: ENVIRONMENT,
+      databaseFingerprint: sourceInventory.databaseFingerprint,
+      records
     }),
     "utf8"
   );
@@ -227,7 +297,7 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   const policyByName = new Map(
     BUSINESS_ZEROING_POLICY.tables.map((table) => [table.name, table])
   );
-  const createDecisions = (sourceInventory) =>
+  const createDecisions = (sourceInventory, trustedFixtureKeys) =>
     signed({
       schemaVersion: 1,
       policyId: BUSINESS_ZEROING_POLICY.id,
@@ -236,21 +306,35 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
       records: sourceInventory.tables.flatMap((table) => {
         const tablePolicy = policyByName.get(table.name);
         if (!["review", "business_review"].includes(tablePolicy?.disposition)) return [];
-        return table.rows.map((row) => ({
-          businessType: tablePolicy.chineseName,
-          table: table.name,
-          primaryKey: Object.fromEntries(
+        return table.rows.map((row) => {
+          const primaryKey = Object.fromEntries(
             table.primaryKey.map((column) => [column, String(row[column])])
-          ),
-          decision: tablePolicy.disposition === "review" ? "preserve" : "delete",
-          reason:
-            tablePolicy.disposition === "review"
-              ? "隔离夹具中已存基础资料逐主键明确保留"
-              : "隔离夹具中已逐主键明确判定为测试业务"
-        }));
+          );
+          const isTrustedFixture = trustedFixtureKeys.has(
+            fixtureRecordKey(table.name, primaryKey)
+          );
+          return {
+            businessType: tablePolicy.chineseName,
+            table: table.name,
+            primaryKey,
+            decision:
+              tablePolicy.disposition === "business_review" && isTrustedFixture
+                ? "delete"
+                : "preserve",
+            reason:
+              tablePolicy.disposition === "business_review" && isTrustedFixture
+                ? "独立隔离夹具注册表已逐主键证明是测试业务"
+                : "未列入独立隔离夹具注册表，逐主键明确保留"
+          };
+        });
       })
     });
-  const decisions = createDecisions(inventory);
+  const trustedFixtureKeys = new Set([
+    fixtureRecordKey("Contract", { id: CONTRACT_ID }),
+    fixtureRecordKey("ContractVersion", { id: VERSION_ID }),
+    fixtureRecordKey("ContractDraftAttachment", { id: ATTACHMENT_ID })
+  ]);
+  const decisions = createDecisions(inventory, trustedFixtureKeys);
   const databaseBackupPath = path.join(temporaryRoot, "database.dump.fixture");
   const fileBackupPath = path.join(temporaryRoot, "private-files.tar.fixture");
   const databaseBackupContent = Buffer.from("isolated database backup fixture", "utf8");
@@ -284,13 +368,26 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   const authorizationIssuedAt = new Date(new Date(capturedAt).getTime() + 2_000).toISOString();
   const authorizationExpiresAt = new Date(new Date(capturedAt).getTime() + 10 * 60_000).toISOString();
   const executionNow = new Date(new Date(capturedAt).getTime() + 3_000);
+  const testProvenanceKeys = generateKeyPairSync("ed25519");
+  const trustedTestProvenancePublicKeySha256 = createHash("sha256")
+    .update(testProvenanceKeys.publicKey.export({ type: "spki", format: "der" }))
+    .digest("hex");
+  const testProvenance = createTestProvenance(
+    inventory,
+    decisions,
+    trustedFixtureKeys,
+    testProvenanceKeys.privateKey,
+    capturedAt
+  );
   const identityBody = {
     schemaVersion: 1,
     environment: ENVIRONMENT,
     deploymentId: "pol22-local-disposable",
     executorIdentity: "pol22-isolated-runner",
     executorUid: process.getuid(),
-    executorUsername: userInfo().username
+    executorUsername: userInfo().username,
+    testProvenancePublicKeySha256:
+      trustedTestProvenancePublicKeySha256
   };
   const trustedExecutionIdentity = {
     ...identityBody,
@@ -300,7 +397,8 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     client,
     lockTables = false,
     allowMissingDeletedDecisions = false,
-    decisionManifest = decisions
+    decisionManifest = decisions,
+    provenanceEnvelope = testProvenance
   ) => {
     const currentInventory = await inspectDatabaseInventory(client, {
       environment: ENVIRONMENT,
@@ -314,6 +412,9 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
       policy: BUSINESS_ZEROING_POLICY,
       inventory: currentInventory,
       decisions: decisionManifest,
+      testProvenance: provenanceEnvelope,
+      testProvenancePublicKey: testProvenanceKeys.publicKey,
+      trustedTestProvenancePublicKeySha256,
       backup,
       codeSha: codeIdentity.codeSha,
       executionCodeSha256: codeIdentity.executionCodeSha256,
@@ -325,7 +426,57 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     });
   };
 
+  await prisma.$executeRawUnsafe(
+    `UPDATE "ContractVersion" SET "status" = 'effective' WHERE "id" = $1`,
+    VERSION_ID
+  );
+  try {
+    const effectiveInventory = await inspectDatabaseInventory(prisma, {
+      environment: ENVIRONMENT
+    });
+    const effectiveDecisions = createDecisions(
+      effectiveInventory,
+      trustedFixtureKeys
+    );
+    const effectiveProvenance = createTestProvenance(
+      effectiveInventory,
+      effectiveDecisions,
+      trustedFixtureKeys,
+      testProvenanceKeys.privateKey,
+      capturedAt
+    );
+    const effectiveReport = await buildReport(
+      prisma,
+      false,
+      false,
+      effectiveDecisions,
+      effectiveProvenance
+    );
+    assert.equal(effectiveReport.status, "blocked");
+    assert.deepEqual(effectiveReport.deletionCandidates, []);
+    assert.ok(
+      effectiveReport.blockers.some(
+        (item) =>
+          item.code === "FORMAL_RECORD_PROTECTED" &&
+          item.details?.table === "ContractVersion"
+      )
+    );
+  } finally {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "ContractVersion" SET "status" = 'draft' WHERE "id" = $1`,
+      VERSION_ID
+    );
+  }
+
   const beforeCounts = await counts(prisma);
+  const unprovenReport = await buildReport(prisma, false, false, decisions, null);
+  assert.equal(unprovenReport.status, "blocked");
+  assert.deepEqual(unprovenReport.deletionCandidates, []);
+  assert.ok(
+    unprovenReport.blockers.some(
+      (item) => item.code === "TEST_PROVENANCE_NOT_VERIFIED"
+    )
+  );
   const report = await buildReport(prisma);
   assert.equal(report.status, "ready", JSON.stringify(report.blockers));
   assert.deepEqual(
@@ -342,6 +493,7 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   const batchId = "pol22-isolated-001";
   const authorizationKeys = generateKeyPairSync("ed25519");
   const database = createBusinessZeroingDatabase(prisma, BUSINESS_ZEROING_POLICY);
+  const exactObjectStorage = createExactObjectStorage();
   const reservedReceipt = reserveJsonOutput(
     path.join(temporaryRoot, "execution-receipt.json")
   );
@@ -372,7 +524,7 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     },
     report,
     database,
-    storage: createExactObjectStorage(),
+    storage: exactObjectStorage,
     buildLockedReport: (tx) => buildReport(tx.client, true),
     buildLockedPostcheckReport: (tx) => buildReport(tx.client, true, true),
     buildPostcheckReport: () => buildReport(prisma, false, true),
@@ -393,6 +545,21 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   assert.deepEqual(await verifyBusinessZeroingExecutionAudit(prisma, receipt), {
     status: "passed"
   });
+  const independentAfterReport = await buildReport(prisma, false, true);
+  const independentObjectRescan = await inspectDeletedObjectScopes(
+    report,
+    exactObjectStorage
+  );
+  assert.deepEqual(
+    verifyPostcheck(
+      report,
+      independentAfterReport,
+      receipt,
+      authorizationKeys.publicKey,
+      { phase: "final", objectRescan: independentObjectRescan }
+    ),
+    { status: "passed", objectScopeCount: 1 }
+  );
   const afterCounts = await counts(prisma);
   assert.deepEqual(
     { users: afterCounts.users, projects: afterCounts.projects },
@@ -417,6 +584,11 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   assert.equal(
     await readFile(path.join(storageRoot, localDisposition.quarantineObjectKey), "utf8"),
     "fixture"
+  );
+  await writeFile(path.join(storageRoot, OBJECT_KEY), "resurrected", "utf8");
+  await assert.rejects(
+    () => inspectDeletedObjectScopes(report, exactObjectStorage),
+    /对象最终重扫发现本地精确对象键已重建/u
   );
 
   await prisma.$executeRawUnsafe(
@@ -448,11 +620,26 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   const guardedInventory = await inspectDatabaseInventory(prisma, {
     environment: ENVIRONMENT
   });
+  const guardedTrustedFixtureKeys = new Set([
+    fixtureRecordKey("ProjectUpstreamFundFact", { id: GUARDED_FACT_ID })
+  ]);
+  const guardedDecisions = createDecisions(
+    guardedInventory,
+    guardedTrustedFixtureKeys
+  );
+  const guardedProvenance = createTestProvenance(
+    guardedInventory,
+    guardedDecisions,
+    guardedTrustedFixtureKeys,
+    testProvenanceKeys.privateKey,
+    capturedAt
+  );
   const guardedReport = await buildReport(
     prisma,
     false,
     false,
-    createDecisions(guardedInventory)
+    guardedDecisions,
+    guardedProvenance
   );
   assert.equal(guardedReport.status, "blocked");
   assert.ok(
@@ -476,6 +663,16 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
     dryRunSteps: dryRun.steps.length,
+    unprovenDeletePreflight: {
+      status: unprovenReport.status,
+      blocker: "TEST_PROVENANCE_NOT_VERIFIED",
+      candidateCount: 0
+    },
+    effectiveFixtureProtection: {
+      status: "blocked",
+      blocker: "FORMAL_RECORD_PROTECTED",
+      signedTrustedProvenanceRejected: true
+    },
     receipt,
     preserved: { users: afterCounts.users, projects: afterCounts.projects },
     deleted: { contracts: 1, versions: 1, attachments: 1, files: 1 },
@@ -492,7 +689,9 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     },
     localObjectDisposition: {
       status: localDisposition.status,
-      recoveryArtifactRetained: true
+      recoveryArtifactRetained: true,
+      independentRescanPassed: true,
+      sameKeyResurrectionRejected: true
     },
     productionAccessed: false
   };

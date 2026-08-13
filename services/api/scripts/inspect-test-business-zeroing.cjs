@@ -18,12 +18,14 @@ const {
   parseOptions,
   readJson,
   readTrustedExecutionIdentity,
+  readTrustedTestProvenancePublicKey,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
 
 const DEFINITION = {
   environment: { flag: "--environment", type: "value" },
   decisionManifest: { flag: "--decision-manifest", type: "value" },
+  testProvenance: { flag: "--test-provenance", type: "value" },
   backupReceipt: { flag: "--backup-receipt", type: "value" },
   output: { flag: "--output", type: "value" }
 };
@@ -66,7 +68,8 @@ function help() {
   return [
     "默认只读预检：",
     "node inspect-test-business-zeroing.cjs --environment <精确环境标识>",
-    "  [--decision-manifest <已签名 JSON>] [--backup-receipt <已签名 JSON>]",
+    "  [--decision-manifest <已签名 JSON>] [--test-provenance <独立签名 JSON>]",
+    "  [--backup-receipt <已签名 JSON>]",
     "  [--output <新报告路径>]",
     "",
     "缺少决定或备份收据时仍只读扫描，但报告 status=blocked，绝不执行删除。"
@@ -92,12 +95,28 @@ async function inspectWithClient(client, options) {
     inventory,
     backup?.privateFileBackup?.capturedAt
   );
+  const testProvenance =
+    options.testProvenance ??
+    (options.testProvenancePath
+      ? readJson(options.testProvenancePath, "独立测试来源工件")
+      : null);
+  const testProvenancePublicKey =
+    options.testProvenancePublicKey ??
+    (testProvenance
+      ? readTrustedTestProvenancePublicKey(
+          trustedIdentity.testProvenancePublicKeySha256
+        )
+      : undefined);
   return buildPreflightReport({
     policy: BUSINESS_ZEROING_POLICY,
     inventory,
     decisions: options.decisionManifestPath
       ? readJson(options.decisionManifestPath, "逐主键决定清单")
       : null,
+    testProvenance,
+    testProvenancePublicKey,
+    trustedTestProvenancePublicKeySha256:
+      trustedIdentity.testProvenancePublicKeySha256,
     backup,
     codeSha: codeIdentity.codeSha,
     executionCodeSha256: codeIdentity.executionCodeSha256,
@@ -121,6 +140,7 @@ async function main() {
     const report = await inspectWithClient(prisma, {
       environment: args.environment,
       decisionManifestPath: args.decisionManifest,
+      testProvenancePath: args.testProvenance,
       backupReceiptPath: args.backupReceipt
     });
     outputJson(report, args.output);

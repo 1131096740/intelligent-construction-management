@@ -2,7 +2,10 @@
 "use strict";
 
 const { createHash, randomUUID } = require("node:crypto");
-const { sha256 } = require("./business-zeroing-core.cjs");
+const {
+  selectFormalObservationFields,
+  sha256
+} = require("./business-zeroing-core.cjs");
 const {
   BUSINESS_ZEROING_LOGICAL_RELATIONS
 } = require("./business-zeroing-policy.cjs");
@@ -320,28 +323,29 @@ async function loadPrimaryKeyRows(client, tableName, primaryKeyColumns) {
      FROM ${quoteIdentifier(tableName)} source
      ORDER BY ${order}`
   );
-  return rows.map((row) => ({
-    ...row.primaryKey,
-    rowSha256: createHash("sha256").update(row.rowCanonicalJson).digest("hex"),
-    preservationSha256: createHash("sha256")
-      .update(row.preservationCanonicalJson)
-      .digest("hex"),
-    ...(tableName === "FileObject"
-      ? { bucket: row.bucket, objectKey: row.objectKey }
-      : {}),
-    ...(tableName === "ContractNumberRule"
-      ? { nextSequence: row.nextSequence }
-      : {}),
-    ...(tableName === "ContractNumberTombstone"
-      ? { formalCode: row.formalCode }
-      : {}),
-    ...(tableName === "BusinessDailySequence"
-      ? { nextSequence: row.nextSequence }
-      : {}),
-    ...(tableName === "CompanyEntity"
-      ? { currentVersionNo: row.currentVersionNo }
-      : {})
-  }));
+  return rows.map((row) => {
+    const canonicalRow = JSON.parse(row.rowCanonicalJson);
+    return {
+      ...row.primaryKey,
+      ...selectFormalObservationFields(canonicalRow),
+      rowSha256: createHash("sha256").update(row.rowCanonicalJson).digest("hex"),
+      preservationSha256: createHash("sha256")
+        .update(row.preservationCanonicalJson)
+        .digest("hex"),
+      ...(tableName === "FileObject"
+        ? { bucket: row.bucket, objectKey: row.objectKey }
+        : {}),
+      ...(tableName === "ContractNumberRule"
+        ? { nextSequence: row.nextSequence }
+        : {}),
+      ...(tableName === "BusinessDailySequence"
+        ? { nextSequence: row.nextSequence }
+        : {}),
+      ...(tableName === "CompanyEntity"
+        ? { currentVersionNo: row.currentVersionNo }
+        : {})
+    };
+  });
 }
 
 async function loadFileBindings(client, primaryKeys) {

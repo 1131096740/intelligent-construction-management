@@ -6,6 +6,28 @@ const crypto = require("node:crypto");
 const REPORT_TTL_MS = 30 * 60 * 1000;
 const POLICY_ID = "pol-22-business-zeroing-v1";
 const HAN_PATTERN = /[\u3400-\u9fff]/u;
+const PREFORMAL_STATUS_ALLOWLIST = new Set([
+  "approval_pending",
+  "deleting",
+  "draft",
+  "open",
+  "pending",
+  "pending_confirm",
+  "pending_review",
+  "preview",
+  "purging",
+  "queued",
+  "requested",
+  "reserved"
+]);
+const FORMAL_TIMESTAMP_FIELD_PATTERN =
+  /(?:activated|approved|archived|closed|completed|confirmed|effective|executed|paid|published|sealed|signed|submitted|voided)At$/iu;
+const FORMAL_BOOLEAN_FIELDS = Object.freeze([
+  "isArchived",
+  "isConfirmed",
+  "isEffective",
+  "isFormal"
+]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -207,6 +229,182 @@ function validateDecisionManifest(
   return decisions;
 }
 
+function validateTestProvenanceEnvelope(
+  envelope,
+  publicKeyInput,
+  policy,
+  inventory,
+  decisions,
+  generatedAt,
+  trustedPublicKeySha256,
+  { allowMissingDeletedDecisions = false } = {}
+) {
+  const deleteDecisions = [...decisions.entries()].filter(
+    ([, decision]) => decision.decision === "delete"
+  );
+  if (deleteDecisions.length === 0 && envelope == null) {
+    return { proofs: new Map(), verification: null };
+  }
+  invariant(
+    JSON.stringify(Object.keys(envelope ?? {}).sort()) ===
+      JSON.stringify(["algorithm", "payload", "schemaVersion", "signature"]),
+    "独立测试来源工件字段不精确"
+  );
+  invariant(envelope.schemaVersion === 1, "独立测试来源工件版本无效");
+  invariant(envelope.algorithm === "Ed25519", "独立测试来源必须使用 Ed25519");
+  const payloadBytes = decodeBase64(envelope.payload, "独立测试来源 payload");
+  const signature = decodeBase64(envelope.signature, "独立测试来源签名");
+  let publicKey;
+  try {
+    publicKey =
+      publicKeyInput?.type === "public"
+        ? publicKeyInput
+        : crypto.createPublicKey(publicKeyInput);
+  } catch {
+    throw new Error("独立测试来源公钥无效");
+  }
+  invariant(publicKey.asymmetricKeyType === "ed25519", "独立测试来源公钥必须是 Ed25519");
+  const publicKeyDer = publicKey.export({ type: "spki", format: "der" });
+  invariant(
+    /^[0-9a-f]{64}$/u.test(trustedPublicKeySha256 ?? "") &&
+      sha256Bytes(publicKeyDer) === trustedPublicKeySha256,
+    "独立测试来源公钥与固定部署信任锚不匹配"
+  );
+  invariant(
+    crypto.verify(null, payloadBytes, publicKey, signature),
+    "独立测试来源签名验证失败"
+  );
+  let payload;
+  try {
+    payload = JSON.parse(payloadBytes.toString("utf8"));
+  } catch {
+    throw new Error("独立测试来源 payload 不是合法 JSON");
+  }
+  invariant(
+    JSON.stringify(Object.keys(payload ?? {}).sort()) ===
+      JSON.stringify([
+        "databaseFingerprint",
+        "environment",
+        "issuedAt",
+        "issuer",
+        "policyId",
+        "records",
+        "registryRef",
+        "schemaVersion"
+      ]),
+    "独立测试来源 payload 字段不精确"
+  );
+  invariant(payload.schemaVersion === 1, "独立测试来源 payload 版本无效");
+  invariant(payload.policyId === policy.id, "独立测试来源策略不匹配");
+  invariant(payload.environment === inventory.environment, "独立测试来源环境不匹配");
+  invariant(
+    payload.databaseFingerprint === inventory.databaseFingerprint,
+    "独立测试来源数据库 fingerprint 不匹配"
+  );
+  invariant(
+    typeof payload.registryRef === "string" && payload.registryRef.trim().length >= 8,
+    "独立测试来源注册表引用无效"
+  );
+  invariant(typeof payload.issuer === "string" && payload.issuer.trim(), "独立测试来源签发者缺失");
+  const issuedAt = new Date(payload.issuedAt).getTime();
+  const preflightAt = new Date(generatedAt).getTime();
+  invariant(
+    typeof payload.issuedAt === "string" &&
+      Number.isFinite(issuedAt) &&
+      new Date(issuedAt).toISOString() === payload.issuedAt &&
+      issuedAt <= preflightAt,
+    "独立测试来源签发时间无效"
+  );
+  invariant(Array.isArray(payload.records), "独立测试来源 records 必须是数组");
+
+  const policyByName = new Map(policy.tables.map((table) => [table.name, table]));
+  const inventoryByName = new Map(inventory.tables.map((table) => [table.name, table]));
+  const inventoryRows = new Map();
+  for (const table of inventory.tables) {
+    if (!Array.isArray(table.primaryKey) || !Array.isArray(table.rows)) continue;
+    for (const row of table.rows) {
+      inventoryRows.set(recordKey(table.name, rowPrimaryKey(table, row)), row);
+    }
+  }
+  const proofs = new Map();
+  for (const record of payload.records) {
+    invariant(
+      JSON.stringify(Object.keys(record ?? {}).sort()) ===
+        JSON.stringify([
+          "evidenceSha256",
+          "primaryKey",
+          "rowSha256",
+          "sourceKind",
+          "sourceRef",
+          "table"
+        ]),
+      "独立测试来源记录字段不精确"
+    );
+    const tablePolicy = policyByName.get(record.table);
+    invariant(
+      ["review", "business_review"].includes(tablePolicy?.disposition),
+      "独立测试来源只能证明需逐条复核的基础或业务资料"
+    );
+    const table = inventoryByName.get(record.table);
+    invariant(table, `独立测试来源包含当前 Schema 不存在的表：${record.table}`);
+    invariant(record.primaryKey && typeof record.primaryKey === "object", "独立测试来源主键无效");
+    invariant(
+      JSON.stringify(Object.keys(record.primaryKey).sort()) ===
+        JSON.stringify([...table.primaryKey].sort()) &&
+        Object.values(record.primaryKey).every(
+          (value) => ["string", "number", "bigint"].includes(typeof value) && String(value).length > 0
+        ),
+      `${record.table} 独立测试来源主键不精确`
+    );
+    invariant(/^[0-9a-f]{64}$/u.test(record.rowSha256 ?? ""), "独立测试来源行指纹无效");
+    invariant(
+      ["isolated_fixture_registry", "trusted_test_operation_registry"].includes(
+        record.sourceKind
+      ),
+      "独立测试来源类型不受信任"
+    );
+    invariant(
+      typeof record.sourceRef === "string" && record.sourceRef.trim().length >= 8,
+      "独立测试来源记录引用无效"
+    );
+    invariant(
+      /^[0-9a-f]{64}$/u.test(record.evidenceSha256 ?? ""),
+      "独立测试来源证据摘要无效"
+    );
+    const primaryKey = canonicalize(record.primaryKey);
+    const key = recordKey(record.table, primaryKey);
+    invariant(decisions.get(key)?.decision === "delete", "独立测试来源没有对应的删除决定");
+    const row = inventoryRows.get(key);
+    invariant(
+      row || allowMissingDeletedDecisions,
+      "独立测试来源对应记录在当前数据库中不存在"
+    );
+    if (row) {
+      invariant(
+        record.rowSha256 === recordContentSha256(record.table, row),
+        "独立测试来源与当前记录完整行指纹不匹配"
+      );
+    }
+    invariant(!proofs.has(key), "独立测试来源包含重复主键");
+    proofs.set(key, { ...record, primaryKey });
+  }
+  for (const [key] of deleteDecisions) {
+    invariant(proofs.has(key), "删除决定缺少逐主键独立测试来源证明");
+  }
+  invariant(proofs.size === deleteDecisions.length, "独立测试来源范围与删除决定不精确一致");
+  return {
+    proofs,
+    verification: {
+      registryRef: payload.registryRef.trim(),
+      issuer: payload.issuer.trim(),
+      issuedAt: payload.issuedAt,
+      publicKeySha256: sha256Bytes(publicKeyDer),
+      payloadSha256: sha256Bytes(payloadBytes),
+      recordCount: proofs.size
+    }
+  };
+}
+
 function candidate(businessType, table, primaryKey, extra = {}) {
   return {
     businessType,
@@ -224,6 +422,52 @@ function recordContentSha256(tableName, row, { preservation = false } = {}) {
       : row.rowSha256;
   invariant(/^[0-9a-f]{64}$/u.test(value ?? ""), `${tableName} 记录内容指纹无效`);
   return value;
+}
+
+function selectFormalObservationFields(row) {
+  return Object.fromEntries(
+    Object.entries(row ?? {}).filter(
+      ([field]) =>
+        field === "status" ||
+        field === "code" ||
+        field === "formalCode" ||
+        FORMAL_TIMESTAMP_FIELD_PATTERN.test(field) ||
+        FORMAL_BOOLEAN_FIELDS.includes(field)
+    )
+  );
+}
+
+function observedFormalProtection(tableName, row) {
+  if (Object.hasOwn(row, "status")) {
+    const status = typeof row.status === "string" ? row.status.trim().toLowerCase() : "";
+    if (!PREFORMAL_STATUS_ALLOWLIST.has(status)) {
+      return {
+        field: "status",
+        observedClassification: status ? `protected_or_unknown:${status}` : "invalid_or_empty"
+      };
+    }
+  }
+  for (const field of ["code", "formalCode"]) {
+    if (
+      !(tableName === "ContractNumberTombstone" && field === "formalCode") &&
+      Object.hasOwn(row, field) &&
+      typeof row[field] === "string" &&
+      row[field].trim()
+    ) {
+      return { field, observedClassification: "non_empty_formal_number" };
+    }
+  }
+  for (const field of Object.keys(row).filter((key) => FORMAL_TIMESTAMP_FIELD_PATTERN.test(key))) {
+    if (row[field] !== null && row[field] !== undefined) {
+      return { field, observedClassification: "formal_lifecycle_timestamp_present" };
+    }
+  }
+  for (const field of FORMAL_BOOLEAN_FIELDS) {
+    if (row[field] === true) {
+      return { field, observedClassification: "formal_lifecycle_flag_true" };
+    }
+  }
+  return null;
 }
 
 function preservationAnchor(tableName, primaryKey, row) {
@@ -288,6 +532,12 @@ function reportStateFingerprint(report) {
     executionCodeSha256: report.executionCodeSha256,
     deploymentIdentitySha256: report.deploymentIdentitySha256,
     executorIdentity: report.executorIdentity,
+    testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+    testProvenanceVerification: report.testProvenanceVerification,
+    trustedTestProvenancePublicKeySha256:
+      report.trustedTestProvenancePublicKeySha256,
+    objectDeletionManifest: report.objectDeletionManifest,
+    objectDeletionManifestSha256: report.objectDeletionManifestSha256,
     preservationWhitelist: report.preservationWhitelist,
     preservationAnchors: report.preservationAnchors,
     preservationCounts: report.preservationCounts,
@@ -321,6 +571,9 @@ function buildPreflightReport({
   executionCodeSha256,
   deploymentIdentitySha256,
   executorIdentity,
+  testProvenance,
+  testProvenancePublicKey,
+  trustedTestProvenancePublicKeySha256,
   generatedAt,
   allowMissingDeletedDecisions = false
 }) {
@@ -337,6 +590,10 @@ function buildPreflightReport({
   invariant(
     /^[a-z0-9][a-z0-9._-]{2,79}$/iu.test(executorIdentity ?? ""),
     "执行主体身份无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(trustedTestProvenancePublicKeySha256 ?? ""),
+    "固定的独立测试来源公钥指纹无效"
   );
   const generatedAtEpoch = new Date(generatedAt).getTime();
   invariant(
@@ -382,6 +639,24 @@ function buildPreflightReport({
     });
   } catch (error) {
     addBlocker("INVALID_DECISION_MANIFEST", error.message);
+  }
+  let testProvenanceByKey = new Map();
+  let testProvenanceVerification = null;
+  try {
+    const validated = validateTestProvenanceEnvelope(
+      testProvenance,
+      testProvenancePublicKey,
+      policy,
+      inventory,
+      decisionByKey,
+      generatedAt,
+      trustedTestProvenancePublicKeySha256,
+      { allowMissingDeletedDecisions }
+    );
+    testProvenanceByKey = validated.proofs;
+    testProvenanceVerification = validated.verification;
+  } catch (error) {
+    addBlocker("TEST_PROVENANCE_NOT_VERIFIED", error.message);
   }
   try {
     validateBackupReceipt(
@@ -473,11 +748,44 @@ function buildPreflightReport({
           });
         }
       } else {
+        const formalProtection = observedFormalProtection(table.name, row);
+        if (formalProtection) {
+          addBlocker(
+            "FORMAL_RECORD_PROTECTED",
+            "记录具有正式、生效、归档、完成或未知状态，独立测试来源不得覆盖硬保护",
+            { table: table.name, primaryKey, ...formalProtection }
+          );
+          dispositionByRecord.set(key, "preserve");
+          preservationCounts[table.name] += 1;
+          preservationWhitelist.push({
+            businessType: tablePolicy.chineseName,
+            table: table.name,
+            primaryKey,
+            reason: "观测到正式或未知生命周期标记，硬保护并阻断归零"
+          });
+          preservationAnchors.push(preservationAnchor(table.name, primaryKey, row));
+          continue;
+        }
+        const provenance = testProvenanceByKey.get(key);
+        if (!provenance) {
+          addBlocker(
+            "UNPROVEN_TEST_RECORD",
+            "删除记录缺少与当前行绑定的独立测试来源证明",
+            { table: table.name, primaryKey }
+          );
+          dispositionByRecord.set(key, "unknown");
+          continue;
+        }
         dispositionByRecord.set(key, "delete");
         const testBusinessType = `${tablePolicy.chineseName}中的测试资料`;
         deletionCandidates.push(
           candidate(testBusinessType, table.name, primaryKey, {
-            rowSha256: recordContentSha256(table.name, row)
+            rowSha256: recordContentSha256(table.name, row),
+            testProvenance: {
+              sourceKind: provenance.sourceKind,
+              sourceRef: provenance.sourceRef,
+              evidenceSha256: provenance.evidenceSha256
+            }
           })
         );
         if (table.name === "ContractNumberTombstone") {
@@ -709,12 +1017,27 @@ function buildPreflightReport({
   const safeDeletionOrder = blockers.length === 0 ? candidateDeletion.order : [];
   const safeNumberResets = blockers.length === 0 ? numberResets : [];
   const safeExpectedReleasedNumbers = blockers.length === 0 ? expectedReleasedNumbers : [];
+  const objectDeletionManifest = safeDeletionCandidates
+    .filter((item) => item.table === "FileObject")
+    .map((item) => {
+      const scope = {
+        table: item.table,
+        primaryKey: item.primaryKey,
+        bucket: item.bucket,
+        objectKey: item.objectKey,
+        objectSnapshot: item.objectSnapshot
+      };
+      return { ...scope, scopeSha256: sha256(scope) };
+    });
+  const objectDeletionManifestSha256 = sha256(objectDeletionManifest);
   const preservationCountsByBusinessType = countByBusinessType(preservationWhitelist);
   const deletionCountsByBusinessType = countByBusinessType(safeDeletionCandidates);
   const candidateSha256 = sha256({
     deletionCandidates: safeDeletionCandidates,
     numberResets: safeNumberResets,
-    expectedReleasedNumbers: safeExpectedReleasedNumbers
+    expectedReleasedNumbers: safeExpectedReleasedNumbers,
+    objectDeletionManifest,
+    objectDeletionManifestSha256
   });
   const body = {
     schemaVersion: 1,
@@ -734,6 +1057,9 @@ function buildPreflightReport({
     generatedAt,
     expiresAt: new Date(new Date(generatedAt).getTime() + REPORT_TTL_MS).toISOString(),
     decisionManifestSha256: decisions?.receiptSha256,
+    testProvenanceEnvelopeSha256: testProvenance ? sha256(testProvenance) : null,
+    testProvenanceVerification,
+    trustedTestProvenancePublicKeySha256,
     backupReceiptSha256: backup?.receiptSha256,
     backupRecovery: backup
       ? {
@@ -747,6 +1073,8 @@ function buildPreflightReport({
     preservationCountsByBusinessType,
     classificationRequired,
     deletionCandidates: safeDeletionCandidates,
+    objectDeletionManifest,
+    objectDeletionManifestSha256,
     deletionCountsByBusinessType,
     numberResets: safeNumberResets,
     expectedReleasedNumbers: safeExpectedReleasedNumbers,
@@ -799,6 +1127,52 @@ function verifyPreflightReport(report) {
   );
   invariant(Array.isArray(report.blockers), "归零预检报告 blockers 无效");
   invariant(Array.isArray(report.deletionCandidates), "归零预检报告候选清单无效");
+  invariant(Array.isArray(report.objectDeletionManifest), "归零预检报告冻结对象清单无效");
+  const expectedObjectDeletionManifest = report.deletionCandidates
+    .filter((item) => item.table === "FileObject")
+    .map((item) => {
+      const scope = {
+        table: item.table,
+        primaryKey: item.primaryKey,
+        bucket: item.bucket,
+        objectKey: item.objectKey,
+        objectSnapshot: item.objectSnapshot
+      };
+      return { ...scope, scopeSha256: sha256(scope) };
+    });
+  invariant(
+    JSON.stringify(canonicalize(report.objectDeletionManifest)) ===
+      JSON.stringify(canonicalize(expectedObjectDeletionManifest)) &&
+      report.objectDeletionManifestSha256 === sha256(expectedObjectDeletionManifest),
+    "归零预检报告冻结对象清单与删除候选不匹配"
+  );
+  invariant(
+    report.testProvenanceEnvelopeSha256 === null ||
+      /^[0-9a-f]{64}$/u.test(report.testProvenanceEnvelopeSha256 ?? ""),
+    "归零预检报告独立测试来源工件指纹无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(report.trustedTestProvenancePublicKeySha256 ?? ""),
+    "归零预检报告固定测试来源信任锚无效"
+  );
+  invariant(
+    report.testProvenanceVerification === null ||
+      (typeof report.testProvenanceVerification?.registryRef === "string" &&
+        /^[0-9a-f]{64}$/u.test(report.testProvenanceVerification.publicKeySha256 ?? "") &&
+        /^[0-9a-f]{64}$/u.test(report.testProvenanceVerification.payloadSha256 ?? "") &&
+        Number.isInteger(report.testProvenanceVerification.recordCount)),
+    "归零预检报告独立测试来源验证结果无效"
+  );
+  for (const item of report.deletionCandidates.filter((candidate) => candidate.table !== "FileObject")) {
+    invariant(
+      ["isolated_fixture_registry", "trusted_test_operation_registry"].includes(
+        item.testProvenance?.sourceKind
+      ) &&
+        typeof item.testProvenance?.sourceRef === "string" &&
+        /^[0-9a-f]{64}$/u.test(item.testProvenance?.evidenceSha256 ?? ""),
+      "数据库删除候选缺少逐主键独立测试来源证明"
+    );
+  }
   invariant(Array.isArray(report.preservationAnchors), "归零预检报告保留记录锚点无效");
   for (const anchor of report.preservationAnchors) {
     invariant(
@@ -827,7 +1201,9 @@ function verifyPreflightReport(report) {
       sha256({
         deletionCandidates: report.deletionCandidates,
         numberResets: report.numberResets,
-        expectedReleasedNumbers: report.expectedReleasedNumbers
+        expectedReleasedNumbers: report.expectedReleasedNumbers,
+        objectDeletionManifest: report.objectDeletionManifest,
+        objectDeletionManifestSha256: report.objectDeletionManifestSha256
       }),
     "候选操作清单 SHA-256 不匹配"
   );
@@ -842,6 +1218,7 @@ function verifyPreflightReport(report) {
         report.deletionCandidates.length === 0 &&
         report.numberResets.length === 0 &&
         report.expectedReleasedNumbers.length === 0 &&
+        report.objectDeletionManifest.length === 0 &&
         report.deletionOrder.length === 0),
     "归零预检报告状态与阻断项不一致"
   );
@@ -933,7 +1310,6 @@ function orderedCandidates(report) {
 
 function assertFreshReport(original, fresh, label) {
   verifyPreflightReport(fresh);
-  invariant(fresh.status === "ready" && fresh.blockers.length === 0, `${label}预检未就绪`);
   invariant(fresh.environment === original.environment, `${label}环境已漂移`);
   invariant(
     fresh.databaseFingerprint === original.databaseFingerprint,
@@ -957,11 +1333,25 @@ function assertFreshReport(original, fresh, label) {
     `${label}逐主键决定清单已漂移`
   );
   invariant(
+    fresh.testProvenanceEnvelopeSha256 === original.testProvenanceEnvelopeSha256,
+    `${label}独立测试来源工件已漂移`
+  );
+  invariant(
+    fresh.trustedTestProvenancePublicKeySha256 ===
+      original.trustedTestProvenancePublicKeySha256,
+    `${label}固定测试来源信任锚已漂移`
+  );
+  invariant(
+    fresh.objectDeletionManifestSha256 === original.objectDeletionManifestSha256,
+    `${label}冻结对象清单已漂移`
+  );
+  invariant(
     fresh.backupReceiptSha256 === original.backupReceiptSha256,
     `${label}备份恢复收据已漂移`
   );
   invariant(fresh.stateFingerprint === original.stateFingerprint, `${label}状态指纹已漂移`);
   invariant(fresh.candidateSha256 === original.candidateSha256, `${label}候选指纹已漂移`);
+  invariant(fresh.status === "ready" && fresh.blockers.length === 0, `${label}预检未就绪`);
 }
 
 async function createDryRunReceipt({ report, currentReport }) {
@@ -981,6 +1371,10 @@ async function createDryRunReceipt({ report, currentReport }) {
     executorIdentity: report.executorIdentity,
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
+    testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+    trustedTestProvenancePublicKeySha256:
+      report.trustedTestProvenancePublicKeySha256,
+    objectDeletionManifestSha256: report.objectDeletionManifestSha256,
     expectedReleasedNumbers: report.expectedReleasedNumbers,
     steps: [
       ...candidates.map((item, index) => ({
@@ -1064,9 +1458,12 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
     "expiresAt",
     "issuedAt",
     "issuer",
+    "objectDeletionManifestSha256",
     "policyId",
     "reportSha256",
-    "schemaVersion"
+    "schemaVersion",
+    "testProvenanceEnvelopeSha256",
+    "trustedTestProvenancePublicKeySha256"
   ];
   invariant(
     JSON.stringify(Object.keys(payload).sort()) === JSON.stringify(payloadFields),
@@ -1107,6 +1504,21 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
     ["reportSha256", report.reportSha256, "预检报告"],
     ["candidateSha256", report.candidateSha256, "候选清单"],
     ["decisionManifestSha256", report.decisionManifestSha256, "逐主键决定清单"],
+    [
+      "testProvenanceEnvelopeSha256",
+      report.testProvenanceEnvelopeSha256,
+      "独立测试来源工件"
+    ],
+    [
+      "trustedTestProvenancePublicKeySha256",
+      report.trustedTestProvenancePublicKeySha256,
+      "固定测试来源信任锚"
+    ],
+    [
+      "objectDeletionManifestSha256",
+      report.objectDeletionManifestSha256,
+      "冻结对象清单"
+    ],
     ["backupReceiptSha256", report.backupReceiptSha256, "备份恢复收据"],
     ["batchId", args.batchId, "batch-id"],
     ["confirmation", expectedConfirmation(args.batchId), "二次确认"]
@@ -1198,7 +1610,22 @@ function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
     ["deploymentIdentitySha256", before.deploymentIdentitySha256, "部署环境身份"],
     ["executorIdentity", before.executorIdentity, "执行主体"],
     ["reportSha256", before.reportSha256, "执行前报告"],
-    ["candidateSha256", before.candidateSha256, "候选清单"]
+    ["candidateSha256", before.candidateSha256, "候选清单"],
+    [
+      "testProvenanceEnvelopeSha256",
+      before.testProvenanceEnvelopeSha256,
+      "独立测试来源工件"
+    ],
+    [
+      "trustedTestProvenancePublicKeySha256",
+      before.trustedTestProvenancePublicKeySha256,
+      "固定测试来源信任锚"
+    ],
+    [
+      "objectDeletionManifestSha256",
+      before.objectDeletionManifestSha256,
+      "冻结对象清单"
+    ]
   ]) {
     invariant(receipt[field] === expected, `执行收据${label}绑定不匹配`);
   }
@@ -1220,17 +1647,112 @@ function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
     sha256(authorization) === sha256(receipt.authorization),
     "执行收据独立授权验证结果不匹配"
   );
+  validateObjectRescan(before, receipt.objectPostcheck);
   invariant(receipt.postcheck?.status === "passed", "执行收据后置核验未通过");
   return { status: "passed", receiptSha256 };
 }
 
-function verifyPostcheck(before, after, executionReceipt, authorizationPublicKey) {
+function validateObjectRescan(before, objectRescan) {
+  invariant(Array.isArray(objectRescan), "缺少执行前冻结对象清单的最终重扫结果");
+  const expectedByScope = new Map(
+    before.objectDeletionManifest.map((scope) => [scope.scopeSha256, scope])
+  );
+  invariant(objectRescan.length === expectedByScope.size, "冻结对象最终重扫范围不完整");
+  const seen = new Set();
+  for (const result of objectRescan) {
+    const expected = expectedByScope.get(result?.scopeSha256);
+    invariant(expected, "对象最终重扫包含执行前清单外的范围");
+    invariant(!seen.has(result.scopeSha256), "对象最终重扫包含重复范围");
+    seen.add(result.scopeSha256);
+    invariant(
+      result.bucket === expected.bucket &&
+        result.objectKey === expected.objectKey &&
+        result.frozenSnapshotSha256 === expected.objectSnapshot.snapshotSha256,
+      "对象最终重扫与执行前冻结 key/version/hash 清单不匹配"
+    );
+    invariant(
+      result.status === "absent" && result.observedGenerationCount === 0,
+      "对象最终重扫发现精确对象键或版本仍存在"
+    );
+  }
+  return { status: "passed", objectScopeCount: expectedByScope.size };
+}
+
+async function inspectDeletedObjectScopes(report, storage) {
+  verifyPreflightReport(report);
+  invariant(
+    typeof storage?.inspectExactObjectAbsence === "function",
+    "对象存储适配器缺少独立最终重扫能力"
+  );
+  const results = [];
+  for (const scope of report.objectDeletionManifest) {
+    const observed = await storage.inspectExactObjectAbsence({
+      bucket: scope.bucket,
+      objectKey: scope.objectKey,
+      expectedSnapshot: scope.objectSnapshot
+    });
+    results.push({
+      bucket: scope.bucket,
+      objectKey: scope.objectKey,
+      scopeSha256: scope.scopeSha256,
+      frozenSnapshotSha256: scope.objectSnapshot.snapshotSha256,
+      status: observed?.status,
+      observedGenerationCount: observed?.observedGenerationCount
+    });
+  }
+  validateObjectRescan(report, results);
+  return results;
+}
+
+function validateObjectDeletionDisposition(file, disposition) {
+  invariant(disposition && typeof disposition === "object", "精确对象删除未返回明确成功结果");
+  invariant(disposition.objectKey === file.objectKey, "精确对象删除结果 key 不匹配");
+  if (file.objectSnapshot?.kind === "local_file") {
+    invariant(
+      disposition.kind === "local_quarantine" &&
+        disposition.status === "object_key_removed_recovery_artifact_retained" &&
+        typeof disposition.quarantineObjectKey === "string" &&
+        disposition.quarantineObjectKey.trim(),
+      "本地精确对象删除未返回可恢复隔离成功结果"
+    );
+  } else if (file.objectSnapshot?.kind === "cos_versions") {
+    invariant(
+      disposition.kind === "cos_versions" &&
+        disposition.status === "deleted_exact_versions" &&
+        Array.isArray(disposition.deletedVersionIds),
+      "COS 精确对象删除未返回逐版本成功结果"
+    );
+    const expectedVersionIds = file.objectSnapshot.versions
+      .map((version) => version.versionId)
+      .sort();
+    invariant(
+      JSON.stringify([...disposition.deletedVersionIds].sort()) ===
+        JSON.stringify(expectedVersionIds),
+      "COS 精确对象删除结果与冻结版本清单不一致"
+    );
+  } else {
+    throw new Error("执行前冻结对象快照类型无效");
+  }
+  return disposition;
+}
+
+function verifyPostcheck(
+  before,
+  after,
+  executionReceipt,
+  authorizationPublicKey,
+  options = {}
+) {
   verifyPreflightReport(before);
   verifyPreflightReport(after);
   invariant(before.status === "ready" && before.blockers.length === 0, "执行前预检报告未就绪");
   if (executionReceipt !== undefined) {
     validateExecutionReceipt(executionReceipt, before, authorizationPublicKey);
   }
+  const finalObjectCheck =
+    options.phase === "final" || executionReceipt !== undefined
+      ? validateObjectRescan(before, options.objectRescan)
+      : null;
   const errors = [];
   for (const [field, label] of [
     ["environment", "环境"],
@@ -1244,6 +1766,8 @@ function verifyPostcheck(before, after, executionReceipt, authorizationPublicKey
     ["executorIdentity", "执行主体"],
     ["policyId", "策略"],
     ["decisionManifestSha256", "逐主键决定清单"],
+    ["testProvenanceEnvelopeSha256", "独立测试来源工件"],
+    ["trustedTestProvenancePublicKeySha256", "固定测试来源信任锚"],
     ["backupReceiptSha256", "备份恢复收据"]
   ]) {
     if (before[field] !== undefined && before[field] !== after[field]) {
@@ -1287,7 +1811,12 @@ function verifyPostcheck(before, after, executionReceipt, authorizationPublicKey
     }
   }
   invariant(errors.length === 0, `后置核验失败：${errors.join("；")}`);
-  return { status: "passed" };
+  return {
+    status: "passed",
+    ...(finalObjectCheck
+      ? { objectScopeCount: finalObjectCheck.objectScopeCount }
+      : {})
+  };
 }
 
 async function executeBusinessZeroing({
@@ -1328,6 +1857,10 @@ async function executeBusinessZeroing({
     executorIdentity: report.executorIdentity,
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
+    testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+    trustedTestProvenancePublicKeySha256:
+      report.trustedTestProvenancePublicKeySha256,
+    objectDeletionManifestSha256: report.objectDeletionManifestSha256,
     candidateCount: candidates.length,
     numberResetCount: report.numberResets.length,
     startedAt: startedAt.toISOString()
@@ -1360,15 +1893,23 @@ async function executeBusinessZeroing({
         objectKey: file.objectKey,
         expectedSnapshot: file.objectSnapshot
       });
+      validateObjectDeletionDisposition(file, disposition);
       objectDispositions.push({
         businessType: file.businessType,
         bucket: file.bucket,
         objectKey: file.objectKey,
-        ...(disposition ?? { status: "deleted_exact_object" })
+        ...disposition
       });
     }
+    const objectPostcheck = await inspectDeletedObjectScopes(report, storage);
     const postcheck = await buildPostcheckReport();
-    const postcheckResult = verifyPostcheck(report, postcheck);
+    const postcheckResult = verifyPostcheck(
+      report,
+      postcheck,
+      undefined,
+      undefined,
+      { phase: "final", objectRescan: objectPostcheck }
+    );
     const completedAt = currentTime();
     validateApplyArguments(args, report, completedAt);
     const receiptBody = {
@@ -1383,9 +1924,14 @@ async function executeBusinessZeroing({
       executorIdentity: report.executorIdentity,
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
+      testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+      trustedTestProvenancePublicKeySha256:
+        report.trustedTestProvenancePublicKeySha256,
+      objectDeletionManifestSha256: report.objectDeletionManifestSha256,
       deletedRecordCount: candidates.length,
       deletedObjectCount: fileCandidates.length,
       objectDispositions,
+      objectPostcheck,
       resetNumberRuleCount: report.numberResets.length,
       authorization,
       authorizationEnvelope: args.authorizationEnvelope,
@@ -1431,11 +1977,16 @@ module.exports = {
   createDryRunReceipt,
   executeBusinessZeroing,
   expectedConfirmation,
+  selectFormalObservationFields,
   sha256,
+  inspectDeletedObjectScopes,
   validateAuthorizationEnvelope,
   validateApplyArguments,
   validateBackupReceipt,
   validateDecisionManifest,
+  validateObjectRescan,
+  validateObjectDeletionDisposition,
+  validateTestProvenanceEnvelope,
   validateExecutionReceipt,
   validatePolicy,
   verifyObjectSnapshot,

@@ -75,7 +75,7 @@ async function restoreQuarantinedFile(quarantine, target) {
 
 function createExactObjectStorage(testHooks = {}) {
   let localStorage;
-  let versionedStorage;
+  let versionedStorage = testHooks.versionedStorage;
   return {
     async inspectExactObject({ bucket, objectKey, maxModifiedAt }) {
       invariant(typeof bucket === "string" && bucket.trim(), "文件 bucket 缺失");
@@ -125,6 +125,62 @@ function createExactObjectStorage(testHooks = {}) {
       const { snapshot, metadata } = await inspectOpenedLocalFile(target);
       invariant(metadata.mtimeMs <= capturedAt, "本地对象晚于私有文件备份捕获时间");
       return snapshot;
+    },
+    async inspectExactObjectAbsence({ bucket, objectKey, expectedSnapshot }) {
+      invariant(typeof bucket === "string" && bucket.trim(), "文件 bucket 缺失");
+      invariant(typeof objectKey === "string" && objectKey.trim(), "精确对象键缺失");
+      invariant(
+        /^[0-9a-f]{64}$/u.test(expectedSnapshot?.snapshotSha256 ?? ""),
+        "执行前冻结对象快照无效"
+      );
+      const configuredCosBucket = process.env.COS_BUCKET?.trim();
+      if (configuredCosBucket) {
+        invariant(bucket === configuredCosBucket, "文件 bucket 与当前对象存储环境不匹配");
+        if (!versionedStorage) {
+          const {
+            CosVersionedObjectStorage,
+            withObjectStorageRetry
+          } = require("../dist/file/versioned-object-storage");
+          versionedStorage = {
+            client: new CosVersionedObjectStorage(),
+            retry: withObjectStorageRetry
+          };
+        }
+        const versions = normalizeVersions(
+          await versionedStorage.retry(
+            () => versionedStorage.client.listObjectVersions(objectKey),
+            { maxAttempts: 3, baseBackoffMs: 50 }
+          )
+        );
+        invariant(versions.length === 0, "对象最终重扫发现精确对象键的新版本或删除标记");
+        const converged = await versionedStorage.retry(
+          () => versionedStorage.client.isConverged(objectKey),
+          { maxAttempts: 3, baseBackoffMs: 50 }
+        );
+        invariant(converged, "对象最终重扫发现精确对象键未收敛");
+        return { status: "absent", observedGenerationCount: 0 };
+      }
+
+      invariant(bucket === "private-local", "本地文件 bucket 与当前环境不匹配");
+      if (!localStorage) {
+        const { PrivateFileStorage } = require("../dist/file/file.service");
+        localStorage = new PrivateFileStorage();
+        localStorage.assertConfigured();
+        invariant(localStorage.bucketName() === bucket, "本地文件存储绑定不匹配");
+      }
+      const storageRoot = localStorageRoot();
+      const target = path.resolve(storageRoot, objectKey);
+      invariant(
+        target.startsWith(`${storageRoot}${path.sep}`),
+        "本地精确对象键越出私有文件根目录"
+      );
+      try {
+        await lstat(target);
+        throw new Error("对象最终重扫发现本地精确对象键已重建");
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+      return { status: "absent", observedGenerationCount: 0 };
     },
     async deleteExactObject({ bucket, objectKey, expectedSnapshot }) {
       invariant(typeof bucket === "string" && bucket.trim(), "文件 bucket 缺失");

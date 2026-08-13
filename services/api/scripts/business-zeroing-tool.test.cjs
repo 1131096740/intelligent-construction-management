@@ -63,13 +63,89 @@ const FILE_SNAPSHOT = {
   snapshotSha256: sha256(FILE_SNAPSHOT_BODY)
 };
 const AUTHORIZATION_KEYS = generateKeyPairSync("ed25519");
-const buildPreflightReport = (options) =>
-  buildPreflightReportRaw({
+const TEST_PROVENANCE_KEYS = generateKeyPairSync("ed25519");
+const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256 = createHash("sha256")
+  .update(TEST_PROVENANCE_KEYS.publicKey.export({ type: "spki", format: "der" }))
+  .digest("hex");
+
+function createTestProvenance(currentInventory, decisions, options = {}) {
+  const fallbackInventory = inventory();
+  const findRow = (tableName, primaryKey) => {
+    for (const source of [currentInventory, fallbackInventory]) {
+      const table = source.tables.find((item) => item.name === tableName);
+      const row = table?.rows.find((item) =>
+        table.primaryKey.every(
+          (column) => String(item[column]) === String(primaryKey[column])
+        )
+      );
+      if (row) return row;
+    }
+    return undefined;
+  };
+  const records = (decisions?.records ?? [])
+    .filter((record) => record.decision === "delete")
+    .map((record) => {
+      const row = findRow(record.table, record.primaryKey);
+      assert.ok(row, `test provenance fixture missing ${record.table}`);
+      return {
+        table: record.table,
+        primaryKey: record.primaryKey,
+        rowSha256: row.rowSha256,
+        sourceKind: "isolated_fixture_registry",
+        sourceRef: `unit-fixture:${record.table}:${sha256(record.primaryKey)}`,
+        evidenceSha256: sha256({
+          registry: "pol22-unit-fixtures-v1",
+          table: record.table,
+          primaryKey: record.primaryKey,
+          rowSha256: row.rowSha256
+        })
+      };
+    });
+  const payload = {
+    schemaVersion: 1,
+    registryRef: "POL-22 unit fixture registry v1",
+    issuer: "POL-22 隔离测试来源签发者",
+    issuedAt: "2026-08-13T00:59:00.000Z",
+    policyId: "pol-22-business-zeroing-v1",
+    environment: currentInventory.environment,
+    databaseFingerprint: currentInventory.databaseFingerprint,
+    records,
+    ...options.payload
+  };
+  const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
+  return {
+    schemaVersion: 1,
+    algorithm: "Ed25519",
+    payload: payloadBytes.toString("base64"),
+    signature: sign(
+      null,
+      payloadBytes,
+      options.privateKey ?? TEST_PROVENANCE_KEYS.privateKey
+    ).toString("base64")
+  };
+}
+
+const buildPreflightReport = (options) => {
+  const testProvenance =
+    options.testProvenance === undefined
+      ? createTestProvenance(options.inventory, options.decisions)
+      : options.testProvenance;
+  return buildPreflightReportRaw({
     executionCodeSha256: EXECUTION_SHA_64,
     deploymentIdentitySha256: DEPLOYMENT_SHA_64,
     executorIdentity: EXECUTOR_IDENTITY,
+    testProvenance,
+    testProvenancePublicKey:
+      options.testProvenancePublicKey === undefined
+        ? TEST_PROVENANCE_KEYS.publicKey
+        : options.testProvenancePublicKey,
+    trustedTestProvenancePublicKeySha256:
+      options.trustedTestProvenancePublicKeySha256 === undefined
+        ? TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256
+        : options.trustedTestProvenancePublicKeySha256,
     ...options
   });
+};
 
 function signedBody(body) {
   return { ...body, receiptSha256: sha256(body) };
@@ -88,6 +164,12 @@ function resignReport(report) {
       executionCodeSha256: withoutReportSha.executionCodeSha256,
       deploymentIdentitySha256: withoutReportSha.deploymentIdentitySha256,
       executorIdentity: withoutReportSha.executorIdentity,
+      testProvenanceEnvelopeSha256: withoutReportSha.testProvenanceEnvelopeSha256,
+      testProvenanceVerification: withoutReportSha.testProvenanceVerification,
+      trustedTestProvenancePublicKeySha256:
+        withoutReportSha.trustedTestProvenancePublicKeySha256,
+      objectDeletionManifest: withoutReportSha.objectDeletionManifest,
+      objectDeletionManifestSha256: withoutReportSha.objectDeletionManifestSha256,
       preservationWhitelist: withoutReportSha.preservationWhitelist,
       preservationAnchors: withoutReportSha.preservationAnchors,
       preservationCounts: withoutReportSha.preservationCounts,
@@ -121,6 +203,10 @@ function authorizationEnvelope(report, batchId = "pol22-isolated-001", overrides
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
     decisionManifestSha256: report.decisionManifestSha256,
+    testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+    trustedTestProvenancePublicKeySha256:
+      report.trustedTestProvenancePublicKeySha256,
+    objectDeletionManifestSha256: report.objectDeletionManifestSha256,
     backupReceiptSha256: report.backupReceiptSha256,
     batchId,
     confirmation: expectedConfirmation(batchId),
@@ -266,6 +352,129 @@ const smallPolicy = Object.freeze({
     { name: "FileObject", chineseName: "私有业务文件", disposition: "file" },
     { name: "AuditLog", chineseName: "系统与安全审计", disposition: "protected" }
   ]
+});
+
+test("已签名删除决定与执行授权不能替代逐主键独立测试来源证明", () => {
+  const effectiveInventory = inventory({
+    tables: inventory().tables.map((table) =>
+      table.name === "Contract"
+        ? { ...table, rows: [{ id: "c1", status: "effective" }] }
+        : table
+    )
+  });
+  const decisions = decisionManifest([
+    {
+      businessType: "项目基本资料",
+      table: "Project",
+      primaryKey: { id: "p1" },
+      decision: "preserve",
+      reason: "正式项目保留"
+    }
+  ]);
+  const build = (testProvenance, testProvenancePublicKey) =>
+    buildPreflightReportRaw({
+      policy: smallPolicy,
+      inventory: effectiveInventory,
+      decisions,
+      testProvenance,
+      testProvenancePublicKey,
+      trustedTestProvenancePublicKeySha256:
+        TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+      backup: backupReceipt(),
+      codeSha: SHA_40,
+      executionCodeSha256: EXECUTION_SHA_64,
+      deploymentIdentitySha256: DEPLOYMENT_SHA_64,
+      executorIdentity: EXECUTOR_IDENTITY,
+      generatedAt: "2026-08-13T01:00:00.000Z"
+    });
+
+  const unproven = build(undefined, TEST_PROVENANCE_KEYS.publicKey);
+  assert.equal(unproven.status, "blocked");
+  assert.deepEqual(unproven.deletionCandidates, []);
+  assert.ok(
+    unproven.blockers.some((item) => item.code === "TEST_PROVENANCE_NOT_VERIFIED")
+  );
+  assert.throws(
+    () =>
+      validateApplyArguments(
+        controlledArgs(unproven),
+        unproven,
+        new Date("2026-08-13T01:05:00.000Z")
+      ),
+    /预检报告未就绪/u
+  );
+
+  const forged = build(
+    createTestProvenance(effectiveInventory, decisions, {
+      privateKey: AUTHORIZATION_KEYS.privateKey,
+      payload: { registryRef: "伪造的本次请求内注册表" }
+    }),
+    AUTHORIZATION_KEYS.publicKey
+  );
+  assert.equal(forged.status, "blocked");
+  assert.deepEqual(forged.deletionCandidates, []);
+  assert.ok(
+    forged.blockers.some((item) => item.code === "TEST_PROVENANCE_NOT_VERIFIED")
+  );
+
+  const trustedEffective = build(
+    createTestProvenance(effectiveInventory, decisions),
+    TEST_PROVENANCE_KEYS.publicKey
+  );
+  assert.equal(trustedEffective.status, "blocked");
+  assert.deepEqual(trustedEffective.deletionCandidates, []);
+  assert.ok(
+    trustedEffective.blockers.some(
+      (item) =>
+        item.code === "FORMAL_RECORD_PROTECTED" &&
+        item.details?.field === "status"
+    )
+  );
+  assert.throws(
+    () =>
+      validateApplyArguments(
+        controlledArgs(trustedEffective),
+        trustedEffective,
+        new Date("2026-08-13T01:05:00.000Z")
+      ),
+    /预检报告未就绪/u
+  );
+
+  for (const protectedRow of [
+    { id: "c1", status: "unknown_future_state" },
+    { id: "c1", code: "HT-2026-001" },
+    { id: "c1", formalCode: "HT-2026-001" },
+    { id: "c1", status: "draft", archivedAt: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", firstSubmittedAt: "2026-08-13T00:30:00.000Z" }
+  ]) {
+    const protectedInventory = inventory({
+      tables: inventory().tables.map((table) =>
+        table.name === "Contract" ? { ...table, rows: [protectedRow] } : table
+      )
+    });
+    const protectedReport = buildPreflightReportRaw({
+      policy: smallPolicy,
+      inventory: protectedInventory,
+      decisions,
+      testProvenance: createTestProvenance(protectedInventory, decisions),
+      testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
+      trustedTestProvenancePublicKeySha256:
+        TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+      backup: backupReceipt(),
+      codeSha: SHA_40,
+      executionCodeSha256: EXECUTION_SHA_64,
+      deploymentIdentitySha256: DEPLOYMENT_SHA_64,
+      executorIdentity: EXECUTOR_IDENTITY,
+      generatedAt: "2026-08-13T01:00:00.000Z"
+    });
+    assert.equal(protectedReport.status, "blocked");
+    assert.deepEqual(protectedReport.deletionCandidates, []);
+    assert.ok(
+      protectedReport.blockers.some(
+        (item) => item.code === "FORMAL_RECORD_PROTECTED"
+      )
+    );
+  }
 });
 
 test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", () => {
@@ -1086,6 +1295,69 @@ test("后置核验要求候选清零、保留数量不漂移且无孤儿或悬�
   assert.throws(() => verifyPostcheck({}, after), /归零预检报告 SHA-256/u);
 });
 
+test("独立最终后置核验按执行前冻结对象代际清单拒绝同 key 复活", () => {
+  const decisions = decisionManifest([
+    {
+      businessType: "项目基本资料",
+      table: "Project",
+      primaryKey: { id: "p1" },
+      decision: "preserve",
+      reason: "正式项目保留"
+    }
+  ]);
+  const before = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory(),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  const after = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: inventory().tables.map((table) =>
+        ["Contract", "FileObject"].includes(table.name)
+          ? { ...table, rows: [] }
+          : table
+      ),
+      fileBindings: []
+    }),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:10:00.000Z",
+    allowMissingDeletedDecisions: true
+  });
+
+  assert.equal(before.objectDeletionManifest.length, 1);
+  const frozen = before.objectDeletionManifest[0];
+  assert.equal(frozen.objectKey, "uploads/f1.pdf");
+  assert.equal(frozen.objectSnapshot.snapshotSha256, FILE_SNAPSHOT.snapshotSha256);
+  assert.throws(
+    () =>
+      verifyPostcheck(before, after, undefined, undefined, {
+        phase: "final",
+        objectRescan: [
+          {
+            bucket: frozen.bucket,
+            objectKey: frozen.objectKey,
+            scopeSha256: frozen.scopeSha256,
+            frozenSnapshotSha256: frozen.objectSnapshot.snapshotSha256,
+            status: "present",
+            observedGenerationCount: 1
+          }
+        ]
+      }),
+    /对象.*仍存在|对象.*重扫/u
+  );
+  assert.throws(
+    () =>
+      verifyPostcheck(before, after, undefined, undefined, { phase: "final" }),
+    /对象.*重扫/u
+  );
+});
+
 test("候选与保留记录绑定完整行哈希且同数量替换审计会失败关闭", async () => {
   const decisions = decisionManifest([
     {
@@ -1150,7 +1422,7 @@ test("候选与保留记录绑定完整行哈希且同数量替换审计会失�
   });
   await assert.rejects(
     () => createDryRunReceipt({ report: before, currentReport: driftedCandidate }),
-    /状态指纹已漂移/u
+    /独立测试来源工件已漂移|状态指纹已漂移/u
   );
 });
 
@@ -1211,7 +1483,9 @@ test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机
     deploymentId: "pol22-local-disposable",
     executorIdentity: "pol22-isolated-runner",
     executorUid: 501,
-    executorUsername: "pol22"
+    executorUsername: "pol22",
+    testProvenancePublicKeySha256:
+      TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256
   };
   assert.equal(
     validateTrustedExecutionIdentity(trustedIdentity, { uid: 501, username: "pol22" })
@@ -1496,6 +1770,59 @@ test("本地对象旧 FD 在隔离后写入时不会被物理删除", async () =
   }
 });
 
+test("COS 最终精确重扫拒绝删除后出现的新版本或删除标记", async () => {
+  const previousBucket = process.env.COS_BUCKET;
+  process.env.COS_BUCKET = "isolated-private-cos";
+  const frozenBody = {
+    kind: "cos_versions",
+    versions: [
+      {
+        versionId: "fixture-v1",
+        isDeleteMarker: false,
+        isLatest: true,
+        lastModified: "2026-08-13T00:00:00.000Z",
+        sizeBytes: 7
+      }
+    ]
+  };
+  try {
+    const storage = createExactObjectStorage({
+      versionedStorage: {
+        async retry(operation) { return operation(); },
+        client: {
+          async listObjectVersions() {
+            return [
+              {
+                versionId: "resurrected-v2",
+                isDeleteMarker: false,
+                isLatest: true,
+                lastModified: "2026-08-13T01:20:00.000Z",
+                sizeBytes: 9
+              }
+            ];
+          },
+          async isConverged() { return false; }
+        }
+      }
+    });
+    await assert.rejects(
+      () =>
+        storage.inspectExactObjectAbsence({
+          bucket: "isolated-private-cos",
+          objectKey: "uploads/resurrected.pdf",
+          expectedSnapshot: {
+            ...frozenBody,
+            snapshotSha256: sha256(frozenBody)
+          }
+        }),
+      /新版本或删除标记/u
+    );
+  } finally {
+    if (previousBucket === undefined) delete process.env.COS_BUCKET;
+    else process.env.COS_BUCKET = previousBucket;
+  }
+});
+
 test("只有后置核验可接受已明确删除的基础资料主键消失", () => {
   const manifest = decisionManifest([
     {
@@ -1638,6 +1965,16 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
   const storage = {
     async deleteExactObject(input) {
       calls.push(["object", input.bucket, input.objectKey]);
+      return {
+        kind: "local_quarantine",
+        status: "object_key_removed_recovery_artifact_retained",
+        objectKey: input.objectKey,
+        quarantineObjectKey: "uploads/.f1.pol22-fixture.quarantine"
+      };
+    },
+    async inspectExactObjectAbsence(input) {
+      calls.push(["object-rescan", input.bucket, input.objectKey]);
+      return { status: "absent", observedGenerationCount: 0 };
     }
   };
   const args = controlledArgs(before);
@@ -1705,8 +2042,34 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     ["delete", "FileObject", { id: "f1" }],
     "transaction:commit",
     ["object", "private", "uploads/f1.pdf"],
+    ["object-rescan", "private", "uploads/f1.pdf"],
     ["audit", "completed"]
   ]);
+
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args,
+        report: before,
+        database: {
+          async transaction(work) {
+            return work({
+              async appendAudit() {},
+              async deleteExactRecord() { return 1; },
+              async resetExactSequence() { return 1; }
+            });
+          },
+          async appendAudit() {}
+        },
+        storage: { async deleteExactObject() {} },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => {},
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /未返回明确成功结果/u
+  );
 });
 
 test("完成审计写失败时完整收据仍先落已预留介质", async () => {
@@ -1763,7 +2126,19 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
             if (event.status === "completed") throw new Error("isolated completed audit failure");
           }
         },
-        storage: { async deleteExactObject() {} },
+        storage: {
+          async deleteExactObject(input) {
+            return {
+              kind: "local_quarantine",
+              status: "object_key_removed_recovery_artifact_retained",
+              objectKey: input.objectKey,
+              quarantineObjectKey: "uploads/.f1.pol22-fixture.quarantine"
+            };
+          },
+          async inspectExactObjectAbsence() {
+            return { status: "absent", observedGenerationCount: 0 };
+          }
+        },
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
@@ -1825,7 +2200,19 @@ test("执行收据分别记录真实开始与完成时间", async () => {
       },
       async appendAudit() {}
     },
-    storage: { async deleteExactObject() {} },
+    storage: {
+      async deleteExactObject(input) {
+        return {
+          kind: "local_quarantine",
+          status: "object_key_removed_recovery_artifact_retained",
+          objectKey: input.objectKey,
+          quarantineObjectKey: "uploads/.f1.pol22-fixture.quarantine"
+        };
+      },
+      async inspectExactObjectAbsence() {
+        return { status: "absent", observedGenerationCount: 0 };
+      }
+    },
     buildLockedReport: async () => before,
     buildLockedPostcheckReport: async () => after,
     buildPostcheckReport: async () => after,

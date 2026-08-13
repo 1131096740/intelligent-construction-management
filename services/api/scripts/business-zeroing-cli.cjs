@@ -2,7 +2,7 @@
 "use strict";
 
 const { execFileSync } = require("node:child_process");
-const { createHash } = require("node:crypto");
+const { createHash, createPublicKey } = require("node:crypto");
 const { userInfo } = require("node:os");
 const {
   closeSync,
@@ -19,6 +19,8 @@ const { join, relative, resolve } = require("node:path");
 const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 const TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-authorization-public-key.pem";
+const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH =
+  "/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem";
 const TRUSTED_EXECUTION_IDENTITY_PATH =
   "/etc/jiangkong/pol22-zeroing-execution-identity.json";
 const EXECUTION_FILES = Object.freeze([
@@ -31,7 +33,8 @@ const EXECUTION_FILES = Object.freeze([
   "services/api/scripts/business-zeroing-policy.cjs",
   "services/api/scripts/business-zeroing-storage.cjs",
   "services/api/scripts/execute-test-business-zeroing.cjs",
-  "services/api/scripts/inspect-test-business-zeroing.cjs"
+  "services/api/scripts/inspect-test-business-zeroing.cjs",
+  "services/api/scripts/verify-test-business-zeroing.cjs"
 ]);
 const EXECUTION_DIRECTORIES = Object.freeze(["services/api/dist"]);
 
@@ -106,6 +109,29 @@ function readTrustedAuthorizationPublicKey() {
   );
 }
 
+function readTrustedTestProvenancePublicKey(expectedPublicKeySha256) {
+  const content = readRootOwnedFile(
+    TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,
+    "未配置固定的独立测试来源公钥，业务删除候选保持禁用",
+    "独立测试来源公钥"
+  );
+  let publicKey;
+  try {
+    publicKey = createPublicKey(content);
+  } catch {
+    throw new Error("固定的独立测试来源公钥无效");
+  }
+  invariant(publicKey.asymmetricKeyType === "ed25519", "独立测试来源公钥必须是 Ed25519");
+  const actualSha256 = createHash("sha256")
+    .update(publicKey.export({ type: "spki", format: "der" }))
+    .digest("hex");
+  invariant(
+    actualSha256 === expectedPublicKeySha256,
+    "独立测试来源公钥与固定部署身份信任锚不匹配"
+  );
+  return content;
+}
+
 function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
   invariant(
     JSON.stringify(Object.keys(identity).sort()) ===
@@ -115,7 +141,8 @@ function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
         "executorIdentity",
         "executorUid",
         "executorUsername",
-        "schemaVersion"
+        "schemaVersion",
+        "testProvenancePublicKeySha256"
       ]),
     "固定的部署执行身份字段不精确"
   );
@@ -128,6 +155,10 @@ function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
     invariant(/^[a-z0-9][a-z0-9._-]{2,79}$/iu.test(identity[field] ?? ""), `${label}身份无效`);
   }
   invariant(Number.isInteger(identity.executorUid) && identity.executorUid >= 0, "执行主体 UID 无效");
+  invariant(
+    /^[0-9a-f]{64}$/u.test(identity.testProvenancePublicKeySha256 ?? ""),
+    "固定测试来源公钥指纹无效"
+  );
   invariant(
     /^[a-z_][a-z0-9_-]{0,31}$/iu.test(identity.executorUsername ?? ""),
     "执行主体系统用户名无效"
@@ -300,10 +331,12 @@ module.exports = {
   parseOptions,
   readJson,
   readTrustedAuthorizationPublicKey,
+  readTrustedTestProvenancePublicKey,
   readTrustedExecutionIdentity,
   reserveJsonOutput,
   assertCleanRepositoryStatus,
   TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
+  TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,
   TRUSTED_EXECUTION_IDENTITY_PATH,
   validateTrustedExecutionIdentity,
   safeFailure

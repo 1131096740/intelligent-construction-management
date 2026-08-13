@@ -8,10 +8,10 @@
 | --- | --- | --- |
 | `inspect-test-business-zeroing.cjs` | 只读 | 识别 Schema、逐主键及完整行指纹候选、中文保留白名单及内容锚点、文件绑定、逻辑/数据库外键顺序、预计释放编号和阻断项 |
 | `execute-test-business-zeroing.cjs` | dry-run | 复核报告新鲜度并输出精确执行步骤；只有全部执行门齐备才能进入 apply |
-| `verify-test-business-zeroing.cjs` | 只读 | 核对候选已清零、保留数量不漂移、迁移不变、无孤儿文件与悬空外键 |
+| `verify-test-business-zeroing.cjs` | 只读 | 核对候选已清零、保留数量不漂移、迁移不变、无孤儿文件与悬空外键，并按执行前冻结对象清单逐 key/version/hash/generation 重扫 |
 | `sign-business-zeroing-input.cjs` | 只读输入，新建输出 | 为决定清单或备份恢复收据生成内容完整性 SHA-256 |
 
-`sign-business-zeroing-input.cjs` 只证明 JSON 内容未漂移，不证明决定由谁批准。预检会实际读取两个备份文件并重算字节 SHA-256，但这仍不代替隔离恢复演练。执行授权必须由独立签发者使用 Ed25519 私钥生成；工具不接收命令行公钥，也不包含或生成真实环境私钥。
+`sign-business-zeroing-input.cjs` 只证明 JSON 内容未漂移，不证明决定由谁批准，也不能生成独立测试来源证明。预检会实际读取两个备份文件并重算字节 SHA-256，但这仍不代替隔离恢复演练。逐主键测试来源证明和执行授权分别由独立签发者使用不同的 Ed25519 信任锚生成；工具不接收命令行公钥，也不包含或生成真实环境私钥。
 
 报告、清单、授权和收据等运行工件必须放在仓库 checkout 之外的专用受限目录；否则它们会使工作树变脏并被代码身份门阻断。每次输出都必须使用不存在的新路径，不能覆盖旧证据。
 
@@ -21,13 +21,13 @@
 
 1. 当前 checkout 为已审核的完整 40 位 Git SHA，工作树无未提交/未跟踪文件，API 已由该 SHA 构建；报告同时绑定归零脚本、锁文件、Prisma Schema 和 `services/api/dist/` 全部 JavaScript 产物的 SHA-256。
 2. `DATABASE_URL` 精确指向本次授权环境；环境名、数据库系统标识、数据库名/Schema/连接身份和 session replication role 形成的 fingerprint、迁移 head、列/主键/外键/触发器启用状态/用户函数及显式逻辑关联形成的 Schema digest 必须与报告一致。
-3. 固定部署身份文件必须把环境、部署实例和逻辑执行主体绑定到当前 OS 用户名和 UID；命令环境、身份文件和当前进程任一不一致都失败关闭。
+3. 固定部署身份文件必须把环境、部署实例、逻辑执行主体和独立测试来源公钥 SHA-256 绑定到当前 OS 用户名和 UID；命令环境、身份文件、root 所有的来源公钥和当前进程任一不一致都失败关闭。调用者同时生成并提交“公钥 + 来源 envelope + registryRef”不能建立信任。
 4. 数据库备份和私有文件备份都绑定绝对本地普通文件路径；工具实际读取并校验字节 SHA-256，且收据分别记录捕获时间、隔离恢复目标、恢复时间与 `passed` 状态。两类备份都必须满足 `capturedAt <= restoreVerifiedAt <= 本次预检 generatedAt`，未来时间或预检后才完成的恢复证据一律阻断。
-5. 所有 `review` 基础资料和 `business_review` 业务记录都有逐主键的中文 `preserve`/`delete` 决定和原因；任何未分类记录都阻断，不得按时间或“相关记录”推测。为保证正式编号重新开始，`BusinessDailySequence` 与 `ContractNumberTombstone` 只接受逐主键 `delete`，对它们声明 `preserve` 同样阻断。
+5. 所有 `review` 基础资料和 `business_review` 业务记录都有逐主键的中文 `preserve`/`delete` 决定和原因；每条 `delete` 还必须由独立可信 fixture/测试操作注册表的签名记录证明，并精确绑定环境、数据库、表、主键、完整行哈希、来源引用和证据哈希。任何未分类、无来源、来源漂移或来源公钥替换都阻断，不得按表策略、时间或“相关记录”推测。为保证正式编号重新开始，`BusinessDailySequence` 与 `ContractNumberTombstone` 只接受逐主键 `delete`，对它们声明 `preserve` 同样阻断。
 6. 报告中没有未知表、缺失表、缺失主键、未分类记录、未登记文件绑定、未知/混合归属、孤儿文件、重复对象键、悬空外键、候选循环依赖，或候选表上的启用拒绝删除触发器；后者必须先由另票提供可审计专用通道，POL-22 不绕过或禁用触发器。
-7. 删除候选仅由“中文业务类型 + 表 + 完整主键 + 规范化完整行 SHA-256”构成；文件另需精确 bucket、object key 及备份捕获时已经存在的内容/版本快照，本地文件快照还绑定设备与 inode 标识。候选不得包含数据库或 `_prisma_migrations`。protected 与逐项保留记录同样绑定主键和完整行指纹，只有 `ContractNumberRule.nextSequence/updatedAt` 是为明确 CAS 操作设置的窄豁免。
+7. 删除候选仅由“中文业务类型 + 表 + 完整主键 + 规范化完整行 SHA-256 + 已验证测试来源”构成。数据库扫描器会从完整行快照显式提取 `code` / `formalCode`、`status`、正式生命周期时间戳（含带业务前缀且以 activated/approved/archived/closed/completed/confirmed/effective/executed/paid/published/sealed/signed/submitted/voided + `At` 结尾的字段）和正式布尔标记。具有非空正式编号、非空正式时间戳、正式布尔标记，或 `status` 不在显式前置状态白名单（`approval_pending`、`deleting`、`draft`、`open`、`pending`、`pending_confirm`、`pending_review`、`preview`、`purging`、`queued`、`requested`、`reserved`）内的记录一律硬保护；正式、有效、已审批、已签署、已归档、已完成及未知状态即使来源证明和执行授权都有效也不能成为候选。`ContractNumberTombstone.formalCode` 仅因第 8 条明确释放语义享有表级窄例外。文件另需精确 bucket、object key 及备份捕获时已经存在的内容/版本快照，本地文件快照还绑定设备与 inode 标识。候选不得包含数据库或 `_prisma_migrations`。protected 与逐项保留记录同样绑定主键和完整行指纹，只有 `ContractNumberRule.nextSequence/updatedAt` 是为明确 CAS 操作设置的窄豁免。
 8. 保留的 `ContractNumberRule` 只允许以完整主键和旧值 CAS 把 `nextSequence` 复位到 `1`；`BusinessDailySequence` 与 `ContractNumberTombstone` 逐主键删除并输出预计释放信息。不得重写项目、人员、岗位、我方公司或模板编号。
-9. 只有 `status=ready` 的未过期报告可用于 dry-run 或后续执行门。新表、新记录、新对象版本、触发器/函数或任何状态漂移均要重新预检和审批。
+9. 只有 `status=ready` 的未过期报告可用于 dry-run 或后续执行门。报告冻结每个对象的 bucket、精确 key、内容/全部版本快照和 scope SHA-256；新表、新记录、对象重建、新对象版本/删除标记、触发器/函数或任何状态漂移均要重新预检和审批。
 
 ## 3. 准备显式输入
 
@@ -57,6 +57,21 @@
   ]
 }
 ```
+
+逐主键 `delete` 还必须有独立测试来源 envelope。其公钥由下一节固定身份中的 SHA-256 和固定路径 `/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem` 双重绑定；该文件必须由 root 持有、不是符号链接且不可被组或其他用户写入。POL-22 不安装该公钥或生成其私钥。envelope 字段必须精确为 `schemaVersion`、`algorithm=Ed25519`、严格 Base64 的 `payload` 与 `signature`；payload 字段必须精确包含 `schemaVersion`、`registryRef`、`issuer`、`issuedAt`、`policyId`、`environment`、`databaseFingerprint` 和 `records`。每条 record 必须精确包含：
+
+```json
+{
+  "table": "Contract",
+  "primaryKey": { "id": "<精确主键>" },
+  "rowSha256": "<当前完整行的 64 位 SHA-256>",
+  "sourceKind": "isolated_fixture_registry",
+  "sourceRef": "<可信注册表中的不可变测试记录引用>",
+  "evidenceSha256": "<该来源证据的 64 位 SHA-256>"
+}
+```
+
+允许的 `sourceKind` 仅为 `isolated_fixture_registry` 或 `trusted_test_operation_registry`。来源 envelope 必须覆盖且只能覆盖本次全部 `delete` 决定；伪造 `registryRef`、替换公钥、额外记录、缺失记录、行/环境漂移都失败关闭。
 
 未签名的备份恢复收据示例：
 
@@ -105,7 +120,8 @@ node services/api/scripts/sign-business-zeroing-input.cjs \
   "deploymentId": "<不可复用的部署实例标识>",
   "executorIdentity": "<授权执行主体标识>",
   "executorUid": 1234,
-  "executorUsername": "<专用系统用户名>"
+  "executorUsername": "<专用系统用户名>",
+  "testProvenancePublicKeySha256": "<固定独立测试来源 Ed25519 公钥 DER 的 64 位 SHA-256>"
 }
 ```
 
@@ -117,16 +133,18 @@ node services/api/scripts/sign-business-zeroing-input.cjs \
 node services/api/scripts/inspect-test-business-zeroing.cjs \
   --environment <精确环境标识> \
   --decision-manifest <signed-decisions.json> \
+  --test-provenance <trusted-test-provenance.json> \
   --backup-receipt <signed-backup-receipt.json> \
   --output <new-preflight-report.json>
 ```
 
 不带决定清单或备份收据时，命令仍只读扫描，但以退出码 2 和 `status=blocked` 结束。检查输出中的：
 
-- `databaseFingerprint` / `migrationHead` / `schemaDigest` / `codeSha` / `executionCodeSha256` / `deploymentIdentitySha256` / `executorIdentity`；
+- `databaseFingerprint` / `migrationHead` / `schemaDigest` / `codeSha` / `executionCodeSha256` / `deploymentIdentitySha256` / `executorIdentity` / `trustedTestProvenancePublicKeySha256`；
+- `testProvenanceEnvelopeSha256` / `testProvenanceVerification`，以及每条删除候选的 `testProvenance`；
 - `preservationWhitelist` / `preservationAnchors` / `preservationCountsByBusinessType` / `classificationRequired`；
 - `deletionCandidates` / `deletionCountsByBusinessType` / `numberResets` / `expectedReleasedNumbers` / `candidateSha256` / `deletionOrder`；
-- `fileBindings` 中的精确 bucket、object key、业务主键与归属分类，以及文件删除候选中的对象内容或全部版本快照；
+- `fileBindings` 中的精确 bucket、object key、业务主键与归属分类，以及 `objectDeletionManifest` / `objectDeletionManifestSha256` 冻结的对象内容或全部版本代际快照；
 - `backupRecovery` / `blockers` / `reportSha256` / `expiresAt`。
 
 任何 blocker 存在时，工具强制把 `deletionCandidates`、`numberResets`、`expectedReleasedNumbers` 和 `deletionOrder` 置空。
@@ -140,11 +158,12 @@ node services/api/scripts/execute-test-business-zeroing.cjs \
   --report <new-preflight-report.json> \
   --environment <精确环境标识> \
   --decision-manifest <signed-decisions.json> \
+  --test-provenance <trusted-test-provenance.json> \
   --backup-receipt <signed-backup-receipt.json> \
   --output <new-dry-run-receipt.json>
 ```
 
-dry-run 会重新执行只读预检，对比环境/执行主体、数据库、代码、迁移、Schema、决定清单、备份收据、对象快照、状态和候选指纹。输出步骤包含逐主键删除和逐规则 CAS 编号复位；任何漂移都会阻断，不调用数据库或文件写接口。
+dry-run 会重新执行只读预检，对比环境/执行主体、数据库、代码、迁移、Schema、决定清单、独立测试来源工件与固定信任锚、备份收据、冻结对象清单、状态和候选指纹。输出步骤包含逐主键删除和逐规则 CAS 编号复位；任何漂移都会阻断，不调用数据库或文件写接口。
 
 ## 6. 受控执行模板（POL-22 不执行）
 
@@ -161,7 +180,7 @@ dry-run 会重新执行只读预检，对比环境/执行主体、数据库、�
 }
 ```
 
-payload 必须精确包含：`schemaVersion`、`authorizationRef`、`issuer`、`issuedAt`、`expiresAt`、`policyId`、`environment`、`databaseFingerprint`、`codeSha`、`executionCodeSha256`、`deploymentIdentitySha256`、`executorIdentity`、`reportSha256`、`candidateSha256`、`decisionManifestSha256`、`backupReceiptSha256`、`batchId`、`confirmation`。授权不得早于报告生成时间，也不得晚于报告过期时间。
+payload 必须精确包含：`schemaVersion`、`authorizationRef`、`issuer`、`issuedAt`、`expiresAt`、`policyId`、`environment`、`databaseFingerprint`、`codeSha`、`executionCodeSha256`、`deploymentIdentitySha256`、`executorIdentity`、`reportSha256`、`candidateSha256`、`decisionManifestSha256`、`testProvenanceEnvelopeSha256`、`trustedTestProvenancePublicKeySha256`、`objectDeletionManifestSha256`、`backupReceiptSha256`、`batchId`、`confirmation`。授权不得早于报告生成时间，也不得晚于报告过期时间。
 
 执行入口只从固定路径 `/etc/jiangkong/pol22-zeroing-authorization-public-key.pem` 读取由 root 持有、非符号链接、不可被组/其他用户写入的 Ed25519 公钥。命令行不能覆盖该信任锚；POL-22 不安装该文件，因此默认保持执行禁用。后续 #122 必须由独立控制面预置正确公钥并另行授权，不能把私钥放到执行主机。
 
@@ -171,6 +190,7 @@ node services/api/scripts/execute-test-business-zeroing.cjs \
   --report <approved-preflight-report.json> \
   --environment <精确环境标识> \
   --decision-manifest <signed-decisions.json> \
+  --test-provenance <trusted-test-provenance.json> \
   --backup-receipt <signed-backup-receipt.json> \
   --batch-id <approved-batch-id> \
   --expected-database-fingerprint <report.databaseFingerprint> \
@@ -187,7 +207,7 @@ node services/api/scripts/execute-test-business-zeroing.cjs \
 
 工具会在 `Serializable` 事务中取事务级 advisory lock，锁定当前表并重建预检报告。只有锁内完整候选行指纹、保留记录内容锚点和全部状态与审批报告完全一致，才会推进逐主键删除。每个候选在实际 `DELETE` 前还会在同一事务内按完整主键 `FOR UPDATE` 重读完整行并逐条比对已签名 `rowSha256`，因此前序删除触发器若修改后续候选，整笔事务立即回滚；随后才执行带 `WHERE` 的参数化删除及逐主键/旧值 CAS 编号复位。任何一项影响行数不是 1 都回滚整个数据库事务。删除完成后先在同一事务内重建并通过保留主键/内容、候选清零、关联和 Schema 后置断言，才允许提交。
 
-数据库提交后，再逐个处理报告中的精确对象键。本地文件先原子移动到同目录唯一隔离名，再复核被移动 inode 的内容 SHA-256、字节数和修改时间；漂移时只做无覆盖恢复，无法安全恢复则保留隔离工件并失败关闭。为防止已打开文件描述符在复核后写入而使新增字节被物理丢弃，POL-22 只移除原精确对象键并永久保留唯一 quarantine 硬恢复工件，不执行该 inode 的 `unlink`；其相对路径写入最终收据的 `objectDispositions`。quarantine 工件的物理清理由后续独立停写、核验和授权票处理，不属于 #120 或 #122 的归零动作。COS 必须完整匹配已批准的所有 version ID、删除标记、大小和修改时间，只删除这些精确 version ID。任何新增/修改/缺失都立即停止，不支持前缀删除。执行全过程在提交前、每个对象删除前和完成时重新校验授权窗口；收据分别记录真实 `startedAt` 与 `completedAt`。最终后置核验通过后，工具先 fsync 写入已预留的 `0600` 输出，再独立尝试写永久 `AuditLog`；两端任一失败仍尝试另一端并报告失败，避免已提交执行失去完整收据。
+数据库提交后，再逐个处理报告中的精确对象键。对象适配器必须返回与后端和冻结版本集合完全匹配的类型化成功 disposition；`undefined`、no-op、部分版本或错误类型都按失败处理。本地文件先原子移动到同目录唯一隔离名，再复核被移动 inode 的内容 SHA-256、字节数和修改时间；漂移时只做无覆盖恢复，无法安全恢复则保留隔离工件并失败关闭。为防止已打开文件描述符在复核后写入而使新增字节被物理丢弃，POL-22 只移除原精确对象键并永久保留唯一 quarantine 硬恢复工件，不执行该 inode 的 `unlink`；其相对路径写入最终收据的 `objectDispositions`。quarantine 工件的物理清理由后续独立停写、核验和授权票处理，不属于 #120 或 #122 的归零动作。COS 必须完整匹配已批准的所有 version ID、删除标记、大小和修改时间，只删除这些精确 version ID。任何新增/修改/缺失都立即停止，不支持前缀删除。全部删除返回后，工具还会按执行前冻结清单逐 bucket/key/version/hash/generation 调用独立 absence inspect；同 key 重建、新 COS 版本或 delete marker 都失败关闭。执行全过程在提交前、每个对象删除前和完成时重新校验授权窗口；收据分别记录真实 `startedAt` 与 `completedAt`。最终后置核验通过后，工具先 fsync 写入已预留的 `0600` 输出，再独立尝试写永久 `AuditLog`；两端任一失败仍尝试另一端并报告失败，避免已提交执行失去完整收据。
 
 ## 7. 只读后置核验
 
@@ -197,11 +217,12 @@ node services/api/scripts/verify-test-business-zeroing.cjs \
   --execution-receipt <new-execution-receipt.json> \
   --environment <精确环境标识> \
   --decision-manifest <signed-decisions.json> \
+  --test-provenance <trusted-test-provenance.json> \
   --backup-receipt <signed-backup-receipt.json> \
   --output <new-postcheck-receipt.json>
 ```
 
-后置核验会使用固定公钥重新验证执行收据内的原始 Ed25519 envelope，而不是只相信摘要；同时复核部署/执行主体、完整候选、Git SHA、执行代码指纹，并要求数据库 `completed` 审计保存完全一致的完整最终收据。只有原决定明确为 `delete` 的基础资料，才允许其主键在后置核验中已消失。空白/伪造执行前报告、签名或收据内容漂移、审计缺失/漂移、任何 `preserve` 主键消失、保留数量改变、正式编号未回到 `1`、候选残留、新 blocker、孤儿文件、悬空数据库或逻辑关联、迁移/Schema 改变均失败关闭。
+后置核验会使用固定公钥重新验证执行收据内的原始 Ed25519 envelope，而不是只相信摘要；同时复核部署/执行主体、独立测试来源、完整候选、Git SHA、执行代码指纹，并要求数据库 `completed` 审计保存完全一致的完整最终收据。它不从删除后已消失的 `FileObject` 行推导对象范围，而是按执行前报告的冻结对象清单重新检查每个精确 key/version/hash/generation。只有原决定明确为 `delete` 且有可信来源的基础资料，才允许其主键在后置核验中已消失。空白/伪造执行前报告、签名或收据内容漂移、审计缺失/漂移、任何 `preserve` 主键消失、保留数量改变、正式编号未回到 `1`、候选残留、新 blocker、同 key 重建、新对象版本/删除标记、孤儿文件、悬空数据库或逻辑关联、迁移/Schema 改变均失败关闭。
 
 ## 8. 失败和恢复
 
@@ -223,4 +244,4 @@ env -u DATABASE_URL -u CONTRACT_DATABASE_URL -u SHADOW_DATABASE_URL \
   node services/api/prisma/run-business-zeroing-local.cjs
 ```
 
-该门会临时应用全部迁移，只对隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验，随后清理临时容器与文件。收据必须显示 `productionAccessed: false`。
+该门会临时应用全部迁移，只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。收据必须显示 `productionAccessed: false`。
