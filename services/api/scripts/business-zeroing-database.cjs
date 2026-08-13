@@ -609,7 +609,7 @@ async function inspectDatabaseInventory(client, { environment, lockTables = fals
 }
 
 async function verifyBusinessZeroingExecutionAudit(client, receipt) {
-  const loadAuditRows = (action) =>
+  const loadAuditRows = (action, status) =>
     query(
       client,
       `SELECT "metadata"
@@ -617,14 +617,16 @@ async function verifyBusinessZeroingExecutionAudit(client, receipt) {
         WHERE "action" = $1
           AND "businessType" = $2
           AND "businessId" = $3
+          AND "metadata"->>'status' = $4
         ORDER BY "createdAt" ASC, "id" ASC`,
       action,
       "test_business_zeroing",
-      receipt.batchId
+      receipt.batchId,
+      status
     );
   const [completedRows, terminalRows] = await Promise.all([
-    loadAuditRows("test_business_zeroing.controlled_execution"),
-    loadAuditRows("test_business_zeroing.terminal_commit")
+    loadAuditRows("test_business_zeroing.controlled_execution", "completed"),
+    loadAuditRows("test_business_zeroing.terminal_commit", "terminal_committed")
   ]);
   invariant(completedRows.length === 1, "本批次 completed 审计必须精确一条");
   invariant(terminalRows.length === 1, "本批次 terminal marker 审计必须精确一条");

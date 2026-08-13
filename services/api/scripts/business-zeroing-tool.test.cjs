@@ -2542,8 +2542,8 @@ test("后置审计要求 completed 与 terminal marker 各精确一条", async (
   };
   const queries = [];
   const client = {
-    $queryRawUnsafe: async (sql) => {
-      queries.push(sql);
+    $queryRawUnsafe: async (sql, action, businessType, businessId, status) => {
+      queries.push({ sql, action, businessType, businessId, status });
       return [];
     }
   };
@@ -2552,7 +2552,28 @@ test("后置审计要求 completed 与 terminal marker 各精确一条", async (
     /completed/u
   );
   assert.equal(queries.length, 2);
-  assert.ok(queries.every((sql) => !/LIMIT 1/u.test(sql)));
+  assert.ok(
+    queries.every(
+      ({ sql, businessType, businessId }) =>
+        !/LIMIT 1/u.test(sql) &&
+        /"metadata"->>'status' = \$4/u.test(sql) &&
+        businessType === "test_business_zeroing" &&
+        businessId === receipt.batchId
+    )
+  );
+  assert.deepEqual(
+    queries.map(({ action, status }) => ({ action, status })),
+    [
+      {
+        action: "test_business_zeroing.controlled_execution",
+        status: "completed"
+      },
+      {
+        action: "test_business_zeroing.terminal_commit",
+        status: "terminal_committed"
+      }
+    ]
+  );
 });
 
 test("受控输出必须预先独占预留且以 0600 落盘", async () => {
