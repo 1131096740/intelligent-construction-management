@@ -6,6 +6,7 @@ const { spawnSync } = require("node:child_process");
 const { createHash, generateKeyPairSync, sign } = require("node:crypto");
 const { readFileSync } = require("node:fs");
 const {
+  chmod,
   mkdir,
   mkdtemp,
   open,
@@ -871,6 +872,34 @@ test("正式聚合父记录的生命周期保护传播到无状态清单子记�
         item.details?.childTable === "ContractBill"
     )
   );
+});
+
+test("真实 Prisma 正式聚合关系必须全部登记父生命周期保护", () => {
+  const schemaSource = readFileSync(
+    path.join(__dirname, "../prisma/schema.prisma"),
+    "utf8"
+  );
+  for (const [childTable, childColumn, parentTable] of [
+    ["ContractVersion", "contractId", "Contract"],
+    ["PaymentTermsVersion", "contractVersionId", "ContractVersion"],
+    ["PaymentTermsStage", "paymentTermsVersionId", "PaymentTermsVersion"],
+    ["SettlementLine", "settlementId", "Settlement"],
+    ["PaymentExecutionAllocation", "paymentExecutionId", "PaymentExecution"],
+    ["InvoiceLine", "invoiceRecordId", "InvoiceRecord"],
+    ["ExpenseClaimLine", "expenseClaimId", "ExpenseClaim"]
+  ]) {
+    assert.match(schemaSource, new RegExp(`model ${childTable} \\{[\\s\\S]*?\\n  ${childColumn}\\s`, "u"));
+    assert.ok(
+      BUSINESS_ZEROING_LOGICAL_RELATIONS.some(
+        (relation) =>
+          relation.childTable === childTable &&
+          relation.childColumn === childColumn &&
+          relation.parentTable === parentTable &&
+          relation.protectsChildLifecycle === true
+      ),
+      `${childTable}.${childColumn}->${parentTable} 未登记正式聚合保护`
+    );
+  }
 });
 
 test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", () => {
@@ -1840,12 +1869,23 @@ test("备份工件必须真实存在且字节校验和匹配", async () => {
       databaseBackup: {
         ...backupReceipt().databaseBackup,
         location: databasePath,
-        sha256: createHash("sha256").update(databaseContent).digest("hex")
+        sha256: createHash("sha256").update(databaseContent).digest("hex"),
+        format: "postgresql_custom",
+        restoreEvidence: {
+          status: "passed",
+          migrationCount: 125,
+          migrationHead: "M125"
+        }
       },
       privateFileBackup: {
         ...backupReceipt().privateFileBackup,
         location: filesPath,
-        sha256: createHash("sha256").update(filesContent).digest("hex")
+        sha256: createHash("sha256").update(filesContent).digest("hex"),
+        sourceObjects: [{ objectKey: "uploads/fixture", sha256: "1".repeat(64), sizeBytes: 7 }],
+        restoreEvidence: {
+          status: "passed",
+          objects: [{ objectKey: "uploads/fixture", sha256: "1".repeat(64), sizeBytes: 7 }]
+        }
       }
     });
     await assert.doesNotReject(() => verifyBackupArtifacts(receipt));
@@ -1971,8 +2011,27 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
       candidateCount: 0
     },
     backupRestore: {
-      database: "passed",
-      privateFiles: "passed",
+      database: {
+        status: "passed",
+        format: "postgresql_custom",
+        restoreEvidence: {
+          status: "passed",
+          migrationCount: 125,
+          migrationHead: "20260811090000_contract_document_content_revision"
+        }
+      },
+      privateFiles: {
+        status: "passed",
+        sourceObjects: [
+          { objectKey: "uploads/fixture", sha256: "1".repeat(64), sizeBytes: 7 }
+        ],
+        restoreEvidence: {
+          status: "passed",
+          objects: [
+            { objectKey: "uploads/fixture", sha256: "1".repeat(64), sizeBytes: 7 }
+          ]
+        }
+      },
       artifactsVerified: true
     }
   };
@@ -2131,6 +2190,99 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
   }
 });
 
+test("未指纹 node -e 不得伪造受信 launcher capability", () => {
+  const cliLibrary = path.join(__dirname, "business-zeroing-cli.cjs");
+  const signEntry = path.join(__dirname, "sign-business-zeroing-input.cjs");
+  const cleanEnvironment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !["NODE_OPTIONS", "NODE_PATH"].includes(key))
+  );
+  const forged = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      [
+        "process.execArgv=[];",
+        "process.argv[1]='-';",
+        `const command=require(${JSON.stringify(signEntry)});`,
+        `const {runTrustedCommand}=require(${JSON.stringify(cliLibrary)});`,
+        "Promise.resolve(runTrustedCommand(command,{entrypoint:'synthetic',argv:['--help']}))",
+        ".catch((error)=>{process.stderr.write(String(error&&error.message||error));process.exitCode=1;});"
+      ].join("")
+    ],
+    { encoding: "utf8", env: cleanEnvironment }
+  );
+  assert.notEqual(forged.status, 0, forged.stdout);
+  assert.doesNotMatch(forged.stdout, /run-business-zeroing-cli\.sh sign/u);
+
+  const directCli = spawnSync(
+    process.execPath,
+    [cliLibrary, "sign", "--help"],
+    { encoding: "utf8", env: cleanEnvironment }
+  );
+  assert.notEqual(directCli.status, 0, directCli.stdout);
+  assert.doesNotMatch(directCli.stdout, /run-business-zeroing-cli\.sh sign/u);
+
+  for (const forgedEnvironment of [
+    {
+      POL22_LAUNCHER_PARENT_PID: String(process.pid),
+      POL22_LAUNCHER_CAPABILITY_FD: "9"
+    },
+    {
+      POL22_LAUNCHER_PARENT_PID: "1",
+      POL22_LAUNCHER_CAPABILITY_FD: "9"
+    }
+  ]) {
+    const forgedFd = spawnSync(
+      process.execPath,
+      [cliLibrary, "sign", "--help"],
+      {
+        encoding: "utf8",
+        env: { ...cleanEnvironment, ...forgedEnvironment },
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    );
+    assert.notEqual(forgedFd.status, 0, forgedFd.stdout);
+    assert.doesNotMatch(forgedFd.stdout, /run-business-zeroing-cli\.sh sign/u);
+  }
+});
+
+test("受信启动器 capability 工件为 0600 且命令结束后无残留", async () => {
+  const capabilityRoot = await mkdtemp(path.join(tmpdir(), "pol22-capability-root-"));
+  try {
+    const fakeBin = path.join(capabilityRoot, "bin");
+    const modeOutput = path.join(tmpdir(), `pol22-capability-mode-${process.pid}`);
+    await mkdir(fakeBin);
+    const fakeNode = path.join(fakeBin, "node");
+    await writeFile(
+      fakeNode,
+      "#!/bin/sh\nstat -f '%Lp' \"$POL22_LAUNCHER_CAPABILITY_PATH\" >\"$POL22_CAPABILITY_MODE_OUTPUT\"\n",
+      "utf8"
+    );
+    await chmod(fakeNode, 0o700);
+    const accepted = spawnSync(
+      "/bin/sh",
+      [path.join(__dirname, "run-business-zeroing-cli.sh"), "sign", "--help"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          TMPDIR: capabilityRoot,
+          POL22_CAPABILITY_MODE_OUTPUT: modeOutput,
+          NODE_OPTIONS: undefined,
+          NODE_PATH: undefined
+        }
+      }
+    );
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.equal((await readFile(modeOutput, "utf8")).trim(), "600");
+    assert.deepEqual(await readdir(capabilityRoot), ["bin"]);
+    await rm(modeOutput, { force: true });
+  } finally {
+    await rm(capabilityRoot, { recursive: true, force: true });
+  }
+});
+
 test("实际执行代码指纹拒绝 dist 符号链接与仓库外运行内容", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-code-hash-"));
   try {
@@ -2164,19 +2316,27 @@ test("实际执行指纹绑定 Node、Prisma generated client、query engine 与
     const nodeExecutable = path.join(temporaryRoot, "node");
     const prismaClient = path.join(temporaryRoot, "@prisma-client");
     const generatedClient = path.join(temporaryRoot, "generated-client");
+    const runtimeDependency = path.join(temporaryRoot, "@nestjs-common");
     await writeFile(nodeExecutable, "node-runtime-v1", "utf8");
     await mkdir(path.join(prismaClient, "runtime"), { recursive: true });
     await mkdir(generatedClient, { recursive: true });
+    await mkdir(runtimeDependency, { recursive: true });
     await writeFile(path.join(prismaClient, "runtime", "library.js"), "runtime-v1", "utf8");
     await writeFile(path.join(generatedClient, "index.js"), "generated-v1", "utf8");
+    const dependencyEntrypoint = path.join(runtimeDependency, "index.js");
+    await writeFile(dependencyEntrypoint, "dependency-v1", "utf8");
     const engine = path.join(generatedClient, "libquery_engine.fixture.node");
     await writeFile(engine, "engine-v1", "utf8");
     const inputs = {
       nodeExecutable,
       prismaClientDirectory: prismaClient,
-      generatedClientDirectory: generatedClient
+      generatedClientDirectory: generatedClient,
+      dependencyDirectories: [runtimeDependency]
     };
     const before = hashRuntimeExecutionFiles(inputs);
+    await writeFile(dependencyEntrypoint, "dependency-tampered", "utf8");
+    assert.notEqual(hashRuntimeExecutionFiles(inputs), before);
+    await writeFile(dependencyEntrypoint, "dependency-v1", "utf8");
     await writeFile(engine, "engine-tampered", "utf8");
     assert.notEqual(hashRuntimeExecutionFiles(inputs), before);
     await rm(nodeExecutable);
@@ -2230,7 +2390,17 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
       generation: receipt.writeFreezeLease?.generation
     })
   };
-  const client = { async $queryRawUnsafe() { return [{ metadata }]; } };
+  const completedMetadata = { ...metadata, status: "completed" };
+  const client = {
+    async $queryRawUnsafe(_sql, action) {
+      return [{
+        metadata:
+          action === "test_business_zeroing.controlled_execution"
+            ? completedMetadata
+            : metadata
+      }];
+    }
+  };
   assert.deepEqual(await verifyBusinessZeroingExecutionAudit(client, receipt), {
     status: "passed"
   });
@@ -2240,14 +2410,21 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
         { async $queryRawUnsafe() { return []; } },
         receipt
       ),
-    /缺少本批次权威终态完成标记/u
+    /completed 审计必须精确一条/u
   );
   await assert.rejects(
     () =>
       verifyBusinessZeroingExecutionAudit(
         {
-          async $queryRawUnsafe() {
-            return [{ metadata: { ...metadata, executionReceipt: { ...receipt, status: "forged" } } }];
+          async $queryRawUnsafe(_sql, action) {
+            return [{
+              metadata: {
+                ...(action === "test_business_zeroing.controlled_execution"
+                  ? completedMetadata
+                  : metadata),
+                executionReceipt: { ...receipt, status: "forged" }
+              }
+            }];
           }
         },
         receipt
@@ -2258,14 +2435,51 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
     () =>
       verifyBusinessZeroingExecutionAudit(
         {
-          async $queryRawUnsafe() {
-            return [{ metadata: { status: "failed_after_database_commit" } }];
+          async $queryRawUnsafe(_sql, action) {
+            return [{
+              metadata:
+                action === "test_business_zeroing.controlled_execution"
+                  ? completedMetadata
+                  : { status: "failed_after_database_commit" }
+            }];
           }
         },
         receipt
       ),
     /权威终态完成标记/u
   );
+});
+
+test("后置审计要求 completed 与 terminal marker 各精确一条", async () => {
+  const receipt = {
+    batchId: "pol22-isolated-unique",
+    environment: "isolated-pol22",
+    codeSha: SHA_40,
+    executionCodeSha256: EXECUTION_SHA_64,
+    deploymentIdentitySha256: DEPLOYMENT_SHA_64,
+    executorIdentity: EXECUTOR_IDENTITY,
+    reportSha256: "1".repeat(64),
+    candidateSha256: "2".repeat(64),
+    authorization: {
+      authorizationRef: "Issue #122 independent authorization",
+      publicKeySha256: "3".repeat(64),
+      payloadSha256: "4".repeat(64)
+    },
+    receiptSha256: "5".repeat(64)
+  };
+  const queries = [];
+  const client = {
+    $queryRawUnsafe: async (sql) => {
+      queries.push(sql);
+      return [];
+    }
+  };
+  await assert.rejects(
+    () => verifyBusinessZeroingExecutionAudit(client, receipt),
+    /completed/u
+  );
+  assert.equal(queries.length, 2);
+  assert.ok(queries.every((sql) => !/LIMIT 1/u.test(sql)));
 });
 
 test("受控输出必须预先独占预留且以 0600 落盘", async () => {

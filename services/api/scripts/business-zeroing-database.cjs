@@ -609,21 +609,28 @@ async function inspectDatabaseInventory(client, { environment, lockTables = fals
 }
 
 async function verifyBusinessZeroingExecutionAudit(client, receipt) {
-  const rows = await query(
-    client,
-    `SELECT "metadata"
-       FROM "AuditLog"
-      WHERE "action" = $1
-        AND "businessType" = $2
-        AND "businessId" = $3
-      ORDER BY "createdAt" DESC, "id" DESC
-      LIMIT 1`,
-    "test_business_zeroing.terminal_commit",
-    "test_business_zeroing",
-    receipt.batchId
-  );
-  invariant(rows.length === 1, "数据库中缺少本批次权威终态完成标记");
-  const metadata = rows[0].metadata;
+  const loadAuditRows = (action) =>
+    query(
+      client,
+      `SELECT "metadata"
+         FROM "AuditLog"
+        WHERE "action" = $1
+          AND "businessType" = $2
+          AND "businessId" = $3
+        ORDER BY "createdAt" ASC, "id" ASC`,
+      action,
+      "test_business_zeroing",
+      receipt.batchId
+    );
+  const [completedRows, terminalRows] = await Promise.all([
+    loadAuditRows("test_business_zeroing.controlled_execution"),
+    loadAuditRows("test_business_zeroing.terminal_commit")
+  ]);
+  invariant(completedRows.length === 1, "本批次 completed 审计必须精确一条");
+  invariant(terminalRows.length === 1, "本批次 terminal marker 审计必须精确一条");
+  const completedMetadata = completedRows[0].metadata;
+  const metadata = terminalRows[0].metadata;
+  invariant(completedMetadata?.status === "completed", "本批次 completed 审计无效");
   invariant(
     metadata?.status === "terminal_committed",
     "本批次权威终态完成标记无效"
@@ -661,6 +668,11 @@ async function verifyBusinessZeroingExecutionAudit(client, receipt) {
   invariant(
     sha256(metadata.executionReceipt) === sha256(receipt),
     "受控执行审计未保留完整最终执行收据"
+  );
+  invariant(
+    sha256(completedMetadata.executionReceipt) === sha256(receipt) &&
+      completedMetadata.receiptSha256 === receipt.receiptSha256,
+    "completed 审计未与权威终态绑定同一收据"
   );
   return { status: "passed" };
 }

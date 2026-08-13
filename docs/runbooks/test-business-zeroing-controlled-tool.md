@@ -11,9 +11,9 @@
 | `verify-test-business-zeroing.cjs` | 只读 | 核对候选已清零、保留数量不漂移、迁移不变、无孤儿文件与悬空外键，并按执行前冻结对象清单逐 key/version/hash/generation 重扫 |
 | `sign-business-zeroing-input.cjs` | 只读输入，新建输出 | 为决定清单或备份恢复收据生成内容完整性 SHA-256 |
 
-所有实际命令都必须通过受信启动器 `sh services/api/scripts/run-business-zeroing-cli.sh <inspect|execute|verify|sign|dynamic>` 进入。启动器在 Node 启动前拒绝 `NODE_OPTIONS`、`NODE_PATH` 等预加载污染并清理启动环境，再由固定 stdin dispatcher 向目标 `runMain` 传递进程内私有 capability；五个直接 `.cjs` 入口、`node -e`/`require(...).runMain()` 以及缺少该 capability 的 loader/preload 旁路均失败关闭，不能作为受支持调用方式。`dynamic` 只运行隔离动态验证，`verify-business-zeroing.cjs` 仅作为该受信运行器内部库使用。
+所有实际命令都必须通过受信启动器 `sh services/api/scripts/run-business-zeroing-cli.sh <inspect|execute|verify|sign|dynamic>` 进入。启动器在 Node 启动前拒绝 `NODE_OPTIONS`、`NODE_PATH` 等预加载污染并清理启动环境，再由已纳入执行指纹的固定内部 dispatcher 向目标 `runMain` 传递不对外导出的进程内 capability；五个直接 `.cjs` 入口、`node -e`/`require(...).runMain()` 以及缺少该 capability 的 loader/preload 旁路均失败关闭，不能作为受支持调用方式。`dynamic` 只运行隔离动态验证，`verify-business-zeroing.cjs` 仅作为该受信运行器内部库使用。
 
-`sign-business-zeroing-input.cjs` 只证明 JSON 内容未漂移，不证明决定由谁批准，也不能生成独立测试来源证明。预检会实际读取两个备份文件并重算字节 SHA-256，但这仍不代替隔离恢复演练。逐主键测试来源证明和执行授权分别由独立签发者使用不同的 Ed25519 信任锚生成；工具不接收命令行公钥，也不包含或生成真实环境私钥。
+`sign-business-zeroing-input.cjs` 只证明 JSON 内容未漂移，不证明决定由谁批准，也不能生成独立测试来源证明。预检会实际读取两个备份文件并重算字节 SHA-256，同时要求 PostgreSQL custom-format 备份已在独立恢复库通过 `pg_restore --exit-on-error`、迁移坐标与核心表计数一致，私有文件备份已在独立目录按每个 object key/sha256/size 比对。逐主键测试来源证明和执行授权分别由独立签发者使用不同的 Ed25519 信任锚生成；工具不接收命令行公钥，也不包含或生成真实环境私钥。
 
 报告、清单、授权和收据等运行工件必须放在仓库 checkout 之外的专用受限目录；否则它们会使工作树变脏并被代码身份门阻断。每次输出都必须使用不存在的新路径，不能覆盖旧证据。
 
@@ -88,7 +88,15 @@
     "capturedAt": "<ISO-8601 捕获时间>",
     "restoreVerifiedAt": "<ISO-8601 时间>",
     "restoreTarget": "<隔离恢复目标>",
-    "restoreStatus": "passed"
+    "restoreStatus": "passed",
+    "format": "postgresql_custom",
+    "restoreEvidence": {
+      "status": "passed",
+      "migrationCount": 125,
+      "migrationHead": "<迁移 head>",
+      "tableCounts": { "<核心表>": 0 },
+      "commands": ["pg_dump -Fc", "createdb", "pg_restore --exit-on-error"]
+    }
   },
   "privateFileBackup": {
     "location": "<私有文件备份精确位置>",
@@ -96,7 +104,16 @@
     "capturedAt": "<ISO-8601 捕获时间>",
     "restoreVerifiedAt": "<ISO-8601 时间>",
     "restoreTarget": "<隔离恢复目标>",
-    "restoreStatus": "passed"
+    "restoreStatus": "passed",
+    "sourceObjects": [
+      { "objectKey": "<精确键>", "sha256": "<64 位 SHA-256>", "sizeBytes": 1 }
+    ],
+    "restoreEvidence": {
+      "status": "passed",
+      "objects": [
+        { "objectKey": "<精确键>", "sha256": "<64 位 SHA-256>", "sizeBytes": 1 }
+      ]
+    }
   }
 }
 ```
@@ -250,4 +267,4 @@ env -u DATABASE_URL -u CONTRACT_DATABASE_URL -u SHADOW_DATABASE_URL \
   sh services/api/scripts/run-business-zeroing-cli.sh dynamic
 ```
 
-运行器在迁移前同时等待容器内 `pg_isready` 和宿主通过同一随机 `127.0.0.1:<port>` URL 执行 Prisma `SELECT 1`；任一条件未满足都在有限次数内共同重试，宿主探测客户端每次都断连，30 秒后仍不满足则失败并触发同一容器/临时目录 cleanup，不得把仅容器内 ready 当作可迁移证明。该门随后临时应用全部迁移，只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。运行器只在 cleanup 成功后输出一个最终 JSON；cleanup 失败时不得先输出通过收据，JSON 之后也不得用文本补写字段。无完整 JSON 收据不得判为通过；收据必须内含 `migrationCount=125`、`migrationHead`、`status`、`productionAccessed=false`、`dryRunSteps`、`executionSteps`、`formalRecordProtection`、`unknownOwnershipBlockers`、`mixedOwnershipBlockers`、备份恢复验证以及 `containerRemoved=true`、`temporaryFilesRemoved=true`；未知/混合归属必须由真实 fail-closed 预检生成非空 blocker 清单和零候选证据。
+运行器在迁移前同时等待容器内 `pg_isready` 和宿主通过同一随机 `127.0.0.1:<port>` URL 执行 Prisma `SELECT 1`；任一条件未满足都在有限次数内共同重试，宿主探测客户端每次都断连，30 秒后仍不满足则失败并触发同一容器/临时目录 cleanup，不得把仅容器内 ready 当作可迁移证明。该门随后临时应用全部迁移，通过 `pg_dump -Fc` 产生真实备份并在同容器独立恢复库执行 `pg_restore --exit-on-error`，同时将私有文件归档恢复到独立目录逐 object key/sha256/size 比对。未知/混合归属场景直接在隔离 PostgreSQL 创建可扫描关系，收据保存原始 inventory 绑定证据，不使用内存 transform 注入。只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。运行器只在 cleanup 成功后输出一个最终 JSON；cleanup 失败时不得先输出通过收据，JSON 之后也不得用文本补写字段。无完整 JSON 收据不得判为通过；收据必须内含 `migrationCount=125`、`migrationHead`、`status`、`productionAccessed=false`、`dryRunSteps`、`executionSteps`、`formalRecordProtection`、`unknownOwnershipBlockers`、`mixedOwnershipBlockers`、真实备份恢复验证以及 `containerRemoved=true`、`temporaryFilesRemoved=true`；未知/混合归属必须由真实 fail-closed 预检生成非空 blocker 清单、原始 inventory 证据和零候选证据。

@@ -42,15 +42,13 @@ const FILE_ID = "00000000-0000-4000-8000-000000000005";
 const ATTACHMENT_ID = "00000000-0000-4000-8000-000000000006";
 const GUARDED_FACT_ID = "00000000-0000-4000-8000-000000000007";
 const BILL_ID = "00000000-0000-4000-8000-000000000008";
+const MIXED_FILE_ID = "00000000-0000-4000-8000-000000000009";
 const OBJECT_KEY = "uploads/pol22-isolated-fixture.txt";
+const MIXED_OBJECT_KEY = "uploads/pol22-isolated-preserved-file.txt";
 const ENVIRONMENT = "pol22-isolated-postgresql16";
 
 function signed(body) {
   return { ...body, receiptSha256: sha256(body) };
-}
-
-function fileSha256(content) {
-  return createHash("sha256").update(content).digest("hex");
 }
 
 function createAuthorization(
@@ -358,7 +356,7 @@ async function verifyBusinessZeroing(
   prisma,
   temporaryRoot,
   codeIdentity,
-  { trustedRunner = false } = {}
+  { trustedRunner = false, createVerifiedBackupRestore } = {}
 ) {
   assert.equal(trustedRunner, true, "POL-22 动态验证器只能由已清洗的隔离 runner 调用");
   assert.match(codeIdentity?.codeSha ?? "", /^[0-9a-f]{40}$/u);
@@ -413,39 +411,36 @@ async function verifyBusinessZeroing(
     fixtureRecordKey("ContractDraftAttachment", { id: ATTACHMENT_ID })
   ]);
   const decisions = createDecisions(inventory, trustedFixtureKeys);
-  const databaseBackupPath = path.join(temporaryRoot, "database.dump.fixture");
-  const fileBackupPath = path.join(temporaryRoot, "private-files.tar.fixture");
-  const databaseBackupContent = Buffer.from("isolated database backup fixture", "utf8");
-  const fileBackupContent = Buffer.from("isolated file backup fixture", "utf8");
-  await writeFile(databaseBackupPath, databaseBackupContent);
-  await writeFile(fileBackupPath, fileBackupContent);
-  const capturedAt = new Date().toISOString();
+  assert.equal(
+    typeof createVerifiedBackupRestore,
+    "function",
+    "POL-22 动态验证缺少受信 runner 真实备份恢复端"
+  );
+  const sourceCounts = await counts(prisma);
+  const backupEvidence = await createVerifiedBackupRestore({
+    storageRoot,
+    sourceCounts,
+    migrationCount: inventory.migrationCount,
+    migrationHead: inventory.migrationHead
+  });
+  const capturedAt = backupEvidence.capturedAt;
   const backup = signed({
     schemaVersion: 1,
     environment: ENVIRONMENT,
     databaseFingerprint: inventory.databaseFingerprint,
-    databaseBackup: {
-      location: databaseBackupPath,
-      sha256: fileSha256(databaseBackupContent),
-      capturedAt,
-      restoreVerifiedAt: capturedAt,
-      restoreTarget: "pol22-isolated-restored-database",
-      restoreStatus: "passed"
-    },
-    privateFileBackup: {
-      location: fileBackupPath,
-      sha256: fileSha256(fileBackupContent),
-      capturedAt,
-      restoreVerifiedAt: capturedAt,
-      restoreTarget: "pol22-isolated-restored-files",
-      restoreStatus: "passed"
-    }
+    databaseBackup: backupEvidence.databaseBackup,
+    privateFileBackup: backupEvidence.privateFileBackup
   });
   await verifyBackupArtifacts(backup);
-  const reportGeneratedAt = new Date(new Date(capturedAt).getTime() + 1_000).toISOString();
-  const authorizationIssuedAt = new Date(new Date(capturedAt).getTime() + 2_000).toISOString();
-  const authorizationExpiresAt = new Date(new Date(capturedAt).getTime() + 10 * 60_000).toISOString();
-  const executionNow = new Date(new Date(capturedAt).getTime() + 3_000);
+  const restoreVerifiedAt = Math.max(
+    new Date(backup.databaseBackup.restoreVerifiedAt).getTime(),
+    new Date(backup.privateFileBackup.restoreVerifiedAt).getTime()
+  );
+  assert.ok(Number.isFinite(restoreVerifiedAt), "隔离恢复时间无效");
+  const reportGeneratedAt = new Date(restoreVerifiedAt + 1_000).toISOString();
+  const authorizationIssuedAt = new Date(restoreVerifiedAt + 2_000).toISOString();
+  const authorizationExpiresAt = new Date(restoreVerifiedAt + 10 * 60_000).toISOString();
+  const executionNow = new Date(restoreVerifiedAt + 3_000);
   const testProvenanceKeys = generateKeyPairSync("ed25519");
   const writeFreezeKeys = generateKeyPairSync("ed25519");
   const trustedTestProvenancePublicKeySha256 = createHash("sha256")
@@ -484,8 +479,7 @@ async function verifyBusinessZeroing(
     allowMissingDeletedDecisions = false,
     decisionManifest = decisions,
     provenanceBundle = testProvenance,
-    trustedRegistrySha256 = testProvenance.registrySha256,
-    transformInventory = (value) => value
+    trustedRegistrySha256 = testProvenance.registrySha256
   ) => {
     assert.equal(
       trustedRegistrySha256,
@@ -502,7 +496,7 @@ async function verifyBusinessZeroing(
     );
     return buildPreflightReport({
       policy: BUSINESS_ZEROING_POLICY,
-      inventory: transformInventory(currentInventory),
+      inventory: currentInventory,
       decisions: decisionManifest,
       testProvenance: provenanceBundle?.envelope ?? provenanceBundle,
       testProvenancePublicKey: testProvenanceKeys.publicKey,
@@ -624,25 +618,40 @@ async function verifyBusinessZeroing(
   assert.equal(report.summary.migrationHistoryDeletionCandidates, 0);
   assert.equal(report.summary.databaseDeletionCandidates, 0);
 
+  const { receiptSha256: _decisionReceiptSha256, ...decisionBody } = decisions;
+  const unknownDecisions = signed({
+    ...decisionBody,
+    records: decisions.records.filter(
+      (record) => !(record.table === "ContractDraftAttachment" && record.primaryKey.id === ATTACHMENT_ID)
+    )
+  });
+  const unknownFixtureKeys = new Set([
+    fixtureRecordKey("Contract", { id: CONTRACT_ID }),
+    fixtureRecordKey("ContractVersion", { id: VERSION_ID })
+  ]);
+  const unknownProvenance = createTestProvenance(
+    inventory,
+    unknownDecisions,
+    unknownFixtureKeys,
+    testProvenanceKeys.privateKey,
+    capturedAt
+  );
+  assert.ok(
+    inventory.fileBindings.some(
+      (binding) =>
+        binding.fileId === FILE_ID &&
+        binding.ownerTable === "ContractDraftAttachment" &&
+        binding.ownerPrimaryKey.id === ATTACHMENT_ID
+    ),
+    "未知归属动态场景必须来自 PostgreSQL 原始 inventory 绑定"
+  );
   const unknownOwnershipReport = await buildReport(
     prisma,
     false,
     false,
-    decisions,
-    testProvenance,
-    testProvenance.registrySha256,
-    (currentInventory) => ({
-      ...currentInventory,
-      fileBindings: [
-        ...currentInventory.fileBindings,
-        {
-          fileId: FILE_ID,
-          ownerTable: "UnknownOwner",
-          ownerPrimaryKey: { id: "unknown-owner" },
-          ownerColumn: "fileId"
-        }
-      ]
-    })
+    unknownDecisions,
+    unknownProvenance,
+    unknownProvenance.registrySha256
   );
   assert.equal(unknownOwnershipReport.status, "blocked");
   assert.deepEqual(unknownOwnershipReport.deletionCandidates, []);
@@ -655,29 +664,71 @@ async function verifyBusinessZeroing(
       .map((item) => item.code)
       .filter((code) => code === "UNKNOWN_FILE_OWNER")
       .sort(),
-    candidateCount: unknownOwnershipReport.deletionCandidates.length
+    candidateCount: unknownOwnershipReport.deletionCandidates.length,
+    inventoryEvidence: inventory.fileBindings.filter(
+      (binding) =>
+        binding.fileId === FILE_ID &&
+        binding.ownerTable === "ContractDraftAttachment" &&
+        binding.ownerPrimaryKey.id === ATTACHMENT_ID
+    )
   };
 
-  const mixedOwnershipReport = await buildReport(
-    prisma,
-    false,
-    false,
-    decisions,
-    testProvenance,
-    testProvenance.registrySha256,
-    (currentInventory) => ({
-      ...currentInventory,
-      fileBindings: [
-        ...currentInventory.fileBindings,
-        {
-          fileId: FILE_ID,
-          ownerTable: "Project",
-          ownerPrimaryKey: { id: PROJECT_ID },
-          ownerColumn: "fileId"
-        }
-      ]
-    })
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "FileObject" (
+       "id", "bucket", "objectKey", "originalName", "mimeType", "sizeBytes",
+       "uploadedByUserId", "contentSha256", "storageStatus", "supersedesFileObjectId"
+     ) VALUES ($1, 'private-local', $2, '隔离保留文件.txt', 'text/plain', 9, $3, $4, 'active', $5)`,
+    MIXED_FILE_ID,
+    MIXED_OBJECT_KEY,
+    ACTOR_ID,
+    sha256("preserved"),
+    FILE_ID
   );
+  await prisma.$executeRawUnsafe(
+    `UPDATE "User" SET "signatureFileId" = $1, "updatedAt" = NOW() WHERE "id" = $2`,
+    MIXED_FILE_ID,
+    ACTOR_ID
+  );
+  await mkdir(path.dirname(path.join(storageRoot, MIXED_OBJECT_KEY)), { recursive: true });
+  await writeFile(path.join(storageRoot, MIXED_OBJECT_KEY), "preserved", "utf8");
+  let mixedOwnershipReport;
+  let mixedInventory;
+  try {
+    mixedInventory = await inspectDatabaseInventory(prisma, { environment: ENVIRONMENT });
+    assert.ok(
+      mixedInventory.fileBindings.some(
+        (binding) => binding.fileId === MIXED_FILE_ID && binding.ownerTable === "User"
+      ) &&
+        mixedInventory.fileRelations.some(
+          (relation) =>
+            relation.fileId === MIXED_FILE_ID && relation.relatedFileId === FILE_ID
+        ),
+      "混合归属动态场景必须来自 PostgreSQL 原始 inventory 绑定与替换链"
+    );
+    const mixedDecisions = createDecisions(mixedInventory, trustedFixtureKeys);
+    const mixedProvenance = createTestProvenance(
+      mixedInventory,
+      mixedDecisions,
+      trustedFixtureKeys,
+      testProvenanceKeys.privateKey,
+      capturedAt
+    );
+    mixedOwnershipReport = await buildReport(
+      prisma,
+      false,
+      false,
+      mixedDecisions,
+      mixedProvenance,
+      mixedProvenance.registrySha256
+    );
+  } finally {
+    await prisma.$executeRawUnsafe(
+      `UPDATE "User" SET "signatureFileId" = NULL, "updatedAt" = NOW() WHERE "id" = $1`,
+      ACTOR_ID
+    );
+    await prisma.$executeRawUnsafe(`DELETE FROM "FileObject" WHERE "id" = $1`, MIXED_FILE_ID);
+    await rm(path.join(storageRoot, MIXED_OBJECT_KEY), { force: true });
+  }
   assert.equal(mixedOwnershipReport.status, "blocked");
   assert.deepEqual(mixedOwnershipReport.deletionCandidates, []);
   assert.ok(
@@ -689,7 +740,16 @@ async function verifyBusinessZeroing(
       .map((item) => item.code)
       .filter((code) => code === "MIXED_FILE_OWNERSHIP")
       .sort(),
-    candidateCount: mixedOwnershipReport.deletionCandidates.length
+    candidateCount: mixedOwnershipReport.deletionCandidates.length,
+    inventoryEvidence: {
+      fileBindings: mixedInventory.fileBindings.filter(
+        (binding) => binding.fileId === MIXED_FILE_ID
+      ),
+      fileRelations: mixedInventory.fileRelations.filter(
+        (relation) =>
+          relation.fileId === MIXED_FILE_ID && relation.relatedFileId === FILE_ID
+      )
+    }
   };
 
   const dryRun = await createDryRunReceipt({ report, currentReport: await buildReport(prisma) });
@@ -950,8 +1010,16 @@ async function verifyBusinessZeroing(
     unknownOwnershipBlockers,
     mixedOwnershipBlockers,
     backupRestore: {
-      database: backup.databaseBackup.restoreStatus,
-      privateFiles: backup.privateFileBackup.restoreStatus,
+      database: {
+        status: backup.databaseBackup.restoreStatus,
+        format: backup.databaseBackup.format,
+        restoreEvidence: backup.databaseBackup.restoreEvidence
+      },
+      privateFiles: {
+        status: backup.privateFileBackup.restoreStatus,
+        sourceObjects: backup.privateFileBackup.sourceObjects,
+        restoreEvidence: backup.privateFileBackup.restoreEvidence
+      },
       artifactsVerified: true
     },
     receipt,

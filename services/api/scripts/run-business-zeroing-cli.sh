@@ -18,11 +18,7 @@ fi
 shift
 
 case "$command_name" in
-  inspect) entrypoint=inspect-test-business-zeroing.cjs ;;
-  execute) entrypoint=execute-test-business-zeroing.cjs ;;
-  verify) entrypoint=verify-test-business-zeroing.cjs ;;
-  sign) entrypoint=sign-business-zeroing-input.cjs ;;
-  dynamic) entrypoint=../prisma/run-business-zeroing-local.cjs ;;
+  inspect|execute|verify|sign|dynamic) ;;
   *)
     echo "归零工具启动器不支持命令：$command_name" >&2
     exit 64
@@ -31,20 +27,10 @@ esac
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 unset NODE_OPTIONS NODE_PATH
-exec node - "$script_directory/$entrypoint" "$script_directory/business-zeroing-cli.cjs" "$@" <<'NODE'
-"use strict";
-
-const entrypoint = process.argv[2];
-const cliLibrary = process.argv[3];
-const argv = process.argv.slice(4);
-
-const { runTrustedCommand } = require(cliLibrary);
-
-const command = require(entrypoint);
-Promise.resolve(runTrustedCommand(command, { entrypoint, argv })).catch((error) => {
-  process.stderr.write(
-    `归零工具受信启动器已安全阻断：${error instanceof Error ? error.message : String(error)}\n`
-  );
-  process.exitCode = 1;
-});
-NODE
+capability_file=$(mktemp "${TMPDIR:-/tmp}/pol22-launch-capability.XXXXXX")
+trap 'rm -f "$capability_file"' EXIT HUP INT TERM
+chmod 600 "$capability_file"
+printf '%s\n' "$$:$script_directory/run-business-zeroing-cli.sh" >"$capability_file"
+POL22_LAUNCHER_PARENT_PID=$$ POL22_LAUNCHER_CAPABILITY_FD=9 \
+POL22_LAUNCHER_CAPABILITY_PATH="$capability_file" \
+  node "$script_directory/business-zeroing-cli.cjs" "$command_name" "$@" 9<"$capability_file"

@@ -5,8 +5,9 @@ if (require.main === module) {
   throw new Error("归零工具直接 Node 入口已禁用；必须使用受信启动器");
 }
 
-const { randomUUID } = require("node:crypto");
-const { mkdtemp, rm } = require("node:fs/promises");
+const { createHash, randomUUID } = require("node:crypto");
+const { createReadStream } = require("node:fs");
+const { mkdir, mkdtemp, readdir, rm, stat } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
@@ -107,6 +108,37 @@ function assertDynamicReceiptSection(receipt, field, label) {
   }
 }
 
+async function fileSha256(filePath) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function listPrivateObjects(rootDirectory) {
+  const objects = [];
+  const visit = async (directory) => {
+    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    )) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(absolutePath);
+      else {
+        if (!entry.isFile() || entry.isSymbolicLink()) {
+          throw new Error("POL-22 私有文件备份发现非普通文件");
+        }
+        const metadata = await stat(absolutePath);
+        objects.push({
+          objectKey: path.relative(rootDirectory, absolutePath).split(path.sep).join("/"),
+          sha256: await fileSha256(absolutePath),
+          sizeBytes: metadata.size
+        });
+      }
+    }
+  };
+  await visit(rootDirectory);
+  return objects;
+}
+
 async function writeFinalDynamicReceipt(
   receipt,
   { cleanup, write = (chunk) => process.stdout.write(chunk) }
@@ -124,8 +156,8 @@ async function writeFinalDynamicReceipt(
   assertDynamicReceiptSection(receipt, "unknownOwnershipBlockers", "unknown ownership blockers");
   assertDynamicReceiptSection(receipt, "mixedOwnershipBlockers", "mixed ownership blockers");
   if (
-    receipt.backupRestore?.database !== "passed" ||
-    receipt.backupRestore?.privateFiles !== "passed" ||
+    receipt.backupRestore?.database?.status !== "passed" ||
+    receipt.backupRestore?.privateFiles?.status !== "passed" ||
     receipt.backupRestore?.artifactsVerified !== true
   ) {
     throw new Error("POL-22 动态收据备份恢复验证无效");
@@ -256,7 +288,120 @@ async function main() {
     const prisma = new PrismaClient();
     try {
       finalReceipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity, {
-        trustedRunner: true
+        trustedRunner: true,
+        createVerifiedBackupRestore: async ({
+          storageRoot,
+          sourceCounts,
+          migrationCount,
+          migrationHead
+        }) => {
+          const containerDumpPath = `/tmp/pol22-${suffix}.dump`;
+          const databaseDumpPath = path.join(temporaryRoot, "database.dump");
+          const restoreDatabaseName = "jiangkong_pol22_zeroing_restore";
+          const privateArchivePath = path.join(temporaryRoot, "private-files.tar");
+          const privateRestoreRoot = path.join(temporaryRoot, "private-files-restored");
+          const capturedAt = new Date().toISOString();
+          await command(
+            docker,
+            ["exec", containerName, "pg_dump", "-U", "jiangkong", "-d", databaseName, "-Fc", "-f", containerDumpPath],
+            { env: dockerEnvironment, timeoutMs: 5 * 60 * 1000 }
+          );
+          await command(
+            docker,
+            ["cp", `${containerName}:${containerDumpPath}`, databaseDumpPath],
+            { env: dockerEnvironment, timeoutMs: 60_000 }
+          );
+          await command(
+            docker,
+            ["exec", containerName, "createdb", "-U", "jiangkong", restoreDatabaseName],
+            { env: dockerEnvironment, timeoutMs: 60_000 }
+          );
+          await command(
+            docker,
+            ["exec", containerName, "pg_restore", "--exit-on-error", "--no-owner", "-U", "jiangkong", "-d", restoreDatabaseName, containerDumpPath],
+            { env: dockerEnvironment, timeoutMs: 5 * 60 * 1000 }
+          );
+          const restoreUrl = new URL(databaseUrl);
+          restoreUrl.pathname = `/${restoreDatabaseName}`;
+          const restoredPrisma = new PrismaClient({
+            datasources: { db: { url: restoreUrl.toString() } }
+          });
+          let restoredEvidence;
+          try {
+            const restoredRows = await restoredPrisma.$queryRawUnsafe(
+              `SELECT
+                 (SELECT COUNT(*)::int FROM "User") AS "users",
+                 (SELECT COUNT(*)::int FROM "Project") AS "projects",
+                 (SELECT COUNT(*)::int FROM "Contract") AS "contracts",
+                 (SELECT COUNT(*)::int FROM "ContractVersion") AS "versions",
+                 (SELECT COUNT(*)::int FROM "ContractDraftAttachment") AS "attachments",
+                 (SELECT COUNT(*)::int FROM "FileObject") AS "files",
+                 (SELECT COUNT(*)::int FROM "AuditLog") AS "audits",
+                 (SELECT COUNT(*)::int FROM "_prisma_migrations") AS "migrations",
+                 (SELECT "migration_name" FROM "_prisma_migrations" ORDER BY "finished_at" DESC NULLS LAST, "started_at" DESC LIMIT 1) AS "migrationHead"`
+            );
+            restoredEvidence = restoredRows[0];
+          } finally {
+            await restoredPrisma.$disconnect();
+          }
+          const countKeys = [
+            "users",
+            "projects",
+            "contracts",
+            "versions",
+            "attachments",
+            "files",
+            "audits"
+          ];
+          if (
+            restoredEvidence.migrations !== migrationCount ||
+            restoredEvidence.migrationHead !== migrationHead ||
+            countKeys.some((key) => restoredEvidence[key] !== sourceCounts[key])
+          ) {
+            throw new Error("POL-22 PostgreSQL 恢复库与源库计数或迁移坐标不一致");
+          }
+          const sourceObjects = await listPrivateObjects(storageRoot);
+          if (sourceObjects.length === 0) throw new Error("POL-22 私有文件备份源对象为空");
+          await command("/usr/bin/tar", ["-cf", privateArchivePath, "-C", storageRoot, "."]);
+          await mkdir(privateRestoreRoot, { recursive: true });
+          await command("/usr/bin/tar", ["-xf", privateArchivePath, "-C", privateRestoreRoot]);
+          const restoredObjects = await listPrivateObjects(privateRestoreRoot);
+          if (JSON.stringify(restoredObjects) !== JSON.stringify(sourceObjects)) {
+            throw new Error("POL-22 私有文件独立恢复目录逐对象比对失败");
+          }
+          const restoreVerifiedAt = new Date().toISOString();
+          return {
+            capturedAt,
+            databaseBackup: {
+              location: databaseDumpPath,
+              sha256: await fileSha256(databaseDumpPath),
+              format: "postgresql_custom",
+              capturedAt,
+              restoreVerifiedAt,
+              restoreTarget: restoreDatabaseName,
+              restoreStatus: "passed",
+              restoreEvidence: {
+                status: "passed",
+                migrationCount: restoredEvidence.migrations,
+                migrationHead: restoredEvidence.migrationHead,
+                tableCounts: Object.fromEntries(
+                  Object.entries(restoredEvidence).filter(([key]) => !["migrations", "migrationHead"].includes(key))
+                ),
+                commands: ["pg_dump -Fc", "createdb", "pg_restore --exit-on-error"]
+              }
+            },
+            privateFileBackup: {
+              location: privateArchivePath,
+              sha256: await fileSha256(privateArchivePath),
+              capturedAt,
+              restoreVerifiedAt,
+              restoreTarget: privateRestoreRoot,
+              restoreStatus: "passed",
+              sourceObjects,
+              restoreEvidence: { status: "passed", objects: restoredObjects }
+            }
+          };
+        }
       });
     } finally {
       await prisma.$disconnect();

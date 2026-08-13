@@ -44,6 +44,25 @@ async function fileSha256(filePath) {
 
 async function verifyBackupArtifacts(receipt) {
   if (!receipt) return;
+  if (
+    receipt.databaseBackup?.format !== "postgresql_custom" ||
+    receipt.databaseBackup?.restoreEvidence?.status !== "passed" ||
+    !Number.isInteger(receipt.databaseBackup?.restoreEvidence?.migrationCount) ||
+    typeof receipt.databaseBackup?.restoreEvidence?.migrationHead !== "string"
+  ) {
+    throw new Error("数据库备份缺少真实 PostgreSQL 恢复证据");
+  }
+  const sourceObjects = receipt.privateFileBackup?.sourceObjects;
+  const restoredObjects = receipt.privateFileBackup?.restoreEvidence?.objects;
+  if (
+    receipt.privateFileBackup?.restoreEvidence?.status !== "passed" ||
+    !Array.isArray(sourceObjects) ||
+    sourceObjects.length === 0 ||
+    !Array.isArray(restoredObjects) ||
+    JSON.stringify(sourceObjects) !== JSON.stringify(restoredObjects)
+  ) {
+    throw new Error("私有文件备份缺少逐对象恢复证据");
+  }
   for (const [field, label] of [
     ["databaseBackup", "数据库备份"],
     ["privateFileBackup", "私有文件备份"]

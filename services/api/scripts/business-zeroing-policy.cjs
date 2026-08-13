@@ -259,6 +259,13 @@ const BUSINESS_ZEROING_LOGICAL_RELATIONS = Object.freeze([
     parentColumns: Object.freeze(["companyEntityId", "versionNo"])
   }),
   ...[
+    ["ContractVersion", "contractId", "Contract", "id"],
+    ["PaymentTermsVersion", "contractVersionId", "ContractVersion", "id"],
+    ["PaymentTermsStage", "paymentTermsVersionId", "PaymentTermsVersion", "id"],
+    ["SettlementLine", "settlementId", "Settlement", "id"],
+    ["PaymentExecutionAllocation", "paymentExecutionId", "PaymentExecution", "id"],
+    ["InvoiceLine", "invoiceRecordId", "InvoiceRecord", "id"],
+    ["ExpenseClaimLine", "expenseClaimId", "ExpenseClaim", "id"],
     ["ContractBill", "contractVersionId", "ContractVersion", "id"],
     ["ContractBillRow", "contractBillId", "ContractBill", "id"]
   ].map(([childTable, childColumn, parentTable, parentColumn]) =>

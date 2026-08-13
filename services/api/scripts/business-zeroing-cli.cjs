@@ -90,14 +90,66 @@ function assertTrustedLauncherCapability(capability) {
   assertCleanNodeRuntime();
 }
 
+function assertTrustedLauncherParent() {
+  const launcherPath = realpathSync(join(__dirname, "run-business-zeroing-cli.sh"));
+  invariant(
+    process.env.POL22_LAUNCHER_PARENT_PID === String(process.ppid),
+    "归零工具启动器父进程绑定无效"
+  );
+  const capabilityFd = Number(process.env.POL22_LAUNCHER_CAPABILITY_FD);
+  invariant(
+    Number.isInteger(capabilityFd) && capabilityFd >= 3,
+    "归零工具缺少启动器匿名 capability FD"
+  );
+  const metadata = fstatSync(capabilityFd);
+  invariant(metadata.isFile(), "启动器 capability FD 必须是受限普通文件");
+  const capabilityPath = process.env.POL22_LAUNCHER_CAPABILITY_PATH;
+  invariant(typeof capabilityPath === "string" && capabilityPath, "启动器 capability 路径缺失");
+  const pathMetadata = lstatSync(capabilityPath);
+  invariant(
+    !pathMetadata.isSymbolicLink() &&
+      pathMetadata.isFile() &&
+      (pathMetadata.mode & 0o777) === 0o600 &&
+      pathMetadata.dev === metadata.dev &&
+      pathMetadata.ino === metadata.ino,
+    "启动器 capability 必须是与 FD 一致的 0600 普通文件"
+  );
+  const capability = readFileSync(capabilityFd, "utf8").trim();
+  invariant(
+    capability === `${process.ppid}:${launcherPath}`,
+    "归零工具启动器 capability 与父进程或受指纹路径不一致"
+  );
+  closeSync(capabilityFd);
+  delete process.env.POL22_LAUNCHER_PARENT_PID;
+  delete process.env.POL22_LAUNCHER_CAPABILITY_FD;
+  delete process.env.POL22_LAUNCHER_CAPABILITY_PATH;
+}
+
 function runTrustedCommand(command, { entrypoint, argv }) {
   assertCleanNodeRuntime();
-  invariant(process.argv[1] === "-", "受信启动器必须使用固定 stdin dispatcher");
   invariant(command && typeof command.runMain === "function", "受信启动器目标无效");
   invariant(typeof entrypoint === "string" && entrypoint.trim(), "受信启动器入口缺失");
   invariant(Array.isArray(argv), "受信启动器参数无效");
   process.argv = [process.argv[0], entrypoint, ...argv];
   return command.runMain(TRUSTED_LAUNCHER_CAPABILITY);
+}
+
+async function dispatchTrustedLauncher(argv) {
+  assertCleanNodeRuntime();
+  assertTrustedLauncherParent();
+  const [commandName, ...commandArguments] = argv;
+  const entrypoints = {
+    inspect: "inspect-test-business-zeroing.cjs",
+    execute: "execute-test-business-zeroing.cjs",
+    verify: "verify-test-business-zeroing.cjs",
+    sign: "sign-business-zeroing-input.cjs",
+    dynamic: "../prisma/run-business-zeroing-local.cjs"
+  };
+  const relativeEntrypoint = entrypoints[commandName];
+  invariant(relativeEntrypoint, `归零工具启动器不支持命令：${commandName ?? ""}`);
+  const entrypoint = resolve(__dirname, relativeEntrypoint);
+  const command = require(entrypoint);
+  return runTrustedCommand(command, { entrypoint, argv: commandArguments });
 }
 
 function parseOptions(argv, definition) {
@@ -458,7 +510,7 @@ function updateRuntimeFileHash(hash, label, filePath, { rejectSymlink = false } 
   hash.update(Buffer.from([0]));
 }
 
-function updateRuntimeDirectoryHash(hash, label, directoryPath) {
+function updateRuntimeDirectoryHash(hash, label, directoryPath, ignoredNames = new Set()) {
   const canonicalRoot = realpathSync(directoryPath);
   const rootMetadata = lstatSync(canonicalRoot);
   invariant(
@@ -469,6 +521,7 @@ function updateRuntimeDirectoryHash(hash, label, directoryPath) {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
       (left, right) => left.name.localeCompare(right.name)
     )) {
+      if (ignoredNames.has(entry.name)) continue;
       const absolutePath = join(directory, entry.name);
       const metadata = lstatSync(absolutePath);
       invariant(
@@ -502,17 +555,75 @@ function resolveRuntimeExecutionFiles() {
   const generatedClientEntrypoint = require.resolve(".prisma/client/default", {
     paths: [prismaClientDirectory]
   });
+  const apiManifest = JSON.parse(readFileSync(join(apiRoot, "package.json"), "utf8"));
+  const locatePackage = (packageName, searchPaths, required) => {
+    let entrypoint;
+    try {
+      entrypoint = require.resolve(packageName, { paths: searchPaths });
+    } catch (error) {
+      if (!required) return null;
+      throw error;
+    }
+    let current = realpathSync(dirname(entrypoint));
+    for (;;) {
+      const manifestPath = join(current, "package.json");
+      try {
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (manifest.name === packageName) return { directory: current, manifest };
+      } catch {}
+      const parent = dirname(current);
+      invariant(parent !== current, `无法定位实际运行依赖：${packageName}`);
+      current = parent;
+    }
+  };
+  const queue = Object.keys(apiManifest.dependencies ?? {})
+    .filter((packageName) => packageName !== "@prisma/client")
+    .map((packageName) => ({ packageName, searchPaths: [apiRoot], required: true }));
+  const dependencyDirectories = [];
+  const visitedDirectories = new Set();
+  while (queue.length > 0) {
+    const request = queue.shift();
+    const located = locatePackage(
+      request.packageName,
+      request.searchPaths,
+      request.required
+    );
+    if (!located || visitedDirectories.has(located.directory)) continue;
+    visitedDirectories.add(located.directory);
+    dependencyDirectories.push(located.directory);
+    const requiredDependencies = Object.keys(located.manifest.dependencies ?? {});
+    const optionalDependencies = new Set(
+      Object.keys(located.manifest.optionalDependencies ?? {})
+    );
+    const peerDependencies = Object.keys(located.manifest.peerDependencies ?? {});
+    for (const packageName of new Set([
+      ...requiredDependencies,
+      ...optionalDependencies,
+      ...peerDependencies
+    ])) {
+      if (packageName === "@prisma/client") continue;
+      queue.push({
+        packageName,
+        searchPaths: [located.directory, apiRoot],
+        required:
+          requiredDependencies.includes(packageName) &&
+          !optionalDependencies.has(packageName)
+      });
+    }
+  }
   return {
     nodeExecutable: process.execPath,
     prismaClientDirectory,
-    generatedClientDirectory: realpathSync(dirname(generatedClientEntrypoint))
+    generatedClientDirectory: realpathSync(dirname(generatedClientEntrypoint)),
+    dependencyDirectories
   };
 }
 
 function hashRuntimeExecutionFiles({
   nodeExecutable,
   prismaClientDirectory,
-  generatedClientDirectory
+  generatedClientDirectory,
+  dependencyDirectories = []
 } = resolveRuntimeExecutionFiles()) {
   const hash = createHash("sha256");
   updateRuntimeFileHash(hash, "Node executable", nodeExecutable, {
@@ -520,6 +631,14 @@ function hashRuntimeExecutionFiles({
   });
   updateRuntimeDirectoryHash(hash, "@prisma/client", prismaClientDirectory);
   updateRuntimeDirectoryHash(hash, "Prisma generated client and query engine", generatedClientDirectory);
+  for (const directory of [...dependencyDirectories].sort()) {
+    updateRuntimeDirectoryHash(
+      hash,
+      "API production dependency",
+      directory,
+      new Set(["node_modules"])
+    );
+  }
   return hash.digest("hex");
 }
 
@@ -584,7 +703,6 @@ module.exports = {
   readTrustedWriteFreezeLease,
   readTrustedExecutionIdentity,
   reserveJsonOutput,
-  runTrustedCommand,
   assertCleanRepositoryStatus,
   TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
   TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,
@@ -595,3 +713,12 @@ module.exports = {
   validateTrustedExecutionIdentity,
   safeFailure
 };
+
+if (require.main === module) {
+  dispatchTrustedLauncher(process.argv.slice(2)).catch((error) => {
+    process.stderr.write(
+      `归零工具受信启动器已安全阻断：${error instanceof Error ? error.message : String(error)}\n`
+    );
+    process.exitCode = 1;
+  });
+}
