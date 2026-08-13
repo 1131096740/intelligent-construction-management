@@ -257,7 +257,19 @@ const BUSINESS_ZEROING_LOGICAL_RELATIONS = Object.freeze([
     childColumns: Object.freeze(["id", "currentVersionNo"]),
     parentTable: "CompanyEntityVersion",
     parentColumns: Object.freeze(["companyEntityId", "versionNo"])
-  })
+  }),
+  ...[
+    ["ContractBill", "contractVersionId", "ContractVersion", "id"],
+    ["ContractBillRow", "contractBillId", "ContractBill", "id"]
+  ].map(([childTable, childColumn, parentTable, parentColumn]) =>
+    Object.freeze({
+      childTable,
+      childColumn,
+      parentTable,
+      parentColumn,
+      protectsChildLifecycle: true
+    })
+  )
 ]);
 
 module.exports = {

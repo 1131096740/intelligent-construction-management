@@ -486,7 +486,10 @@ async function loadLogicalRelationEvidence(client, schema) {
         childTable: relation.childTable,
         childPrimaryKey: row.childPrimaryKey,
         parentTable: relation.parentTable,
-        parentPrimaryKey: row.parentPrimaryKey
+        parentPrimaryKey: row.parentPrimaryKey,
+        ...(relation.protectsChildLifecycle === true
+          ? { protectsChildLifecycle: true }
+          : {})
       });
     }
     const missing = await query(

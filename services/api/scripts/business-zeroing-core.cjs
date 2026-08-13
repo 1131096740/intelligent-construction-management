@@ -20,14 +20,23 @@ const PREFORMAL_STATUS_ALLOWLIST = new Set([
   "requested",
   "reserved"
 ]);
-const FORMAL_TIMESTAMP_FIELD_PATTERN =
-  /(?:activated|approved|archived|closed|completed|confirmed|effective|executed|paid|published|sealed|signed|submitted|voided)At$/iu;
-const FORMAL_BOOLEAN_FIELDS = Object.freeze([
-  "isArchived",
-  "isConfirmed",
-  "isEffective",
-  "isFormal"
+const FORMAL_LIFECYCLE_FIELD_TOKENS = new Set([
+  "active", "activated", "approval", "approved", "archive", "archived",
+  "close", "closed", "complete", "completed", "confirm", "confirmed",
+  "effective", "enable", "enabled", "end", "ended", "execute", "executed",
+  "expire", "expired", "final", "formal", "freeze", "frozen", "invalid",
+  "invalidated", "lock", "locked", "paid", "publish", "published", "release",
+  "released", "repaid", "seal", "sealed", "sign", "signed", "submit",
+  "submitted", "valid", "void", "voided"
 ]);
+
+function isFormalLifecycleField(field) {
+  return String(field)
+    .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .some((token) => FORMAL_LIFECYCLE_FIELD_TOKENS.has(token));
+}
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -431,8 +440,7 @@ function selectFormalObservationFields(row) {
         field === "status" ||
         field === "code" ||
         field === "formalCode" ||
-        FORMAL_TIMESTAMP_FIELD_PATTERN.test(field) ||
-        FORMAL_BOOLEAN_FIELDS.includes(field)
+        isFormalLifecycleField(field)
     )
   );
 }
@@ -457,15 +465,19 @@ function observedFormalProtection(tableName, row) {
       return { field, observedClassification: "non_empty_formal_number" };
     }
   }
-  for (const field of Object.keys(row).filter((key) => FORMAL_TIMESTAMP_FIELD_PATTERN.test(key))) {
-    if (row[field] !== null && row[field] !== undefined) {
-      return { field, observedClassification: "formal_lifecycle_timestamp_present" };
-    }
+  if (["BusinessDailySequence", "ContractNumberTombstone"].includes(tableName)) {
+    return null;
   }
-  for (const field of FORMAL_BOOLEAN_FIELDS) {
-    if (row[field] === true) {
-      return { field, observedClassification: "formal_lifecycle_flag_true" };
-    }
+  for (const field of Object.keys(row).filter(isFormalLifecycleField)) {
+    const value = row[field];
+    if (value === null || value === undefined || value === false) continue;
+    return {
+      field,
+      observedClassification:
+        value === true
+          ? "formal_lifecycle_flag_true"
+          : "formal_or_unknown_lifecycle_value_present"
+    };
   }
   return null;
 }
@@ -536,6 +548,8 @@ function reportStateFingerprint(report) {
     testProvenanceVerification: report.testProvenanceVerification,
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
+    trustedWriteFreezePublicKeySha256:
+      report.trustedWriteFreezePublicKeySha256,
     objectDeletionManifest: report.objectDeletionManifest,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
     preservationWhitelist: report.preservationWhitelist,
@@ -574,6 +588,7 @@ function buildPreflightReport({
   testProvenance,
   testProvenancePublicKey,
   trustedTestProvenancePublicKeySha256,
+  trustedWriteFreezePublicKeySha256,
   generatedAt,
   allowMissingDeletedDecisions = false
 }) {
@@ -594,6 +609,10 @@ function buildPreflightReport({
   invariant(
     /^[0-9a-f]{64}$/u.test(trustedTestProvenancePublicKeySha256 ?? ""),
     "固定的独立测试来源公钥指纹无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(trustedWriteFreezePublicKeySha256 ?? ""),
+    "固定的外部写冻结租约公钥指纹无效"
   );
   const generatedAtEpoch = new Date(generatedAt).getTime();
   invariant(
@@ -974,6 +993,24 @@ function buildPreflightReport({
         parentPrimaryKey: reference.parentPrimaryKey
       });
     }
+    if (
+      reference.protectsChildLifecycle === true &&
+      childDisposition === "delete" &&
+      parentDisposition !== "delete"
+    ) {
+      addBlocker(
+        "FORMAL_AGGREGATE_CHILD_PROTECTED",
+        "正式、保留或未知聚合父记录的组成记录不得作为独立测试候选删除",
+        {
+          foreignKey: reference.name,
+          childTable: reference.childTable,
+          childPrimaryKey: reference.childPrimaryKey,
+          parentTable: reference.parentTable,
+          parentPrimaryKey: reference.parentPrimaryKey,
+          parentDisposition: parentDisposition ?? "unknown"
+        }
+      );
+    }
   }
 
   for (const conflict of inventory.ownershipConflicts ?? []) {
@@ -1060,6 +1097,7 @@ function buildPreflightReport({
     testProvenanceEnvelopeSha256: testProvenance ? sha256(testProvenance) : null,
     testProvenanceVerification,
     trustedTestProvenancePublicKeySha256,
+    trustedWriteFreezePublicKeySha256,
     backupReceiptSha256: backup?.receiptSha256,
     backupRecovery: backup
       ? {
@@ -1154,6 +1192,10 @@ function verifyPreflightReport(report) {
   invariant(
     /^[0-9a-f]{64}$/u.test(report.trustedTestProvenancePublicKeySha256 ?? ""),
     "归零预检报告固定测试来源信任锚无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(report.trustedWriteFreezePublicKeySha256 ?? ""),
+    "归零预检报告固定写冻结租约信任锚无效"
   );
   invariant(
     report.testProvenanceVerification === null ||
@@ -1342,6 +1384,11 @@ function assertFreshReport(original, fresh, label) {
     `${label}固定测试来源信任锚已漂移`
   );
   invariant(
+    fresh.trustedWriteFreezePublicKeySha256 ===
+      original.trustedWriteFreezePublicKeySha256,
+    `${label}固定写冻结租约信任锚已漂移`
+  );
+  invariant(
     fresh.objectDeletionManifestSha256 === original.objectDeletionManifestSha256,
     `${label}冻结对象清单已漂移`
   );
@@ -1374,6 +1421,8 @@ async function createDryRunReceipt({ report, currentReport }) {
     testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
+    trustedWriteFreezePublicKeySha256:
+      report.trustedWriteFreezePublicKeySha256,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
     expectedReleasedNumbers: report.expectedReleasedNumbers,
     steps: [
@@ -1463,7 +1512,9 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
     "reportSha256",
     "schemaVersion",
     "testProvenanceEnvelopeSha256",
-    "trustedTestProvenancePublicKeySha256"
+    "trustedTestProvenancePublicKeySha256",
+    "trustedWriteFreezePublicKeySha256",
+    "writeFreezeLeaseEnvelopeSha256"
   ];
   invariant(
     JSON.stringify(Object.keys(payload).sort()) === JSON.stringify(payloadFields),
@@ -1515,6 +1566,16 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
       "固定测试来源信任锚"
     ],
     [
+      "trustedWriteFreezePublicKeySha256",
+      report.trustedWriteFreezePublicKeySha256,
+      "固定写冻结租约信任锚"
+    ],
+    [
+      "writeFreezeLeaseEnvelopeSha256",
+      args.writeFreezeLeaseEnvelopeSha256 ?? sha256(args.writeFreezeLeaseEnvelope),
+      "外部写冻结租约"
+    ],
+    [
       "objectDeletionManifestSha256",
       report.objectDeletionManifestSha256,
       "冻结对象清单"
@@ -1532,7 +1593,138 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
     issuedAt: payload.issuedAt,
     expiresAt: payload.expiresAt,
     publicKeySha256: sha256Bytes(publicKeyDer),
-    payloadSha256: sha256Bytes(payloadBytes)
+    payloadSha256: sha256Bytes(payloadBytes),
+    writeFreezeLeaseEnvelopeSha256:
+      payload.writeFreezeLeaseEnvelopeSha256,
+    trustedWriteFreezePublicKeySha256:
+      payload.trustedWriteFreezePublicKeySha256
+  };
+}
+
+function validateWriteFreezeLeaseEnvelope(
+  envelope,
+  report,
+  args,
+  publicKeyInput,
+  expectedPublicKeySha256,
+  now = new Date()
+) {
+  invariant(
+    JSON.stringify(Object.keys(envelope ?? {}).sort()) ===
+      JSON.stringify(["algorithm", "payload", "schemaVersion", "signature"]),
+    "外部写冻结租约工件字段不精确"
+  );
+  invariant(envelope.schemaVersion === 1, "外部写冻结租约工件版本无效");
+  invariant(envelope.algorithm === "Ed25519", "外部写冻结租约必须使用 Ed25519");
+  const payloadBytes = decodeBase64(envelope.payload, "外部写冻结租约 payload");
+  const signature = decodeBase64(envelope.signature, "外部写冻结租约签名");
+  let publicKey;
+  try {
+    publicKey =
+      publicKeyInput?.type === "public"
+        ? publicKeyInput
+        : crypto.createPublicKey(publicKeyInput);
+  } catch {
+    throw new Error("外部写冻结租约公钥无效");
+  }
+  invariant(publicKey.asymmetricKeyType === "ed25519", "外部写冻结租约公钥必须是 Ed25519");
+  const publicKeyDer = publicKey.export({ type: "spki", format: "der" });
+  const publicKeySha256 = sha256Bytes(publicKeyDer);
+  invariant(
+    /^[0-9a-f]{64}$/u.test(expectedPublicKeySha256 ?? "") &&
+      publicKeySha256 === expectedPublicKeySha256 &&
+      expectedPublicKeySha256 === report.trustedWriteFreezePublicKeySha256,
+    "外部写冻结租约公钥与固定信任锚不匹配"
+  );
+  invariant(
+    crypto.verify(null, payloadBytes, publicKey, signature),
+    "外部写冻结租约签名验证失败"
+  );
+  let payload;
+  try {
+    payload = JSON.parse(payloadBytes.toString("utf8"));
+  } catch {
+    throw new Error("外部写冻结租约 payload 不是合法 JSON");
+  }
+  const payloadFields = [
+    "batchId",
+    "candidateSha256",
+    "environment",
+    "expiresAt",
+    "fenceToken",
+    "generation",
+    "holderDeploymentIdentitySha256",
+    "holderExecutorIdentity",
+    "issuedAt",
+    "issuer",
+    "leaseId",
+    "objectDeletionManifestSha256",
+    "reportSha256",
+    "revokedAt",
+    "schemaVersion",
+    "scopes",
+    "status"
+  ];
+  invariant(
+    payload?.schemaVersion === 1 &&
+      JSON.stringify(Object.keys(payload).sort()) === JSON.stringify(payloadFields),
+    "外部写冻结租约 payload 字段不精确"
+  );
+  invariant(
+    typeof payload.leaseId === "string" && payload.leaseId.trim().length >= 8,
+    "外部写冻结租约编号无效"
+  );
+  invariant(typeof payload.issuer === "string" && payload.issuer.trim(), "外部写冻结租约签发者缺失");
+  invariant(payload.status === "active" && payload.revokedAt === null, "外部写冻结租约已失效或撤销");
+  invariant(
+    Number.isInteger(payload.generation) && payload.generation >= 1 &&
+      /^[0-9a-f]{64}$/u.test(payload.fenceToken ?? ""),
+    "外部写冻结租约代际或 fence token 无效"
+  );
+  invariant(
+    JSON.stringify(payload.scopes) ===
+      JSON.stringify(["database_business_writes", "private_object_writes"]),
+    "外部写冻结租约未覆盖数据库业务写和私有对象写"
+  );
+  const issuedAt = new Date(payload.issuedAt).getTime();
+  const expiresAt = new Date(payload.expiresAt).getTime();
+  invariant(
+    typeof payload.issuedAt === "string" &&
+      Number.isFinite(issuedAt) &&
+      new Date(issuedAt).toISOString() === payload.issuedAt &&
+      issuedAt <= now.getTime(),
+    "外部写冻结租约签发时间无效"
+  );
+  invariant(
+    typeof payload.expiresAt === "string" &&
+      Number.isFinite(expiresAt) &&
+      new Date(expiresAt).toISOString() === payload.expiresAt &&
+      expiresAt >= now.getTime() &&
+      expiresAt <= new Date(report.expiresAt).getTime(),
+    "外部写冻结租约已过期或超出预检窗口"
+  );
+  for (const [field, expected, label] of [
+    ["environment", report.environment, "环境"],
+    ["batchId", args.batchId, "批次"],
+    ["reportSha256", report.reportSha256, "报告"],
+    ["candidateSha256", report.candidateSha256, "候选"],
+    ["objectDeletionManifestSha256", report.objectDeletionManifestSha256, "对象清单"],
+    ["holderDeploymentIdentitySha256", report.deploymentIdentitySha256, "部署身份"],
+    ["holderExecutorIdentity", report.executorIdentity, "执行主体"]
+  ]) {
+    invariant(payload[field] === expected, `外部写冻结租约${label}绑定不匹配`);
+  }
+  return {
+    leaseId: payload.leaseId.trim(),
+    issuer: payload.issuer.trim(),
+    issuedAt: payload.issuedAt,
+    expiresAt: payload.expiresAt,
+    generation: payload.generation,
+    fenceToken: payload.fenceToken,
+    publicKeySha256,
+    payloadSha256: sha256Bytes(payloadBytes),
+    envelopeSha256: sha256(envelope),
+    scopes: payload.scopes
   };
 }
 
@@ -1591,7 +1783,12 @@ function validateApplyArguments(args, report, now = new Date()) {
   );
 }
 
-function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
+function validateExecutionReceipt(
+  receipt,
+  before,
+  authorizationPublicKey,
+  writeFreezePublicKey
+) {
   verifyPreflightReport(before);
   invariant(receipt && typeof receipt === "object", "执行收据无效");
   const { receiptSha256, ...body } = receipt;
@@ -1602,6 +1799,41 @@ function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
   invariant(
     receipt.schemaVersion === 1 && receipt.status === "completed" && receipt.executed === true,
     "执行收据未证明受控执行完成"
+  );
+  invariant(
+    JSON.stringify(Object.keys(receipt).sort()) ===
+      JSON.stringify([
+        "authorization",
+        "authorizationEnvelope",
+        "batchId",
+        "candidateSha256",
+        "codeSha",
+        "completedAt",
+        "deletedObjectCount",
+        "deletedRecordCount",
+        "deploymentIdentitySha256",
+        "environment",
+        "executed",
+        "executionCodeSha256",
+        "executorIdentity",
+        "objectDeletionManifestSha256",
+        "objectDispositions",
+        "objectPostcheck",
+        "postcheck",
+        "receiptSha256",
+        "reportSha256",
+        "resetNumberRuleCount",
+        "schemaVersion",
+        "startedAt",
+        "status",
+        "testProvenanceEnvelopeSha256",
+        "trustedTestProvenancePublicKeySha256",
+        "trustedWriteFreezePublicKeySha256",
+        "writeFreezeLease",
+        "writeFreezeLeaseEnvelope",
+        "writeFreezeLeaseEnvelopeSha256"
+      ]),
+    "执行收据字段不精确"
   );
   for (const [field, expected, label] of [
     ["environment", before.environment, "环境"],
@@ -1622,6 +1854,11 @@ function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
       "固定测试来源信任锚"
     ],
     [
+      "trustedWriteFreezePublicKeySha256",
+      before.trustedWriteFreezePublicKeySha256,
+      "固定写冻结租约信任锚"
+    ],
+    [
       "objectDeletionManifestSha256",
       before.objectDeletionManifestSha256,
       "冻结对象清单"
@@ -1629,6 +1866,46 @@ function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
   ]) {
     invariant(receipt[field] === expected, `执行收据${label}绑定不匹配`);
   }
+  const expectedObjects = before.deletionCandidates.filter(
+    (item) => item.table === "FileObject"
+  );
+  invariant(
+    receipt.deletedRecordCount === before.deletionCandidates.length,
+    "执行收据删除记录数量与批准候选不匹配"
+  );
+  invariant(
+    receipt.deletedObjectCount === expectedObjects.length,
+    "执行收据对象删除数量与冻结清单不匹配"
+  );
+  invariant(
+    receipt.resetNumberRuleCount === before.numberResets.length,
+    "执行收据编号复位数量与批准清单不匹配"
+  );
+  invariant(
+    Array.isArray(receipt.objectDispositions) &&
+      receipt.objectDispositions.length === expectedObjects.length,
+    "执行收据对象 disposition 范围不完整"
+  );
+  const dispositionByScope = new Map();
+  for (const disposition of receipt.objectDispositions) {
+    const key = `${disposition?.bucket}:${disposition?.objectKey}`;
+    invariant(!dispositionByScope.has(key), "执行收据对象 disposition 重复");
+    dispositionByScope.set(key, disposition);
+  }
+  for (const file of expectedObjects) {
+    const disposition = dispositionByScope.get(`${file.bucket}:${file.objectKey}`);
+    invariant(disposition?.businessType === file.businessType, "执行收据对象 disposition 业务类型不匹配");
+    validateObjectDeletionDisposition(file, disposition);
+  }
+  invariant(
+    receipt.trustedWriteFreezePublicKeySha256 ===
+      before.trustedWriteFreezePublicKeySha256 &&
+      receipt.writeFreezeLease?.publicKeySha256 ===
+        before.trustedWriteFreezePublicKeySha256 &&
+      receipt.writeFreezeLease?.envelopeSha256 ===
+        receipt.writeFreezeLeaseEnvelopeSha256,
+    "执行收据外部写冻结租约验证结果不匹配"
+  );
   invariant(typeof receipt.completedAt === "string", "执行收据完成时间缺失");
   invariant(
     typeof receipt.startedAt === "string" &&
@@ -1639,13 +1916,36 @@ function validateExecutionReceipt(receipt, before, authorizationPublicKey) {
   const authorization = validateAuthorizationEnvelope(
     receipt.authorizationEnvelope,
     before,
-    { batchId: receipt.batchId },
+    {
+      batchId: receipt.batchId,
+      writeFreezeLeaseEnvelopeSha256:
+        receipt.writeFreezeLeaseEnvelopeSha256
+    },
     authorizationPublicKey,
     new Date(receipt.completedAt)
   );
   invariant(
     sha256(authorization) === sha256(receipt.authorization),
     "执行收据独立授权验证结果不匹配"
+  );
+  invariant(
+    receipt.writeFreezeLeaseEnvelopeSha256 ===
+      authorization.writeFreezeLeaseEnvelopeSha256 &&
+      receipt.trustedWriteFreezePublicKeySha256 ===
+        authorization.trustedWriteFreezePublicKeySha256,
+    "执行收据外部写冻结租约与独立授权不匹配"
+  );
+  const writeFreezeLease = validateWriteFreezeLeaseEnvelope(
+    receipt.writeFreezeLeaseEnvelope,
+    before,
+    { batchId: receipt.batchId },
+    writeFreezePublicKey,
+    before.trustedWriteFreezePublicKeySha256,
+    new Date(receipt.completedAt)
+  );
+  invariant(
+    sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
+    "执行收据外部写冻结租约签名验证结果不匹配"
   );
   validateObjectRescan(before, receipt.objectPostcheck);
   invariant(receipt.postcheck?.status === "passed", "执行收据后置核验未通过");
@@ -1707,8 +2007,15 @@ async function inspectDeletedObjectScopes(report, storage) {
 function validateObjectDeletionDisposition(file, disposition) {
   invariant(disposition && typeof disposition === "object", "精确对象删除未返回明确成功结果");
   invariant(disposition.objectKey === file.objectKey, "精确对象删除结果 key 不匹配");
+  const receiptFields = Object.hasOwn(disposition, "businessType") || Object.hasOwn(disposition, "bucket");
   if (file.objectSnapshot?.kind === "local_file") {
     invariant(
+      JSON.stringify(Object.keys(disposition).sort()) ===
+        JSON.stringify(
+          receiptFields
+            ? ["bucket", "businessType", "kind", "objectKey", "quarantineObjectKey", "status"]
+            : ["kind", "objectKey", "quarantineObjectKey", "status"]
+        ) &&
       disposition.kind === "local_quarantine" &&
         disposition.status === "object_key_removed_recovery_artifact_retained" &&
         typeof disposition.quarantineObjectKey === "string" &&
@@ -1717,6 +2024,12 @@ function validateObjectDeletionDisposition(file, disposition) {
     );
   } else if (file.objectSnapshot?.kind === "cos_versions") {
     invariant(
+      JSON.stringify(Object.keys(disposition).sort()) ===
+        JSON.stringify(
+          receiptFields
+            ? ["bucket", "businessType", "deletedVersionIds", "kind", "objectKey", "status"]
+            : ["deletedVersionIds", "kind", "objectKey", "status"]
+        ) &&
       disposition.kind === "cos_versions" &&
         disposition.status === "deleted_exact_versions" &&
         Array.isArray(disposition.deletedVersionIds),
@@ -1747,7 +2060,12 @@ function verifyPostcheck(
   verifyPreflightReport(after);
   invariant(before.status === "ready" && before.blockers.length === 0, "执行前预检报告未就绪");
   if (executionReceipt !== undefined) {
-    validateExecutionReceipt(executionReceipt, before, authorizationPublicKey);
+    validateExecutionReceipt(
+      executionReceipt,
+      before,
+      authorizationPublicKey,
+      options.writeFreezePublicKey
+    );
   }
   const finalObjectCheck =
     options.phase === "final" || executionReceipt !== undefined
@@ -1768,6 +2086,7 @@ function verifyPostcheck(
     ["decisionManifestSha256", "逐主键决定清单"],
     ["testProvenanceEnvelopeSha256", "独立测试来源工件"],
     ["trustedTestProvenancePublicKeySha256", "固定测试来源信任锚"],
+    ["trustedWriteFreezePublicKeySha256", "固定写冻结租约信任锚"],
     ["backupReceiptSha256", "备份恢复收据"]
   ]) {
     if (before[field] !== undefined && before[field] !== after[field]) {
@@ -1828,10 +2147,15 @@ async function executeBusinessZeroing({
   buildLockedPostcheckReport,
   buildPostcheckReport,
   persistReceipt,
+  verifyWriteFreezeLease,
   clock,
   now
 }) {
   invariant(typeof persistReceipt === "function", "受控执行必须配置独立执行收据持久化端");
+  invariant(
+    typeof verifyWriteFreezeLease === "function",
+    "受控执行必须配置外部写冻结租约实时验证端"
+  );
   const currentTime =
     typeof clock === "function"
       ? () => new Date(clock())
@@ -1840,6 +2164,21 @@ async function executeBusinessZeroing({
         : () => new Date();
   const startedAt = currentTime();
   const authorization = validateApplyArguments(args, report, startedAt);
+  const verifyActiveWriteFreeze = async () => {
+    const verified = await verifyWriteFreezeLease({
+      args,
+      report,
+      now: currentTime()
+    });
+    invariant(
+      verified &&
+        verified.envelopeSha256 === sha256(args.writeFreezeLeaseEnvelope) &&
+        verified.publicKeySha256 === report.trustedWriteFreezePublicKeySha256,
+      "外部写冻结租约实时验证结果与固定工件不匹配"
+    );
+    return verified;
+  };
+  let writeFreezeLease = await verifyActiveWriteFreeze();
   const candidates = orderedCandidates(report);
   const fileCandidates = candidates.filter((item) => item.table === "FileObject");
   const auditBase = {
@@ -1867,6 +2206,7 @@ async function executeBusinessZeroing({
   };
 
   await database.transaction(async (tx) => {
+    writeFreezeLease = await verifyActiveWriteFreeze();
     const lockedReport = await buildLockedReport(tx);
     assertFreshReport(report, lockedReport, "锁内");
     await tx.appendAudit({ ...auditBase, status: "started" });
@@ -1887,6 +2227,7 @@ async function executeBusinessZeroing({
   try {
     const objectDispositions = [];
     for (const file of fileCandidates) {
+      writeFreezeLease = await verifyActiveWriteFreeze();
       validateApplyArguments(args, report, currentTime());
       const disposition = await storage.deleteExactObject({
         bucket: file.bucket,
@@ -1901,6 +2242,7 @@ async function executeBusinessZeroing({
         ...disposition
       });
     }
+    writeFreezeLease = await verifyActiveWriteFreeze();
     const objectPostcheck = await inspectDeletedObjectScopes(report, storage);
     const postcheck = await buildPostcheckReport();
     const postcheckResult = verifyPostcheck(
@@ -1911,6 +2253,7 @@ async function executeBusinessZeroing({
       { phase: "final", objectRescan: objectPostcheck }
     );
     const completedAt = currentTime();
+    writeFreezeLease = await verifyActiveWriteFreeze();
     validateApplyArguments(args, report, completedAt);
     const receiptBody = {
       schemaVersion: 1,
@@ -1928,6 +2271,11 @@ async function executeBusinessZeroing({
       trustedTestProvenancePublicKeySha256:
         report.trustedTestProvenancePublicKeySha256,
       objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+      writeFreezeLeaseEnvelopeSha256: sha256(args.writeFreezeLeaseEnvelope),
+      writeFreezeLeaseEnvelope: args.writeFreezeLeaseEnvelope,
+      trustedWriteFreezePublicKeySha256:
+        report.trustedWriteFreezePublicKeySha256,
+      writeFreezeLease,
       deletedRecordCount: candidates.length,
       deletedObjectCount: fileCandidates.length,
       objectDispositions,
@@ -1940,6 +2288,11 @@ async function executeBusinessZeroing({
       postcheck: postcheckResult
     };
     receipt = { ...receiptBody, receiptSha256: sha256(receiptBody) };
+    writeFreezeLease = await verifyActiveWriteFreeze();
+    invariant(
+      sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
+      "持久化前外部写冻结租约验证结果已漂移"
+    );
     const persistenceResults = await Promise.allSettled([
       persistReceipt(receipt),
       database.appendAudit({
@@ -1987,6 +2340,7 @@ module.exports = {
   validateObjectRescan,
   validateObjectDeletionDisposition,
   validateTestProvenanceEnvelope,
+  validateWriteFreezeLeaseEnvelope,
   validateExecutionReceipt,
   validatePolicy,
   verifyObjectSnapshot,

@@ -4,7 +4,18 @@
 const assert = require("node:assert/strict");
 const { createHash, generateKeyPairSync, sign } = require("node:crypto");
 const { readFileSync } = require("node:fs");
-const { mkdir, mkdtemp, open, readdir, rename, rm, stat, utimes, writeFile } = require("node:fs/promises");
+const {
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  rename,
+  rm,
+  stat,
+  symlink,
+  utimes,
+  writeFile
+} = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -19,10 +30,12 @@ const {
   validateBackupReceipt,
   validateDecisionManifest,
   validateExecutionReceipt,
+  validateWriteFreezeLeaseEnvelope,
   verifyPostcheck
 } = require("./business-zeroing-core.cjs");
 const {
   assertCleanRepositoryStatus,
+  hashExecutionFiles,
   reserveJsonOutput,
   validateTrustedExecutionIdentity
 } = require("./business-zeroing-cli.cjs");
@@ -64,6 +77,10 @@ const FILE_SNAPSHOT = {
 };
 const AUTHORIZATION_KEYS = generateKeyPairSync("ed25519");
 const TEST_PROVENANCE_KEYS = generateKeyPairSync("ed25519");
+const WRITE_FREEZE_KEYS = generateKeyPairSync("ed25519");
+const TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256 = createHash("sha256")
+  .update(WRITE_FREEZE_KEYS.publicKey.export({ type: "spki", format: "der" }))
+  .digest("hex");
 const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256 = createHash("sha256")
   .update(TEST_PROVENANCE_KEYS.publicKey.export({ type: "spki", format: "der" }))
   .digest("hex");
@@ -143,6 +160,10 @@ const buildPreflightReport = (options) => {
       options.trustedTestProvenancePublicKeySha256 === undefined
         ? TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256
         : options.trustedTestProvenancePublicKeySha256,
+    trustedWriteFreezePublicKeySha256:
+      options.trustedWriteFreezePublicKeySha256 === undefined
+        ? TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256
+        : options.trustedWriteFreezePublicKeySha256,
     ...options
   });
 };
@@ -168,6 +189,8 @@ function resignReport(report) {
       testProvenanceVerification: withoutReportSha.testProvenanceVerification,
       trustedTestProvenancePublicKeySha256:
         withoutReportSha.trustedTestProvenancePublicKeySha256,
+      trustedWriteFreezePublicKeySha256:
+        withoutReportSha.trustedWriteFreezePublicKeySha256,
       objectDeletionManifest: withoutReportSha.objectDeletionManifest,
       objectDeletionManifestSha256: withoutReportSha.objectDeletionManifestSha256,
       preservationWhitelist: withoutReportSha.preservationWhitelist,
@@ -207,6 +230,10 @@ function authorizationEnvelope(report, batchId = "pol22-isolated-001", overrides
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+    writeFreezeLeaseEnvelopeSha256:
+      overrides.writeFreezeLeaseEnvelopeSha256 ?? "0".repeat(64),
+    trustedWriteFreezePublicKeySha256:
+      TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256,
     backupReceiptSha256: report.backupReceiptSha256,
     batchId,
     confirmation: expectedConfirmation(batchId),
@@ -222,6 +249,7 @@ function authorizationEnvelope(report, batchId = "pol22-isolated-001", overrides
 }
 
 function controlledArgs(report, batchId = "pol22-isolated-001") {
+  const writeFreezeLeaseEnvelope = writeFreezeLeaseEnvelopeFor(report, batchId);
   return {
     apply: true,
     environment: report.environment,
@@ -234,9 +262,56 @@ function controlledArgs(report, batchId = "pol22-isolated-001") {
     expectedReportSha256: report.reportSha256,
     expectedCandidateSha256: report.candidateSha256,
     confirmation: expectedConfirmation(batchId),
-    authorizationEnvelope: authorizationEnvelope(report, batchId),
+    writeFreezeLeaseEnvelope,
+    trustedWriteFreezePublicKeySha256:
+      TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256,
+    authorizationEnvelope: authorizationEnvelope(report, batchId, {
+      writeFreezeLeaseEnvelopeSha256: sha256(writeFreezeLeaseEnvelope)
+    }),
     authorizationPublicKey: AUTHORIZATION_KEYS.publicKey
   };
+}
+
+function writeFreezeLeaseEnvelopeFor(report, batchId = "pol22-isolated-001", overrides = {}) {
+  const payload = {
+    schemaVersion: 1,
+    leaseId: "pol22-isolated-freeze-001",
+    issuer: "POL-24 外部维护窗口控制面",
+    status: "active",
+    revokedAt: null,
+    environment: report.environment,
+    batchId,
+    reportSha256: report.reportSha256,
+    candidateSha256: report.candidateSha256,
+    objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+    holderDeploymentIdentitySha256: report.deploymentIdentitySha256,
+    holderExecutorIdentity: report.executorIdentity,
+    fenceToken: "8".repeat(64),
+    generation: 1,
+    scopes: ["database_business_writes", "private_object_writes"],
+    issuedAt: "2026-08-13T01:02:00.000Z",
+    expiresAt: "2026-08-13T01:14:00.000Z",
+    ...overrides
+  };
+  const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
+  return {
+    schemaVersion: 1,
+    algorithm: "Ed25519",
+    payload: payloadBytes.toString("base64"),
+    signature: sign(null, payloadBytes, WRITE_FREEZE_KEYS.privateKey).toString("base64")
+  };
+}
+
+function createWriteFreezeVerifier() {
+  return async ({ args, report, now }) =>
+    validateWriteFreezeLeaseEnvelope(
+      args.writeFreezeLeaseEnvelope,
+      report,
+      args,
+      WRITE_FREEZE_KEYS.publicKey,
+      args.trustedWriteFreezePublicKeySha256,
+      now
+    );
 }
 
 function backupReceipt(overrides = {}) {
@@ -380,6 +455,8 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
       testProvenancePublicKey,
       trustedTestProvenancePublicKeySha256:
         TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+      trustedWriteFreezePublicKeySha256:
+        TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256,
       backup: backupReceipt(),
       codeSha: SHA_40,
       executionCodeSha256: EXECUTION_SHA_64,
@@ -444,6 +521,9 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     { id: "c1", status: "unknown_future_state" },
     { id: "c1", code: "HT-2026-001" },
     { id: "c1", formalCode: "HT-2026-001" },
+    { id: "c1", status: "draft", isActive: true },
+    { id: "c1", status: "draft", enabled: true },
+    { id: "c1", status: "draft", effectiveFrom: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", archivedAt: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", firstSubmittedAt: "2026-08-13T00:30:00.000Z" }
   ]) {
@@ -460,6 +540,8 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
       testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
       trustedTestProvenancePublicKeySha256:
         TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+      trustedWriteFreezePublicKeySha256:
+        TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256,
       backup: backupReceipt(),
       codeSha: SHA_40,
       executionCodeSha256: EXECUTION_SHA_64,
@@ -475,6 +557,141 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
       )
     );
   }
+
+  const draftInventory = inventory({
+    tables: inventory().tables.map((table) =>
+      table.name === "Contract"
+        ? { ...table, rows: [{ id: "c1", status: "draft", signingSubjectType: "our_company" }] }
+        : table
+    )
+  });
+  const draftReport = buildPreflightReportRaw({
+    policy: smallPolicy,
+    inventory: draftInventory,
+    decisions,
+    testProvenance: createTestProvenance(draftInventory, decisions),
+    testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
+    trustedTestProvenancePublicKeySha256:
+      TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+    trustedWriteFreezePublicKeySha256:
+      TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    executionCodeSha256: EXECUTION_SHA_64,
+    deploymentIdentitySha256: DEPLOYMENT_SHA_64,
+    executorIdentity: EXECUTOR_IDENTITY,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  assert.equal(draftReport.status, "ready");
+});
+
+test("正式聚合父记录的生命周期保护传播到无状态清单子记录", () => {
+  const policy = {
+    id: "pol-22-business-zeroing-v1",
+    tables: [
+      { name: "_prisma_migrations", chineseName: "数据库迁移历史", disposition: "protected" },
+      { name: "ContractVersion", chineseName: "合同版本", disposition: "business_review" },
+      { name: "ContractBill", chineseName: "合同业务清单", disposition: "business_review" },
+      { name: "ContractBillRow", chineseName: "合同业务清单行", disposition: "business_review" },
+      { name: "FileObject", chineseName: "私有业务文件", disposition: "file" },
+      { name: "AuditLog", chineseName: "系统与安全审计", disposition: "protected" }
+    ]
+  };
+  const currentInventory = inventory({
+    tables: [
+      { name: "_prisma_migrations", primaryKey: ["id"], rows: [{ id: "m1" }] },
+      {
+        name: "ContractVersion",
+        primaryKey: ["id"],
+        rows: [{ id: "cv-effective", status: "effective" }]
+      },
+      {
+        name: "ContractBill",
+        primaryKey: ["id"],
+        rows: [{ id: "bill-1", contractVersionId: "cv-effective" }]
+      },
+      {
+        name: "ContractBillRow",
+        primaryKey: ["id"],
+        rows: [{ id: "row-1", contractBillId: "bill-1" }]
+      },
+      { name: "FileObject", primaryKey: ["id"], rows: [] },
+      { name: "AuditLog", primaryKey: ["id"], rows: [{ id: "a1" }] }
+    ],
+    fileBindings: [],
+    objectSnapshots: [],
+    foreignKeyReferences: [
+      {
+        name: "logical:ContractBill.contractVersionId->ContractVersion.id",
+        childTable: "ContractBill",
+        childPrimaryKey: { id: "bill-1" },
+        parentTable: "ContractVersion",
+        parentPrimaryKey: { id: "cv-effective" },
+        protectsChildLifecycle: true
+      },
+      {
+        name: "logical:ContractBillRow.contractBillId->ContractBill.id",
+        childTable: "ContractBillRow",
+        childPrimaryKey: { id: "row-1" },
+        parentTable: "ContractBill",
+        parentPrimaryKey: { id: "bill-1" },
+        protectsChildLifecycle: true
+      }
+    ],
+    deletionOrder: ["ContractBillRow", "ContractBill", "ContractVersion"]
+  });
+  const decisions = signedBody({
+    schemaVersion: 1,
+    policyId: policy.id,
+    environment: currentInventory.environment,
+    databaseFingerprint: currentInventory.databaseFingerprint,
+    records: [
+      {
+        businessType: "合同版本",
+        table: "ContractVersion",
+        primaryKey: { id: "cv-effective" },
+        decision: "preserve",
+        reason: "已生效合同版本必须保留"
+      },
+      ...[
+        ["ContractBill", "合同业务清单", { id: "bill-1" }],
+        ["ContractBillRow", "合同业务清单行", { id: "row-1" }]
+      ].map(([table, businessType, primaryKey]) => ({
+        businessType,
+        table,
+        primaryKey,
+        decision: "delete",
+        reason: "独立夹具注册表声称是测试子记录"
+      }))
+    ]
+  });
+  const report = buildPreflightReportRaw({
+    policy,
+    inventory: currentInventory,
+    decisions,
+    testProvenance: createTestProvenance(currentInventory, decisions),
+    testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
+    trustedTestProvenancePublicKeySha256:
+      TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+    trustedWriteFreezePublicKeySha256:
+      TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    executionCodeSha256: EXECUTION_SHA_64,
+    deploymentIdentitySha256: DEPLOYMENT_SHA_64,
+    executorIdentity: EXECUTOR_IDENTITY,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+
+  assert.equal(report.status, "blocked");
+  assert.deepEqual(report.deletionCandidates, []);
+  assert.ok(
+    report.blockers.some(
+      (item) =>
+        item.code === "FORMAL_AGGREGATE_CHILD_PROTECTED" &&
+        item.details?.childTable === "ContractBill"
+    )
+  );
 });
 
 test("当前 Prisma 全部表均有唯一中文归类且迁移历史受保护", () => {
@@ -1485,7 +1702,9 @@ test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机
     executorUid: 501,
     executorUsername: "pol22",
     testProvenancePublicKeySha256:
-      TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256
+      TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+    writeFreezePublicKeySha256:
+      TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256
   };
   assert.equal(
     validateTrustedExecutionIdentity(trustedIdentity, { uid: 501, username: "pol22" })
@@ -1496,6 +1715,24 @@ test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机
     () => validateTrustedExecutionIdentity(trustedIdentity, { uid: 502, username: "pol22" }),
     /进程 UID/u
   );
+});
+
+test("实际执行代码指纹拒绝 dist 符号链接与仓库外运行内容", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-code-hash-"));
+  try {
+    const dist = path.join(temporaryRoot, "dist");
+    const outside = path.join(tmpdir(), `pol22-outside-${process.pid}.js`);
+    await mkdir(dist, { recursive: true });
+    await writeFile(outside, "module.exports = 'forged-success';\n", "utf8");
+    await symlink(outside, path.join(dist, "adapter.js"));
+    assert.throws(
+      () => hashExecutionFiles(temporaryRoot, [], ["dist"]),
+      /符号链接|普通文件|仓库内/u
+    );
+    await rm(outside, { force: true });
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test("独立后置核验要求数据库存在与执行收据精确绑定的完成审计", async () => {
@@ -1987,11 +2224,12 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     buildLockedPostcheckReport: async () => after,
     buildPostcheckReport: async () => after,
     persistReceipt: async () => {},
+    verifyWriteFreezeLease: createWriteFreezeVerifier(),
     now: new Date("2026-08-13T01:05:00.000Z")
   });
 
   assert.equal(receipt.status, "completed");
-  assert.deepEqual(validateExecutionReceipt(receipt, before, AUTHORIZATION_KEYS.publicKey), {
+  assert.deepEqual(validateExecutionReceipt(receipt, before, AUTHORIZATION_KEYS.publicKey, WRITE_FREEZE_KEYS.publicKey), {
     status: "passed",
     receiptSha256: receipt.receiptSha256
   });
@@ -2006,7 +2244,8 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     validateExecutionReceipt(
       { ...reorderedReceiptBody, receiptSha256: sha256(reorderedReceiptBody) },
       before,
-      AUTHORIZATION_KEYS.publicKey
+      AUTHORIZATION_KEYS.publicKey,
+      WRITE_FREEZE_KEYS.publicKey
     ),
     { status: "passed", receiptSha256: sha256(reorderedReceiptBody) }
   );
@@ -2015,7 +2254,8 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       validateExecutionReceipt(
         { ...receipt, candidateSha256: "0".repeat(64) },
         before,
-        AUTHORIZATION_KEYS.publicKey
+        AUTHORIZATION_KEYS.publicKey,
+        WRITE_FREEZE_KEYS.publicKey
       ),
     /执行收据 SHA-256/u
   );
@@ -2031,9 +2271,47 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
       validateExecutionReceipt(
         { ...forgedReceiptBody, receiptSha256: sha256(forgedReceiptBody) },
         before,
-        AUTHORIZATION_KEYS.publicKey
+        AUTHORIZATION_KEYS.publicKey,
+        WRITE_FREEZE_KEYS.publicKey
       ),
     /独立授权签名/u
+  );
+  const forgedLeaseBody = {
+    ...Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== "receiptSha256")),
+    writeFreezeLeaseEnvelope: {
+      ...receipt.writeFreezeLeaseEnvelope,
+      signature: Buffer.alloc(64).toString("base64")
+    }
+  };
+  assert.throws(
+    () =>
+      validateExecutionReceipt(
+        { ...forgedLeaseBody, receiptSha256: sha256(forgedLeaseBody) },
+        before,
+        AUTHORIZATION_KEYS.publicKey,
+        WRITE_FREEZE_KEYS.publicKey
+      ),
+    /写冻结租约签名/u
+  );
+  const semanticallyForgedBody = {
+    ...Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== "receiptSha256")),
+    deletedRecordCount: 0,
+    deletedObjectCount: 0,
+    resetNumberRuleCount: 999,
+    objectDispositions: []
+  };
+  assert.throws(
+    () =>
+      validateExecutionReceipt(
+        {
+          ...semanticallyForgedBody,
+          receiptSha256: sha256(semanticallyForgedBody)
+        },
+        before,
+        AUTHORIZATION_KEYS.publicKey,
+        WRITE_FREEZE_KEYS.publicKey
+      ),
+    /删除记录数量|对象删除数量|编号复位数量|disposition/u
   );
   assert.deepEqual(calls, [
     "transaction:start",
@@ -2066,6 +2344,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
         persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
         now: new Date("2026-08-13T01:05:00.000Z")
       }),
     /未返回明确成功结果/u
@@ -2143,15 +2422,135 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
         persistReceipt: async (receipt) => { persistedReceipt = receipt; },
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
         now: new Date("2026-08-13T01:05:00.000Z")
       }),
     /completed audit failure/u
   );
   assert.equal(persistedReceipt.status, "completed");
   assert.deepEqual(
-    validateExecutionReceipt(persistedReceipt, before, AUTHORIZATION_KEYS.publicKey),
+    validateExecutionReceipt(persistedReceipt, before, AUTHORIZATION_KEYS.publicKey, WRITE_FREEZE_KEYS.publicKey),
     { status: "passed", receiptSha256: persistedReceipt.receiptSha256 }
   );
+});
+
+test("final inspect 后租约失效或对象复活不得签发 completed 收据", async () => {
+  const decisions = decisionManifest([
+    {
+      businessType: "项目基本资料",
+      table: "Project",
+      primaryKey: { id: "p1" },
+      decision: "preserve",
+      reason: "正式项目保留"
+    }
+  ]);
+  const before = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory(),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  const after = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: inventory().tables.map((table) =>
+        ["Contract", "FileObject"].includes(table.name) ? { ...table, rows: [] } : table
+      ),
+      fileBindings: []
+    }),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:10:00.000Z",
+    allowMissingDeletedDecisions: true
+  });
+  let verificationCount = 0;
+  let persisted = false;
+  let completedAudit = false;
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args: controlledArgs(before),
+        report: before,
+        database: {
+          async transaction(work) {
+            return work({
+              async appendAudit() {},
+              async deleteExactRecord() { return 1; },
+              async resetExactSequence() { return 1; }
+            });
+          },
+          async appendAudit(event) {
+            if (event.status === "completed") completedAudit = true;
+          }
+        },
+        storage: {
+          async deleteExactObject(input) {
+            return {
+              kind: "local_quarantine",
+              status: "object_key_removed_recovery_artifact_retained",
+              objectKey: input.objectKey,
+              quarantineObjectKey: "uploads/.f1.pol22-fixture.quarantine"
+            };
+          },
+          async inspectExactObjectAbsence() {
+            return { status: "absent", observedGenerationCount: 0 };
+          }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async () => { persisted = true; },
+        verifyWriteFreezeLease: async (input) => {
+          verificationCount += 1;
+          if (verificationCount >= 6) throw new Error("外部写冻结租约已撤销");
+          return createWriteFreezeVerifier()(input);
+        },
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /写冻结租约已撤销/u
+  );
+  assert.equal(persisted, false);
+  assert.equal(completedAudit, false);
+});
+
+test("缺失外部写冻结验证端时任何数据库写入前 fail-closed", async () => {
+  const report = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory(),
+    decisions: decisionManifest([
+      {
+        businessType: "项目基本资料",
+        table: "Project",
+        primaryKey: { id: "p1" },
+        decision: "preserve",
+        reason: "正式项目保留"
+      }
+    ]),
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  let transactionStarted = false;
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args: controlledArgs(report),
+        report,
+        database: {
+          async transaction() { transactionStarted = true; }
+        },
+        storage: {},
+        buildLockedReport: async () => report,
+        buildLockedPostcheckReport: async () => report,
+        buildPostcheckReport: async () => report,
+        persistReceipt: async () => {}
+      }),
+    /写冻结租约实时验证端/u
+  );
+  assert.equal(transactionStarted, false);
 });
 
 test("执行收据分别记录真实开始与完成时间", async () => {
@@ -2217,6 +2616,7 @@ test("执行收据分别记录真实开始与完成时间", async () => {
     buildLockedPostcheckReport: async () => after,
     buildPostcheckReport: async () => after,
     persistReceipt: async () => {},
+    verifyWriteFreezeLease: createWriteFreezeVerifier(),
     clock: () =>
       new Date(
         clockCalls++ === 0
@@ -2284,6 +2684,7 @@ test("候选删除若经触发器伤及保留资料会在同一事务提交前�
         buildLockedPostcheckReport: async () => damaged,
         buildPostcheckReport: async () => damaged,
         persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
         now: new Date("2026-08-13T01:05:00.000Z")
       }),
     /后置核验失败/u
@@ -2337,6 +2738,7 @@ test("锁内状态漂移、空主键和 broad object key 都会在任何写入�
         buildLockedPostcheckReport: async () => report,
         buildPostcheckReport: async () => report,
         persistReceipt: async () => {},
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
         now: new Date("2026-08-13T01:05:00.000Z")
       }),
     /锁内状态指纹已漂移/u

@@ -9,8 +9,10 @@ const {
   constants: fsConstants,
   fstatSync,
   fsyncSync,
+  lstatSync,
   openSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   writeFileSync
 } = require("node:fs");
@@ -21,6 +23,10 @@ const TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-authorization-public-key.pem";
 const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem";
+const TRUSTED_WRITE_FREEZE_PUBLIC_KEY_PATH =
+  "/etc/jiangkong/pol22-zeroing-write-freeze-public-key.pem";
+const TRUSTED_WRITE_FREEZE_LEASE_PATH =
+  "/etc/jiangkong/pol22-zeroing-write-freeze-lease.json";
 const TRUSTED_EXECUTION_IDENTITY_PATH =
   "/etc/jiangkong/pol22-zeroing-execution-identity.json";
 const EXECUTION_FILES = Object.freeze([
@@ -142,7 +148,8 @@ function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
         "executorUid",
         "executorUsername",
         "schemaVersion",
-        "testProvenancePublicKeySha256"
+        "testProvenancePublicKeySha256",
+        "writeFreezePublicKeySha256"
       ]),
     "固定的部署执行身份字段不精确"
   );
@@ -158,6 +165,10 @@ function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
   invariant(
     /^[0-9a-f]{64}$/u.test(identity.testProvenancePublicKeySha256 ?? ""),
     "固定测试来源公钥指纹无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(identity.writeFreezePublicKeySha256 ?? ""),
+    "固定写冻结租约公钥指纹无效"
   );
   invariant(
     /^[a-z_][a-z0-9_-]{0,31}$/iu.test(identity.executorUsername ?? ""),
@@ -192,6 +203,41 @@ function readTrustedExecutionIdentity() {
     throw error;
   }
   return validateTrustedExecutionIdentity(identity);
+}
+
+function readTrustedWriteFreezePublicKey(expectedPublicKeySha256) {
+  const content = readRootOwnedFile(
+    TRUSTED_WRITE_FREEZE_PUBLIC_KEY_PATH,
+    "未配置固定的外部写冻结租约公钥，受控执行保持禁用",
+    "外部写冻结租约公钥"
+  );
+  let publicKey;
+  try {
+    publicKey = createPublicKey(content);
+  } catch {
+    throw new Error("固定的外部写冻结租约公钥无效");
+  }
+  invariant(publicKey.asymmetricKeyType === "ed25519", "外部写冻结租约公钥必须是 Ed25519");
+  const actualSha256 = createHash("sha256")
+    .update(publicKey.export({ type: "spki", format: "der" }))
+    .digest("hex");
+  invariant(actualSha256 === expectedPublicKeySha256, "外部写冻结租约公钥与部署身份不匹配");
+  return content;
+}
+
+function readTrustedWriteFreezeLease() {
+  try {
+    return JSON.parse(
+      readRootOwnedFile(
+        TRUSTED_WRITE_FREEZE_LEASE_PATH,
+        "未配置外部维护窗口写冻结租约，受控执行保持禁用",
+        "外部写冻结租约"
+      )
+    );
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new Error("固定的外部写冻结租约不是合法 JSON");
+    throw error;
+  }
 }
 
 function outputJson(payload, outputPath) {
@@ -235,15 +281,26 @@ function assertCleanRepositoryStatus(status) {
 
 function listJavaScriptFiles(repositoryRoot, relativeDirectory) {
   const absoluteDirectory = resolve(repositoryRoot, relativeDirectory);
+  const canonicalRoot = realpathSync(repositoryRoot);
   const files = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
       left.name.localeCompare(right.name)
     )) {
       const absolutePath = join(directory, entry.name);
-      if (entry.isDirectory()) visit(absolutePath);
-      else if (entry.isFile() && entry.name.endsWith(".js")) {
+      invariant(!entry.isSymbolicLink(), `实际执行代码目录包含符号链接：${absolutePath}`);
+      const metadata = lstatSync(absolutePath);
+      invariant(!metadata.isSymbolicLink(), `实际执行代码目录包含符号链接：${absolutePath}`);
+      const canonicalPath = realpathSync(absolutePath);
+      invariant(
+        canonicalPath === canonicalRoot || canonicalPath.startsWith(`${canonicalRoot}/`),
+        `实际执行代码路径必须位于仓库内：${absolutePath}`
+      );
+      if (metadata.isDirectory()) visit(absolutePath);
+      else if (metadata.isFile() && entry.name.endsWith(".js")) {
         files.push(relative(repositoryRoot, absolutePath));
+      } else {
+        invariant(metadata.isFile(), `实际执行代码目录包含非普通文件：${absolutePath}`);
       }
     }
   };
@@ -270,6 +327,15 @@ function hashExecutionFiles(
     );
     let content;
     try {
+      const metadata = lstatSync(absolutePath);
+      invariant(!metadata.isSymbolicLink(), `实际执行代码文件不得为符号链接：${fileName}`);
+      invariant(metadata.isFile(), `实际执行代码文件必须为普通文件：${fileName}`);
+      const canonicalRoot = realpathSync(repositoryRoot);
+      const canonicalPath = realpathSync(absolutePath);
+      invariant(
+        canonicalPath.startsWith(`${canonicalRoot}/`),
+        `实际执行代码文件必须位于仓库内：${fileName}`
+      );
       content = readFileSync(absolutePath);
     } catch {
       throw new Error(`实际执行代码文件缺失：${fileName}`);
@@ -332,11 +398,15 @@ module.exports = {
   readJson,
   readTrustedAuthorizationPublicKey,
   readTrustedTestProvenancePublicKey,
+  readTrustedWriteFreezePublicKey,
+  readTrustedWriteFreezeLease,
   readTrustedExecutionIdentity,
   reserveJsonOutput,
   assertCleanRepositoryStatus,
   TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
   TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,
+  TRUSTED_WRITE_FREEZE_PUBLIC_KEY_PATH,
+  TRUSTED_WRITE_FREEZE_LEASE_PATH,
   TRUSTED_EXECUTION_IDENTITY_PATH,
   validateTrustedExecutionIdentity,
   safeFailure

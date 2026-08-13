@@ -13,6 +13,7 @@ const {
   expectedConfirmation,
   inspectDeletedObjectScopes,
   sha256,
+  validateWriteFreezeLeaseEnvelope,
   validateExecutionReceipt,
   verifyPostcheck
 } = require("../scripts/business-zeroing-core.cjs");
@@ -38,6 +39,7 @@ const VERSION_ID = "00000000-0000-4000-8000-000000000004";
 const FILE_ID = "00000000-0000-4000-8000-000000000005";
 const ATTACHMENT_ID = "00000000-0000-4000-8000-000000000006";
 const GUARDED_FACT_ID = "00000000-0000-4000-8000-000000000007";
+const BILL_ID = "00000000-0000-4000-8000-000000000008";
 const OBJECT_KEY = "uploads/pol22-isolated-fixture.txt";
 const ENVIRONMENT = "pol22-isolated-postgresql16";
 
@@ -49,7 +51,14 @@ function fileSha256(content) {
   return createHash("sha256").update(content).digest("hex");
 }
 
-function createAuthorization(report, batchId, privateKey, issuedAt, expiresAt) {
+function createAuthorization(
+  report,
+  batchId,
+  privateKey,
+  issuedAt,
+  expiresAt,
+  writeFreezeLeaseEnvelope
+) {
   const payload = Buffer.from(
     JSON.stringify({
       schemaVersion: 1,
@@ -70,10 +79,50 @@ function createAuthorization(report, batchId, privateKey, issuedAt, expiresAt) {
       testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
       trustedTestProvenancePublicKeySha256:
         report.trustedTestProvenancePublicKeySha256,
+      trustedWriteFreezePublicKeySha256:
+        report.trustedWriteFreezePublicKeySha256,
+      writeFreezeLeaseEnvelopeSha256: sha256(writeFreezeLeaseEnvelope),
       objectDeletionManifestSha256: report.objectDeletionManifestSha256,
       backupReceiptSha256: report.backupReceiptSha256,
       batchId,
       confirmation: expectedConfirmation(batchId)
+    }),
+    "utf8"
+  );
+  return {
+    schemaVersion: 1,
+    algorithm: "Ed25519",
+    payload: payload.toString("base64"),
+    signature: sign(null, payload, privateKey).toString("base64")
+  };
+}
+
+function createWriteFreezeLease(
+  report,
+  batchId,
+  privateKey,
+  issuedAt,
+  expiresAt
+) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      leaseId: "pol22-isolated-freeze-001",
+      issuer: "POL-22 隔离外部维护窗口控制面",
+      status: "active",
+      revokedAt: null,
+      environment: report.environment,
+      batchId,
+      reportSha256: report.reportSha256,
+      candidateSha256: report.candidateSha256,
+      objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+      holderDeploymentIdentitySha256: report.deploymentIdentitySha256,
+      holderExecutorIdentity: report.executorIdentity,
+      fenceToken: "8".repeat(64),
+      generation: 1,
+      scopes: ["database_business_writes", "private_object_writes"],
+      issuedAt,
+      expiresAt
     }),
     "utf8"
   );
@@ -369,8 +418,12 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   const authorizationExpiresAt = new Date(new Date(capturedAt).getTime() + 10 * 60_000).toISOString();
   const executionNow = new Date(new Date(capturedAt).getTime() + 3_000);
   const testProvenanceKeys = generateKeyPairSync("ed25519");
+  const writeFreezeKeys = generateKeyPairSync("ed25519");
   const trustedTestProvenancePublicKeySha256 = createHash("sha256")
     .update(testProvenanceKeys.publicKey.export({ type: "spki", format: "der" }))
+    .digest("hex");
+  const trustedWriteFreezePublicKeySha256 = createHash("sha256")
+    .update(writeFreezeKeys.publicKey.export({ type: "spki", format: "der" }))
     .digest("hex");
   const testProvenance = createTestProvenance(
     inventory,
@@ -387,7 +440,9 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     executorUid: process.getuid(),
     executorUsername: userInfo().username,
     testProvenancePublicKeySha256:
-      trustedTestProvenancePublicKeySha256
+      trustedTestProvenancePublicKeySha256,
+    writeFreezePublicKeySha256:
+      trustedWriteFreezePublicKeySha256
   };
   const trustedExecutionIdentity = {
     ...identityBody,
@@ -415,6 +470,7 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
       testProvenance: provenanceEnvelope,
       testProvenancePublicKey: testProvenanceKeys.publicKey,
       trustedTestProvenancePublicKeySha256,
+      trustedWriteFreezePublicKeySha256,
       backup,
       codeSha: codeIdentity.codeSha,
       executionCodeSha256: codeIdentity.executionCodeSha256,
@@ -430,18 +486,31 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     `UPDATE "ContractVersion" SET "status" = 'effective' WHERE "id" = $1`,
     VERSION_ID
   );
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO "ContractBill" (
+       "id", "contractVersionId", "billKey", "name", "amountRole", "pricingMode",
+       "quantityScale", "unitPriceScale", "schemaSnapshot", "updatedAt"
+     ) VALUES ($1, $2, 'effective-parent-bill', '正式父聚合测试清单', 'contract_amount',
+       'fixed', 2, 2, '{}'::jsonb, NOW())`,
+    BILL_ID,
+    VERSION_ID
+  );
   try {
     const effectiveInventory = await inspectDatabaseInventory(prisma, {
       environment: ENVIRONMENT
     });
+    const effectiveFixtureKeys = new Set([
+      ...trustedFixtureKeys,
+      fixtureRecordKey("ContractBill", { id: BILL_ID })
+    ]);
     const effectiveDecisions = createDecisions(
       effectiveInventory,
-      trustedFixtureKeys
+      effectiveFixtureKeys
     );
     const effectiveProvenance = createTestProvenance(
       effectiveInventory,
       effectiveDecisions,
-      trustedFixtureKeys,
+      effectiveFixtureKeys,
       testProvenanceKeys.privateKey,
       capturedAt
     );
@@ -461,7 +530,18 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
           item.details?.table === "ContractVersion"
       )
     );
+    assert.ok(
+      effectiveReport.blockers.some(
+        (item) =>
+          item.code === "FORMAL_AGGREGATE_CHILD_PROTECTED" &&
+          item.details?.childTable === "ContractBill"
+      )
+    );
   } finally {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM "ContractBill" WHERE "id" = $1`,
+      BILL_ID
+    );
     await prisma.$executeRawUnsafe(
       `UPDATE "ContractVersion" SET "status" = 'draft' WHERE "id" = $1`,
       VERSION_ID
@@ -492,6 +572,13 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
 
   const batchId = "pol22-isolated-001";
   const authorizationKeys = generateKeyPairSync("ed25519");
+  const writeFreezeLeaseEnvelope = createWriteFreezeLease(
+    report,
+    batchId,
+    writeFreezeKeys.privateKey,
+    authorizationIssuedAt,
+    authorizationExpiresAt
+  );
   const database = createBusinessZeroingDatabase(prisma, BUSINESS_ZEROING_POLICY);
   const exactObjectStorage = createExactObjectStorage();
   const reservedReceipt = reserveJsonOutput(
@@ -517,9 +604,12 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
         batchId,
         authorizationKeys.privateKey,
         authorizationIssuedAt,
-        authorizationExpiresAt
+        authorizationExpiresAt,
+        writeFreezeLeaseEnvelope
       ),
       authorizationPublicKey: authorizationKeys.publicKey,
+      writeFreezeLeaseEnvelope,
+      trustedWriteFreezePublicKeySha256,
       confirmation: expectedConfirmation(batchId)
     },
     report,
@@ -529,6 +619,15 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     buildLockedPostcheckReport: (tx) => buildReport(tx.client, true, true),
     buildPostcheckReport: () => buildReport(prisma, false, true),
     persistReceipt: async (value) => reservedReceipt.write(value),
+    verifyWriteFreezeLease: async ({ args, report: currentReport, now }) =>
+      validateWriteFreezeLeaseEnvelope(
+        writeFreezeLeaseEnvelope,
+        currentReport,
+        args,
+        writeFreezeKeys.publicKey,
+        trustedWriteFreezePublicKeySha256,
+        now
+      ),
     now: executionNow
     });
   } finally {
@@ -536,7 +635,12 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   }
   assert.equal(receipt.status, "completed");
   assert.deepEqual(
-    validateExecutionReceipt(receipt, report, authorizationKeys.publicKey),
+    validateExecutionReceipt(
+      receipt,
+      report,
+      authorizationKeys.publicKey,
+      writeFreezeKeys.publicKey
+    ),
     {
     status: "passed",
     receiptSha256: receipt.receiptSha256
@@ -556,7 +660,11 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
       independentAfterReport,
       receipt,
       authorizationKeys.publicKey,
-      { phase: "final", objectRescan: independentObjectRescan }
+      {
+        phase: "final",
+        objectRescan: independentObjectRescan,
+        writeFreezePublicKey: writeFreezeKeys.publicKey
+      }
     ),
     { status: "passed", objectScopeCount: 1 }
   );

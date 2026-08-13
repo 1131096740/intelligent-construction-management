@@ -117,6 +117,8 @@ async function inspectWithClient(client, options) {
     testProvenancePublicKey,
     trustedTestProvenancePublicKeySha256:
       trustedIdentity.testProvenancePublicKeySha256,
+    trustedWriteFreezePublicKeySha256:
+      trustedIdentity.writeFreezePublicKeySha256,
     backup,
     codeSha: codeIdentity.codeSha,
     executionCodeSha256: codeIdentity.executionCodeSha256,

@@ -4,7 +4,8 @@
 
 const {
   createDryRunReceipt,
-  executeBusinessZeroing
+  executeBusinessZeroing,
+  validateWriteFreezeLeaseEnvelope
 } = require("./business-zeroing-core.cjs");
 const {
   createBusinessZeroingDatabase
@@ -17,6 +18,8 @@ const {
   readJson,
   readTrustedAuthorizationPublicKey,
   readTrustedExecutionIdentity,
+  readTrustedWriteFreezeLease,
+  readTrustedWriteFreezePublicKey,
   reserveJsonOutput,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
@@ -92,9 +95,27 @@ async function main() {
     }
 
     const authorizationPublicKey = readTrustedAuthorizationPublicKey();
+    const writeFreezePublicKey = readTrustedWriteFreezePublicKey(
+      trustedExecutionIdentity.writeFreezePublicKeySha256
+    );
     const reservedOutput = reserveJsonOutput(args.output);
     try {
       const database = createBusinessZeroingDatabase(prisma, BUSINESS_ZEROING_POLICY);
+      const writeFreezeLeaseEnvelope = readTrustedWriteFreezeLease();
+      const verifyWriteFreezeLease = async ({ args: executionArgs, report: fixedReport, now }) => {
+        const currentLease = readTrustedWriteFreezeLease();
+        if (JSON.stringify(currentLease) !== JSON.stringify(writeFreezeLeaseEnvelope)) {
+          throw new Error("外部写冻结租约固定工件已漂移或撤换");
+        }
+        return validateWriteFreezeLeaseEnvelope(
+          currentLease,
+          fixedReport,
+          executionArgs,
+          writeFreezePublicKey,
+          trustedExecutionIdentity.writeFreezePublicKeySha256,
+          now
+        );
+      };
       const receipt = await executeBusinessZeroing({
         args: {
           apply: true,
@@ -110,6 +131,9 @@ async function main() {
           expectedCandidateSha256: args.expectedCandidateSha256,
           authorizationEnvelope: readJson(args.authorization, "独立授权工件"),
           authorizationPublicKey,
+          writeFreezeLeaseEnvelope,
+          trustedWriteFreezePublicKeySha256:
+            trustedExecutionIdentity.writeFreezePublicKeySha256,
           confirmation: args.confirmation
         },
         report,
@@ -128,7 +152,8 @@ async function main() {
             ...inspectionOptions,
             allowMissingDeletedDecisions: true
           }),
-        persistReceipt: async (receipt) => reservedOutput.write(receipt)
+        persistReceipt: async (receipt) => reservedOutput.write(receipt),
+        verifyWriteFreezeLease
       });
       void receipt;
     } finally {

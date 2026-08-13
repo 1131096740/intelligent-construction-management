@@ -14,6 +14,7 @@ const {
   readJson,
   readTrustedAuthorizationPublicKey,
   readTrustedExecutionIdentity,
+  readTrustedWriteFreezePublicKey,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
 
@@ -54,6 +55,9 @@ async function main() {
   const executionReceipt = readJson(args.executionReceipt, "受控执行收据");
   const authorizationPublicKey = readTrustedAuthorizationPublicKey();
   const trustedExecutionIdentity = readTrustedExecutionIdentity();
+  const writeFreezePublicKey = readTrustedWriteFreezePublicKey(
+    trustedExecutionIdentity.writeFreezePublicKeySha256
+  );
   const prisma = new PrismaClient();
   try {
     const after = await inspectWithClient(prisma, {
@@ -67,7 +71,8 @@ async function main() {
     const execution = validateExecutionReceipt(
       executionReceipt,
       before,
-      authorizationPublicKey
+      authorizationPublicKey,
+      writeFreezePublicKey
     );
     const objectRescan = await inspectDeletedObjectScopes(
       before,
@@ -78,7 +83,7 @@ async function main() {
       after,
       executionReceipt,
       authorizationPublicKey,
-      { phase: "final", objectRescan }
+      { phase: "final", objectRescan, writeFreezePublicKey }
     );
     await verifyBusinessZeroingExecutionAudit(prisma, executionReceipt);
     outputJson(
