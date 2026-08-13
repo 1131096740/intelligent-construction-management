@@ -284,6 +284,14 @@ async function counts(prisma) {
   return rows[0];
 }
 
+async function setFixtureSignatureBinding(prisma, fileId) {
+  await prisma.$executeRawUnsafe(
+    `UPDATE "User" SET "signatureFileId" = $1 WHERE "id" = $2`,
+    fileId,
+    ACTOR_ID
+  );
+}
+
 async function verifyCandidateCasTriggerRollback(prisma) {
   const rows = await prisma.$queryRawUnsafe(
     `SELECT 'ContractDraftAttachment' AS "table", to_jsonb(source)::text AS "rowCanonicalJson"
@@ -684,11 +692,7 @@ async function verifyBusinessZeroing(
     sha256("preserved"),
     FILE_ID
   );
-  await prisma.$executeRawUnsafe(
-    `UPDATE "User" SET "signatureFileId" = $1, "updatedAt" = NOW() WHERE "id" = $2`,
-    MIXED_FILE_ID,
-    ACTOR_ID
-  );
+  await setFixtureSignatureBinding(prisma, MIXED_FILE_ID);
   await mkdir(path.dirname(path.join(storageRoot, MIXED_OBJECT_KEY)), { recursive: true });
   await writeFile(path.join(storageRoot, MIXED_OBJECT_KEY), "preserved", "utf8");
   let mixedOwnershipReport;
@@ -722,10 +726,7 @@ async function verifyBusinessZeroing(
       mixedProvenance.registrySha256
     );
   } finally {
-    await prisma.$executeRawUnsafe(
-      `UPDATE "User" SET "signatureFileId" = NULL, "updatedAt" = NOW() WHERE "id" = $1`,
-      ACTOR_ID
-    );
+    await setFixtureSignatureBinding(prisma, null);
     await prisma.$executeRawUnsafe(`DELETE FROM "FileObject" WHERE "id" = $1`, MIXED_FILE_ID);
     await rm(path.join(storageRoot, MIXED_OBJECT_KEY), { force: true });
   }
@@ -1046,4 +1047,4 @@ async function verifyBusinessZeroing(
   };
 }
 
-module.exports = { verifyBusinessZeroing };
+module.exports = { setFixtureSignatureBinding, verifyBusinessZeroing };

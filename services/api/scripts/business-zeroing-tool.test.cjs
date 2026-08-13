@@ -57,6 +57,9 @@ const {
   writeFinalDynamicReceipt
 } = require("../prisma/run-business-zeroing-local.cjs");
 const {
+  setFixtureSignatureBinding
+} = require("../prisma/verify-business-zeroing.cjs");
+const {
   BUSINESS_ZEROING_LOGICAL_RELATIONS,
   BUSINESS_ZEROING_POLICY
 } = require("./business-zeroing-policy.cjs");
@@ -2077,6 +2080,29 @@ test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输�
     /cleanup failed/u
   );
   assert.equal(wroteAfterCleanupFailure, false);
+});
+
+test("动态混合归属夹具清理后保留行完整指纹不漂移", async () => {
+  const preservedUser = {
+    id: "00000000-0000-4000-8000-000000000001",
+    signatureFileId: null,
+    updatedAt: "2026-08-13T00:00:00.000Z"
+  };
+  const before = sha256(preservedUser);
+  const prisma = {
+    async $executeRawUnsafe(sql, fileId, userId) {
+      assert.match(sql, /SET "signatureFileId" = \$1 WHERE "id" = \$2/u);
+      assert.doesNotMatch(sql, /updatedAt/u);
+      assert.equal(userId, preservedUser.id);
+      preservedUser.signatureFileId = fileId;
+    }
+  };
+  await setFixtureSignatureBinding(
+    prisma,
+    "00000000-0000-4000-8000-000000000009"
+  );
+  await setFixtureSignatureBinding(prisma, null);
+  assert.equal(sha256(preservedUser), before);
 });
 
 test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口保守阻断", async () => {
