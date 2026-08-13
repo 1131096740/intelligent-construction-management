@@ -2,6 +2,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const { createHash, generateKeyPairSync, sign } = require("node:crypto");
 const { readFileSync } = require("node:fs");
 const {
@@ -34,6 +35,7 @@ const {
   verifyPostcheck
 } = require("./business-zeroing-core.cjs");
 const {
+  assertCleanNodeRuntime,
   assertCleanRepositoryStatus,
   hashExecutionFiles,
   reserveJsonOutput,
@@ -85,7 +87,21 @@ const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256 = createHash("sha256")
   .update(TEST_PROVENANCE_KEYS.publicKey.export({ type: "spki", format: "der" }))
   .digest("hex");
 
-function createTestProvenance(currentInventory, decisions, options = {}) {
+function fixtureEvidence(registryRef, currentInventory, record) {
+  return sha256({
+    registryRef,
+    environment: currentInventory.environment,
+    databaseFingerprint: currentInventory.databaseFingerprint,
+    sourceKind: record.sourceKind,
+    sourceRef: record.sourceRef,
+    table: record.table,
+    primaryKey: record.primaryKey,
+    rowSha256: record.rowSha256
+  });
+}
+
+function createTestProvenanceRegistry(currentInventory, decisions) {
+  const registryRef = "POL-22 unit fixture registry v1";
   const fallbackInventory = inventory();
   const findRow = (tableName, primaryKey) => {
     for (const source of [currentInventory, fallbackInventory]) {
@@ -104,29 +120,38 @@ function createTestProvenance(currentInventory, decisions, options = {}) {
     .map((record) => {
       const row = findRow(record.table, record.primaryKey);
       assert.ok(row, `test provenance fixture missing ${record.table}`);
-      return {
-        table: record.table,
-        primaryKey: record.primaryKey,
-        rowSha256: row.rowSha256,
+      const body = {
         sourceKind: "isolated_fixture_registry",
         sourceRef: `unit-fixture:${record.table}:${sha256(record.primaryKey)}`,
-        evidenceSha256: sha256({
-          registry: "pol22-unit-fixtures-v1",
-          table: record.table,
-          primaryKey: record.primaryKey,
-          rowSha256: row.rowSha256
-        })
+        table: record.table,
+        primaryKey: record.primaryKey,
+        rowSha256: row.rowSha256
+      };
+      return {
+        ...body,
+        evidenceSha256: fixtureEvidence(registryRef, currentInventory, body)
       };
     });
+  return {
+    schemaVersion: 1,
+    registryRef,
+    environment: currentInventory.environment,
+    databaseFingerprint: currentInventory.databaseFingerprint,
+    records
+  };
+}
+
+function createTestProvenance(currentInventory, decisions, options = {}) {
+  const registry = createTestProvenanceRegistry(currentInventory, decisions);
   const payload = {
     schemaVersion: 1,
-    registryRef: "POL-22 unit fixture registry v1",
+    registryRef: registry.registryRef,
     issuer: "POL-22 隔离测试来源签发者",
     issuedAt: "2026-08-13T00:59:00.000Z",
     policyId: "pol-22-business-zeroing-v1",
     environment: currentInventory.environment,
     databaseFingerprint: currentInventory.databaseFingerprint,
-    records,
+    records: registry.records,
     ...options.payload
   };
   const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
@@ -142,7 +167,24 @@ function createTestProvenance(currentInventory, decisions, options = {}) {
   };
 }
 
+function testProvenanceRegistryArgs(currentInventory, decisions) {
+  const testProvenanceRegistry = createTestProvenanceRegistry(
+    currentInventory,
+    decisions
+  );
+  const registrySha256 = sha256(testProvenanceRegistry);
+  return {
+    testProvenanceRegistry,
+    testProvenanceRegistrySha256: registrySha256,
+    trustedTestProvenanceRegistrySha256: registrySha256
+  };
+}
+
 const buildPreflightReport = (options) => {
+  const registryArgs = testProvenanceRegistryArgs(
+    options.inventory,
+    options.decisions
+  );
   const testProvenance =
     options.testProvenance === undefined
       ? createTestProvenance(options.inventory, options.decisions)
@@ -160,6 +202,7 @@ const buildPreflightReport = (options) => {
       options.trustedTestProvenancePublicKeySha256 === undefined
         ? TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256
         : options.trustedTestProvenancePublicKeySha256,
+    ...registryArgs,
     trustedWriteFreezePublicKeySha256:
       options.trustedWriteFreezePublicKeySha256 === undefined
         ? TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256
@@ -187,6 +230,8 @@ function resignReport(report) {
       executorIdentity: withoutReportSha.executorIdentity,
       testProvenanceEnvelopeSha256: withoutReportSha.testProvenanceEnvelopeSha256,
       testProvenanceVerification: withoutReportSha.testProvenanceVerification,
+      testProvenanceRegistrySha256:
+        withoutReportSha.testProvenanceRegistrySha256,
       trustedTestProvenancePublicKeySha256:
         withoutReportSha.trustedTestProvenancePublicKeySha256,
       trustedWriteFreezePublicKeySha256:
@@ -227,6 +272,7 @@ function authorizationEnvelope(report, batchId = "pol22-isolated-001", overrides
     candidateSha256: report.candidateSha256,
     decisionManifestSha256: report.decisionManifestSha256,
     testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+    testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
@@ -284,6 +330,7 @@ function writeFreezeLeaseEnvelopeFor(report, batchId = "pol22-isolated-001", ove
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+    testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
     holderDeploymentIdentitySha256: report.deploymentIdentitySha256,
     holderExecutorIdentity: report.executorIdentity,
     fenceToken: "8".repeat(64),
@@ -453,6 +500,7 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
       decisions,
       testProvenance,
       testProvenancePublicKey,
+      ...testProvenanceRegistryArgs(effectiveInventory, decisions),
       trustedTestProvenancePublicKeySha256:
         TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
       trustedWriteFreezePublicKeySha256:
@@ -517,6 +565,53 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     /预检报告未就绪/u
   );
 
+  const forgedRegistryInventory = inventory();
+  const draftDecisions = decisionManifest([
+    {
+      businessType: "项目基本资料",
+      table: "Project",
+      primaryKey: { id: "p1" },
+      decision: "preserve",
+      reason: "正式项目保留"
+    }
+  ]);
+  const forgedPayload = JSON.parse(
+    Buffer.from(
+      createTestProvenance(forgedRegistryInventory, draftDecisions).payload,
+      "base64"
+    ).toString("utf8")
+  );
+  forgedPayload.registryRef = "FORGED-REGISTRY-REF";
+  forgedPayload.records[0].sourceRef = "FORGED-SOURCE-REF";
+  forgedPayload.records[0].evidenceSha256 = "e".repeat(64);
+  const forgedPayloadBytes = Buffer.from(JSON.stringify(forgedPayload), "utf8");
+  const trustedKeyForgedEnvelope = {
+    schemaVersion: 1,
+    algorithm: "Ed25519",
+    payload: forgedPayloadBytes.toString("base64"),
+    signature: sign(
+      null,
+      forgedPayloadBytes,
+      TEST_PROVENANCE_KEYS.privateKey
+    ).toString("base64")
+  };
+  const trustedKeyForged = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: forgedRegistryInventory,
+    decisions: draftDecisions,
+    testProvenance: trustedKeyForgedEnvelope,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  assert.equal(trustedKeyForged.status, "blocked");
+  assert.deepEqual(trustedKeyForged.deletionCandidates, []);
+  assert.ok(
+    trustedKeyForged.blockers.some(
+      (item) => item.code === "TEST_PROVENANCE_NOT_VERIFIED"
+    )
+  );
+
   for (const protectedRow of [
     { id: "c1", status: "unknown_future_state" },
     { id: "c1", code: "HT-2026-001" },
@@ -538,6 +633,7 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
       decisions,
       testProvenance: createTestProvenance(protectedInventory, decisions),
       testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
+      ...testProvenanceRegistryArgs(protectedInventory, decisions),
       trustedTestProvenancePublicKeySha256:
         TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
       trustedWriteFreezePublicKeySha256:
@@ -571,6 +667,7 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     decisions,
     testProvenance: createTestProvenance(draftInventory, decisions),
     testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
+    ...testProvenanceRegistryArgs(draftInventory, decisions),
     trustedTestProvenancePublicKeySha256:
       TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
     trustedWriteFreezePublicKeySha256:
@@ -671,6 +768,7 @@ test("正式聚合父记录的生命周期保护传播到无状态清单子记�
     decisions,
     testProvenance: createTestProvenance(currentInventory, decisions),
     testProvenancePublicKey: TEST_PROVENANCE_KEYS.publicKey,
+    ...testProvenanceRegistryArgs(currentInventory, decisions),
     trustedTestProvenancePublicKeySha256:
       TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
     trustedWriteFreezePublicKeySha256:
@@ -1673,6 +1771,19 @@ test("备份工件必须真实存在且字节校验和匹配", async () => {
 });
 
 test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机 endpoint", () => {
+  assert.doesNotThrow(() => assertCleanNodeRuntime({ env: {}, execArgv: [] }));
+  assert.throws(
+    () => assertCleanNodeRuntime({ env: { NODE_OPTIONS: "--require=/tmp/forged.cjs" }, execArgv: [] }),
+    /NODE_OPTIONS/u
+  );
+  assert.throws(
+    () => assertCleanNodeRuntime({ env: { NODE_PATH: "/tmp/forged-modules" }, execArgv: [] }),
+    /NODE_PATH/u
+  );
+  assert.throws(
+    () => assertCleanNodeRuntime({ env: {}, execArgv: ["--loader=/tmp/forged.mjs"] }),
+    /启动参数/u
+  );
   assert.doesNotThrow(() => assertCleanRepositoryStatus(""));
   assert.throws(
     () => assertCleanRepositoryStatus(" M services/api/scripts/business-zeroing-core.cjs"),
@@ -1703,6 +1814,7 @@ test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机
     executorUsername: "pol22",
     testProvenancePublicKeySha256:
       TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_SHA256,
+    testProvenanceRegistrySha256: "6".repeat(64),
     writeFreezePublicKeySha256:
       TRUSTED_WRITE_FREEZE_PUBLIC_KEY_SHA256
   };
@@ -1717,6 +1829,75 @@ test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机
   );
 });
 
+test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口保守阻断", async () => {
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-launcher-"));
+  const marker = path.join(temporaryRoot, "preload-executed");
+  const preload = path.join(temporaryRoot, "preload.cjs");
+  const launcher = path.join(__dirname, "run-business-zeroing-cli.sh");
+  const directEntries = [
+    path.join(__dirname, "inspect-test-business-zeroing.cjs"),
+    path.join(__dirname, "execute-test-business-zeroing.cjs"),
+    path.join(__dirname, "verify-test-business-zeroing.cjs"),
+    path.join(__dirname, "sign-business-zeroing-input.cjs"),
+    path.join(__dirname, "../prisma/run-business-zeroing-local.cjs")
+  ];
+  try {
+    assert.notEqual((await stat(launcher)).mode & 0o111, 0, "受信启动器必须可执行");
+    await writeFile(
+      preload,
+      "require('node:fs').writeFileSync(process.env.POL22_PRELOAD_MARKER, 'executed');\n",
+      "utf8"
+    );
+    for (const command of ["inspect", "execute", "verify", "sign", "dynamic"]) {
+      const rejected = spawnSync(
+        "/bin/sh",
+        [launcher, command, "--help"],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            NODE_OPTIONS: `--require=${preload}`,
+            POL22_PRELOAD_MARKER: marker
+          }
+        }
+      );
+      assert.equal(rejected.status, 64, `${command}: ${rejected.stderr}`);
+      assert.match(rejected.stderr, /NODE_OPTIONS/u);
+      await assert.rejects(() => stat(marker), /ENOENT/u);
+    }
+
+    const cleanEnvironment = Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([key]) => !["NODE_OPTIONS", "NODE_PATH", "POL22_CLEAN_NODE_LAUNCH"].includes(key)
+      )
+    );
+    for (const directEntry of directEntries) {
+      const direct = spawnSync(process.execPath, ["--", directEntry, "--help"], {
+        encoding: "utf8",
+        env: cleanEnvironment
+      });
+      assert.equal(direct.status, 1, directEntry);
+      assert.match(direct.stderr, /受信启动器/u);
+    }
+    for (const [command, outputPattern] of [
+      ["inspect", /默认只读预检/u],
+      ["execute", /dry-run/u],
+      ["verify", /只读后置核验/u],
+      ["sign", /run-business-zeroing-cli\.sh sign/u],
+      ["dynamic", /run-business-zeroing-cli\.sh dynamic/u]
+    ]) {
+      const accepted = spawnSync("/bin/sh", [launcher, command, "--help"], {
+        encoding: "utf8",
+        env: cleanEnvironment
+      });
+      assert.equal(accepted.status, 0, `${command}: ${accepted.stderr}`);
+      assert.match(accepted.stdout, outputPattern);
+    }
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("实际执行代码指纹拒绝 dist 符号链接与仓库外运行内容", async () => {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-code-hash-"));
   try {
@@ -1728,6 +1909,15 @@ test("实际执行代码指纹拒绝 dist 符号链接与仓库外运行内容",
     assert.throws(
       () => hashExecutionFiles(temporaryRoot, [], ["dist"]),
       /符号链接|普通文件|仓库内/u
+    );
+    await rm(path.join(dist, "adapter.js"));
+    await rm(dist, { recursive: true });
+    const outsideDirectory = path.join(temporaryRoot, "outside-dist");
+    await mkdir(outsideDirectory);
+    await symlink(outsideDirectory, dist, "dir");
+    assert.throws(
+      () => hashExecutionFiles(temporaryRoot, [], ["dist"]),
+      /符号链接|普通目录|仓库内/u
     );
     await rm(outside, { force: true });
   } finally {
@@ -2320,6 +2510,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     ["delete", "FileObject", { id: "f1" }],
     "transaction:commit",
     ["object", "private", "uploads/f1.pdf"],
+    ["audit", "object_deletion_progress"],
     ["object-rescan", "private", "uploads/f1.pdf"],
     ["audit", "completed"]
   ]);
@@ -2434,6 +2625,154 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
   );
 });
 
+test("对象部分删除后失败会耐久记录已完成 disposition 与未完成范围", async () => {
+  const secondSnapshotBody = { ...FILE_SNAPSHOT_BODY, inodeId: 3 };
+  const secondSnapshot = {
+    ...secondSnapshotBody,
+    snapshotSha256: sha256(secondSnapshotBody)
+  };
+  const sourceInventory = inventory({
+    tables: inventory().tables.map((table) =>
+      table.name === "FileObject"
+        ? {
+            ...table,
+            rows: [
+              { id: "f1", objectKey: "uploads/f1.pdf", bucket: "private" },
+              { id: "f2", objectKey: "uploads/f2.pdf", bucket: "private" }
+            ]
+          }
+        : table
+    ),
+    fileBindings: [
+      {
+        fileId: "f1",
+        ownerTable: "Contract",
+        ownerPrimaryKey: { id: "c1" },
+        ownerColumn: "archiveFileId"
+      },
+      {
+        fileId: "f2",
+        ownerTable: "Contract",
+        ownerPrimaryKey: { id: "c1" },
+        ownerColumn: "formalFileId"
+      }
+    ],
+    objectSnapshots: [
+      { fileId: "f1", status: "ready", snapshot: FILE_SNAPSHOT },
+      { fileId: "f2", status: "ready", snapshot: secondSnapshot }
+    ]
+  });
+  const decisions = decisionManifest([
+    {
+      businessType: "项目基本资料",
+      table: "Project",
+      primaryKey: { id: "p1" },
+      decision: "preserve",
+      reason: "正式项目保留"
+    }
+  ]);
+  const before = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: sourceInventory,
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:00:00.000Z"
+  });
+  const after = buildPreflightReport({
+    policy: smallPolicy,
+    inventory: inventory({
+      tables: inventory().tables.map((table) =>
+        ["Contract", "FileObject"].includes(table.name)
+          ? { ...table, rows: [] }
+          : table
+      ),
+      fileBindings: [],
+      objectSnapshots: []
+    }),
+    decisions,
+    backup: backupReceipt(),
+    codeSha: SHA_40,
+    generatedAt: "2026-08-13T01:10:00.000Z",
+    allowMissingDeletedDecisions: true
+  });
+  const audits = [];
+  let persistedFailureReceipt;
+  let deletionCount = 0;
+  await assert.rejects(
+    () =>
+      executeBusinessZeroing({
+        args: controlledArgs(before),
+        report: before,
+        database: {
+          async transaction(work) {
+            return work({
+              async appendAudit(event) { audits.push(event); },
+              async deleteExactRecord() { return 1; },
+              async resetExactSequence() { return 1; }
+            });
+          },
+          async appendAudit(event) { audits.push(event); }
+        },
+        storage: {
+          async deleteExactObject(input) {
+            deletionCount += 1;
+            if (deletionCount === 2) throw new Error("isolated second object failure");
+            return {
+              kind: "local_quarantine",
+              status: "object_key_removed_recovery_artifact_retained",
+              objectKey: input.objectKey,
+              quarantineObjectKey: "uploads/.f1.pol22-fixture.quarantine"
+            };
+          }
+        },
+        buildLockedReport: async () => before,
+        buildLockedPostcheckReport: async () => after,
+        buildPostcheckReport: async () => after,
+        persistReceipt: async (receipt) => { persistedFailureReceipt = receipt; },
+        verifyWriteFreezeLease: createWriteFreezeVerifier(),
+        now: new Date("2026-08-13T01:05:00.000Z")
+      }),
+    /second object failure/u
+  );
+  const progress = audits.find((event) => event.status === "object_deletion_progress");
+  assert.equal(progress.executionReceipt.completedObjectDispositions.length, 1);
+  assert.equal(
+    progress.executionReceipt.completedObjectDispositions[0].quarantineObjectKey,
+    "uploads/.f1.pol22-fixture.quarantine"
+  );
+  assert.deepEqual(
+    progress.executionReceipt.remainingObjectScopes.map((scope) => scope.objectKey),
+    ["uploads/f2.pdf"]
+  );
+  assert.equal(persistedFailureReceipt.status, "failed_after_database_commit");
+  assert.equal(persistedFailureReceipt.executed, true);
+  assert.equal(persistedFailureReceipt.completed, false);
+  assert.equal(persistedFailureReceipt.completedObjectDispositions.length, 1);
+  assert.deepEqual(
+    persistedFailureReceipt.remainingObjectScopes.map((scope) => scope.objectKey),
+    ["uploads/f2.pdf"]
+  );
+  assert.equal(
+    persistedFailureReceipt.receiptSha256,
+    sha256(
+      Object.fromEntries(
+        Object.entries(persistedFailureReceipt).filter(
+          ([key]) => key !== "receiptSha256"
+        )
+      )
+    )
+  );
+  assert.ok(
+    audits.some(
+      (event) =>
+        event.status === "failed_after_database_commit" &&
+        event.executionReceipt?.receiptSha256 ===
+          persistedFailureReceipt.receiptSha256
+    )
+  );
+});
+
 test("final inspect 后租约失效或对象复活不得签发 completed 收据", async () => {
   const decisions = decisionManifest([
     {
@@ -2467,7 +2806,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
     allowMissingDeletedDecisions: true
   });
   let verificationCount = 0;
-  let persisted = false;
+  let persistedReceipt;
   let completedAudit = false;
   await assert.rejects(
     () =>
@@ -2502,7 +2841,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
-        persistReceipt: async () => { persisted = true; },
+        persistReceipt: async (receipt) => { persistedReceipt = receipt; },
         verifyWriteFreezeLease: async (input) => {
           verificationCount += 1;
           if (verificationCount >= 6) throw new Error("外部写冻结租约已撤销");
@@ -2512,7 +2851,8 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
       }),
     /写冻结租约已撤销/u
   );
-  assert.equal(persisted, false);
+  assert.equal(persistedReceipt.status, "failed_after_database_commit");
+  assert.equal(persistedReceipt.completed, false);
   assert.equal(completedAudit, false);
 });
 

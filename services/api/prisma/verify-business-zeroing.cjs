@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const { assertCleanNodeRuntime } = require("../scripts/business-zeroing-cli.cjs");
+assertCleanNodeRuntime();
 const assert = require("node:assert/strict");
 const { createHash, generateKeyPairSync, sign } = require("node:crypto");
 const { mkdir, readFile, writeFile } = require("node:fs/promises");
@@ -77,6 +79,7 @@ function createAuthorization(
       candidateSha256: report.candidateSha256,
       decisionManifestSha256: report.decisionManifestSha256,
       testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+      testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
       trustedTestProvenancePublicKeySha256:
         report.trustedTestProvenancePublicKeySha256,
       trustedWriteFreezePublicKeySha256:
@@ -116,6 +119,7 @@ function createWriteFreezeLease(
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
       objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+      testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
       holderDeploymentIdentitySha256: report.deploymentIdentitySha256,
       holderExecutorIdentity: report.executorIdentity,
       fenceToken: "8".repeat(64),
@@ -145,6 +149,7 @@ function createTestProvenance(
   privateKey,
   issuedAt
 ) {
+  const registryRef = "POL-22 isolated dynamic fixture registry v1";
   const records = [];
   for (const table of sourceInventory.tables) {
     for (const row of table.rows) {
@@ -161,26 +166,40 @@ function createTestProvenance(
         )?.decision,
         "delete"
       );
-      records.push({
+      const record = {
         table: table.name,
         primaryKey,
         rowSha256: row.rowSha256,
         sourceKind: "isolated_fixture_registry",
-        sourceRef: `dynamic-fixture:${table.name}:${sha256(primaryKey)}`,
+        sourceRef: `dynamic-fixture:${table.name}:${sha256(primaryKey)}`
+      };
+      records.push({
+        ...record,
         evidenceSha256: sha256({
-          registry: "pol22-dynamic-fixtures-v1",
-          table: table.name,
-          primaryKey,
-          rowSha256: row.rowSha256
+          registryRef,
+          environment: ENVIRONMENT,
+          databaseFingerprint: sourceInventory.databaseFingerprint,
+          sourceKind: record.sourceKind,
+          sourceRef: record.sourceRef,
+          table: record.table,
+          primaryKey: record.primaryKey,
+          rowSha256: record.rowSha256
         })
       });
     }
   }
   assert.equal(records.length, trustedFixtureKeys.size);
+  const registry = {
+    schemaVersion: 1,
+    registryRef,
+    environment: ENVIRONMENT,
+    databaseFingerprint: sourceInventory.databaseFingerprint,
+    records
+  };
   const payload = Buffer.from(
     JSON.stringify({
       schemaVersion: 1,
-      registryRef: "POL-22 isolated dynamic fixture registry v1",
+      registryRef,
       issuer: "POL-22 隔离动态测试来源签发者",
       issuedAt,
       policyId: BUSINESS_ZEROING_POLICY.id,
@@ -191,10 +210,14 @@ function createTestProvenance(
     "utf8"
   );
   return {
-    schemaVersion: 1,
-    algorithm: "Ed25519",
-    payload: payload.toString("base64"),
-    signature: sign(null, payload, privateKey).toString("base64")
+    registry,
+    registrySha256: sha256(registry),
+    envelope: {
+      schemaVersion: 1,
+      algorithm: "Ed25519",
+      payload: payload.toString("base64"),
+      signature: sign(null, payload, privateKey).toString("base64")
+    }
   };
 }
 
@@ -331,7 +354,13 @@ async function verifyCandidateCasTriggerRollback(prisma) {
   });
 }
 
-async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
+async function verifyBusinessZeroing(
+  prisma,
+  temporaryRoot,
+  codeIdentity,
+  { trustedRunner = false } = {}
+) {
+  assert.equal(trustedRunner, true, "POL-22 动态验证器只能由已清洗的隔离 runner 调用");
   assert.match(codeIdentity?.codeSha ?? "", /^[0-9a-f]{40}$/u);
   assert.match(codeIdentity?.executionCodeSha256 ?? "", /^[0-9a-f]{64}$/u);
   const storageRoot = path.join(temporaryRoot, "private-files");
@@ -441,6 +470,7 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     executorUsername: userInfo().username,
     testProvenancePublicKeySha256:
       trustedTestProvenancePublicKeySha256,
+    testProvenanceRegistrySha256: testProvenance.registrySha256,
     writeFreezePublicKeySha256:
       trustedWriteFreezePublicKeySha256
   };
@@ -453,8 +483,14 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     lockTables = false,
     allowMissingDeletedDecisions = false,
     decisionManifest = decisions,
-    provenanceEnvelope = testProvenance
+    provenanceBundle = testProvenance,
+    trustedRegistrySha256 = testProvenance.registrySha256
   ) => {
+    assert.equal(
+      trustedRegistrySha256,
+      provenanceBundle?.registrySha256 ?? testProvenance.registrySha256,
+      "隔离动态场景变更 provenance registry 时必须同步固定信任摘要"
+    );
     const currentInventory = await inspectDatabaseInventory(client, {
       environment: ENVIRONMENT,
       lockTables
@@ -467,9 +503,14 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
       policy: BUSINESS_ZEROING_POLICY,
       inventory: currentInventory,
       decisions: decisionManifest,
-      testProvenance: provenanceEnvelope,
+      testProvenance: provenanceBundle?.envelope ?? provenanceBundle,
       testProvenancePublicKey: testProvenanceKeys.publicKey,
+      testProvenanceRegistry:
+        provenanceBundle?.registry ?? testProvenance.registry,
+      testProvenanceRegistrySha256:
+        provenanceBundle?.registrySha256 ?? testProvenance.registrySha256,
       trustedTestProvenancePublicKeySha256,
+      trustedTestProvenanceRegistrySha256: trustedRegistrySha256,
       trustedWriteFreezePublicKeySha256,
       backup,
       codeSha: codeIdentity.codeSha,
@@ -519,7 +560,8 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
       false,
       false,
       effectiveDecisions,
-      effectiveProvenance
+      effectiveProvenance,
+      effectiveProvenance.registrySha256
     );
     assert.equal(effectiveReport.status, "blocked");
     assert.deepEqual(effectiveReport.deletionCandidates, []);
@@ -549,7 +591,11 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
   }
 
   const beforeCounts = await counts(prisma);
-  const unprovenReport = await buildReport(prisma, false, false, decisions, null);
+  const unprovenReport = await buildReport(prisma, false, false, decisions, {
+    envelope: null,
+    registry: testProvenance.registry,
+    registrySha256: testProvenance.registrySha256
+  });
   assert.equal(unprovenReport.status, "blocked");
   assert.deepEqual(unprovenReport.deletionCandidates, []);
   assert.ok(
@@ -683,7 +729,7 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     { contracts: 0, versions: 0, attachments: 0, files: 0 }
   );
   assert.equal(afterCounts.migrations, beforeCounts.migrations);
-  assert.equal(afterCounts.audits, beforeCounts.audits + 2);
+  assert.equal(afterCounts.audits, beforeCounts.audits + 3);
   await assert.rejects(() => readFile(path.join(storageRoot, OBJECT_KEY)), /ENOENT/u);
   const localDisposition = receipt.objectDispositions.find(
     (item) => item.kind === "local_quarantine" && item.objectKey === OBJECT_KEY
@@ -747,7 +793,8 @@ async function verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity) {
     false,
     false,
     guardedDecisions,
-    guardedProvenance
+    guardedProvenance,
+    guardedProvenance.registrySha256
   );
   assert.equal(guardedReport.status, "blocked");
   assert.ok(

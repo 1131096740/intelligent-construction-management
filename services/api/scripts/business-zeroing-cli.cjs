@@ -23,6 +23,8 @@ const TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-authorization-public-key.pem";
 const TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem";
+const TRUSTED_TEST_PROVENANCE_REGISTRY_PATH =
+  "/etc/jiangkong/pol22-zeroing-test-provenance-registry.json";
 const TRUSTED_WRITE_FREEZE_PUBLIC_KEY_PATH =
   "/etc/jiangkong/pol22-zeroing-write-freeze-public-key.pem";
 const TRUSTED_WRITE_FREEZE_LEASE_PATH =
@@ -40,12 +42,51 @@ const EXECUTION_FILES = Object.freeze([
   "services/api/scripts/business-zeroing-storage.cjs",
   "services/api/scripts/execute-test-business-zeroing.cjs",
   "services/api/scripts/inspect-test-business-zeroing.cjs",
+  "services/api/scripts/run-business-zeroing-cli.sh",
+  "services/api/scripts/sign-business-zeroing-input.cjs",
   "services/api/scripts/verify-test-business-zeroing.cjs"
 ]);
 const EXECUTION_DIRECTORIES = Object.freeze(["services/api/dist"]);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalize(value[key])])
+    );
+  }
+  return value;
+}
+
+function canonicalSha256(value) {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalize(value)), "utf8")
+    .digest("hex");
+}
+
+function assertCleanNodeRuntime({
+  env = process.env,
+  execArgv = process.execArgv,
+  requireTrustedLauncher = false
+} = {}) {
+  invariant(!env.NODE_OPTIONS, "NODE_OPTIONS 可预加载未指纹代码，归零工具拒绝启动");
+  invariant(!env.NODE_PATH, "NODE_PATH 可引入仓库外模块，归零工具拒绝启动");
+  invariant(
+    Array.isArray(execArgv) && execArgv.length === 0,
+    "Node 启动参数可改变未指纹执行语义，归零工具拒绝启动"
+  );
+  if (requireTrustedLauncher) {
+    invariant(
+      env.POL22_CLEAN_NODE_LAUNCH === "1",
+      "归零 CLI 必须由受信启动器在 Node 启动前清除预加载面"
+    );
+  }
 }
 
 function parseOptions(argv, definition) {
@@ -138,6 +179,27 @@ function readTrustedTestProvenancePublicKey(expectedPublicKeySha256) {
   return content;
 }
 
+function readTrustedTestProvenanceRegistry(expectedRegistrySha256) {
+  const content = readRootOwnedFile(
+    TRUSTED_TEST_PROVENANCE_REGISTRY_PATH,
+    "未配置固定的外部测试来源注册表，业务删除候选保持禁用",
+    "外部测试来源注册表"
+  );
+  let registry;
+  try {
+    registry = JSON.parse(content);
+  } catch {
+    throw new Error("外部测试来源注册表不是合法 JSON");
+  }
+  const artifactSha256 = canonicalSha256(registry);
+  invariant(
+    /^[0-9a-f]{64}$/u.test(expectedRegistrySha256 ?? "") &&
+      artifactSha256 === expectedRegistrySha256,
+    "外部测试来源注册表与固定部署身份信任锚不匹配"
+  );
+  return { registry, artifactSha256 };
+}
+
 function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
   invariant(
     JSON.stringify(Object.keys(identity).sort()) ===
@@ -149,6 +211,7 @@ function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
         "executorUsername",
         "schemaVersion",
         "testProvenancePublicKeySha256",
+        "testProvenanceRegistrySha256",
         "writeFreezePublicKeySha256"
       ]),
     "固定的部署执行身份字段不精确"
@@ -165,6 +228,10 @@ function validateTrustedExecutionIdentity(identity, runtimeIdentity = {}) {
   invariant(
     /^[0-9a-f]{64}$/u.test(identity.testProvenancePublicKeySha256 ?? ""),
     "固定测试来源公钥指纹无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(identity.testProvenanceRegistrySha256 ?? ""),
+    "固定外部测试来源注册表指纹无效"
   );
   invariant(
     /^[0-9a-f]{64}$/u.test(identity.writeFreezePublicKeySha256 ?? ""),
@@ -282,6 +349,17 @@ function assertCleanRepositoryStatus(status) {
 function listJavaScriptFiles(repositoryRoot, relativeDirectory) {
   const absoluteDirectory = resolve(repositoryRoot, relativeDirectory);
   const canonicalRoot = realpathSync(repositoryRoot);
+  const directoryMetadata = lstatSync(absoluteDirectory);
+  invariant(
+    !directoryMetadata.isSymbolicLink(),
+    `实际执行代码目录不得为符号链接：${absoluteDirectory}`
+  );
+  invariant(directoryMetadata.isDirectory(), `实际执行代码根必须是普通目录：${absoluteDirectory}`);
+  const canonicalDirectory = realpathSync(absoluteDirectory);
+  invariant(
+    canonicalDirectory === canonicalRoot || canonicalDirectory.startsWith(`${canonicalRoot}/`),
+    `实际执行代码目录必须位于仓库内：${absoluteDirectory}`
+  );
   const files = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
@@ -388,6 +466,7 @@ function safeFailure(error) {
 }
 
 module.exports = {
+  assertCleanNodeRuntime,
   currentCodeSha,
   currentCodeIdentity,
   EXECUTION_DIRECTORIES,
@@ -398,6 +477,7 @@ module.exports = {
   readJson,
   readTrustedAuthorizationPublicKey,
   readTrustedTestProvenancePublicKey,
+  readTrustedTestProvenanceRegistry,
   readTrustedWriteFreezePublicKey,
   readTrustedWriteFreezeLease,
   readTrustedExecutionIdentity,
@@ -405,6 +485,7 @@ module.exports = {
   assertCleanRepositoryStatus,
   TRUSTED_AUTHORIZATION_PUBLIC_KEY_PATH,
   TRUSTED_TEST_PROVENANCE_PUBLIC_KEY_PATH,
+  TRUSTED_TEST_PROVENANCE_REGISTRY_PATH,
   TRUSTED_WRITE_FREEZE_PUBLIC_KEY_PATH,
   TRUSTED_WRITE_FREEZE_LEASE_PATH,
   TRUSTED_EXECUTION_IDENTITY_PATH,

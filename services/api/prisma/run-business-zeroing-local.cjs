@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const { assertCleanNodeRuntime } = require("../scripts/business-zeroing-cli.cjs");
+if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
 const { randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
@@ -65,6 +67,12 @@ async function waitForPostgres(containerName, dockerEnvironment) {
 }
 
 async function main() {
+  if (process.argv.slice(2).includes("--help")) {
+    process.stdout.write(
+      "sh services/api/scripts/run-business-zeroing-cli.sh dynamic\n"
+    );
+    return;
+  }
   assertSafeExecutionEnvironment(process.env);
   const port = await freePort();
   const suffix = `${Date.now()}-${process.pid}`;
@@ -173,7 +181,9 @@ async function main() {
     process.env.DATABASE_URL = databaseUrl;
     const prisma = new PrismaClient();
     try {
-      const receipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity);
+      const receipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity, {
+        trustedRunner: true
+      });
       process.stdout.write(`${JSON.stringify(receipt)}\n`);
     } finally {
       await prisma.$disconnect();

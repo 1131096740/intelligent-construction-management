@@ -11,6 +11,8 @@
 | `verify-test-business-zeroing.cjs` | 只读 | 核对候选已清零、保留数量不漂移、迁移不变、无孤儿文件与悬空外键，并按执行前冻结对象清单逐 key/version/hash/generation 重扫 |
 | `sign-business-zeroing-input.cjs` | 只读输入，新建输出 | 为决定清单或备份恢复收据生成内容完整性 SHA-256 |
 
+所有实际命令都必须通过受信启动器 `sh services/api/scripts/run-business-zeroing-cli.sh <inspect|execute|verify|sign|dynamic>` 进入。启动器在 Node 启动前拒绝 `NODE_OPTIONS`、`NODE_PATH` 等预加载污染并清理启动环境；五个直接 `.cjs` 入口均失败关闭，不能作为受支持调用方式。`dynamic` 只运行隔离动态验证，`verify-business-zeroing.cjs` 仅作为该受信运行器内部库使用。
+
 `sign-business-zeroing-input.cjs` 只证明 JSON 内容未漂移，不证明决定由谁批准，也不能生成独立测试来源证明。预检会实际读取两个备份文件并重算字节 SHA-256，但这仍不代替隔离恢复演练。逐主键测试来源证明和执行授权分别由独立签发者使用不同的 Ed25519 信任锚生成；工具不接收命令行公钥，也不包含或生成真实环境私钥。
 
 报告、清单、授权和收据等运行工件必须放在仓库 checkout 之外的专用受限目录；否则它们会使工作树变脏并被代码身份门阻断。每次输出都必须使用不存在的新路径，不能覆盖旧证据。
@@ -19,9 +21,9 @@
 
 必须同时满足：
 
-1. 当前 checkout 为已审核的完整 40 位 Git SHA，工作树无未提交/未跟踪文件，API 已由该 SHA 构建；报告同时绑定归零脚本、锁文件、Prisma Schema 和 `services/api/dist/` 全部 JavaScript 产物的 SHA-256。执行代码清单中的符号链接、非普通文件或 realpath 越出仓库都失败关闭，不得静默跳过未纳入指纹的实际运行产物。
+1. 当前 checkout 为已审核的完整 40 位 Git SHA，工作树无未提交/未跟踪文件，API 已由该 SHA 构建；报告同时绑定受信启动器、归零脚本、锁文件、Prisma Schema 和 `services/api/dist/` 全部 JavaScript 产物的 SHA-256。执行代码文件或扫描根目录自身是符号链接、非普通类型，或 realpath 越出仓库都失败关闭，不得静默跳过未纳入指纹的实际运行产物。
 2. `DATABASE_URL` 精确指向本次授权环境；环境名、数据库系统标识、数据库名/Schema/连接身份和 session replication role 形成的 fingerprint、迁移 head、列/主键/外键/触发器启用状态/用户函数及显式逻辑关联形成的 Schema digest 必须与报告一致。
-3. 固定部署身份文件必须把环境、部署实例、逻辑执行主体、独立测试来源公钥 SHA-256 和外部写冻结租约公钥 SHA-256 绑定到当前 OS 用户名和 UID；命令环境、身份文件、root 所有的信任公钥和当前进程任一不一致都失败关闭。调用者同时生成并提交“公钥 + envelope + 引用”不能建立信任。
+3. 固定部署身份文件必须把环境、部署实例、逻辑执行主体、独立测试来源公钥 SHA-256、root 所有的不可变测试来源注册表 SHA-256 和外部写冻结租约公钥 SHA-256 绑定到当前 OS 用户名和 UID；命令环境、身份文件、注册表、root 所有的信任公钥和当前进程任一不一致都失败关闭。调用者同时生成并提交“公钥 + envelope + 引用”不能建立信任。
 4. 数据库备份和私有文件备份都绑定绝对本地普通文件路径；工具实际读取并校验字节 SHA-256，且收据分别记录捕获时间、隔离恢复目标、恢复时间与 `passed` 状态。两类备份都必须满足 `capturedAt <= restoreVerifiedAt <= 本次预检 generatedAt`，未来时间或预检后才完成的恢复证据一律阻断。
 5. 所有 `review` 基础资料和 `business_review` 业务记录都有逐主键的中文 `preserve`/`delete` 决定和原因；每条 `delete` 还必须由独立可信 fixture/测试操作注册表的签名记录证明，并精确绑定环境、数据库、表、主键、完整行哈希、来源引用和证据哈希。任何未分类、无来源、来源漂移或来源公钥替换都阻断，不得按表策略、时间或“相关记录”推测。为保证正式编号重新开始，`BusinessDailySequence` 与 `ContractNumberTombstone` 只接受逐主键 `delete`，对它们声明 `preserve` 同样阻断。
 6. 报告中没有未知表、缺失表、缺失主键、未分类记录、未登记文件绑定、未知/混合归属、孤儿文件、重复对象键、悬空外键、候选循环依赖，或候选表上的启用拒绝删除触发器；后者必须先由另票提供可审计专用通道，POL-22 不绕过或禁用触发器。
@@ -58,7 +60,7 @@
 }
 ```
 
-逐主键 `delete` 还必须有独立测试来源 envelope。其公钥由下一节固定身份中的 SHA-256 和固定路径 `/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem` 双重绑定；该文件必须由 root 持有、不是符号链接且不可被组或其他用户写入。POL-22 不安装该公钥或生成其私钥。envelope 字段必须精确为 `schemaVersion`、`algorithm=Ed25519`、严格 Base64 的 `payload` 与 `signature`；payload 字段必须精确包含 `schemaVersion`、`registryRef`、`issuer`、`issuedAt`、`policyId`、`environment`、`databaseFingerprint` 和 `records`。每条 record 必须精确包含：
+逐主键 `delete` 还必须有独立测试来源 envelope。其公钥由下一节固定身份中的 SHA-256 和固定路径 `/etc/jiangkong/pol22-zeroing-test-provenance-public-key.pem` 双重绑定；独立不可变来源注册表固定为 `/etc/jiangkong/pol22-zeroing-test-provenance-registry.json`，其规范化内容 SHA-256 同样由部署身份绑定。两个文件都必须由 root 持有、不是符号链接且不可被组或其他用户写入。POL-22 不安装该公钥或注册表，也不生成其私钥。envelope 字段必须精确为 `schemaVersion`、`algorithm=Ed25519`、严格 Base64 的 `payload` 与 `signature`；payload 字段必须精确包含 `schemaVersion`、`registryRef`、`issuer`、`issuedAt`、`policyId`、`environment`、`databaseFingerprint` 和 `records`。每条 record 必须精确包含：
 
 ```json
 {
@@ -71,7 +73,7 @@
 }
 ```
 
-允许的 `sourceKind` 仅为 `isolated_fixture_registry` 或 `trusted_test_operation_registry`。来源 envelope 必须覆盖且只能覆盖本次全部 `delete` 决定；伪造 `registryRef`、替换公钥、额外记录、缺失记录、行/环境漂移都失败关闭。
+允许的 `sourceKind` 仅为 `isolated_fixture_registry` 或 `trusted_test_operation_registry`。工具必须按 `registryRef + sourceRef` 从固定注册表解析唯一不可变记录、重算 `evidenceSha256`，并要求 envelope 记录与注册表记录规范化后逐字节一致。来源 envelope 必须覆盖且只能覆盖本次全部 `delete` 决定；伪造 `registryRef`/`sourceRef`/`evidenceSha256`、替换公钥或注册表、额外记录、缺失记录、行/环境漂移都失败关闭。
 
 未签名的备份恢复收据示例：
 
@@ -102,11 +104,11 @@
 内容审核完成后，用新输出路径生成完整性 SHA-256 收据：
 
 ```bash
-node services/api/scripts/sign-business-zeroing-input.cjs \
+sh services/api/scripts/run-business-zeroing-cli.sh sign \
   --input <reviewed-decisions.json> \
   --output <signed-decisions.json>
 
-node services/api/scripts/sign-business-zeroing-input.cjs \
+sh services/api/scripts/run-business-zeroing-cli.sh sign \
   --input <verified-backup-receipt.json> \
   --output <signed-backup-receipt.json>
 ```
@@ -122,6 +124,7 @@ node services/api/scripts/sign-business-zeroing-input.cjs \
   "executorUid": 1234,
   "executorUsername": "<专用系统用户名>",
   "testProvenancePublicKeySha256": "<固定独立测试来源 Ed25519 公钥 DER 的 64 位 SHA-256>",
+  "testProvenanceRegistrySha256": "<固定不可变测试来源注册表规范化内容的 64 位 SHA-256>",
   "writeFreezePublicKeySha256": "<固定外部写冻结租约 Ed25519 公钥 DER 的 64 位 SHA-256>"
 }
 ```
@@ -131,7 +134,7 @@ node services/api/scripts/sign-business-zeroing-input.cjs \
 ## 4. 只读预检
 
 ```bash
-node services/api/scripts/inspect-test-business-zeroing.cjs \
+sh services/api/scripts/run-business-zeroing-cli.sh inspect \
   --environment <精确环境标识> \
   --decision-manifest <signed-decisions.json> \
   --test-provenance <trusted-test-provenance.json> \
@@ -141,8 +144,8 @@ node services/api/scripts/inspect-test-business-zeroing.cjs \
 
 不带决定清单或备份收据时，命令仍只读扫描，但以退出码 2 和 `status=blocked` 结束。检查输出中的：
 
-- `databaseFingerprint` / `migrationHead` / `schemaDigest` / `codeSha` / `executionCodeSha256` / `deploymentIdentitySha256` / `executorIdentity` / `trustedTestProvenancePublicKeySha256` / `trustedWriteFreezePublicKeySha256`；
-- `testProvenanceEnvelopeSha256` / `testProvenanceVerification`，以及每条删除候选的 `testProvenance`；
+- `databaseFingerprint` / `migrationHead` / `schemaDigest` / `codeSha` / `executionCodeSha256` / `deploymentIdentitySha256` / `executorIdentity` / `trustedTestProvenancePublicKeySha256` / `testProvenanceRegistrySha256` / `trustedWriteFreezePublicKeySha256`；
+- `testProvenanceEnvelopeSha256` / `testProvenanceVerification`，以及每条删除候选的 `testProvenance` 和经固定注册表解析、重算后的来源证据；
 - `preservationWhitelist` / `preservationAnchors` / `preservationCountsByBusinessType` / `classificationRequired`；
 - `deletionCandidates` / `deletionCountsByBusinessType` / `numberResets` / `expectedReleasedNumbers` / `candidateSha256` / `deletionOrder`；
 - `fileBindings` 中的精确 bucket、object key、业务主键与归属分类，以及 `objectDeletionManifest` / `objectDeletionManifestSha256` 冻结的对象内容或全部版本代际快照；
@@ -155,7 +158,7 @@ node services/api/scripts/inspect-test-business-zeroing.cjs \
 不得带 `--apply`：
 
 ```bash
-node services/api/scripts/execute-test-business-zeroing.cjs \
+sh services/api/scripts/run-business-zeroing-cli.sh execute \
   --report <new-preflight-report.json> \
   --environment <精确环境标识> \
   --decision-manifest <signed-decisions.json> \
@@ -181,14 +184,14 @@ dry-run 会重新执行只读预检，对比环境/执行主体、数据库、�
 }
 ```
 
-payload 必须精确包含：`schemaVersion`、`authorizationRef`、`issuer`、`issuedAt`、`expiresAt`、`policyId`、`environment`、`databaseFingerprint`、`codeSha`、`executionCodeSha256`、`deploymentIdentitySha256`、`executorIdentity`、`reportSha256`、`candidateSha256`、`decisionManifestSha256`、`testProvenanceEnvelopeSha256`、`trustedTestProvenancePublicKeySha256`、`trustedWriteFreezePublicKeySha256`、`writeFreezeLeaseEnvelopeSha256`、`objectDeletionManifestSha256`、`backupReceiptSha256`、`batchId`、`confirmation`。授权不得早于报告生成时间，也不得晚于报告过期时间。
+payload 必须精确包含：`schemaVersion`、`authorizationRef`、`issuer`、`issuedAt`、`expiresAt`、`policyId`、`environment`、`databaseFingerprint`、`codeSha`、`executionCodeSha256`、`deploymentIdentitySha256`、`executorIdentity`、`reportSha256`、`candidateSha256`、`decisionManifestSha256`、`testProvenanceEnvelopeSha256`、`trustedTestProvenancePublicKeySha256`、`testProvenanceRegistrySha256`、`trustedWriteFreezePublicKeySha256`、`writeFreezeLeaseEnvelopeSha256`、`objectDeletionManifestSha256`、`backupReceiptSha256`、`batchId`、`confirmation`。授权不得早于报告生成时间，也不得晚于报告过期时间。
 
 执行入口只从固定路径 `/etc/jiangkong/pol22-zeroing-authorization-public-key.pem` 读取由 root 持有、非符号链接、不可被组/其他用户写入的 Ed25519 公钥。命令行不能覆盖该信任锚；POL-22 不安装该文件，因此默认保持执行禁用。后续 #122 必须由独立控制面预置正确公钥并另行授权，不能把私钥放到执行主机。
 
 单次对象重扫不能证明扫描后没有并发写入，因此 apply 还必须从固定 root 所有路径 `/etc/jiangkong/pol22-zeroing-write-freeze-public-key.pem` 和 `/etc/jiangkong/pol22-zeroing-write-freeze-lease.json` 读取外部控制面签发的写冻结租约。POL-22 不安装、不自签也不自行建立该租约；缺失、签名或固定公钥不匹配、过期、撤销、状态非 `active` 均在任何写入前失败关闭。后续 #122 必须先取得独立维护窗口，并让数据库业务写与私有对象写入口共同遵守该 fence。租约 payload 字段必须精确为 `schemaVersion`、`leaseId`、`issuer`、`status=active`、`revokedAt=null`、`environment`、`batchId`、`reportSha256`、`candidateSha256`、`objectDeletionManifestSha256`、`holderDeploymentIdentitySha256`、`holderExecutorIdentity`、`fenceToken`、`generation`、`scopes=["database_business_writes","private_object_writes"]`、`issuedAt` 和 `expiresAt`；租约摘要还必须被独立执行授权绑定。
 
 ```bash
-node services/api/scripts/execute-test-business-zeroing.cjs \
+sh services/api/scripts/run-business-zeroing-cli.sh execute \
   --apply \
   --report <approved-preflight-report.json> \
   --environment <精确环境标识> \
@@ -215,7 +218,7 @@ node services/api/scripts/execute-test-business-zeroing.cjs \
 ## 7. 只读后置核验
 
 ```bash
-node services/api/scripts/verify-test-business-zeroing.cjs \
+sh services/api/scripts/run-business-zeroing-cli.sh verify \
   --before-report <approved-preflight-report.json> \
   --execution-receipt <new-execution-receipt.json> \
   --environment <精确环境标识> \
@@ -244,7 +247,7 @@ node services/api/scripts/verify-test-business-zeroing.cjs \
 ```bash
 env -u DATABASE_URL -u CONTRACT_DATABASE_URL -u SHADOW_DATABASE_URL \
   -u TEST_DATABASE_URL NODE_ENV=test \
-  node services/api/prisma/run-business-zeroing-local.cjs
+  sh services/api/scripts/run-business-zeroing-cli.sh dynamic
 ```
 
 该门会临时应用全部迁移，只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。收据必须显示 `productionAccessed: false`。

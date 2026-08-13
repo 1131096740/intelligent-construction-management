@@ -2,6 +2,18 @@
 "use strict";
 /* eslint-disable @typescript-eslint/no-var-requires */
 
+const {
+  assertCleanNodeRuntime,
+  currentCodeIdentity,
+  outputJson,
+  parseOptions,
+  readJson,
+  readTrustedExecutionIdentity,
+  readTrustedTestProvenancePublicKey,
+  readTrustedTestProvenanceRegistry,
+  safeFailure
+} = require("./business-zeroing-cli.cjs");
+if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
 const { buildPreflightReport } = require("./business-zeroing-core.cjs");
 const { createHash } = require("node:crypto");
 const { createReadStream } = require("node:fs");
@@ -12,15 +24,6 @@ const { BUSINESS_ZEROING_POLICY } = require("./business-zeroing-policy.cjs");
 const {
   inspectInventoryObjectSnapshots
 } = require("./business-zeroing-storage.cjs");
-const {
-  currentCodeIdentity,
-  outputJson,
-  parseOptions,
-  readJson,
-  readTrustedExecutionIdentity,
-  readTrustedTestProvenancePublicKey,
-  safeFailure
-} = require("./business-zeroing-cli.cjs");
 
 const DEFINITION = {
   environment: { flag: "--environment", type: "value" },
@@ -67,7 +70,7 @@ async function verifyBackupArtifacts(receipt) {
 function help() {
   return [
     "默认只读预检：",
-    "node inspect-test-business-zeroing.cjs --environment <精确环境标识>",
+    "sh services/api/scripts/run-business-zeroing-cli.sh inspect --environment <精确环境标识>",
     "  [--decision-manifest <已签名 JSON>] [--test-provenance <独立签名 JSON>]",
     "  [--backup-receipt <已签名 JSON>]",
     "  [--output <新报告路径>]",
@@ -107,6 +110,20 @@ async function inspectWithClient(client, options) {
           trustedIdentity.testProvenancePublicKeySha256
         )
       : undefined);
+  const trustedRegistry =
+    options.testProvenanceRegistry === undefined
+      ? testProvenance
+        ? readTrustedTestProvenanceRegistry(
+            trustedIdentity.testProvenanceRegistrySha256
+          )
+        : {
+            registry: null,
+            artifactSha256: trustedIdentity.testProvenanceRegistrySha256
+          }
+      : {
+          registry: options.testProvenanceRegistry,
+          artifactSha256: options.testProvenanceRegistrySha256
+        };
   return buildPreflightReport({
     policy: BUSINESS_ZEROING_POLICY,
     inventory,
@@ -115,8 +132,12 @@ async function inspectWithClient(client, options) {
       : null,
     testProvenance,
     testProvenancePublicKey,
+    testProvenanceRegistry: trustedRegistry.registry,
+    testProvenanceRegistrySha256: trustedRegistry.artifactSha256,
     trustedTestProvenancePublicKeySha256:
       trustedIdentity.testProvenancePublicKeySha256,
+    trustedTestProvenanceRegistrySha256:
+      trustedIdentity.testProvenanceRegistrySha256,
     trustedWriteFreezePublicKeySha256:
       trustedIdentity.writeFreezePublicKeySha256,
     backup,

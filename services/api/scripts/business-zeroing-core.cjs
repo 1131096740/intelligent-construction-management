@@ -241,11 +241,14 @@ function validateDecisionManifest(
 function validateTestProvenanceEnvelope(
   envelope,
   publicKeyInput,
+  registry,
+  registrySha256,
   policy,
   inventory,
   decisions,
   generatedAt,
   trustedPublicKeySha256,
+  trustedRegistrySha256,
   { allowMissingDeletedDecisions = false } = {}
 ) {
   const deleteDecisions = [...decisions.entries()].filter(
@@ -278,6 +281,12 @@ function validateTestProvenanceEnvelope(
     /^[0-9a-f]{64}$/u.test(trustedPublicKeySha256 ?? "") &&
       sha256Bytes(publicKeyDer) === trustedPublicKeySha256,
     "独立测试来源公钥与固定部署信任锚不匹配"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(trustedRegistrySha256 ?? "") &&
+      registrySha256 === trustedRegistrySha256 &&
+      sha256(registry) === registrySha256,
+    "外部测试来源注册表与固定部署信任锚不匹配"
   );
   invariant(
     crypto.verify(null, payloadBytes, publicKey, signature),
@@ -325,6 +334,61 @@ function validateTestProvenanceEnvelope(
     "独立测试来源签发时间无效"
   );
   invariant(Array.isArray(payload.records), "独立测试来源 records 必须是数组");
+  invariant(
+    JSON.stringify(Object.keys(registry ?? {}).sort()) ===
+      JSON.stringify([
+        "databaseFingerprint",
+        "environment",
+        "records",
+        "registryRef",
+        "schemaVersion"
+      ]),
+    "外部测试来源注册表字段不精确"
+  );
+  invariant(registry.schemaVersion === 1, "外部测试来源注册表版本无效");
+  invariant(registry.registryRef === payload.registryRef, "独立测试来源注册表引用不存在");
+  invariant(registry.environment === inventory.environment, "外部测试来源注册表环境不匹配");
+  invariant(
+    registry.databaseFingerprint === inventory.databaseFingerprint,
+    "外部测试来源注册表数据库 fingerprint 不匹配"
+  );
+  invariant(Array.isArray(registry.records), "外部测试来源注册表 records 必须是数组");
+  const registryRecords = new Map();
+  for (const registryRecord of registry.records) {
+    invariant(
+      JSON.stringify(Object.keys(registryRecord ?? {}).sort()) ===
+        JSON.stringify([
+          "evidenceSha256",
+          "primaryKey",
+          "rowSha256",
+          "sourceKind",
+          "sourceRef",
+          "table"
+        ]),
+      "外部测试来源注册表记录字段不精确"
+    );
+    invariant(
+      typeof registryRecord.sourceRef === "string" &&
+        registryRecord.sourceRef.trim().length >= 8 &&
+        !registryRecords.has(registryRecord.sourceRef),
+      "外部测试来源注册表记录引用无效或重复"
+    );
+    const evidenceBody = {
+      registryRef: registry.registryRef,
+      environment: registry.environment,
+      databaseFingerprint: registry.databaseFingerprint,
+      sourceKind: registryRecord.sourceKind,
+      sourceRef: registryRecord.sourceRef,
+      table: registryRecord.table,
+      primaryKey: canonicalize(registryRecord.primaryKey),
+      rowSha256: registryRecord.rowSha256
+    };
+    invariant(
+      registryRecord.evidenceSha256 === sha256(evidenceBody),
+      "外部测试来源注据摘要不匹配"
+    );
+    registryRecords.set(registryRecord.sourceRef, canonicalize(registryRecord));
+  }
 
   const policyByName = new Map(policy.tables.map((table) => [table.name, table]));
   const inventoryByName = new Map(inventory.tables.map((table) => [table.name, table]));
@@ -380,6 +444,11 @@ function validateTestProvenanceEnvelope(
       /^[0-9a-f]{64}$/u.test(record.evidenceSha256 ?? ""),
       "独立测试来源证据摘要无效"
     );
+    invariant(
+      JSON.stringify(canonicalize(record)) ===
+        JSON.stringify(registryRecords.get(record.sourceRef)),
+      "独立测试来源记录未在外部不可变注册表中精确登记"
+    );
     const primaryKey = canonicalize(record.primaryKey);
     const key = recordKey(record.table, primaryKey);
     invariant(decisions.get(key)?.decision === "delete", "独立测试来源没有对应的删除决定");
@@ -409,6 +478,7 @@ function validateTestProvenanceEnvelope(
       issuedAt: payload.issuedAt,
       publicKeySha256: sha256Bytes(publicKeyDer),
       payloadSha256: sha256Bytes(payloadBytes),
+      registrySha256,
       recordCount: proofs.size
     }
   };
@@ -546,6 +616,7 @@ function reportStateFingerprint(report) {
     executorIdentity: report.executorIdentity,
     testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
     testProvenanceVerification: report.testProvenanceVerification,
+    testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
     trustedWriteFreezePublicKeySha256:
@@ -587,7 +658,10 @@ function buildPreflightReport({
   executorIdentity,
   testProvenance,
   testProvenancePublicKey,
+  testProvenanceRegistry,
+  testProvenanceRegistrySha256,
   trustedTestProvenancePublicKeySha256,
+  trustedTestProvenanceRegistrySha256,
   trustedWriteFreezePublicKeySha256,
   generatedAt,
   allowMissingDeletedDecisions = false
@@ -609,6 +683,10 @@ function buildPreflightReport({
   invariant(
     /^[0-9a-f]{64}$/u.test(trustedTestProvenancePublicKeySha256 ?? ""),
     "固定的独立测试来源公钥指纹无效"
+  );
+  invariant(
+    /^[0-9a-f]{64}$/u.test(trustedTestProvenanceRegistrySha256 ?? ""),
+    "固定的外部测试来源注册表指纹无效"
   );
   invariant(
     /^[0-9a-f]{64}$/u.test(trustedWriteFreezePublicKeySha256 ?? ""),
@@ -665,11 +743,14 @@ function buildPreflightReport({
     const validated = validateTestProvenanceEnvelope(
       testProvenance,
       testProvenancePublicKey,
+      testProvenanceRegistry,
+      testProvenanceRegistrySha256,
       policy,
       inventory,
       decisionByKey,
       generatedAt,
       trustedTestProvenancePublicKeySha256,
+      trustedTestProvenanceRegistrySha256,
       { allowMissingDeletedDecisions }
     );
     testProvenanceByKey = validated.proofs;
@@ -1096,6 +1177,7 @@ function buildPreflightReport({
     decisionManifestSha256: decisions?.receiptSha256,
     testProvenanceEnvelopeSha256: testProvenance ? sha256(testProvenance) : null,
     testProvenanceVerification,
+    testProvenanceRegistrySha256: trustedTestProvenanceRegistrySha256,
     trustedTestProvenancePublicKeySha256,
     trustedWriteFreezePublicKeySha256,
     backupReceiptSha256: backup?.receiptSha256,
@@ -1194,6 +1276,10 @@ function verifyPreflightReport(report) {
     "归零预检报告固定测试来源信任锚无效"
   );
   invariant(
+    /^[0-9a-f]{64}$/u.test(report.testProvenanceRegistrySha256 ?? ""),
+    "归零预检报告外部测试来源注册表指纹无效"
+  );
+  invariant(
     /^[0-9a-f]{64}$/u.test(report.trustedWriteFreezePublicKeySha256 ?? ""),
     "归零预检报告固定写冻结租约信任锚无效"
   );
@@ -1202,6 +1288,8 @@ function verifyPreflightReport(report) {
       (typeof report.testProvenanceVerification?.registryRef === "string" &&
         /^[0-9a-f]{64}$/u.test(report.testProvenanceVerification.publicKeySha256 ?? "") &&
         /^[0-9a-f]{64}$/u.test(report.testProvenanceVerification.payloadSha256 ?? "") &&
+        report.testProvenanceVerification.registrySha256 ===
+          report.testProvenanceRegistrySha256 &&
         Number.isInteger(report.testProvenanceVerification.recordCount)),
     "归零预检报告独立测试来源验证结果无效"
   );
@@ -1384,6 +1472,11 @@ function assertFreshReport(original, fresh, label) {
     `${label}固定测试来源信任锚已漂移`
   );
   invariant(
+    fresh.testProvenanceRegistrySha256 ===
+      original.testProvenanceRegistrySha256,
+    `${label}外部测试来源注册表已漂移`
+  );
+  invariant(
     fresh.trustedWriteFreezePublicKeySha256 ===
       original.trustedWriteFreezePublicKeySha256,
     `${label}固定写冻结租约信任锚已漂移`
@@ -1421,6 +1514,7 @@ async function createDryRunReceipt({ report, currentReport }) {
     testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
+    testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
     trustedWriteFreezePublicKeySha256:
       report.trustedWriteFreezePublicKeySha256,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
@@ -1512,6 +1606,7 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
     "reportSha256",
     "schemaVersion",
     "testProvenanceEnvelopeSha256",
+    "testProvenanceRegistrySha256",
     "trustedTestProvenancePublicKeySha256",
     "trustedWriteFreezePublicKeySha256",
     "writeFreezeLeaseEnvelopeSha256"
@@ -1564,6 +1659,11 @@ function validateAuthorizationEnvelope(envelope, report, args, publicKeyInput, n
       "trustedTestProvenancePublicKeySha256",
       report.trustedTestProvenancePublicKeySha256,
       "固定测试来源信任锚"
+    ],
+    [
+      "testProvenanceRegistrySha256",
+      report.testProvenanceRegistrySha256,
+      "外部测试来源注册表"
     ],
     [
       "trustedWriteFreezePublicKeySha256",
@@ -1663,7 +1763,8 @@ function validateWriteFreezeLeaseEnvelope(
     "revokedAt",
     "schemaVersion",
     "scopes",
-    "status"
+    "status",
+    "testProvenanceRegistrySha256"
   ];
   invariant(
     payload?.schemaVersion === 1 &&
@@ -1709,6 +1810,7 @@ function validateWriteFreezeLeaseEnvelope(
     ["reportSha256", report.reportSha256, "报告"],
     ["candidateSha256", report.candidateSha256, "候选"],
     ["objectDeletionManifestSha256", report.objectDeletionManifestSha256, "对象清单"],
+    ["testProvenanceRegistrySha256", report.testProvenanceRegistrySha256, "测试来源注册表"],
     ["holderDeploymentIdentitySha256", report.deploymentIdentitySha256, "部署身份"],
     ["holderExecutorIdentity", report.executorIdentity, "执行主体"]
   ]) {
@@ -1827,6 +1929,7 @@ function validateExecutionReceipt(
         "startedAt",
         "status",
         "testProvenanceEnvelopeSha256",
+        "testProvenanceRegistrySha256",
         "trustedTestProvenancePublicKeySha256",
         "trustedWriteFreezePublicKeySha256",
         "writeFreezeLease",
@@ -1852,6 +1955,11 @@ function validateExecutionReceipt(
       "trustedTestProvenancePublicKeySha256",
       before.trustedTestProvenancePublicKeySha256,
       "固定测试来源信任锚"
+    ],
+    [
+      "testProvenanceRegistrySha256",
+      before.testProvenanceRegistrySha256,
+      "外部测试来源注册表"
     ],
     [
       "trustedWriteFreezePublicKeySha256",
@@ -2085,6 +2193,7 @@ function verifyPostcheck(
     ["policyId", "策略"],
     ["decisionManifestSha256", "逐主键决定清单"],
     ["testProvenanceEnvelopeSha256", "独立测试来源工件"],
+    ["testProvenanceRegistrySha256", "外部测试来源注册表"],
     ["trustedTestProvenancePublicKeySha256", "固定测试来源信任锚"],
     ["trustedWriteFreezePublicKeySha256", "固定写冻结租约信任锚"],
     ["backupReceiptSha256", "备份恢复收据"]
@@ -2197,6 +2306,7 @@ async function executeBusinessZeroing({
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
     testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+    testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
     trustedTestProvenancePublicKeySha256:
       report.trustedTestProvenancePublicKeySha256,
     objectDeletionManifestSha256: report.objectDeletionManifestSha256,
@@ -2224,8 +2334,50 @@ async function executeBusinessZeroing({
   });
 
   let receipt;
+  const objectDispositions = [];
+  const remainingObjectScopes = () => {
+    const completed = new Set(
+      objectDispositions.map((item) => `${item.bucket}:${item.objectKey}`)
+    );
+    return report.objectDeletionManifest.filter(
+      (scope) => !completed.has(`${scope.bucket}:${scope.objectKey}`)
+    );
+  };
+  const recoveryReceipt = (status, observedAt, safeFailure) => {
+    const body = {
+      schemaVersion: 1,
+      status,
+      executed: true,
+      completed: false,
+      batchId: args.batchId,
+      environment: report.environment,
+      codeSha: report.codeSha,
+      executionCodeSha256: report.executionCodeSha256,
+      deploymentIdentitySha256: report.deploymentIdentitySha256,
+      executorIdentity: report.executorIdentity,
+      reportSha256: report.reportSha256,
+      candidateSha256: report.candidateSha256,
+      testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+      testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
+      trustedTestProvenancePublicKeySha256:
+        report.trustedTestProvenancePublicKeySha256,
+      objectDeletionManifestSha256: report.objectDeletionManifestSha256,
+      writeFreezeLeaseEnvelopeSha256: sha256(args.writeFreezeLeaseEnvelope),
+      writeFreezeLeaseEnvelope: args.writeFreezeLeaseEnvelope,
+      trustedWriteFreezePublicKeySha256:
+        report.trustedWriteFreezePublicKeySha256,
+      writeFreezeLease,
+      authorization,
+      authorizationEnvelope: args.authorizationEnvelope,
+      startedAt: startedAt.toISOString(),
+      observedAt: observedAt.toISOString(),
+      completedObjectDispositions: [...objectDispositions],
+      remainingObjectScopes: remainingObjectScopes(),
+      ...(safeFailure ? { safeFailure } : {})
+    };
+    return { ...body, receiptSha256: sha256(body) };
+  };
   try {
-    const objectDispositions = [];
     for (const file of fileCandidates) {
       writeFreezeLease = await verifyActiveWriteFreeze();
       validateApplyArguments(args, report, currentTime());
@@ -2240,6 +2392,17 @@ async function executeBusinessZeroing({
         bucket: file.bucket,
         objectKey: file.objectKey,
         ...disposition
+      });
+      writeFreezeLease = await verifyActiveWriteFreeze();
+      const progressReceipt = recoveryReceipt(
+        "object_deletion_progress",
+        currentTime()
+      );
+      await database.appendAudit({
+        ...auditBase,
+        status: "object_deletion_progress",
+        receiptSha256: progressReceipt.receiptSha256,
+        executionReceipt: progressReceipt
       });
     }
     writeFreezeLease = await verifyActiveWriteFreeze();
@@ -2268,6 +2431,7 @@ async function executeBusinessZeroing({
       reportSha256: report.reportSha256,
       candidateSha256: report.candidateSha256,
       testProvenanceEnvelopeSha256: report.testProvenanceEnvelopeSha256,
+      testProvenanceRegistrySha256: report.testProvenanceRegistrySha256,
       trustedTestProvenancePublicKeySha256:
         report.trustedTestProvenancePublicKeySha256,
       objectDeletionManifestSha256: report.objectDeletionManifestSha256,
@@ -2309,16 +2473,24 @@ async function executeBusinessZeroing({
     if (failedPersistence) throw failedPersistence.reason;
     return receipt;
   } catch (error) {
-    await database
-      .appendAudit?.({
+    const safeFailure = error instanceof Error ? error.message : "未知错误";
+    const failureReceipt =
+      receipt ??
+      recoveryReceipt(
+        "failed_after_database_commit",
+        currentTime(),
+        safeFailure
+      );
+    await Promise.allSettled([
+      receipt ? Promise.resolve() : persistReceipt(failureReceipt),
+      database.appendAudit?.({
         ...auditBase,
         status: "failed_after_database_commit",
-        safeFailure: error instanceof Error ? error.message : "未知错误",
-        ...(receipt
-          ? { receiptSha256: receipt.receiptSha256, executionReceipt: receipt }
-          : {})
-      })
-      .catch(() => undefined);
+        safeFailure,
+        receiptSha256: failureReceipt.receiptSha256,
+        executionReceipt: failureReceipt
+      }) ?? Promise.resolve()
+    ]);
     throw error;
   }
 }

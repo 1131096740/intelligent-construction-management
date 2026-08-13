@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 "use strict";
 
+const {
+  assertCleanNodeRuntime,
+  outputJson,
+  parseOptions,
+  readJson,
+  safeFailure
+} = require("./business-zeroing-cli.cjs");
+if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
 const { sha256 } = require("./business-zeroing-core.cjs");
-const { outputJson, parseOptions, readJson, safeFailure } = require("./business-zeroing-cli.cjs");
 
 const DEFINITION = {
   input: { flag: "--input", type: "value" },
@@ -13,7 +20,7 @@ function main() {
   const args = parseOptions(process.argv.slice(2), DEFINITION);
   if (args.help) {
     process.stdout.write(
-      "node sign-business-zeroing-input.cjs --input <未签名JSON> [--output <新路径>]\n"
+      "sh services/api/scripts/run-business-zeroing-cli.sh sign --input <未签名JSON> [--output <新路径>]\n"
     );
     return;
   }

@@ -3,12 +3,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 const {
-  inspectDeletedObjectScopes,
-  validateExecutionReceipt,
-  verifyPostcheck
-} = require("./business-zeroing-core.cjs");
-const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
-const {
+  assertCleanNodeRuntime,
   outputJson,
   parseOptions,
   readJson,
@@ -17,6 +12,13 @@ const {
   readTrustedWriteFreezePublicKey,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
+if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
+const {
+  inspectDeletedObjectScopes,
+  validateExecutionReceipt,
+  verifyPostcheck
+} = require("./business-zeroing-core.cjs");
+const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
 
 const DEFINITION = {
   beforeReport: { flag: "--before-report", type: "value" },
@@ -31,7 +33,7 @@ const DEFINITION = {
 function help() {
   return [
     "只读后置核验：",
-    "node verify-test-business-zeroing.cjs --before-report <执行前报告>",
+    "sh services/api/scripts/run-business-zeroing-cli.sh verify --before-report <执行前报告>",
     "  --execution-receipt <受控执行收据>",
     "  --environment <精确环境> --decision-manifest <决定清单>",
     "  --test-provenance <独立测试来源工件>",

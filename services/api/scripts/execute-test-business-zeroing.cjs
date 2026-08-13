@@ -3,16 +3,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 const {
-  createDryRunReceipt,
-  executeBusinessZeroing,
-  validateWriteFreezeLeaseEnvelope
-} = require("./business-zeroing-core.cjs");
-const {
-  createBusinessZeroingDatabase
-} = require("./business-zeroing-database.cjs");
-const { BUSINESS_ZEROING_POLICY } = require("./business-zeroing-policy.cjs");
-const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
-const {
+  assertCleanNodeRuntime,
   outputJson,
   parseOptions,
   readJson,
@@ -23,6 +14,17 @@ const {
   reserveJsonOutput,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
+if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
+const {
+  createDryRunReceipt,
+  executeBusinessZeroing,
+  validateWriteFreezeLeaseEnvelope
+} = require("./business-zeroing-core.cjs");
+const {
+  createBusinessZeroingDatabase
+} = require("./business-zeroing-database.cjs");
+const { BUSINESS_ZEROING_POLICY } = require("./business-zeroing-policy.cjs");
+const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
 
 const DEFINITION = {
   apply: { flag: "--apply", type: "boolean" },
@@ -51,7 +53,7 @@ const DEFINITION = {
 function help() {
   return [
     "默认 dry-run（不写数据库、不删文件）：",
-    "node execute-test-business-zeroing.cjs --report <报告> --environment <精确环境>",
+    "sh services/api/scripts/run-business-zeroing-cli.sh execute --report <报告> --environment <精确环境>",
     "  --decision-manifest <决定清单> --test-provenance <独立测试来源工件>",
     "  --backup-receipt <备份恢复收据>",
     "",
