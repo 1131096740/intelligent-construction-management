@@ -2021,8 +2021,20 @@ test("独立后置核验要求数据库存在与执行收据精确绑定的完�
           }
         },
         receipt
-      ),
+    ),
     /完整最终执行收据/u
+  );
+  await assert.rejects(
+    () =>
+      verifyBusinessZeroingExecutionAudit(
+        {
+          async $queryRawUnsafe() {
+            return [{ metadata: { status: "failed_after_database_commit" } }];
+          }
+        },
+        receipt
+      ),
+    /最新受控执行审计未完成|已被失败事件作废/u
   );
 });
 

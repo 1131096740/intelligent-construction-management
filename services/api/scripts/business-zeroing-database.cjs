@@ -616,7 +616,6 @@ async function verifyBusinessZeroingExecutionAudit(client, receipt) {
       WHERE "action" = $1
         AND "businessType" = $2
         AND "businessId" = $3
-        AND "metadata"->>'status' = 'completed'
       ORDER BY "createdAt" DESC, "id" DESC
       LIMIT 1`,
     "test_business_zeroing.controlled_execution",
@@ -625,6 +624,10 @@ async function verifyBusinessZeroingExecutionAudit(client, receipt) {
   );
   invariant(rows.length === 1, "数据库中缺少本批次已完成的受控执行审计");
   const metadata = rows[0].metadata;
+  invariant(
+    metadata?.status === "completed",
+    "本批次最新受控执行审计未完成或已被失败事件作废"
+  );
   for (const [field, expected, label] of [
     ["environment", receipt.environment, "环境"],
     ["codeSha", receipt.codeSha, "代码 SHA"],
