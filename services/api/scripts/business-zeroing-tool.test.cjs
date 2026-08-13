@@ -623,6 +623,8 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     { id: "c1", status: "draft", effectiveFrom: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", lifecycleStatus: "effective" },
     { id: "c1", status: "draft", workflowState: "approved" },
+    { id: "c1", status: "draft", unknownLifecycleAt: null },
+    { id: "c1", status: "draft", endedAt: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", archivedAt: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", firstSubmittedAt: "2026-08-13T00:30:00.000Z" }
   ]) {
@@ -670,7 +672,42 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
   const draftInventory = inventory({
     tables: inventory().tables.map((table) =>
       table.name === "Contract"
-        ? { ...table, rows: [{ id: "c1", status: "draft", signingSubjectType: "our_company" }] }
+        ? {
+            ...table,
+            rows: [
+              {
+                id: "c1",
+                status: "draft",
+                signingSubjectType: "our_company",
+                activatedAt: null,
+                approvedAt: null,
+                closedAt: null,
+                completedAt: null,
+                confirmedAt: null,
+                effectiveAt: null,
+                endedAt: null,
+                executedAt: null,
+                factsFrozenAt: null,
+                firstSubmittedAt: null,
+                frozenAt: null,
+                historicalBalanceConfirmedAt: null,
+                invalidatedAt: null,
+                lockedAt: null,
+                periodEnd: null,
+                publishedAt: null,
+                purchaseExecutedAt: null,
+                receiptConfirmedAt: null,
+                releasedAt: null,
+                settlementClosedAt: null,
+                settlementModeConfirmedAt: null,
+                sourceEffectiveAt: null,
+                submittedAt: null,
+                taxFactsFrozenAt: null,
+                validUntil: null,
+                voidedAt: null
+              }
+            ]
+          }
         : table
     )
   });

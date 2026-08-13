@@ -29,6 +29,34 @@ const PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST = Object.freeze({
   takeoverStatus: new Set(["draft"]),
   taxFactStatus: new Set(["draft", "pending_finance_review", "unconfirmed"])
 });
+const KNOWN_NULLABLE_LIFECYCLE_TIMESTAMP_FIELDS = new Set([
+  "activatedAt",
+  "approvedAt",
+  "closedAt",
+  "completedAt",
+  "confirmedAt",
+  "effectiveAt",
+  "endedAt",
+  "executedAt",
+  "factsFrozenAt",
+  "firstSubmittedAt",
+  "frozenAt",
+  "historicalBalanceConfirmedAt",
+  "invalidatedAt",
+  "lockedAt",
+  "periodEnd",
+  "publishedAt",
+  "purchaseExecutedAt",
+  "receiptConfirmedAt",
+  "releasedAt",
+  "settlementClosedAt",
+  "settlementModeConfirmedAt",
+  "sourceEffectiveAt",
+  "submittedAt",
+  "taxFactsFrozenAt",
+  "validUntil",
+  "voidedAt"
+]);
 const FORMAL_LIFECYCLE_FIELD_TOKENS = new Set([
   "active", "activated", "approval", "approved", "archive", "archived",
   "close", "closed", "complete", "completed", "confirm", "confirmed",
@@ -552,6 +580,9 @@ function observedFormalProtection(tableName, row) {
     const value = row[field];
     if (field === "status") continue;
     if (value === false) continue;
+    if (value === null && KNOWN_NULLABLE_LIFECYCLE_TIMESTAMP_FIELDS.has(field)) {
+      continue;
+    }
     const allowedValues = PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST[field];
     const normalizedValue =
       typeof value === "string" ? value.trim().toLowerCase() : value;
