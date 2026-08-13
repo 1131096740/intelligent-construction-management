@@ -30,6 +30,25 @@ case "$command_name" in
 esac
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
-export POL22_CLEAN_NODE_LAUNCH=1
 unset NODE_OPTIONS NODE_PATH
-exec node -- "$script_directory/$entrypoint" "$@"
+exec node - "$script_directory/$entrypoint" "$script_directory/business-zeroing-cli.cjs" "$@" <<'NODE'
+"use strict";
+
+const entrypoint = process.argv[2];
+const cliLibrary = process.argv[3];
+process.argv = [process.argv[0], entrypoint, ...process.argv.slice(4)];
+
+const { assertCleanNodeRuntime } = require(cliLibrary);
+assertCleanNodeRuntime();
+
+const command = require(entrypoint);
+if (!command || typeof command.runMain !== "function") {
+  throw new Error("受信启动器目标未导出 runMain");
+}
+Promise.resolve(command.runMain()).catch((error) => {
+  process.stderr.write(
+    `归零工具受信启动器已安全阻断：${error instanceof Error ? error.message : String(error)}\n`
+  );
+  process.exitCode = 1;
+});
+NODE

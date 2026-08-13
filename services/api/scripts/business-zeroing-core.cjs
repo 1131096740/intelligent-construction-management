@@ -20,14 +20,24 @@ const PREFORMAL_STATUS_ALLOWLIST = new Set([
   "requested",
   "reserved"
 ]);
+const PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST = Object.freeze({
+  dataStatus: new Set(["legacy_incomplete"]),
+  generationStatus: new Set(["not_applicable", "pending", "queued"]),
+  mappingStatus: new Set([null, "draft", "pending", "preview"]),
+  normalizationStatus: new Set([null, "pending"]),
+  pricingFactStatus: new Set(["draft", "unconfirmed"]),
+  takeoverStatus: new Set(["draft"]),
+  taxFactStatus: new Set(["draft", "pending_finance_review", "unconfirmed"])
+});
 const FORMAL_LIFECYCLE_FIELD_TOKENS = new Set([
   "active", "activated", "approval", "approved", "archive", "archived",
   "close", "closed", "complete", "completed", "confirm", "confirmed",
   "effective", "enable", "enabled", "end", "ended", "execute", "executed",
   "expire", "expired", "final", "formal", "freeze", "frozen", "invalid",
   "invalidated", "lock", "locked", "paid", "publish", "published", "release",
-  "released", "repaid", "seal", "sealed", "sign", "signed", "submit",
-  "submitted", "valid", "void", "voided"
+  "released", "repaid", "seal", "sealed", "sign", "signed", "state",
+  "status", "submit", "submitted", "valid", "void", "voided", "workflow",
+  "lifecycle", "phase"
 ]);
 
 function isFormalLifecycleField(field) {
@@ -540,7 +550,12 @@ function observedFormalProtection(tableName, row) {
   }
   for (const field of Object.keys(row).filter(isFormalLifecycleField)) {
     const value = row[field];
-    if (value === null || value === undefined || value === false) continue;
+    if (field === "status") continue;
+    if (value === false) continue;
+    const allowedValues = PREFORMAL_LIFECYCLE_FIELD_VALUE_ALLOWLIST[field];
+    const normalizedValue =
+      typeof value === "string" ? value.trim().toLowerCase() : value;
+    if (allowedValues?.has(normalizedValue)) continue;
     return {
       field,
       observedClassification:
@@ -2334,6 +2349,7 @@ async function executeBusinessZeroing({
   });
 
   let receipt;
+  let completionLeaseFinalized = false;
   const objectDispositions = [];
   const remainingObjectScopes = () => {
     const completed = new Set(
@@ -2415,8 +2431,27 @@ async function executeBusinessZeroing({
       undefined,
       { phase: "final", objectRescan: objectPostcheck }
     );
-    const completedAt = currentTime();
     writeFreezeLease = await verifyActiveWriteFreeze();
+    validateApplyArguments(args, report, currentTime());
+    const pendingReceipt = recoveryReceipt(
+      "completion_pending",
+      currentTime()
+    );
+    const pendingPersistenceResults = await Promise.allSettled([
+      persistReceipt(pendingReceipt),
+      database.appendAudit({
+        ...auditBase,
+        status: "completion_pending",
+        receiptSha256: pendingReceipt.receiptSha256,
+        executionReceipt: pendingReceipt
+      })
+    ]);
+    const failedPendingPersistence = pendingPersistenceResults.find(
+      (result) => result.status === "rejected"
+    );
+    if (failedPendingPersistence) throw failedPendingPersistence.reason;
+    writeFreezeLease = await verifyActiveWriteFreeze();
+    const completedAt = currentTime();
     validateApplyArguments(args, report, completedAt);
     const receiptBody = {
       schemaVersion: 1,
@@ -2457,8 +2492,13 @@ async function executeBusinessZeroing({
       sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
       "持久化前外部写冻结租约验证结果已漂移"
     );
+    await persistReceipt(receipt);
+    writeFreezeLease = await verifyActiveWriteFreeze();
+    invariant(
+      sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
+      "收据持久化后外部写冻结租约验证结果已漂移"
+    );
     const persistenceResults = await Promise.allSettled([
-      persistReceipt(receipt),
       database.appendAudit({
         ...auditBase,
         status: "completed",
@@ -2471,18 +2511,28 @@ async function executeBusinessZeroing({
       (result) => result.status === "rejected"
     );
     if (failedPersistence) throw failedPersistence.reason;
+    writeFreezeLease = await verifyActiveWriteFreeze();
+    invariant(
+      sha256(writeFreezeLease) === sha256(receipt.writeFreezeLease),
+      "完成审计持久化后外部写冻结租约验证结果已漂移"
+    );
+    completionLeaseFinalized = true;
     return receipt;
   } catch (error) {
     const safeFailure = error instanceof Error ? error.message : "未知错误";
+    const downgradeCompletedReceipt = receipt && !completionLeaseFinalized;
     const failureReceipt =
-      receipt ??
-      recoveryReceipt(
-        "failed_after_database_commit",
-        currentTime(),
-        safeFailure
-      );
+      !receipt || downgradeCompletedReceipt
+        ? recoveryReceipt(
+            "failed_after_database_commit",
+            currentTime(),
+            safeFailure
+          )
+        : receipt;
     await Promise.allSettled([
-      receipt ? Promise.resolve() : persistReceipt(failureReceipt),
+      !receipt || downgradeCompletedReceipt
+        ? persistReceipt(failureReceipt)
+        : Promise.resolve(),
       database.appendAudit?.({
         ...auditBase,
         status: "failed_after_database_commit",

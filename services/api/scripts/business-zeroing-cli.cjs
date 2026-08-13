@@ -8,12 +8,14 @@ const {
   closeSync,
   constants: fsConstants,
   fstatSync,
+  ftruncateSync,
   fsyncSync,
   lstatSync,
   openSync,
   readFileSync,
   realpathSync,
   readdirSync,
+  writeSync,
   writeFileSync
 } = require("node:fs");
 const { join, relative, resolve } = require("node:path");
@@ -70,23 +72,13 @@ function canonicalSha256(value) {
     .digest("hex");
 }
 
-function assertCleanNodeRuntime({
-  env = process.env,
-  execArgv = process.execArgv,
-  requireTrustedLauncher = false
-} = {}) {
+function assertCleanNodeRuntime({ env = process.env, execArgv = process.execArgv } = {}) {
   invariant(!env.NODE_OPTIONS, "NODE_OPTIONS 可预加载未指纹代码，归零工具拒绝启动");
   invariant(!env.NODE_PATH, "NODE_PATH 可引入仓库外模块，归零工具拒绝启动");
   invariant(
     Array.isArray(execArgv) && execArgv.length === 0,
     "Node 启动参数可改变未指纹执行语义，归零工具拒绝启动"
   );
-  if (requireTrustedLauncher) {
-    invariant(
-      env.POL22_CLEAN_NODE_LAUNCH === "1",
-      "归零 CLI 必须由受信启动器在 Node 启动前清除预加载面"
-    );
-  }
 }
 
 function parseOptions(argv, definition) {
@@ -328,10 +320,10 @@ function reserveJsonOutput(outputPath) {
   return {
     write(payload) {
       invariant(!closed, "执行收据输出已关闭");
-      writeFileSync(fileDescriptor, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      const content = `${JSON.stringify(payload, null, 2)}\n`;
+      ftruncateSync(fileDescriptor, 0);
+      writeSync(fileDescriptor, content, 0, "utf8");
       fsyncSync(fileDescriptor);
-      closeSync(fileDescriptor);
-      closed = true;
     },
     close() {
       if (!closed) {

@@ -2,8 +2,11 @@
 "use strict";
 /* eslint-disable @typescript-eslint/no-var-requires */
 
+if (require.main === module) {
+  throw new Error("归零工具直接 Node 入口已禁用；必须使用受信启动器");
+}
+
 const {
-  assertCleanNodeRuntime,
   outputJson,
   parseOptions,
   readJson,
@@ -12,7 +15,6 @@ const {
   readTrustedWriteFreezePublicKey,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
-if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
 const {
   inspectDeletedObjectScopes,
   validateExecutionReceipt,
@@ -114,11 +116,13 @@ async function main() {
   }
 }
 
-module.exports = { DEFINITION, help };
-
-if (require.main === module) {
-  main().catch((error) => {
+async function runMain() {
+  try {
+    await main();
+  } catch (error) {
     process.stderr.write(`测试业务归零后置核验未通过：${safeFailure(error)}\n`);
     process.exitCode = 1;
-  });
+  }
 }
+
+module.exports = { DEFINITION, help, runMain };

@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 "use strict";
 
+if (require.main === module) {
+  throw new Error("归零工具直接 Node 入口已禁用；必须使用受信启动器");
+}
+
 const {
-  assertCleanNodeRuntime,
   outputJson,
   parseOptions,
   readJson,
   safeFailure
 } = require("./business-zeroing-cli.cjs");
-if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
 const { sha256 } = require("./business-zeroing-core.cjs");
 
 const DEFINITION = {
@@ -31,7 +33,7 @@ function main() {
   outputJson({ ...input, receiptSha256: sha256(input) }, args.output);
 }
 
-if (require.main === module) {
+function runMain() {
   try {
     main();
   } catch (error) {
@@ -39,3 +41,5 @@ if (require.main === module) {
     process.exitCode = 1;
   }
 }
+
+module.exports = { runMain };

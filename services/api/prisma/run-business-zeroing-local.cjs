@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 "use strict";
 
-const { assertCleanNodeRuntime } = require("../scripts/business-zeroing-cli.cjs");
-if (require.main === module) assertCleanNodeRuntime({ requireTrustedLauncher: true });
+if (require.main === module) {
+  throw new Error("归零工具直接 Node 入口已禁用；必须使用受信启动器");
+}
+
 const { randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
@@ -197,13 +199,15 @@ async function main() {
   }
 }
 
-module.exports = { createPinnedDockerEnvironment, freePort, main, waitForPostgres };
-
-if (require.main === module) {
-  main().catch((error) => {
+async function runMain() {
+  try {
+    await main();
+  } catch (error) {
     process.stderr.write(
       `POL-22 本地隔离验证失败：${error instanceof Error ? error.message : String(error)}\n`
     );
     process.exitCode = 1;
-  });
+  }
 }
+
+module.exports = { createPinnedDockerEnvironment, freePort, main, runMain, waitForPostgres };

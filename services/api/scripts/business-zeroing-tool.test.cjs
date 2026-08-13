@@ -9,6 +9,7 @@ const {
   mkdir,
   mkdtemp,
   open,
+  readFile,
   readdir,
   rename,
   rm,
@@ -25,6 +26,7 @@ const {
   createDryRunReceipt,
   executeBusinessZeroing,
   expectedConfirmation,
+  selectFormalObservationFields,
   sha256,
   validateAuthorizationEnvelope,
   validateApplyArguments,
@@ -619,6 +621,8 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
     { id: "c1", status: "draft", isActive: true },
     { id: "c1", status: "draft", enabled: true },
     { id: "c1", status: "draft", effectiveFrom: "2026-08-13T00:30:00.000Z" },
+    { id: "c1", status: "draft", lifecycleStatus: "effective" },
+    { id: "c1", status: "draft", workflowState: "approved" },
     { id: "c1", status: "draft", archivedAt: "2026-08-13T00:30:00.000Z" },
     { id: "c1", status: "draft", firstSubmittedAt: "2026-08-13T00:30:00.000Z" }
   ]) {
@@ -653,6 +657,15 @@ test("已签名删除决定与执行授权不能替代逐主键独立测试来�
       )
     );
   }
+  assert.deepEqual(
+    selectFormalObservationFields({
+      id: "c1",
+      lifecycleStatus: "effective",
+      workflowState: "approved",
+      unrelatedText: "ignored"
+    }),
+    { lifecycleStatus: "effective", workflowState: "approved" }
+  );
 
   const draftInventory = inventory({
     tables: inventory().tables.map((table) =>
@@ -1833,6 +1846,8 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "pol22-launcher-"));
   const marker = path.join(temporaryRoot, "preload-executed");
   const preload = path.join(temporaryRoot, "preload.cjs");
+  const sanitizedMarker = path.join(temporaryRoot, "sanitizing-preload-executed");
+  const sanitizingPreload = path.join(temporaryRoot, "sanitizing-preload.cjs");
   const launcher = path.join(__dirname, "run-business-zeroing-cli.sh");
   const directEntries = [
     path.join(__dirname, "inspect-test-business-zeroing.cjs"),
@@ -1846,6 +1861,17 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
     await writeFile(
       preload,
       "require('node:fs').writeFileSync(process.env.POL22_PRELOAD_MARKER, 'executed');\n",
+      "utf8"
+    );
+    await writeFile(
+      sanitizingPreload,
+      [
+        "require('node:fs').writeFileSync(process.env.POL22_PRELOAD_MARKER, 'executed');",
+        "delete process.env.NODE_OPTIONS;",
+        "delete process.env.NODE_PATH;",
+        "process.execArgv.length = 0;",
+        "process.env.POL22_CLEAN_NODE_LAUNCH = '1';"
+      ].join("\n"),
       "utf8"
     );
     for (const command of ["inspect", "execute", "verify", "sign", "dynamic"]) {
@@ -1866,6 +1892,22 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
       await assert.rejects(() => stat(marker), /ENOENT/u);
     }
 
+    const forgedLauncherMarker = spawnSync(
+      process.execPath,
+      ["--", directEntries[3], "--help"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `--require=${sanitizingPreload}`,
+          POL22_PRELOAD_MARKER: sanitizedMarker
+        }
+      }
+    );
+    assert.notEqual(forgedLauncherMarker.status, 0);
+    assert.match(forgedLauncherMarker.stderr, /直接 Node 入口已禁用/u);
+    assert.equal(await readFile(sanitizedMarker, "utf8"), "executed");
+
     const cleanEnvironment = Object.fromEntries(
       Object.entries(process.env).filter(
         ([key]) => !["NODE_OPTIONS", "NODE_PATH", "POL22_CLEAN_NODE_LAUNCH"].includes(key)
@@ -1877,7 +1919,7 @@ test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口�
         env: cleanEnvironment
       });
       assert.equal(direct.status, 1, directEntry);
-      assert.match(direct.stderr, /受信启动器/u);
+      assert.match(direct.stderr, /直接 Node 入口已禁用/u);
     }
     for (const [command, outputPattern] of [
       ["inspect", /默认只读预检/u],
@@ -2512,6 +2554,7 @@ test("受控执行只向适配器传递锁内复核过的逐主键和精确对�
     ["object", "private", "uploads/f1.pdf"],
     ["audit", "object_deletion_progress"],
     ["object-rescan", "private", "uploads/f1.pdf"],
+    ["audit", "completion_pending"],
     ["audit", "completed"]
   ]);
 
@@ -2618,10 +2661,17 @@ test("完成审计写失败时完整收据仍先落已预留介质", async () =>
       }),
     /completed audit failure/u
   );
-  assert.equal(persistedReceipt.status, "completed");
-  assert.deepEqual(
-    validateExecutionReceipt(persistedReceipt, before, AUTHORIZATION_KEYS.publicKey, WRITE_FREEZE_KEYS.publicKey),
-    { status: "passed", receiptSha256: persistedReceipt.receiptSha256 }
+  assert.equal(persistedReceipt.status, "failed_after_database_commit");
+  assert.equal(persistedReceipt.completed, false);
+  assert.throws(
+    () =>
+      validateExecutionReceipt(
+        persistedReceipt,
+        before,
+        AUTHORIZATION_KEYS.publicKey,
+        WRITE_FREEZE_KEYS.publicKey
+      ),
+    /未证明受控执行完成|完整字段|未完成/u
   );
 });
 
@@ -2805,8 +2855,9 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
     generatedAt: "2026-08-13T01:10:00.000Z",
     allowMissingDeletedDecisions: true
   });
-  let verificationCount = 0;
+  let leaseRevoked = false;
   let persistedReceipt;
+  const persistedStatuses = [];
   let completedAudit = false;
   await assert.rejects(
     () =>
@@ -2841,10 +2892,15 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
         buildLockedReport: async () => before,
         buildLockedPostcheckReport: async () => after,
         buildPostcheckReport: async () => after,
-        persistReceipt: async (receipt) => { persistedReceipt = receipt; },
+        persistReceipt: async (receipt) => {
+          persistedReceipt = receipt;
+          persistedStatuses.push(receipt.status);
+          if (["completion_pending", "completed"].includes(receipt.status)) {
+            leaseRevoked = true;
+          }
+        },
         verifyWriteFreezeLease: async (input) => {
-          verificationCount += 1;
-          if (verificationCount >= 6) throw new Error("外部写冻结租约已撤销");
+          if (leaseRevoked) throw new Error("外部写冻结租约已撤销");
           return createWriteFreezeVerifier()(input);
         },
         now: new Date("2026-08-13T01:05:00.000Z")
@@ -2853,6 +2909,7 @@ test("final inspect 后租约失效或对象复活不得签发 completed 收据"
   );
   assert.equal(persistedReceipt.status, "failed_after_database_commit");
   assert.equal(persistedReceipt.completed, false);
+  assert.equal(persistedStatuses.includes("completed"), false);
   assert.equal(completedAudit, false);
 });
 
