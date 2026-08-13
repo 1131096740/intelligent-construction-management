@@ -729,7 +729,20 @@ async function verifyBusinessZeroing(
     { contracts: 0, versions: 0, attachments: 0, files: 0 }
   );
   assert.equal(afterCounts.migrations, beforeCounts.migrations);
-  assert.equal(afterCounts.audits, beforeCounts.audits + 3);
+  const executionAuditRows = await prisma.$queryRawUnsafe(
+    `SELECT "metadata"->>'status' AS "status"
+       FROM "AuditLog"
+      WHERE "action" = 'test_business_zeroing.controlled_execution'
+        AND "businessType" = 'test_business_zeroing'
+        AND "businessId" = $1
+      ORDER BY "createdAt", "id"`,
+    batchId
+  );
+  assert.deepEqual(
+    executionAuditRows.map((row) => row.status),
+    ["started", "object_deletion_progress", "completion_pending", "completed"]
+  );
+  assert.equal(afterCounts.audits, beforeCounts.audits + executionAuditRows.length);
   await assert.rejects(() => readFile(path.join(storageRoot, OBJECT_KEY)), /ENOENT/u);
   const localDisposition = receipt.objectDispositions.find(
     (item) => item.kind === "local_quarantine" && item.objectKey === OBJECT_KEY
