@@ -49,7 +49,8 @@ const {
 const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
 const { verifyBackupArtifacts } = require("./inspect-test-business-zeroing.cjs");
 const {
-  createPinnedDockerEnvironment
+  createPinnedDockerEnvironment,
+  waitForPostgres
 } = require("../prisma/run-business-zeroing-local.cjs");
 const {
   BUSINESS_ZEROING_LOGICAL_RELATIONS,
@@ -1911,6 +1912,32 @@ test("运行身份拒绝脏工作树且 Docker 子进程只绑定已核验本机
     () => validateTrustedExecutionIdentity(trustedIdentity, { uid: 502, username: "pol22" }),
     /进程 UID/u
   );
+});
+
+test("隔离 PostgreSQL 必须同时通过容器内和宿主 Prisma 协议 readiness", async () => {
+  const events = [];
+  let hostAttempts = 0;
+  await waitForPostgres("pol22-test-container", { DOCKER_HOST: "unix:///tmp/test.sock" }, {
+    command: async (_binary, args) => {
+      events.push(`container:${args.join(" ")}`);
+    },
+    connectFromHost: async (databaseUrl) => {
+      hostAttempts += 1;
+      events.push(`host:${databaseUrl}`);
+      if (hostAttempts === 1) throw new Error("P1001");
+    },
+    databaseUrl: "postgresql://jiangkong:test@127.0.0.1:54321/jiangkong_pol22_zeroing_local",
+    delay: async () => events.push("delay"),
+    attempts: 2
+  });
+  assert.equal(hostAttempts, 2);
+  assert.deepEqual(events, [
+    "container:exec pol22-test-container pg_isready -U jiangkong -d jiangkong_pol22_zeroing_local",
+    "host:postgresql://jiangkong:test@127.0.0.1:54321/jiangkong_pol22_zeroing_local",
+    "delay",
+    "container:exec pol22-test-container pg_isready -U jiangkong -d jiangkong_pol22_zeroing_local",
+    "host:postgresql://jiangkong:test@127.0.0.1:54321/jiangkong_pol22_zeroing_local"
+  ]);
 });
 
 test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口保守阻断", async () => {

@@ -250,4 +250,4 @@ env -u DATABASE_URL -u CONTRACT_DATABASE_URL -u SHADOW_DATABASE_URL \
   sh services/api/scripts/run-business-zeroing-cli.sh dynamic
 ```
 
-该门会临时应用全部迁移，只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。收据必须显示 `productionAccessed: false`。
+运行器在迁移前同时等待容器内 `pg_isready` 和宿主通过同一随机 `127.0.0.1:<port>` URL 执行 Prisma `SELECT 1`；任一条件未满足都在有限次数内共同重试，宿主探测客户端每次都断连，30 秒后仍不满足则失败并触发同一容器/临时目录 cleanup，不得把仅容器内 ready 当作可迁移证明。该门随后临时应用全部迁移，只对显式注册为测试来源且处于 `draft` 等前置状态的隔离夹具执行预检、dry-run、受控逐主键删除、本地精确对象键删除和后置核验；同时验证无来源删除、可信来源下的 `effective` 正式记录、启用拒删触发器、no-op/非类型化对象成功结果、独立对象重扫和同 key 复活均失败关闭，随后清理临时容器与文件。无完整 JSON 收据不得判为通过；收据必须显示迁移数量/head、最终状态、`productionAccessed: false`、dry-run/执行步骤、正式/未知/混合阻断验证及 cleanup 结果。

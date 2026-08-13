@@ -55,20 +55,43 @@ function createPinnedDockerEnvironment(sourceEnv, temporaryRoot, dockerEndpoint)
   return environment;
 }
 
-async function waitForPostgres(containerName, dockerEnvironment) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+async function connectToPostgresFromHost(databaseUrl) {
+  const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  try {
+    await client.$queryRawUnsafe("SELECT 1");
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+async function waitForPostgres(
+  containerName,
+  dockerEnvironment,
+  {
+    command: runCommand = command,
+    connectFromHost = connectToPostgresFromHost,
+    databaseUrl,
+    delay = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 500)),
+    attempts = 60
+  } = {}
+) {
+  if (typeof databaseUrl !== "string" || !databaseUrl.trim()) {
+    throw new Error("POL-22 临时 PostgreSQL 缺少宿主协议探测地址");
+  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      await command(
+      await runCommand(
         docker,
         ["exec", containerName, "pg_isready", "-U", "jiangkong", "-d", databaseName],
         { env: dockerEnvironment }
       );
+      await connectFromHost(databaseUrl);
       return;
     } catch {
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+      if (attempt + 1 < attempts) await delay();
     }
   }
-  throw new Error("POL-22 临时 PostgreSQL 16 在 30 秒内未就绪");
+  throw new Error("POL-22 临时 PostgreSQL 16 的容器内或宿主协议在 30 秒内未就绪");
 }
 
 async function main() {
@@ -159,7 +182,7 @@ async function main() {
         timeoutMs: 60_000
       }
     );
-    await waitForPostgres(containerName, dockerEnvironment);
+    await waitForPostgres(containerName, dockerEnvironment, { databaseUrl });
     const runtimeEnvironment = {
       ...dockerEnvironment,
       DATABASE_URL: databaseUrl
