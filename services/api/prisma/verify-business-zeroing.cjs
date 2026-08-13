@@ -484,7 +484,8 @@ async function verifyBusinessZeroing(
     allowMissingDeletedDecisions = false,
     decisionManifest = decisions,
     provenanceBundle = testProvenance,
-    trustedRegistrySha256 = testProvenance.registrySha256
+    trustedRegistrySha256 = testProvenance.registrySha256,
+    transformInventory = (value) => value
   ) => {
     assert.equal(
       trustedRegistrySha256,
@@ -501,7 +502,7 @@ async function verifyBusinessZeroing(
     );
     return buildPreflightReport({
       policy: BUSINESS_ZEROING_POLICY,
-      inventory: currentInventory,
+      inventory: transformInventory(currentInventory),
       decisions: decisionManifest,
       testProvenance: provenanceBundle?.envelope ?? provenanceBundle,
       testProvenancePublicKey: testProvenanceKeys.publicKey,
@@ -536,6 +537,7 @@ async function verifyBusinessZeroing(
     BILL_ID,
     VERSION_ID
   );
+  let formalRecordProtection;
   try {
     const effectiveInventory = await inspectDatabaseInventory(prisma, {
       environment: ENVIRONMENT
@@ -579,6 +581,16 @@ async function verifyBusinessZeroing(
           item.details?.childTable === "ContractBill"
       )
     );
+    formalRecordProtection = {
+      status: effectiveReport.status,
+      blockers: effectiveReport.blockers
+        .map((item) => item.code)
+        .filter((code) =>
+          ["FORMAL_RECORD_PROTECTED", "FORMAL_AGGREGATE_CHILD_PROTECTED"].includes(code)
+        )
+        .sort(),
+      candidateCount: effectiveReport.deletionCandidates.length
+    };
   } finally {
     await prisma.$executeRawUnsafe(
       `DELETE FROM "ContractBill" WHERE "id" = $1`,
@@ -611,6 +623,74 @@ async function verifyBusinessZeroing(
   );
   assert.equal(report.summary.migrationHistoryDeletionCandidates, 0);
   assert.equal(report.summary.databaseDeletionCandidates, 0);
+
+  const unknownOwnershipReport = await buildReport(
+    prisma,
+    false,
+    false,
+    decisions,
+    testProvenance,
+    testProvenance.registrySha256,
+    (currentInventory) => ({
+      ...currentInventory,
+      fileBindings: [
+        ...currentInventory.fileBindings,
+        {
+          fileId: FILE_ID,
+          ownerTable: "UnknownOwner",
+          ownerPrimaryKey: { id: "unknown-owner" },
+          ownerColumn: "fileId"
+        }
+      ]
+    })
+  );
+  assert.equal(unknownOwnershipReport.status, "blocked");
+  assert.deepEqual(unknownOwnershipReport.deletionCandidates, []);
+  assert.ok(
+    unknownOwnershipReport.blockers.some((item) => item.code === "UNKNOWN_FILE_OWNER")
+  );
+  const unknownOwnershipBlockers = {
+    status: unknownOwnershipReport.status,
+    blockers: unknownOwnershipReport.blockers
+      .map((item) => item.code)
+      .filter((code) => code === "UNKNOWN_FILE_OWNER")
+      .sort(),
+    candidateCount: unknownOwnershipReport.deletionCandidates.length
+  };
+
+  const mixedOwnershipReport = await buildReport(
+    prisma,
+    false,
+    false,
+    decisions,
+    testProvenance,
+    testProvenance.registrySha256,
+    (currentInventory) => ({
+      ...currentInventory,
+      fileBindings: [
+        ...currentInventory.fileBindings,
+        {
+          fileId: FILE_ID,
+          ownerTable: "Project",
+          ownerPrimaryKey: { id: PROJECT_ID },
+          ownerColumn: "fileId"
+        }
+      ]
+    })
+  );
+  assert.equal(mixedOwnershipReport.status, "blocked");
+  assert.deepEqual(mixedOwnershipReport.deletionCandidates, []);
+  assert.ok(
+    mixedOwnershipReport.blockers.some((item) => item.code === "MIXED_FILE_OWNERSHIP")
+  );
+  const mixedOwnershipBlockers = {
+    status: mixedOwnershipReport.status,
+    blockers: mixedOwnershipReport.blockers
+      .map((item) => item.code)
+      .filter((code) => code === "MIXED_FILE_OWNERSHIP")
+      .sort(),
+    candidateCount: mixedOwnershipReport.deletionCandidates.length
+  };
 
   const dryRun = await createDryRunReceipt({ report, currentReport: await buildReport(prisma) });
   assert.equal(dryRun.executed, false);
@@ -852,15 +932,27 @@ async function verifyBusinessZeroing(
     reportSha256: report.reportSha256,
     candidateSha256: report.candidateSha256,
     dryRunSteps: dryRun.steps.length,
+    executionSteps: {
+      databaseRecordDeletes: receipt.deletedRecordCount,
+      exactObjectDeletes: receipt.deletedObjectCount,
+      numberRuleResets: receipt.resetNumberRuleCount,
+      total:
+        receipt.deletedRecordCount +
+        receipt.deletedObjectCount +
+        receipt.resetNumberRuleCount
+    },
     unprovenDeletePreflight: {
       status: unprovenReport.status,
       blocker: "TEST_PROVENANCE_NOT_VERIFIED",
       candidateCount: 0
     },
-    effectiveFixtureProtection: {
-      status: "blocked",
-      blocker: "FORMAL_RECORD_PROTECTED",
-      signedTrustedProvenanceRejected: true
+    formalRecordProtection,
+    unknownOwnershipBlockers,
+    mixedOwnershipBlockers,
+    backupRestore: {
+      database: backup.databaseBackup.restoreStatus,
+      privateFiles: backup.privateFileBackup.restoreStatus,
+      artifactsVerified: true
     },
     receipt,
     preserved: { users: afterCounts.users, projects: afterCounts.projects },

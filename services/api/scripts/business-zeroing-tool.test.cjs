@@ -50,7 +50,8 @@ const { createExactObjectStorage } = require("./business-zeroing-storage.cjs");
 const { verifyBackupArtifacts } = require("./inspect-test-business-zeroing.cjs");
 const {
   createPinnedDockerEnvironment,
-  waitForPostgres
+  waitForPostgres,
+  writeFinalDynamicReceipt
 } = require("../prisma/run-business-zeroing-local.cjs");
 const {
   BUSINESS_ZEROING_LOGICAL_RELATIONS,
@@ -1938,6 +1939,83 @@ test("隔离 PostgreSQL 必须同时通过容器内和宿主 Prisma 协议 readi
     "container:exec pol22-test-container pg_isready -U jiangkong -d jiangkong_pol22_zeroing_local",
     "host:postgresql://jiangkong:test@127.0.0.1:54321/jiangkong_pol22_zeroing_local"
   ]);
+});
+
+test("动态 JSON 收据必须覆盖归属阻断且只在 cleanup 成功后输出", async () => {
+  const completeReceipt = {
+    mode: "isolated_postgresql16_and_local_private_files",
+    status: "passed",
+    migrationCount: 125,
+    migrationHead: "20260811090000_contract_document_content_revision",
+    productionAccessed: false,
+    dryRunSteps: 4,
+    executionSteps: {
+      databaseRecordDeletes: 4,
+      exactObjectDeletes: 1,
+      numberRuleResets: 0,
+      total: 5
+    },
+    formalRecordProtection: {
+      status: "blocked",
+      blockers: ["FORMAL_RECORD_PROTECTED", "FORMAL_AGGREGATE_CHILD_PROTECTED"],
+      candidateCount: 0
+    },
+    unknownOwnershipBlockers: {
+      status: "blocked",
+      blockers: ["UNKNOWN_FILE_OWNER"],
+      candidateCount: 0
+    },
+    mixedOwnershipBlockers: {
+      status: "blocked",
+      blockers: ["MIXED_FILE_OWNERSHIP"],
+      candidateCount: 0
+    },
+    backupRestore: {
+      database: "passed",
+      privateFiles: "passed",
+      artifactsVerified: true
+    }
+  };
+  await assert.rejects(
+    () =>
+      writeFinalDynamicReceipt(
+        { ...completeReceipt, unknownOwnershipBlockers: undefined },
+        { cleanup: async () => {}, write: () => {} }
+      ),
+    /unknown ownership/u
+  );
+
+  let cleanupCompleted = false;
+  let output = "";
+  await writeFinalDynamicReceipt(completeReceipt, {
+    cleanup: async () => {
+      cleanupCompleted = true;
+    },
+    write: (chunk) => {
+      assert.equal(cleanupCompleted, true);
+      output += chunk;
+    }
+  });
+  const parsed = JSON.parse(output);
+  assert.equal(parsed.containerRemoved, true);
+  assert.equal(parsed.temporaryFilesRemoved, true);
+  assert.deepEqual(parsed.unknownOwnershipBlockers.blockers, ["UNKNOWN_FILE_OWNER"]);
+  assert.deepEqual(parsed.mixedOwnershipBlockers.blockers, ["MIXED_FILE_OWNERSHIP"]);
+
+  let wroteAfterCleanupFailure = false;
+  await assert.rejects(
+    () =>
+      writeFinalDynamicReceipt(completeReceipt, {
+        cleanup: async () => {
+          throw new Error("cleanup failed");
+        },
+        write: () => {
+          wroteAfterCleanupFailure = true;
+        }
+      }),
+    /cleanup failed/u
+  );
+  assert.equal(wroteAfterCleanupFailure, false);
 });
 
 test("受信启动器在 Node preload 执行前拒绝污染且直接 CLI 入口保守阻断", async () => {

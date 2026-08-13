@@ -94,6 +94,52 @@ async function waitForPostgres(
   throw new Error("POL-22 临时 PostgreSQL 16 的容器内或宿主协议在 30 秒内未就绪");
 }
 
+function assertDynamicReceiptSection(receipt, field, label) {
+  const section = receipt?.[field];
+  if (
+    !section ||
+    section.status !== "blocked" ||
+    !Array.isArray(section.blockers) ||
+    section.blockers.length === 0 ||
+    section.candidateCount !== 0
+  ) {
+    throw new Error(`POL-22 动态收据缺少 ${label}`);
+  }
+}
+
+async function writeFinalDynamicReceipt(
+  receipt,
+  { cleanup, write = (chunk) => process.stdout.write(chunk) }
+) {
+  if (receipt?.status !== "passed" || receipt.productionAccessed !== false) {
+    throw new Error("POL-22 动态收据最终状态或生产隔离标记无效");
+  }
+  if (receipt.migrationCount !== 125 || typeof receipt.migrationHead !== "string") {
+    throw new Error("POL-22 动态收据迁移坐标无效");
+  }
+  if (!Number.isInteger(receipt.dryRunSteps) || !receipt.executionSteps) {
+    throw new Error("POL-22 动态收据缺少 dry-run 或执行步骤");
+  }
+  assertDynamicReceiptSection(receipt, "formalRecordProtection", "formal record protection");
+  assertDynamicReceiptSection(receipt, "unknownOwnershipBlockers", "unknown ownership blockers");
+  assertDynamicReceiptSection(receipt, "mixedOwnershipBlockers", "mixed ownership blockers");
+  if (
+    receipt.backupRestore?.database !== "passed" ||
+    receipt.backupRestore?.privateFiles !== "passed" ||
+    receipt.backupRestore?.artifactsVerified !== true
+  ) {
+    throw new Error("POL-22 动态收据备份恢复验证无效");
+  }
+  await cleanup();
+  const finalReceipt = {
+    ...receipt,
+    containerRemoved: true,
+    temporaryFilesRemoved: true
+  };
+  write(`${JSON.stringify(finalReceipt)}\n`);
+  return finalReceipt;
+}
+
 async function main() {
   if (process.argv.slice(2).includes("--help")) {
     process.stdout.write(
@@ -122,8 +168,7 @@ async function main() {
             }
           )
         : Promise.resolve(),
-    removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true }),
-    onComplete: () => process.stdout.write("POL-22 隔离容器和临时文件已清理。\n")
+    removeTemporaryRoot: () => rm(temporaryRoot, { recursive: true, force: true })
   });
   let interruptionPromise;
   const interrupt = (signal) => {
@@ -139,6 +184,7 @@ async function main() {
   process.once("SIGINT", onSigint);
   process.once("SIGTERM", onSigterm);
 
+  let finalReceipt;
   try {
     const probeEnvironment = createProbeEnvironment(process.env, temporaryRoot);
     const context = await command(
@@ -209,15 +255,15 @@ async function main() {
     process.env.DATABASE_URL = databaseUrl;
     const prisma = new PrismaClient();
     try {
-      const receipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity, {
+      finalReceipt = await verifyBusinessZeroing(prisma, temporaryRoot, codeIdentity, {
         trustedRunner: true
       });
-      process.stdout.write(`${JSON.stringify(receipt)}\n`);
     } finally {
       await prisma.$disconnect();
       if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = previousDatabaseUrl;
     }
+    await writeFinalDynamicReceipt(finalReceipt, { cleanup });
   } finally {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
@@ -237,4 +283,11 @@ async function runMain(capability) {
   }
 }
 
-module.exports = { createPinnedDockerEnvironment, freePort, main, runMain, waitForPostgres };
+module.exports = {
+  createPinnedDockerEnvironment,
+  freePort,
+  main,
+  runMain,
+  waitForPostgres,
+  writeFinalDynamicReceipt
+};
