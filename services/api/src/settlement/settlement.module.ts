@@ -5,6 +5,7 @@ import { AuthModule } from "../auth/auth.module";
 import { FileModule } from "../file/file.module";
 import { MeModule } from "../me/me.module";
 import { ContractTakeoverModule } from "../contract-takeover/contract-takeover.module";
+import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { SettlementController } from "./settlement.controller";
 import { SettlementDraftController } from "./settlement-draft.controller";
 import { SettlementDraftService } from "./settlement-draft.service";
@@ -35,7 +36,8 @@ import { SettlementRecoveryService } from "./settlement-recovery.service";
     AuthModule,
     ContractTakeoverModule,
     FileModule,
-    MeModule
+    MeModule,
+    OperatingLedgerModule
   ],
   controllers: [
     SettlementController,

@@ -143,10 +143,15 @@ describe("ProjectService upstream settlement external facts", () => {
       auditLog: { create: jest.fn() }
     };
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
     const service = new ProjectService(
       transactionPrisma(tx) as never,
       undefined,
-      auth as never
+      auth as never,
+      undefined,
+      operatingSources as never
     ) as ProjectService & {
       confirmUpstreamSettlement(
         projectId: string,
@@ -172,6 +177,17 @@ describe("ProjectService upstream settlement external facts", () => {
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("budget-1", "current-password");
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "project_upstream_settlement",
+        sourceBusinessId: "upstream-1"
+      },
+      "budget-1"
+    );
     expect(tx.projectUpstreamSettlement.updateMany).toHaveBeenCalledWith({
       where: {
         id: "upstream-1",

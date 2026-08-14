@@ -47,6 +47,11 @@ import {
 } from "../payment/settlement-payment-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import {
+  PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
+  PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
+} from "./project-operating-source.adapter";
 import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import type { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import type { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
@@ -163,7 +168,9 @@ export class ProjectService {
     private readonly auth?: AuthService,
     @Optional()
     private readonly funding: ProjectFundingAvailabilityService =
-      new ProjectFundingAvailabilityService()
+      new ProjectFundingAvailabilityService(),
+    @Optional()
+    private readonly operatingSources?: OperatingSourceReplayService
   ) {}
 
   async createProject(actorUserId: string, input: CreateProjectDto) {
@@ -1564,6 +1571,16 @@ export class ProjectService {
         }
       });
 
+      await this.operatingSources?.appendConfirmedSourceIfEnabledInTransaction(
+        tx,
+        {
+          projectId: project.id,
+          sourceType: PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
+          sourceBusinessId: proxyPayment.id
+        },
+        actorUserId
+      );
+
       await this.audit.record(tx, {
         actorUserId,
         action: "project.proxy_payment.record",
@@ -2085,6 +2102,15 @@ export class ProjectService {
       if (!confirmed) {
         throw new InternalServerErrorException("上游结算确认结果未正确保存，请稍后重试");
       }
+      await this.operatingSources?.appendConfirmedSourceIfEnabledInTransaction(
+        tx,
+        {
+          projectId,
+          sourceType: PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
+          sourceBusinessId: confirmed.id
+        },
+        actorUserId
+      );
       await this.audit.record(tx, {
         actorUserId,
         action: "project.upstream_settlement.confirm",

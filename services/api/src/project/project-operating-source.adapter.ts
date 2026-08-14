@@ -3,6 +3,7 @@ import { BadRequestException } from "@nestjs/common";
 import {
   frozenAffiliateFromJson,
   occurredBeforeEffectiveDate,
+  optionalJsonText,
   readAffiliateSnapshot,
   readOperatingLedgerEffectiveDate,
   requiredJsonDate,
@@ -21,6 +22,7 @@ import type {
 
 export const PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE =
   "project_upstream_settlement";
+export const PROJECT_PROXY_PAYMENT_SOURCE_TYPE = "project_proxy_payment";
 
 export class ProjectUpstreamSettlementOperatingSourceAdapter
   implements OperatingSourceAdapter
@@ -203,6 +205,226 @@ export class ProjectUpstreamSettlementOperatingSourceAdapter
         voucherFileId: row.voucherFileId,
         confirmedByUserId: row.confirmedByUserId,
         confirmedAt: row.confirmedAt.toISOString(),
+        operatingLedgerEffectiveDate: effectiveDate.toISOString(),
+        affiliate
+      })
+    };
+  }
+}
+
+export class ProjectProxyPaymentOperatingSourceAdapter
+  implements OperatingSourceAdapter
+{
+  readonly sourceType = PROJECT_PROXY_PAYMENT_SOURCE_TYPE;
+
+  async readProjectSnapshots(
+    tx: Parameters<OperatingSourceAdapter["readProjectSnapshots"]>[0],
+    projectId: string
+  ): Promise<readonly OperatingSourceSnapshot[]> {
+    const rows = await tx.projectProxyPayment.findMany({
+      where: { projectId, voidedAt: null },
+      orderBy: [{ paidAt: "asc" }, { id: "asc" }]
+    });
+    return Promise.all(rows.map((row) => this.snapshot(tx, row)));
+  }
+
+  async readSourceSnapshot(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    locator: OperatingSourceLocator
+  ): Promise<OperatingSourceSnapshot | null> {
+    const row = await tx.projectProxyPayment.findFirst({
+      where: {
+        id: locator.sourceBusinessId,
+        projectId: locator.projectId,
+        voidedAt: null
+      }
+    });
+    return row ? this.snapshot(tx, row) : null;
+  }
+
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): AppendOperatingFactInput {
+    const source = requiredJsonRecord(
+      snapshot.sourceSnapshot,
+      "施工企业付款正式来源"
+    );
+    const affiliate = frozenAffiliateFromJson(source, "施工企业付款");
+    const occurredAt = requiredJsonDate(source, "paidAt", "施工企业付款");
+    const confirmedAt = requiredJsonDate(source, "confirmedAt", "施工企业付款");
+    const effectiveDate = requiredJsonDate(
+      source,
+      "operatingLedgerEffectiveDate",
+      "施工企业付款"
+    );
+    const amountCents = requiredJsonMoney(
+      source,
+      "amountCents",
+      "施工企业付款"
+    );
+    if (amountCents <= 0n) {
+      throw new BadRequestException("施工企业付款金额必须大于 0");
+    }
+    const payer = {
+      kind: "construction_enterprise" as const,
+      id: affiliate.businessPartyVersionId
+    };
+    const payee = {
+      kind: "downstream_counterparty" as const,
+      id: requiredJsonText(source, "payeeId", "施工企业付款")
+    };
+    const impacts: AppendOperatingFactInput["impacts"] = [];
+    const payableSourceId = optionalJsonText(source, "payableSourceId");
+    if (payableSourceId) {
+      impacts.push({
+        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
+        sourceImpactKey: `payable:${payableSourceId}`,
+        impactKind: "payable_decrease",
+        amountCents,
+        direction: "decrease",
+        subjectRole: "payee",
+        subject: payee,
+        description: "施工企业实际付款清偿下游应付"
+      });
+    }
+    impacts.push({
+      idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
+      sourceImpactKey: "construction_enterprise_funds_decrease",
+      impactKind: "construction_enterprise_funds_decrease",
+      amountCents,
+      direction: "decrease",
+      subjectRole: "actual_payer",
+      subject: payer,
+      description: "施工企业实际付款减少施工企业项目资金"
+    });
+    return {
+      projectId: snapshot.projectId,
+      sourceType: snapshot.sourceType,
+      sourceBusinessId: snapshot.sourceBusinessId,
+      sourceBusinessCode: snapshot.sourceBusinessCode,
+      sourceVersion: snapshot.sourceVersion,
+      idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}`,
+      occurredAt,
+      confirmedAt,
+      confirmedByUserId: requiredJsonText(
+        source,
+        "recordedByUserId",
+        "施工企业付款"
+      ),
+      factKind: "downstream_payment",
+      operatingLevel: "construction_enterprise",
+      evidenceLevel: "A",
+      amountCents,
+      currencyCode: "CNY",
+      direction: "outflow",
+      isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(
+        occurredAt,
+        effectiveDate
+      ),
+      affiliateAssignmentId: affiliate.assignmentId,
+      affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
+      affiliateNameSnapshot: affiliate.name,
+      ...(affiliate.creditCode
+        ? { affiliateCreditCodeSnapshot: affiliate.creditCode }
+        : {}),
+      sourceSnapshot: snapshot.sourceSnapshot,
+      basisSnapshot: sourceJson({
+        authority: "project_proxy_payment_with_voucher",
+        financeRecordRole: "financial_evidence_only",
+        voucherFileId: requiredJsonText(
+          source,
+          "voucherFileId",
+          "施工企业付款"
+        )
+      }),
+      subjects: {
+        debtor: payer,
+        approvedPayer: payer,
+        actualPayer: payer,
+        payee
+      },
+      impacts
+    };
+  }
+
+  private async snapshot(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    row: {
+      id: string;
+      projectId: string;
+      paidAt: Date;
+      amountCents: bigint;
+      generalContractorName: string;
+      paidTargetName: string;
+      paymentType: string;
+      paymentSubjectType: string;
+      affiliateAssignmentId: string | null;
+      affiliateBusinessPartyVersionId: string | null;
+      description: string | null;
+      voucherFileId: string;
+      recordedByUserId: string;
+      contractId: string | null;
+      settlementId: string | null;
+      createdAt: Date;
+    }
+  ): Promise<OperatingSourceSnapshot> {
+    if (row.paymentSubjectType !== "affiliate") {
+      throw new BadRequestException("施工企业付款来源的实际付款主体类型不正确");
+    }
+    const [effectiveDate, affiliate, settlement] = await Promise.all([
+      readOperatingLedgerEffectiveDate(tx, row.projectId),
+      readAffiliateSnapshot(tx, {
+        projectId: row.projectId,
+        occurredAt: row.paidAt,
+        assignmentId: row.affiliateAssignmentId,
+        businessPartyVersionId: row.affiliateBusinessPartyVersionId
+      }),
+      row.settlementId
+        ? tx.settlement.findUnique({
+            where: { id: row.settlementId },
+            select: { contractVersionId: true }
+          })
+        : null
+    ]);
+    const contractVersionId =
+      settlement?.contractVersionId ??
+      (
+        await tx.contractVersion.findFirst({
+          where: { contractId: row.contractId ?? "", status: "effective" },
+          select: { id: true },
+          orderBy: { versionNo: "desc" }
+        })
+      )?.id;
+    const counterparty = contractVersionId
+      ? await tx.contractPartySnapshot.findFirst({
+          where: { contractVersionId, roleKey: "party_b" },
+          select: { businessPartyVersionId: true },
+          orderBy: { displayOrder: "asc" }
+        })
+      : null;
+    const payeeId =
+      counterparty?.businessPartyVersionId ??
+      stableNamedSubjectId("downstream", row.paidTargetName);
+    return {
+      projectId: row.projectId,
+      sourceType: this.sourceType,
+      sourceBusinessId: row.id,
+      sourceBusinessCode: `施工企业付款/${row.id}`,
+      sourceVersion: 1,
+      status: "confirmed",
+      sourceSnapshot: sourceJson({
+        formalStatus: "confirmed",
+        paymentType: row.paymentType,
+        generalContractorName: row.generalContractorName,
+        paidTargetName: row.paidTargetName,
+        payeeId,
+        amountCents: row.amountCents.toString(),
+        paidAt: row.paidAt.toISOString(),
+        confirmedAt: row.createdAt.toISOString(),
+        recordedByUserId: row.recordedByUserId,
+        voucherFileId: row.voucherFileId,
+        contractId: row.contractId,
+        settlementId: row.settlementId,
+        payableSourceId: row.settlementId ?? row.contractId,
+        description: row.description,
         operatingLedgerEffectiveDate: effectiveDate.toISOString(),
         affiliate
       })

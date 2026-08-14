@@ -1,4 +1,7 @@
-import { ProjectUpstreamSettlementOperatingSourceAdapter } from "./project-operating-source.adapter";
+import {
+  ProjectProxyPaymentOperatingSourceAdapter,
+  ProjectUpstreamSettlementOperatingSourceAdapter
+} from "./project-operating-source.adapter";
 
 describe("ProjectUpstreamSettlementOperatingSourceAdapter", () => {
   it("maps only a confirmed upstream settlement to income and receivable once", async () => {
@@ -92,6 +95,98 @@ describe("ProjectUpstreamSettlementOperatingSourceAdapter", () => {
         where: expect.objectContaining({ status: "confirmed", voidedAt: null })
       })
     );
+  });
+});
+
+describe("ProjectProxyPaymentOperatingSourceAdapter", () => {
+  it("maps a construction-enterprise payment to payable and enterprise funds decreases without cost", async () => {
+    const adapter = new ProjectProxyPaymentOperatingSourceAdapter();
+    const tx = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+        })
+      },
+      projectAffiliateAssignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "affiliate-assignment-1",
+          businessPartyVersionId: "affiliate-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          affiliateCreditCodeSnapshot: "91310000000000000X"
+        })
+      },
+      projectProxyPayment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "proxy-payment-1",
+          projectId: "project-1",
+          paidAt: new Date("2026-08-14T00:00:00.000Z"),
+          amountCents: 500_00n,
+          generalContractorName: "施工企业甲",
+          paidTargetName: "供应商乙",
+          paymentType: "contract_due",
+          paymentSubjectType: "affiliate",
+          affiliateAssignmentId: "affiliate-assignment-1",
+          affiliateBusinessPartyVersionId: "affiliate-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          voucherFileId: "voucher-1",
+          recordedByUserId: "finance-user-1",
+          contractId: "contract-1",
+          settlementId: "settlement-1",
+          voidedAt: null,
+          createdAt: new Date("2026-08-14T01:00:00.000Z")
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ code: "CON-001" })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          contractVersionId: "contract-version-1"
+        })
+      },
+      contractVersion: {
+        findFirst: jest.fn().mockResolvedValue({ id: "contract-version-1" })
+      },
+      contractPartySnapshot: {
+        findFirst: jest.fn().mockResolvedValue({
+          businessPartyVersionId: "counterparty-version-1"
+        })
+      }
+    };
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "proxy-payment-1"
+    });
+    const input = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.subjects).toEqual({
+      debtor: { kind: "construction_enterprise", id: "affiliate-version-1" },
+      approvedPayer: {
+        kind: "construction_enterprise",
+        id: "affiliate-version-1"
+      },
+      actualPayer: {
+        kind: "construction_enterprise",
+        id: "affiliate-version-1"
+      },
+      payee: {
+        kind: "downstream_counterparty",
+        id: "counterparty-version-1"
+      }
+    });
+    expect(input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "payable_decrease",
+        amountCents: 500_00n
+      }),
+      expect.objectContaining({
+        impactKind: "construction_enterprise_funds_decrease",
+        amountCents: 500_00n
+      })
+    ]);
+    expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost"))
+      .toBe(false);
   });
 });
 

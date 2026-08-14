@@ -4702,6 +4702,9 @@ describe("SettlementService", () => {
     };
     const recoveries = { ensureBalanceForEffectiveSettlement: jest.fn() };
     const processes = { completeSettlement: jest.fn() };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
     const settlementService = new SettlementService(
       prisma as never,
       audit as never,
@@ -4712,7 +4715,8 @@ describe("SettlementService", () => {
       undefined,
       undefined,
       recoveries as never,
-      processes as never
+      processes as never,
+      operatingSources as never
     );
 
     const result = await settlementService.confirmArchiveFile(
@@ -4725,6 +4729,17 @@ describe("SettlementService", () => {
     );
 
     expect(result.status).toBe("effective");
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "settlement",
+        sourceBusinessId: "settlement-1"
+      },
+      "user-contract-director"
+    );
     expect(processes.completeSettlement).toHaveBeenCalledWith(
       tx,
       "process-1",
