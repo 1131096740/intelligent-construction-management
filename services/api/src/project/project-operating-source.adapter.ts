@@ -263,10 +263,17 @@ export class ProjectProxyPaymentOperatingSourceAdapter
     if (amountCents <= 0n) {
       throw new BadRequestException("施工企业付款金额必须大于 0");
     }
-    const payer = {
-      kind: "construction_enterprise" as const,
-      id: affiliate.businessPartyVersionId
-    };
+    const debtor = projectProxyPayerSubject(source, "debtor", "债务");
+    const approvedPayer = projectProxyPayerSubject(
+      source,
+      "approvedPayer",
+      "批准付款"
+    );
+    const actualPayer = projectProxyPayerSubject(
+      source,
+      "actualPayer",
+      "实际付款"
+    );
     const payee = {
       kind: "downstream_counterparty" as const,
       id: requiredJsonText(source, "payeeId", "施工企业付款")
@@ -292,7 +299,7 @@ export class ProjectProxyPaymentOperatingSourceAdapter
       amountCents,
       direction: "decrease",
       subjectRole: "actual_payer",
-      subject: payer,
+      subject: actualPayer,
       description: "施工企业实际付款减少施工企业项目资金"
     });
     return {
@@ -336,9 +343,9 @@ export class ProjectProxyPaymentOperatingSourceAdapter
         )
       }),
       subjects: {
-        debtor: payer,
-        approvedPayer: payer,
-        actualPayer: payer,
+        debtor,
+        approvedPayer,
+        actualPayer,
         payee
       },
       impacts
@@ -384,15 +391,46 @@ export class ProjectProxyPaymentOperatingSourceAdapter
           })
         : null
     ]);
-    const contractVersionId =
-      settlement?.contractVersionId ??
-      (
-        await tx.contractVersion.findFirst({
-          where: { contractId: row.contractId ?? "", status: "effective" },
-          select: { id: true },
-          orderBy: { versionNo: "desc" }
+    if (row.settlementId && !settlement) {
+      throw new BadRequestException("施工企业付款关联结算不存在");
+    }
+    const contractVersion = settlement?.contractVersionId
+      ? await tx.contractVersion.findUnique({
+          where: { id: settlement.contractVersionId },
+          select: {
+            id: true,
+            signingSubjectType: true,
+            affiliateAssignmentId: true,
+            affiliateBusinessPartyVersionId: true
+          }
         })
-      )?.id;
+      : row.contractId
+        ? await tx.contractVersion.findFirst({
+            where: { contractId: row.contractId, status: "effective" },
+            select: {
+              id: true,
+              signingSubjectType: true,
+              affiliateAssignmentId: true,
+              affiliateBusinessPartyVersionId: true
+            },
+            orderBy: { versionNo: "desc" }
+          })
+        : null;
+    if ((row.contractId || row.settlementId) && !contractVersion) {
+      throw new BadRequestException("施工企业付款关联的生效合同版本不存在");
+    }
+    if (
+      contractVersion &&
+      (contractVersion.signingSubjectType !== "affiliate" ||
+        contractVersion.affiliateAssignmentId !== affiliate.assignmentId ||
+        contractVersion.affiliateBusinessPartyVersionId !==
+          affiliate.businessPartyVersionId)
+    ) {
+      throw new BadRequestException(
+        "施工企业付款关联的合同签约主体与冻结施工企业不一致"
+      );
+    }
+    const contractVersionId = contractVersion?.id;
     const counterparty = contractVersionId
       ? await tx.contractPartySnapshot.findFirst({
           where: { contractVersionId, roleKey: "party_b" },
@@ -421,6 +459,12 @@ export class ProjectProxyPaymentOperatingSourceAdapter
         confirmedAt: row.createdAt.toISOString(),
         recordedByUserId: row.recordedByUserId,
         voucherFileId: row.voucherFileId,
+        debtorType: "affiliate",
+        debtorId: affiliate.businessPartyVersionId,
+        approvedPayerType: "affiliate",
+        approvedPayerId: affiliate.businessPartyVersionId,
+        actualPayerType: "affiliate",
+        actualPayerId: affiliate.businessPartyVersionId,
         contractId: row.contractId,
         settlementId: row.settlementId,
         payableSourceId: row.settlementId ?? row.contractId,
@@ -430,4 +474,20 @@ export class ProjectProxyPaymentOperatingSourceAdapter
       })
     };
   }
+}
+
+function projectProxyPayerSubject(
+  source: Record<string, import("@prisma/client").Prisma.InputJsonValue>,
+  field: "debtor" | "approvedPayer" | "actualPayer",
+  label: string
+) {
+  const type = requiredJsonText(source, `${field}Type`, `施工企业付款${label}主体`);
+  const id = requiredJsonText(source, `${field}Id`, `施工企业付款${label}主体`);
+  if (type === "affiliate") {
+    return { kind: "construction_enterprise" as const, id };
+  }
+  if (type === "our_company") {
+    return { kind: "participating_company" as const, id };
+  }
+  throw new BadRequestException(`施工企业付款${label}主体类型不正确`);
 }

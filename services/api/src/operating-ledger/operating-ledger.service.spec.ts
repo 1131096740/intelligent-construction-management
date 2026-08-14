@@ -194,6 +194,60 @@ describe("OperatingLedgerService", () => {
     ).rejects.toThrow("尚未接入该主体种类");
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
+
+  it("fails closed when a company-only fact role uses a counterparty kind", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...baseInput(),
+          subjects: {
+            costBearingCompany: {
+              kind: "downstream_counterparty",
+              id: "counterparty-version-1"
+            }
+          }
+        },
+        "actor-1"
+      )
+    ).rejects.toThrow("成本承担公司主体只能是施工企业或我方公司");
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an impact payer role uses an owner kind", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = baseInput();
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...input,
+          impacts: [
+            {
+              ...input.impacts[0]!,
+              subjectRole: "actual_payer",
+              subject: { kind: "owner", id: "owner-1" }
+            }
+          ]
+        },
+        "actor-1"
+      )
+    ).rejects.toThrow("实际付款主体只能是施工企业或我方公司");
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
 });
 
 function baseInput(projectId = "project-1") {

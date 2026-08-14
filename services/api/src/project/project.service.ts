@@ -47,7 +47,10 @@ import {
 } from "../payment/settlement-payment-capacity";
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
-import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService
+} from "../operating-ledger/operating-source-replay.service";
 import {
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
@@ -169,8 +172,8 @@ export class ProjectService {
     @Optional()
     private readonly funding: ProjectFundingAvailabilityService =
       new ProjectFundingAvailabilityService(),
-    @Optional()
-    private readonly operatingSources?: OperatingSourceReplayService
+    private readonly operatingSources: OperatingSourceReplayService =
+      missingOperatingSourceReplayService()
   ) {}
 
   async createProject(actorUserId: string, input: CreateProjectDto) {
@@ -1571,7 +1574,7 @@ export class ProjectService {
         }
       });
 
-      await this.operatingSources?.appendConfirmedSourceIfEnabledInTransaction(
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
         tx,
         {
           projectId: project.id,
@@ -2102,7 +2105,7 @@ export class ProjectService {
       if (!confirmed) {
         throw new InternalServerErrorException("上游结算确认结果未正确保存，请稍后重试");
       }
-      await this.operatingSources?.appendConfirmedSourceIfEnabledInTransaction(
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
         tx,
         {
           projectId,

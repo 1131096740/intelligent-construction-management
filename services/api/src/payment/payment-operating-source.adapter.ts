@@ -190,6 +190,7 @@ export class PaymentExecutionOperatingSourceAdapter
           where: { id: request.contractVersionId },
           select: {
             signingSubjectType: true,
+            companyEntityIdSnapshot: true,
             companyEntityVersionId: true,
             affiliateAssignmentId: true,
             affiliateBusinessPartyVersionId: true
@@ -320,6 +321,7 @@ interface PaymentRequestRow {
 function approvedPayerIdentity(
   version: {
     signingSubjectType: string;
+    companyEntityIdSnapshot: string | null;
     companyEntityVersionId: string | null;
     affiliateBusinessPartyVersionId: string | null;
   },
@@ -334,10 +336,10 @@ function approvedPayerIdentity(
     }
     return { type: "affiliate", id: version.affiliateBusinessPartyVersionId };
   }
-  if (!version.companyEntityVersionId) {
+  if (!version.companyEntityIdSnapshot || !version.companyEntityVersionId) {
     throw new BadRequestException("付款申请缺少我方公司付款主体快照");
   }
-  return { type: "our_company", id: version.companyEntityVersionId };
+  return { type: "our_company", id: version.companyEntityIdSnapshot };
 }
 
 function actualPayerIdentity(

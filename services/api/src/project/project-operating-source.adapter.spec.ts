@@ -101,58 +101,7 @@ describe("ProjectUpstreamSettlementOperatingSourceAdapter", () => {
 describe("ProjectProxyPaymentOperatingSourceAdapter", () => {
   it("maps a construction-enterprise payment to payable and enterprise funds decreases without cost", async () => {
     const adapter = new ProjectProxyPaymentOperatingSourceAdapter();
-    const tx = {
-      project: {
-        findUnique: jest.fn().mockResolvedValue({
-          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
-        })
-      },
-      projectAffiliateAssignment: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "affiliate-assignment-1",
-          businessPartyVersionId: "affiliate-version-1",
-          affiliateNameSnapshot: "施工企业甲",
-          affiliateCreditCodeSnapshot: "91310000000000000X"
-        })
-      },
-      projectProxyPayment: {
-        findFirst: jest.fn().mockResolvedValue({
-          id: "proxy-payment-1",
-          projectId: "project-1",
-          paidAt: new Date("2026-08-14T00:00:00.000Z"),
-          amountCents: 500_00n,
-          generalContractorName: "施工企业甲",
-          paidTargetName: "供应商乙",
-          paymentType: "contract_due",
-          paymentSubjectType: "affiliate",
-          affiliateAssignmentId: "affiliate-assignment-1",
-          affiliateBusinessPartyVersionId: "affiliate-version-1",
-          affiliateNameSnapshot: "施工企业甲",
-          voucherFileId: "voucher-1",
-          recordedByUserId: "finance-user-1",
-          contractId: "contract-1",
-          settlementId: "settlement-1",
-          voidedAt: null,
-          createdAt: new Date("2026-08-14T01:00:00.000Z")
-        })
-      },
-      contract: {
-        findUnique: jest.fn().mockResolvedValue({ code: "CON-001" })
-      },
-      settlement: {
-        findUnique: jest.fn().mockResolvedValue({
-          contractVersionId: "contract-version-1"
-        })
-      },
-      contractVersion: {
-        findFirst: jest.fn().mockResolvedValue({ id: "contract-version-1" })
-      },
-      contractPartySnapshot: {
-        findFirst: jest.fn().mockResolvedValue({
-          businessPartyVersionId: "counterparty-version-1"
-        })
-      }
-    };
+    const tx = proxyPaymentTx();
     const snapshot = await adapter.readSourceSnapshot(tx as never, {
       projectId: "project-1",
       sourceType: adapter.sourceType,
@@ -188,7 +137,85 @@ describe("ProjectProxyPaymentOperatingSourceAdapter", () => {
     expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost"))
       .toBe(false);
   });
+
+  it("fails closed when a construction-enterprise payment points at an own-company contract", async () => {
+    const adapter = new ProjectProxyPaymentOperatingSourceAdapter();
+    const tx = proxyPaymentTx();
+    tx.contractVersion.findUnique.mockResolvedValue({
+      id: "contract-version-1",
+      signingSubjectType: "our_company",
+      affiliateAssignmentId: null,
+      affiliateBusinessPartyVersionId: null
+    });
+
+    await expect(
+      adapter.readSourceSnapshot(tx as never, {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "proxy-payment-1"
+      })
+    ).rejects.toThrow("签约主体");
+  });
 });
+
+function proxyPaymentTx() {
+  return {
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+      })
+    },
+    projectAffiliateAssignment: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "affiliate-assignment-1",
+        businessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        affiliateCreditCodeSnapshot: "91310000000000000X"
+      })
+    },
+    projectProxyPayment: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "proxy-payment-1",
+        projectId: "project-1",
+        paidAt: new Date("2026-08-14T00:00:00.000Z"),
+        amountCents: 500_00n,
+        generalContractorName: "施工企业甲",
+        paidTargetName: "供应商乙",
+        paymentType: "contract_due",
+        paymentSubjectType: "affiliate",
+        affiliateAssignmentId: "affiliate-assignment-1",
+        affiliateBusinessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        voucherFileId: "voucher-1",
+        recordedByUserId: "finance-user-1",
+        contractId: "contract-1",
+        settlementId: "settlement-1",
+        voidedAt: null,
+        createdAt: new Date("2026-08-14T01:00:00.000Z")
+      })
+    },
+    contract: { findUnique: jest.fn().mockResolvedValue({ code: "CON-001" }) },
+    settlement: {
+      findUnique: jest.fn().mockResolvedValue({
+        contractVersionId: "contract-version-1"
+      })
+    },
+    contractVersion: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: "contract-version-1",
+        signingSubjectType: "affiliate",
+        affiliateAssignmentId: "affiliate-assignment-1",
+        affiliateBusinessPartyVersionId: "affiliate-version-1"
+      }),
+      findFirst: jest.fn()
+    },
+    contractPartySnapshot: {
+      findFirst: jest.fn().mockResolvedValue({
+        businessPartyVersionId: "counterparty-version-1"
+      })
+    }
+  };
+}
 
 function upstreamSettlement(overrides: Record<string, unknown> = {}) {
   return {

@@ -8,7 +8,10 @@ import {
   type OperatingSourceFactInput,
   type OperatingSourceSnapshot
 } from "./operating-source-adapter";
-import { OperatingSourceReplayService } from "./operating-source-replay.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService
+} from "./operating-source-replay.service";
 
 describe("OperatingSourceReplayService", () => {
   it("closes the adapter set and rejects duplicate or missing source types", () => {
@@ -184,6 +187,21 @@ describe("OperatingSourceReplayService", () => {
       )
     ).resolves.toBeNull();
     expect(adapter.readSourceSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when an enabled project is missing the source projection service", async () => {
+    const harness = createHarness();
+    harness.tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+
+    await expect(
+      missingOperatingSourceReplayService().appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "finance-user"
+      )
+    ).rejects.toThrow("经营账来源投影服务未注入");
   });
 
   it("fails before opening a transaction when the requested adapter is missing", async () => {

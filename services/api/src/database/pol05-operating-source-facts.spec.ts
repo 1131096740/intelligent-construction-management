@@ -56,6 +56,7 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           ["project_upstream_settlement", fixture.upstreamSettlementId],
           ["settlement", fixture.settlement2Id],
           ["payment_execution", fixture.paymentExecutionId],
+          ["payment_execution", fixture.sameCompanyPaymentExecutionId],
           ["project_proxy_payment", fixture.proxyPaymentId]
         ] as const) {
           await expect(
@@ -74,11 +75,11 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
 
         const summary = await operatingSummary(clients[0]!, fixture.projectId);
         expect(summary).toEqual({
-          factCount: 5n,
+          factCount: 6n,
           confirmedCostCents: 300_000n,
           payableIncreaseCents: 270_000n,
           payableDecreaseCents: 80_000n,
-          companyFundsDecreaseCents: 60_000n,
+          companyFundsDecreaseCents: 70_000n,
           affiliateFundsDecreaseCents: 20_000n,
           interSubjectCents: 60_000n
         });
@@ -94,8 +95,8 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
         });
         expect(paymentFact).toEqual(
           expect.objectContaining({
-            debtorSubjectId: fixture.company1VersionId,
-            approvedPayerSubjectId: fixture.company1VersionId,
+            debtorSubjectId: fixture.company1Id,
+            approvedPayerSubjectId: fixture.company1Id,
             actualPayerSubjectId: fixture.company2Id,
             payeeSubjectId: fixture.counterpartyVersionId,
             amountCents: 60_000n
@@ -111,6 +112,36 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
         );
         expect(
           paymentFact?.impacts.some((impact) => impact.impactKind === "confirmed_cost")
+        ).toBe(false);
+        await expect(
+          insertInvalidPayerRoleImpact(
+            clients[0]!,
+            fixture,
+            paymentFact!.id
+          )
+        ).rejects.toThrow("OperatingImpactEntry_supported_subject_check");
+
+        const sameCompanyPaymentFact = await clients[0]!.operatingFact.findUnique({
+          where: {
+            sourceType_sourceBusinessId: {
+              sourceType: "payment_execution",
+              sourceBusinessId: fixture.sameCompanyPaymentExecutionId
+            }
+          },
+          include: { impacts: true }
+        });
+        expect(sameCompanyPaymentFact).toEqual(
+          expect.objectContaining({
+            debtorSubjectId: fixture.company1Id,
+            approvedPayerSubjectId: fixture.company1Id,
+            actualPayerSubjectId: fixture.company1Id,
+            operatingLevel: "project"
+          })
+        );
+        expect(
+          sameCompanyPaymentFact?.impacts.some(
+            (impact) => impact.impactKind === "inter_subject_balance_increase"
+          )
         ).toBe(false);
 
         const financeRecords = await clients[0]!.financeRecord.count({
@@ -130,10 +161,10 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           expect.objectContaining({
             consistent: true,
             summary: {
-              expectedFacts: 5,
-              actualFacts: 5,
-              expectedImpacts: 12,
-              actualImpacts: 12,
+              expectedFacts: 6,
+              actualFacts: 6,
+              expectedImpacts: 13,
+              actualImpacts: 13,
               differenceCount: 0
             }
           })
@@ -200,6 +231,8 @@ function fixtureIds() {
     counterpartyVersionId: `${prefix}_counterparty_version`,
     contractId: `${prefix}_contract`,
     contractVersionId: `${prefix}_contract_version`,
+    affiliateContractId: `${prefix}_affiliate_contract`,
+    affiliateContractVersionId: `${prefix}_affiliate_contract_version`,
     paymentTermsVersionId: `${prefix}_terms`,
     settlement1Id: `${prefix}_settlement_1`,
     settlement2Id: `${prefix}_settlement_2`,
@@ -207,6 +240,8 @@ function fixtureIds() {
     upstreamSettlementId: `${prefix}_upstream`,
     paymentRequestId: `${prefix}_payment_request`,
     paymentExecutionId: `${prefix}_payment_execution`,
+    sameCompanyPaymentRequestId: `${prefix}_same_company_payment_request`,
+    sameCompanyPaymentExecutionId: `${prefix}_same_company_payment_execution`,
     proxyPaymentId: `${prefix}_proxy_payment`,
     overApprovedRequestId: `${prefix}_over_request`,
     overApprovedExecutionId: `${prefix}_over_execution`
@@ -414,6 +449,45 @@ async function seedFixture(
       snapshot: { name: "POL-05 下游供应商" }
     }
   });
+  await client.contract.create({
+    data: {
+      id: fixture.affiliateContractId,
+      projectId: fixture.projectId,
+      code: `${fixture.prefix}-AFF-CON`,
+      name: "POL-05 施工企业材料合同",
+      counterparty: "POL-05 下游供应商",
+      contractTypeKey: "material_purchase"
+    }
+  });
+  await client.contractVersion.create({
+    data: {
+      id: fixture.affiliateContractVersionId,
+      contractId: fixture.affiliateContractId,
+      versionNo: 1,
+      changeType: "original",
+      status: "effective",
+      amountCents: 100_000n,
+      effectiveAt: new Date("2026-08-01T00:00:00.000Z"),
+      signingSubjectType: "affiliate",
+      affiliateAssignmentId: fixture.affiliateAssignmentId,
+      affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
+      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
+      draftData: {},
+      templateSnapshot: {},
+      clauseSnapshot: {}
+    }
+  });
+  await client.contractPartySnapshot.create({
+    data: {
+      id: `${fixture.prefix}_affiliate_party_b`,
+      contractVersionId: fixture.affiliateContractVersionId,
+      roleKey: "party_b",
+      displayOrder: 1,
+      businessPartyVersionId: fixture.counterpartyVersionId,
+      snapshot: { name: "POL-05 下游供应商" }
+    }
+  });
 
   const fileIds = [
     "settlement-1",
@@ -421,6 +495,7 @@ async function seedFixture(
     "upstream",
     "payment",
     "proxy",
+    "same-company-payment",
     "over-payment"
   ].map((suffix) => `${fixture.prefix}_file_${suffix}`);
   await client.fileObject.createMany({
@@ -571,6 +646,37 @@ async function seedFixture(
       }
     ]
   });
+  await client.paymentRequest.create({
+    data: {
+      id: fixture.sameCompanyPaymentRequestId,
+      projectId: fixture.projectId,
+      sourceType: "contract_advance",
+      contractId: fixture.contractId,
+      contractVersionId: fixture.contractVersionId,
+      paymentTermsVersionId: fixture.paymentTermsVersionId,
+      code: `${fixture.prefix}-PAY-SAME`,
+      status: "paid",
+      requestedAmountCents: 10_000n,
+      approvedAmountCents: 10_000n,
+      paidAmountCents: 10_000n,
+      paymentSubjectType: "our_company"
+    }
+  });
+  await client.paymentExecution.create({
+    data: {
+      id: fixture.sameCompanyPaymentExecutionId,
+      idempotencyKey: randomUUID(),
+      paymentRequestId: fixture.sameCompanyPaymentRequestId,
+      paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: fixture.company1Id,
+      companyEntityNameSnapshot: "POL-05 原债务公司",
+      companyEntityCreditCodeSnapshot: `${fixture.prefix}C1`,
+      amountCents: 10_000n,
+      paidAt: new Date("2026-08-14T00:15:00.000Z"),
+      executedByUserId: fixture.financeUserId,
+      voucherFileId: fileIds[5]!
+    }
+  });
   await client.projectProxyPayment.create({
     data: {
       id: fixture.proxyPaymentId,
@@ -586,8 +692,8 @@ async function seedFixture(
       affiliateNameSnapshot: "POL-05 施工企业",
       voucherFileId: fileIds[4]!,
       recordedByUserId: fixture.financeUserId,
-      contractId: fixture.contractId,
-      settlementId: fixture.settlement1Id
+      contractId: fixture.affiliateContractId,
+      settlementId: null
     }
   });
   await client.financeRecord.create({
@@ -665,6 +771,33 @@ async function seedOverApprovedExecution(
       executedByUserId: fixture.financeUserId,
       voucherFileId
     }
+  });
+}
+
+async function insertInvalidPayerRoleImpact(
+  client: PrismaClient,
+  fixture: ReturnType<typeof fixtureIds>,
+  factId: string
+) {
+  const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+  if (!secret) throw new Error("POL-05 PostgreSQL 测试缺少经营账写入密钥");
+  return client.$transaction(async (tx) => {
+    await tx.$executeRaw(
+      Prisma.sql`SELECT public."authorizeOperatingLedgerWrite"(${fixture.financeUserId}, ${secret})`
+    );
+    return tx.$executeRaw(Prisma.sql`
+      INSERT INTO "OperatingImpactEntry" (
+        "id", "factId", "projectId", "sourceType", "sourceBusinessId",
+        "sourceImpactKey", "idempotencyKey", "impactKind", "amountCents",
+        "direction", "subjectRole", "subjectKind", "subjectId", "impactSnapshot"
+      ) VALUES (
+        ${`${fixture.prefix}_invalid_payer_role_impact`}, ${factId},
+        ${fixture.projectId}, 'payment_execution', ${fixture.paymentExecutionId},
+        'invalid-payer-role', ${`${fixture.prefix}_invalid_payer_role_key`},
+        'inter_subject_balance_increase', 1, 'increase', 'actual_payer',
+        'downstream_counterparty', ${fixture.counterpartyVersionId}, '{}'::jsonb
+      )
+    `);
   });
 }
 

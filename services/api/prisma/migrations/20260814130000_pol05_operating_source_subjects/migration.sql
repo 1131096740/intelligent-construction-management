@@ -3,20 +3,30 @@ ALTER TABLE "OperatingFact"
   DROP CONSTRAINT "OperatingFact_supported_subject_check",
   ADD CONSTRAINT "OperatingFact_supported_subject_check"
     CHECK (
-      COALESCE("debtorSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
-      COALESCE("creditorSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
-      COALESCE("approvedPayerSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
-      COALESCE("actualPayerSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
+      COALESCE("debtorSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company'), TRUE) AND
+      COALESCE("creditorSubjectKind" IN ('construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
+      COALESCE("approvedPayerSubjectKind" IN ('construction_enterprise', 'participating_company'), TRUE) AND
+      COALESCE("actualPayerSubjectKind" IN ('construction_enterprise', 'participating_company'), TRUE) AND
       COALESCE("payeeSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
-      COALESCE("costBearingCompanySubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE)
+      COALESCE("costBearingCompanySubjectKind" IN ('construction_enterprise', 'participating_company'), TRUE)
     );
 
 ALTER TABLE "OperatingImpactEntry"
   DROP CONSTRAINT "OperatingImpactEntry_supported_subject_check",
   ADD CONSTRAINT "OperatingImpactEntry_supported_subject_check"
     CHECK (
-      "subjectKind" IS NULL OR
-      "subjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty')
+      "subjectKind" IS NULL OR (
+        "subjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty') AND
+        CASE "subjectRole"
+          WHEN 'debtor' THEN "subjectKind" IN ('owner', 'construction_enterprise', 'participating_company')
+          WHEN 'creditor' THEN "subjectKind" IN ('construction_enterprise', 'participating_company', 'downstream_counterparty')
+          WHEN 'approved_payer' THEN "subjectKind" IN ('construction_enterprise', 'participating_company')
+          WHEN 'actual_payer' THEN "subjectKind" IN ('construction_enterprise', 'participating_company')
+          WHEN 'payee' THEN TRUE
+          WHEN 'cost_bearing_company' THEN "subjectKind" IN ('construction_enterprise', 'participating_company')
+          ELSE "subjectRole" IS NULL
+        END
+      )
     );
 
 -- 保留 POL-03 的全部引用、期间、追加和权限校验，只扩展本票正式接入的两类主体。

@@ -20,10 +20,10 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
         factKind: "downstream_payment",
         amountCents: 600_00n,
         subjects: {
-          debtor: { kind: "participating_company", id: "company-version-1" },
+          debtor: { kind: "participating_company", id: "company-entity-1" },
           approvedPayer: {
             kind: "participating_company",
-            id: "company-version-1"
+            id: "company-entity-1"
           },
           actualPayer: {
             kind: "participating_company",
@@ -60,6 +60,12 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     expect(
       input.impacts.some((impact) => impact.sourceImpactKey.includes("advance"))
     ).toBe(false);
+    expect(
+      input.impacts.some(
+        (impact) => impact.sourceImpactKey === "inter_subject_proxy_payment"
+      )
+    ).toBe(false);
+    expect(input.operatingLevel).toBe("project");
   });
 
   it("preserves different approved and actual payers and forms one inter-subject balance", async () => {
@@ -72,7 +78,7 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     });
     const input = adapter.toOperatingFactInput(snapshot!);
 
-    expect(input.subjects.approvedPayer?.id).toBe("company-version-1");
+    expect(input.subjects.approvedPayer?.id).toBe("company-entity-1");
     expect(input.subjects.actualPayer?.id).toBe("proxy-company-entity");
     expect(input.impacts).toEqual(
       expect.arrayContaining([
@@ -156,6 +162,7 @@ function paymentTx(executionOverrides: Record<string, unknown> = {}) {
     contractVersion: {
       findUnique: jest.fn().mockResolvedValue({
         signingSubjectType: "our_company",
+        companyEntityIdSnapshot: "company-entity-1",
         companyEntityVersionId: "company-version-1",
         affiliateAssignmentId: "affiliate-assignment-1",
         affiliateBusinessPartyVersionId: "affiliate-version-1"

@@ -36,7 +36,10 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
-import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService
+} from "../operating-ledger/operating-source-replay.service";
 import { PAYMENT_EXECUTION_SOURCE_TYPE } from "./payment-operating-source.adapter";
 import {
   dbMoneyToBigInt,
@@ -217,8 +220,8 @@ export class PaymentRequestService {
     private readonly projectFunding?: ProjectFundingAvailabilityService,
     @Optional()
     private readonly takeoverBalances?: ContractTakeoverBalanceService,
-    @Optional()
-    private readonly operatingSources?: OperatingSourceReplayService
+    private readonly operatingSources: OperatingSourceReplayService =
+      missingOperatingSourceReplayService()
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -3264,7 +3267,7 @@ export class PaymentRequestService {
     paymentExecutionId: string,
     actorUserId: string
   ): Promise<void> {
-    await this.operatingSources?.appendConfirmedSourceIfEnabledInTransaction(
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
       tx,
       {
         projectId,

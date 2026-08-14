@@ -93,7 +93,10 @@ import {
 import { freezeSettlementParticipants } from "./settlement-participant-freeze";
 import { SettlementSignedDocumentService } from "./settlement-signed-document.service";
 import { SettlementRecoveryService } from "./settlement-recovery.service";
-import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService
+} from "../operating-ledger/operating-source-replay.service";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 
 type SettlementContractKind = "material_mechanical" | "labor_professional";
@@ -440,8 +443,8 @@ export class SettlementService {
     private readonly recoveries?: SettlementRecoveryService,
     @Optional()
     private readonly processes?: ContractSettlementProcessService,
-    @Optional()
-    private readonly operatingSources?: OperatingSourceReplayService
+    private readonly operatingSources: OperatingSourceReplayService =
+      missingOperatingSourceReplayService()
   ) {}
 
   assertContractVersionEffective(status: ContractVersionStatus): void {
@@ -2982,7 +2985,7 @@ export class SettlementService {
     settlementId: string,
     actorUserId: string
   ): Promise<void> {
-    await this.operatingSources?.appendConfirmedSourceIfEnabledInTransaction(
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
       tx,
       {
         projectId,

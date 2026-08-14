@@ -51,6 +51,30 @@ export interface OperatingConsistencyReport {
   differences: OperatingConsistencyDifference[];
 }
 
+export function missingOperatingSourceReplayService(): OperatingSourceReplayService {
+  return {
+    async appendConfirmedSourceIfEnabledInTransaction(
+      tx: OperatingLedgerTransaction,
+      locator: OperatingSourceLocator
+    ) {
+      const projectClient = (
+        tx as unknown as {
+          project?: typeof tx.project;
+        }
+      ).project;
+      if (!projectClient) return null;
+      const project = await projectClient.findUnique({
+        where: { id: locator.projectId },
+        select: { operatingLedgerEffectiveDate: true }
+      });
+      if (project?.operatingLedgerEffectiveDate) {
+        throw new Error("经营账来源投影服务未注入，已拒绝正式来源写入");
+      }
+      return null;
+    }
+  } as unknown as OperatingSourceReplayService;
+}
+
 @Injectable()
 export class OperatingSourceReplayService {
   constructor(
