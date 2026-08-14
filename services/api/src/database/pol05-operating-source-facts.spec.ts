@@ -519,10 +519,14 @@ async function seedFixture(
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
       affiliateNameSnapshot: "POL-05 施工企业",
       voucherFileId: fileIds[2]!,
+      fileContentSha256Snapshot: "a".repeat(64),
       recordedByUserId: fixture.financeUserId,
       status: "confirmed",
       confirmedByUserId: fixture.financeUserId,
-      confirmedAt: new Date("2026-08-13T00:00:00.000Z")
+      confirmedAt: new Date("2026-08-13T00:00:00.000Z"),
+      confirmationSignatureVersionId: `${fixture.prefix}_signature_version`,
+      confirmationSignatureFileId: fileIds[2]!,
+      confirmationSignatureSha256: "b".repeat(64)
     }
   });
   await client.paymentRequest.create({
