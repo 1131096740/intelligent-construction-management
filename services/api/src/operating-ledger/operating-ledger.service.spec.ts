@@ -221,7 +221,46 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
-  it("fails closed when an impact payer role uses an owner kind", async () => {
+  it("accepts an owner as the actual payer of an owner payment", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = baseInput();
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...input,
+          factKind: "owner_payment",
+          direction: "inflow",
+          subjects: {
+            actualPayer: { kind: "owner", id: "owner-1" },
+            payee: {
+              kind: "construction_enterprise",
+              id: "affiliate-version-1"
+            }
+          },
+          impacts: [
+            {
+              ...input.impacts[0]!,
+              impactKind: "receivable_decrease",
+              costCategoryCode: undefined,
+              direction: "decrease",
+              subjectRole: "actual_payer",
+              subject: { kind: "owner", id: "owner-1" }
+            }
+          ]
+        },
+        "actor-1"
+      )
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+  });
+
+  it("fails closed when an impact payer role uses a downstream counterparty", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
       projectMembers: [{ positionKey: "finance_staff" }],
@@ -239,13 +278,16 @@ describe("OperatingLedgerService", () => {
             {
               ...input.impacts[0]!,
               subjectRole: "actual_payer",
-              subject: { kind: "owner", id: "owner-1" }
+              subject: {
+                kind: "downstream_counterparty",
+                id: "counterparty-version-1"
+              }
             }
           ]
         },
         "actor-1"
       )
-    ).rejects.toThrow("实际付款主体只能是施工企业或我方公司");
+    ).rejects.toThrow("实际付款主体只能是业主或施工企业或我方公司");
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 });

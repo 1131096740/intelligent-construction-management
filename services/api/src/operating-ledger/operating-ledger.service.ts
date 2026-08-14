@@ -140,7 +140,11 @@ const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
     "downstream_counterparty"
   ]),
   approved_payer: new Set(["construction_enterprise", "participating_company"]),
-  actual_payer: new Set(["construction_enterprise", "participating_company"]),
+  actual_payer: new Set([
+    "owner",
+    "construction_enterprise",
+    "participating_company"
+  ]),
   payee: new Set([
     "owner",
     "construction_enterprise",

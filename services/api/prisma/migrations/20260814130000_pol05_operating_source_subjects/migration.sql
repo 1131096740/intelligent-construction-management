@@ -6,7 +6,7 @@ ALTER TABLE "OperatingFact"
       COALESCE("debtorSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company'), TRUE) AND
       COALESCE("creditorSubjectKind" IN ('construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
       COALESCE("approvedPayerSubjectKind" IN ('construction_enterprise', 'participating_company'), TRUE) AND
-      COALESCE("actualPayerSubjectKind" IN ('construction_enterprise', 'participating_company'), TRUE) AND
+      COALESCE("actualPayerSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company'), TRUE) AND
       COALESCE("payeeSubjectKind" IN ('owner', 'construction_enterprise', 'participating_company', 'downstream_counterparty'), TRUE) AND
       COALESCE("costBearingCompanySubjectKind" IN ('construction_enterprise', 'participating_company'), TRUE)
     );
@@ -21,7 +21,7 @@ ALTER TABLE "OperatingImpactEntry"
           WHEN 'debtor' THEN "subjectKind" IN ('owner', 'construction_enterprise', 'participating_company')
           WHEN 'creditor' THEN "subjectKind" IN ('construction_enterprise', 'participating_company', 'downstream_counterparty')
           WHEN 'approved_payer' THEN "subjectKind" IN ('construction_enterprise', 'participating_company')
-          WHEN 'actual_payer' THEN "subjectKind" IN ('construction_enterprise', 'participating_company')
+          WHEN 'actual_payer' THEN "subjectKind" IN ('owner', 'construction_enterprise', 'participating_company')
           WHEN 'payee' THEN TRUE
           WHEN 'cost_bearing_company' THEN "subjectKind" IN ('construction_enterprise', 'participating_company')
           ELSE "subjectRole" IS NULL

@@ -51,7 +51,12 @@ export interface OperatingConsistencyReport {
   differences: OperatingConsistencyDifference[];
 }
 
-export function missingOperatingSourceReplayService(): OperatingSourceReplayService {
+export type OperatingSourceAppendPort = Pick<
+  OperatingSourceReplayService,
+  "appendConfirmedSourceIfEnabledInTransaction"
+>;
+
+export function missingOperatingSourceReplayService(): OperatingSourceAppendPort {
   return {
     async appendConfirmedSourceIfEnabledInTransaction(
       tx: OperatingLedgerTransaction,
@@ -72,7 +77,7 @@ export function missingOperatingSourceReplayService(): OperatingSourceReplayServ
       }
       return null;
     }
-  } as unknown as OperatingSourceReplayService;
+  };
 }
 
 @Injectable()

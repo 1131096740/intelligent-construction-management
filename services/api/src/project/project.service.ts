@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   GoneException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -49,7 +50,8 @@ import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-co
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import {
   missingOperatingSourceReplayService,
-  OperatingSourceReplayService
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import {
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
@@ -172,7 +174,8 @@ export class ProjectService {
     @Optional()
     private readonly funding: ProjectFundingAvailabilityService =
       new ProjectFundingAvailabilityService(),
-    private readonly operatingSources: OperatingSourceReplayService =
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService()
   ) {}
 

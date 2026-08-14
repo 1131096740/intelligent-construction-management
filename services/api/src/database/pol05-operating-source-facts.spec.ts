@@ -170,6 +170,36 @@ describe("POL-05 formal operating sources PostgreSQL", () => {
           })
         );
 
+        const ownerPaymentProbe = await appendOwnerPaymentRoleProbe(
+          clients[0]!,
+          fixture
+        );
+        expect(ownerPaymentProbe).toEqual(
+          expect.objectContaining({ created: true })
+        );
+        expect(
+          await clients[0]!.operatingFact.findUnique({
+            where: {
+              sourceType_sourceBusinessId: {
+                sourceType: "pol05_owner_payment_role_probe",
+                sourceBusinessId: `${fixture.prefix}_owner_payment`
+              }
+            },
+            include: { impacts: true }
+          })
+        ).toEqual(
+          expect.objectContaining({
+            factKind: "owner_payment",
+            actualPayerSubjectKind: "owner",
+            impacts: [
+              expect.objectContaining({
+                subjectRole: "actual_payer",
+                subjectKind: "owner"
+              })
+            ]
+          })
+        );
+
         await seedOverApprovedExecution(clients[0]!, fixture);
         await expect(
           services[0]!.replaySource(
@@ -802,6 +832,57 @@ async function insertInvalidPayerRoleImpact(
       )
     `);
   });
+}
+
+async function appendOwnerPaymentRoleProbe(
+  client: PrismaClient,
+  fixture: ReturnType<typeof fixtureIds>
+) {
+  return new OperatingLedgerService(client as never).appendFromSource(
+    {
+      projectId: fixture.projectId,
+      sourceType: "pol05_owner_payment_role_probe",
+      sourceBusinessId: `${fixture.prefix}_owner_payment`,
+      sourceBusinessCode: `${fixture.prefix}-OWNER-PAYMENT`,
+      sourceVersion: 1,
+      idempotencyKey: `${fixture.prefix}_owner_payment`,
+      occurredAt: new Date("2026-08-14T03:00:00.000Z"),
+      confirmedAt: new Date("2026-08-14T03:00:00.000Z"),
+      confirmedByUserId: fixture.financeUserId,
+      factKind: "owner_payment",
+      operatingLevel: "project",
+      evidenceLevel: "A",
+      amountCents: 1n,
+      currencyCode: "CNY",
+      direction: "inflow",
+      isBeforeOperatingLedgerEffectiveDate: false,
+      affiliateAssignmentId: fixture.affiliateAssignmentId,
+      affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
+      affiliateNameSnapshot: "POL-05 施工企业",
+      affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
+      sourceSnapshot: { purpose: "actual_payer role constraint probe" },
+      subjects: {
+        actualPayer: { kind: "owner", id: `${fixture.prefix}_owner` },
+        payee: {
+          kind: "construction_enterprise",
+          id: fixture.affiliateVersionId
+        }
+      },
+      impacts: [
+        {
+          idempotencyKey: `${fixture.prefix}_owner_payment_impact`,
+          sourceImpactKey: "receivable_decrease",
+          impactKind: "receivable_decrease",
+          amountCents: 1n,
+          direction: "decrease",
+          subjectRole: "actual_payer",
+          subject: { kind: "owner", id: `${fixture.prefix}_owner` },
+          description: "POL-05 业主实付主体约束回归探针"
+        }
+      ]
+    },
+    fixture.financeUserId
+  );
 }
 
 async function operatingSummary(client: PrismaClient, projectId: string) {

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Inject,
   Injectable,
   Optional
 } from "@nestjs/common";
@@ -38,7 +39,8 @@ import { ProjectFundingAvailabilityService } from "../project-funding/project-fu
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
 import {
   missingOperatingSourceReplayService,
-  OperatingSourceReplayService
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import { PAYMENT_EXECUTION_SOURCE_TYPE } from "./payment-operating-source.adapter";
 import {
@@ -220,7 +222,8 @@ export class PaymentRequestService {
     private readonly projectFunding?: ProjectFundingAvailabilityService,
     @Optional()
     private readonly takeoverBalances?: ContractTakeoverBalanceService,
-    private readonly operatingSources: OperatingSourceReplayService =
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService()
   ) {}
 

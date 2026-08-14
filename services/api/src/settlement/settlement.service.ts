@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   Optional
@@ -95,7 +96,8 @@ import { SettlementSignedDocumentService } from "./settlement-signed-document.se
 import { SettlementRecoveryService } from "./settlement-recovery.service";
 import {
   missingOperatingSourceReplayService,
-  OperatingSourceReplayService
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import { ContractSettlementProcessService } from "./contract-settlement-process.service";
 
@@ -443,7 +445,8 @@ export class SettlementService {
     private readonly recoveries?: SettlementRecoveryService,
     @Optional()
     private readonly processes?: ContractSettlementProcessService,
-    private readonly operatingSources: OperatingSourceReplayService =
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService()
   ) {}
 
