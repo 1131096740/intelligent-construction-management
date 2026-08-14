@@ -389,10 +389,6 @@ async function seedFixture(
       companyEntityNameSnapshot: "POL-05 原债务公司",
       companyEntityCreditCodeSnapshot: `${fixture.prefix}C1`,
       signingSubjectType: "our_company",
-      affiliateAssignmentId: fixture.affiliateAssignmentId,
-      affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
-      affiliateNameSnapshot: "POL-05 施工企业",
-      affiliateCreditCodeSnapshot: `${fixture.prefix}AFF`,
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: {}
