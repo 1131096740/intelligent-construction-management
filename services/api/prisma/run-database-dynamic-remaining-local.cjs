@@ -171,6 +171,29 @@ function fail(message) {
   throw new Error(message);
 }
 
+function selectGroups(args = []) {
+  const requested = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== "--group" || !args[index + 1]) {
+      fail("剩余数据库动态门只接受 --group <子组名称>");
+    }
+    requested.push(args[index + 1]);
+    index += 1;
+  }
+  if (new Set(requested).size !== requested.length) {
+    fail("剩余数据库动态门子组不能重复");
+  }
+  if (requested.length === 0) return GROUPS;
+  const requestedSet = new Set(requested);
+  const selected = GROUPS.filter((group) => requestedSet.has(group.id));
+  if (selected.length !== requested.length) {
+    const known = new Set(GROUPS.map((group) => group.id));
+    const unknown = requested.filter((id) => !known.has(id));
+    fail(`未知剩余数据库动态门子组：${unknown.join(", ")}`);
+  }
+  return selected;
+}
+
 function isLocalHostName(hostname) {
   return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostname);
 }
@@ -388,8 +411,9 @@ async function prepareProjectOperatingProfileUpgrade(
   );
 }
 
-async function main(sourceEnv = process.env) {
+async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
   assertSafeEnvironment(sourceEnv);
+  const selectedGroups = selectGroups(args);
   const candidateSha = sourceEnv.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA;
   await assertRepositoryState(candidateSha);
   const temporaryRoot = await mkdtemp(
@@ -397,7 +421,7 @@ async function main(sourceEnv = process.env) {
   );
   const port = await freePort();
   const password = randomUUID();
-  const initialDatabase = GROUPS[0].database;
+  const initialDatabase = selectedGroups[0].database;
   const containerName = `jiangkong-database-dynamic-remaining-${Date.now()}-${process.pid}`;
   const dockerEnv = {
     PATH: sourceEnv.PATH ?? "",
@@ -462,7 +486,7 @@ async function main(sourceEnv = process.env) {
     containerRunAttempted = true;
     await waitForPostgres(containerName, initialDatabase);
 
-    for (const group of GROUPS) {
+    for (const group of selectedGroups) {
       const groupStartedAt = Date.now();
       const databaseUrl = databaseUrlFor(password, port, group.database);
       if (group.database !== initialDatabase) {
@@ -521,7 +545,7 @@ async function main(sourceEnv = process.env) {
       terminalMigration: TERMINAL_MIGRATION,
       containerImage: IMAGE,
       containerImageId: imageId,
-      executedTests: GROUPS.reduce((sum, group) => sum + group.pendingTests, 0),
+      executedTests: selectedGroups.reduce((sum, group) => sum + group.pendingTests, 0),
       groups: receipts
     };
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
@@ -535,7 +559,7 @@ async function main(sourceEnv = process.env) {
 }
 
 if (require.main === module) {
-  main().catch((error) => {
+  main(process.env, process.argv.slice(2)).catch((error) => {
     process.stderr.write(
       `剩余数据库动态门失败：${error instanceof Error ? error.message : String(error)}\n`
     );
@@ -551,5 +575,6 @@ module.exports = {
   assertSafeEnvironment,
   createRuntimeEnvironment,
   databaseUrlFor,
-  main
+  main,
+  selectGroups
 };

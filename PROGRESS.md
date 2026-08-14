@@ -51,6 +51,7 @@
 - [x] POL-03 P1 数据库写入硬化已在当前 worktree 完成本地闭环：新增第 128 条最小迁移，以 SECURITY DEFINER 受控函数登记事务授权上下文并撤销 runtime role 对 `OperatingFact`/`OperatingImpactEntry` 的直接 INSERT/UPDATE/DELETE/TRUNCATE；应用服务改走受控函数，错误 secret、伪造 GUC 和直接 SQL 均在真实 PostgreSQL 16 中失败关闭。runtime role 配置为显式 owner-only 操作步骤；部署迁移仅从 root-only `DATABASE_MIGRATION_ENV_FILE` 读取 `DATABASE_MIGRATION_URL`，API 运行时与定时任务加载的 `API_ENV_FILE` 明确拒绝该 owner URL。remaining 动态门为经营账隔离 PostgreSQL 组生成一次性写入密钥，并由 fixture 仅向同一隔离库写入 hash，以覆盖受控写入并发验收；未执行生产角色配置、生产迁移或生产数据修改。
 - [~] POL-04（Issue #97）切片 1 已在 POL-03 focused commit `c348226d3045f25299beb5a5b54122ef89c184d0` 上完成本地契约骨架：新增构造后封闭的来源适配器注册表、只接受正式状态的冻结来源快照契约、同事务单来源幂等重放，以及 PostgreSQL `SET TRANSACTION READ ONLY` 保护的按项目重建比较和含来源/中文业务编号的差异结构；缺失或重复适配器、非正式快照、跨来源坐标均中文失败关闭。TDD 先由缺少实现得到目标 RED，随后新增测试与原 POL-03 服务测试合计 13/13、API typecheck 通过。真实 PostgreSQL 金额/权限/状态/并发与动态门仍在下一切片，当前不得宣称 POL-04 收口。
 - [~] POL-04 切片 2 已新增独立 PostgreSQL 契约场景和动态门编排：测试专用适配器覆盖正式/草稿源、项目财务权限、金额漂移、并发和重复重放、正式事实与两类影响分录、数据库只读事务写入探针及缺失注册；动态清单由 87 条/35 文件更新为 88 条/36 文件、remaining 0，并为经营账测试在每次一次性运行中生成独立测试密钥，未写入仓库或输出收据。静态清单门 11/11、manifest validate、目标单元测试 13/13（数据库场景 1 条按开关跳过）、API typecheck 和目标 lint 已通过；真实 PostgreSQL 16 执行仍须绑定本切片提交后的干净候选 SHA。
+- [~] POL-04 第一次绑定候选 `9ce95c6fb14f047ba4e59d72ec3ebff081fb86ed` 的 PostgreSQL 16 remaining 全组执行在到达 POL-04 前，被既有 `project_operating_profile_upgrade` 旧迁移夹具触发“正式经营事实发生前必须先设置唯一施工企业”阻断；未把该 POL-02 夹具问题扩大进本票。现仅为原 runner 增加精确子组选择和未知/重复参数失败关闭，默认全量路径不变；下一收据只运行包含 POL-03/POL-04 的 `generic_database_constraints`，不得冒充全量 64 条收据。
 
 ### P0：已删除草稿生命周期
 

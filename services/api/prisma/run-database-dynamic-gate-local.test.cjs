@@ -15,6 +15,10 @@ const {
   parseArguments,
   validateManifest
 } = require("./run-database-dynamic-gate-local.cjs");
+const {
+  GROUPS: remainingGroups,
+  selectGroups: selectRemainingGroups
+} = require("./run-database-dynamic-remaining-local.cjs");
 
 const runnerPath = path.join(
   __dirname,
@@ -123,6 +127,26 @@ test("group selection rejects unknown and duplicate database groups", () => {
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /数据库组/u);
+  }
+});
+
+test("remaining runner can isolate one exact database subgroup", () => {
+  assert.deepEqual(
+    selectRemainingGroups(["--group", "generic_database_constraints"]).map(
+      (group) => group.id
+    ),
+    ["generic_database_constraints"]
+  );
+  assert.equal(selectRemainingGroups([]).length, remainingGroups.length);
+});
+
+test("remaining runner rejects unknown, duplicate or malformed subgroup arguments", () => {
+  for (const args of [
+    ["--group", "missing_group"],
+    ["--group", "generic_database_constraints", "--group", "generic_database_constraints"],
+    ["--unknown", "generic_database_constraints"]
+  ]) {
+    assert.throws(() => selectRemainingGroups(args), /子组/u);
   }
 });
 
