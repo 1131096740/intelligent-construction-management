@@ -500,7 +500,7 @@ async function seedFixture(
       contractVersionId: fixture.contractVersionId,
       paymentTermsVersionId: fixture.paymentTermsVersionId,
       code: `${fixture.prefix}-SET-DRAFT`,
-      periodLabel: "2026年8月",
+      periodLabel: "2026年9月",
       status: "pending_archive_confirm",
       amountCents: 10_000n,
       payableAmountCents: 10_000n
