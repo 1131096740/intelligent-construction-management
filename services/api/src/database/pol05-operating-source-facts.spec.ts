@@ -644,10 +644,10 @@ async function seedOverApprovedExecution(
       contractVersionId: fixture.contractVersionId,
       paymentTermsVersionId: fixture.paymentTermsVersionId,
       code: `${fixture.prefix}-PAY-OVER`,
-      status: "paid",
+      status: "approved_pending_payment",
       requestedAmountCents: 10_000n,
       approvedAmountCents: 10_000n,
-      paidAmountCents: 10_001n,
+      paidAmountCents: 0n,
       paymentSubjectType: "our_company"
     }
   });
