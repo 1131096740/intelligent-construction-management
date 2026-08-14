@@ -149,9 +149,10 @@ describe("operating source replay PostgreSQL consistency", () => {
             AND "companyEntityVersionId" = ${fixture.companyVersionId}
         `);
         await clients[0]!.$executeRaw(Prisma.sql`
-          UPDATE "ProjectAffiliateAssignment"
-          SET "affiliateNameSnapshot" = 'POL-04施工企业修订名'
-          WHERE "id" = ${fixture.assignmentId}
+          UPDATE "POL04TestSource"
+          SET "impactLabel" = '修订影响'
+          WHERE "projectId" = ${fixture.projectId}
+            AND "sourceBusinessId" = ${fixture.formalSourceId}
         `);
         const subjectDrift = await services[0]!.compareProject(
           fixture.projectId,
@@ -262,7 +263,11 @@ class PostgreSqlTestSourceAdapter implements OperatingSourceAdapter {
             kind: "construction_enterprise" as const,
             id: source.affiliateVersionId
           },
-          impactSnapshot: { source: "POL-04 PostgreSQL test", kind: "payable" }
+          impactSnapshot: {
+            source: "POL-04 PostgreSQL test",
+            kind: "payable",
+            label: source.impactLabel
+          }
         }
       ]
     };
@@ -396,6 +401,7 @@ async function seedFixture(client: PrismaClient, fixture: ReturnType<typeof fixt
       "occurredAt" TIMESTAMPTZ NOT NULL,
       "confirmedAt" TIMESTAMPTZ NOT NULL,
       "confirmedByUserId" TEXT NOT NULL,
+      "impactLabel" TEXT NOT NULL,
       "affiliateAssignmentId" TEXT NOT NULL,
       "affiliateVersionId" TEXT NOT NULL,
       "affiliateNameSnapshot" TEXT NOT NULL,
@@ -411,11 +417,12 @@ async function seedFixture(client: PrismaClient, fixture: ReturnType<typeof fixt
       INSERT INTO "POL04TestSource" (
         "projectId", "sourceBusinessId", "sourceBusinessCode", "sourceVersion", "status",
         "amountCents", "occurredAt", "confirmedAt", "confirmedByUserId",
-        "affiliateAssignmentId", "affiliateVersionId", "affiliateNameSnapshot", "companyVersionId"
+        "impactLabel", "affiliateAssignmentId", "affiliateVersionId",
+        "affiliateNameSnapshot", "companyVersionId"
       ) VALUES (
         ${fixture.projectId}, ${source[0]}, ${source[1]}, 1, ${source[2]}, 1000,
         '2026-08-14T00:00:00.000Z', '2026-08-14T01:00:00.000Z', ${fixture.financeUserId},
-        ${fixture.assignmentId}, ${fixture.affiliateVersionId}, 'POL-04施工企业',
+        '原始影响', ${fixture.assignmentId}, ${fixture.affiliateVersionId}, 'POL-04施工企业',
         ${fixture.companyVersionId}
       )
     `);
@@ -454,6 +461,7 @@ function testSourceSnapshot(row: TestSourceRow): TestOperatingSourceSnapshot {
     occurredAt: row.occurredAt,
     confirmedAt: row.confirmedAt,
     confirmedByUserId: row.confirmedByUserId,
+    impactLabel: row.impactLabel,
     affiliateAssignmentId: row.affiliateAssignmentId,
     affiliateVersionId: row.affiliateVersionId,
     affiliateNameSnapshot: row.affiliateNameSnapshot,
@@ -517,6 +525,7 @@ interface TestSourceRow {
   occurredAt: Date;
   confirmedAt: Date;
   confirmedByUserId: string;
+  impactLabel: string;
   affiliateAssignmentId: string;
   affiliateVersionId: string;
   affiliateNameSnapshot: string;
@@ -528,6 +537,7 @@ interface TestOperatingSourceSnapshot extends OperatingSourceSnapshot {
   occurredAt: Date;
   confirmedAt: Date;
   confirmedByUserId: string;
+  impactLabel: string;
   affiliateAssignmentId: string;
   affiliateVersionId: string;
   affiliateNameSnapshot: string;
