@@ -146,6 +146,46 @@ describe("OperatingSourceReplayService", () => {
     expect(harness.ledger.replayFromSourceInTransaction).not.toHaveBeenCalled();
   });
 
+  it("appends a source-domain confirmation in the same transaction only when the ledger is enabled", async () => {
+    const adapter = createAdapter();
+    const harness = createHarness({ adapter });
+    harness.tx.project.findUnique.mockResolvedValueOnce({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+    harness.ledger.appendConfirmedSourceInTransaction.mockResolvedValue(
+      writeResult(true)
+    );
+
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "contract-director"
+      )
+    ).resolves.toEqual(writeResult(true));
+    expect(adapter.readSourceSnapshot).toHaveBeenCalledWith(
+      harness.tx,
+      sourceLocator()
+    );
+    expect(harness.ledger.appendConfirmedSourceInTransaction).toHaveBeenCalledWith(
+      harness.tx,
+      factInput(),
+      "contract-director"
+    );
+
+    harness.tx.project.findUnique.mockResolvedValueOnce({
+      operatingLedgerEffectiveDate: null
+    });
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "contract-director"
+      )
+    ).resolves.toBeNull();
+    expect(adapter.readSourceSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it("fails before opening a transaction when the requested adapter is missing", async () => {
     const harness = createHarness();
 
@@ -247,7 +287,10 @@ function createHarness(options: {
   actualFacts?: unknown[];
   requiredSourceTypes?: string[];
 } = {}) {
-  const tx = { $executeRaw: jest.fn() };
+  const tx = {
+    $executeRaw: jest.fn(),
+    project: { findUnique: jest.fn() }
+  };
   const prisma = {
     $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
       callback(tx)
@@ -255,6 +298,7 @@ function createHarness(options: {
   };
   const ledger = {
     assertProjectFinanceAccessInTransaction: jest.fn(),
+    appendConfirmedSourceInTransaction: jest.fn(),
     replayFromSourceInTransaction: jest.fn(),
     readFactsInTransaction: jest.fn().mockResolvedValue(options.actualFacts ?? []),
     materializeSourceForComparisonInTransaction: jest.fn().mockResolvedValue({

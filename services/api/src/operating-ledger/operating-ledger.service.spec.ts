@@ -118,6 +118,39 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("accepts the frozen source confirmer without granting that domain actor finance access", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "contract-director", isActive: true },
+      projectMembers: [{ positionKey: "contract_director" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = {
+      ...baseInput(),
+      confirmedByUserId: "contract-director",
+      factKind: "downstream_settlement" as const,
+      subjects: {
+        debtor: {
+          kind: "construction_enterprise" as const,
+          id: "affiliate-version-1"
+        },
+        creditor: {
+          kind: "downstream_counterparty" as const,
+          id: "counterparty-version-1"
+        }
+      }
+    };
+
+    await expect(
+      service.appendConfirmedSourceInTransaction(
+        prisma as never,
+        input,
+        "contract-director"
+      )
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+  });
+
   it("does not let a C-level fact create formal impacts", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },

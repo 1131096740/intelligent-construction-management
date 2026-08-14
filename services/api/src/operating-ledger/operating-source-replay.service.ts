@@ -81,6 +81,30 @@ export class OperatingSourceReplayService {
     });
   }
 
+  async appendConfirmedSourceIfEnabledInTransaction(
+    tx: OperatingLedgerTransaction,
+    locator: OperatingSourceLocator,
+    actorUserId: string
+  ) {
+    const project = await tx.project.findUnique({
+      where: { id: locator.projectId },
+      select: { operatingLedgerEffectiveDate: true }
+    });
+    if (!project?.operatingLedgerEffectiveDate) return null;
+
+    const adapter = this.registry.require(locator.sourceType);
+    const snapshot = requireOperatingSourceSnapshot(
+      await adapter.readSourceSnapshot(tx, locator),
+      locator
+    );
+    const input = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+    return this.operatingLedger.appendConfirmedSourceInTransaction(
+      tx,
+      input,
+      actorUserId
+    );
+  }
+
   async compareProject(
     projectId: string,
     actorUserId: string

@@ -124,8 +124,10 @@ const OPERATING_FACT_KIND_SET = new Set<string>(OPERATING_FACT_KINDS);
 const OPERATING_IMPACT_KIND_SET = new Set<string>(OPERATING_IMPACT_KINDS);
 const OPERATING_SUBJECT_KIND_SET = new Set<string>(OPERATING_SUBJECT_KINDS);
 const OPERATING_SUPPORTED_SUBJECT_KIND_SET = new Set([
+  "owner",
   "construction_enterprise",
-  "participating_company"
+  "participating_company",
+  "downstream_counterparty"
 ]);
 const OPERATING_SUBJECT_ROLE_SET = new Set<string>(OPERATING_SUBJECT_ROLES);
 const EVIDENCE_LEVEL_SET = new Set<string>(EVIDENCE_LEVELS);
@@ -234,6 +236,20 @@ export class OperatingLedgerService {
     );
   }
 
+  async appendConfirmedSourceInTransaction(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactInput,
+    actorUserId: string
+  ): Promise<OperatingFactWriteResult> {
+    return this.appendEnvelope(
+      tx,
+      input,
+      actorUserId,
+      "original",
+      "source_actor"
+    );
+  }
+
   async appendCorrection(
     input: AppendOperatingFactCorrectionInput,
     actorUserId: string
@@ -318,7 +334,7 @@ export class OperatingLedgerService {
     rawInput: AppendOperatingFactInput,
     actorUserId: string,
     entryKind: OperatingFactEntryKind,
-    confirmationAuthority: "actor" | "frozen_source" = "actor"
+    confirmationAuthority: "actor" | "frozen_source" | "source_actor" = "actor"
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
@@ -587,11 +603,15 @@ export class OperatingLedgerService {
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
     actorUserId: string,
-    confirmationAuthority: "actor" | "frozen_source"
+    confirmationAuthority: "actor" | "frozen_source" | "source_actor"
   ): Promise<{
     effectiveDate: Date;
   }> {
-    await this.assertProjectFinanceManager(tx, actorUserId, input.projectId);
+    if (confirmationAuthority === "source_actor") {
+      await this.assertActiveActor(tx, actorUserId);
+    } else {
+      await this.assertProjectFinanceManager(tx, actorUserId, input.projectId);
+    }
     const project = await tx.project.findUnique({
       where: { id: input.projectId },
       select: {
@@ -604,8 +624,15 @@ export class OperatingLedgerService {
       input.confirmedByUserId,
       "正式确认人不能为空"
     );
-    if (confirmationAuthority === "actor" && confirmedByUserId !== actorUserId) {
-      throw new ForbiddenException("正式确认人必须是当前财务操作人");
+    if (
+      (confirmationAuthority === "actor" || confirmationAuthority === "source_actor") &&
+      confirmedByUserId !== actorUserId
+    ) {
+      throw new ForbiddenException(
+        confirmationAuthority === "actor"
+          ? "正式确认人必须是当前财务操作人"
+          : "正式确认人必须是当前业务操作人"
+      );
     }
     if (confirmationAuthority === "frozen_source") {
       const sourceConfirmer = await tx.user.findUnique({
@@ -688,11 +715,7 @@ export class OperatingLedgerService {
     actorUserId: string,
     projectId: string
   ) {
-    const actor = await tx.user.findUnique({
-      where: { id: actorUserId },
-      select: { id: true, isActive: true }
-    });
-    if (!actor?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
+    await this.assertActiveActor(tx, actorUserId);
 
     const [projectMembers, projectPositions] = await Promise.all([
       tx.projectMember.findMany({ where: { userId: actorUserId, projectId }, select: { positionKey: true } }),
@@ -708,6 +731,17 @@ export class OperatingLedgerService {
     if (!keys.some((key) => key === "finance_staff" || key === "finance_director")) {
       throw new ForbiddenException("只有当前项目财务人员可以登记经营事实");
     }
+  }
+
+  private async assertActiveActor(
+    tx: OperatingLedgerTransaction,
+    actorUserId: string
+  ): Promise<void> {
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
   }
 
   private async assertAdjustmentTarget(
