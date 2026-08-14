@@ -1,6 +1,6 @@
 # 本机 PostgreSQL 16 动态门
 
-本入口把当前 87 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
+本入口把当前 88 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
 `database-dynamic-gate-manifest.json` 为机器真相；可编排不等于已经通过，必须以执行收据为准。
 
 当前迁移基线是 128 个目录，终点为
@@ -75,7 +75,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | settlement draft lifecycle | 1 | 1 |
 | 合计 | 24 | 9 |
 
-## 新增编排的 63 条
+## 新增编排的 64 条
 
 | 测试文件 | pending tests | RUN 开关 |
 | --- | ---: | --- |
@@ -102,9 +102,10 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | project-operating-profile-upgrade.spec.ts | 2 | `RUN_PROJECT_OPERATING_PROFILE_UPGRADE` |
 | project-operating-profile-db.spec.ts | 17 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
 | operating-ledger-concurrency.spec.ts | 1 | `RUN_OPERATING_LEDGER_DATABASE` |
+| operating-source-replay-consistency.spec.ts | 1 | `RUN_OPERATING_SOURCE_REPLAY_DATABASE` |
 | contract-governance-file-concurrency.spec.ts | 1 | `RUN_CONTRACT_GOVERNANCE_CONCURRENCY` |
 | project-external-upstream-db.spec.ts | 2 | `RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS` |
 | project-affiliate-subject-db.spec.ts | 2 | `RUN_PROJECT_AFFILIATE_DB_TESTS` |
-| 合计 | 63 | 26 个文件 |
+| 合计 | 64 | 27 个文件 |
 
-这 63 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。
+这 64 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。

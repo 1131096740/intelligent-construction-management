@@ -139,6 +139,7 @@ const GROUPS = [
       "src/database/project-upstream-fund-fact-db.spec.ts",
       "src/database/project-operating-profile-db.spec.ts",
       "src/database/operating-ledger-concurrency.spec.ts",
+      "src/database/operating-source-replay-consistency.spec.ts",
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
       "src/database/project-affiliate-subject-db.spec.ts"
@@ -153,12 +154,14 @@ const GROUPS = [
       RUN_PROJECT_UPSTREAM_FUND_DB_TESTS: "1",
       RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
       RUN_OPERATING_LEDGER_DATABASE: "1",
+      RUN_OPERATING_SOURCE_REPLAY_DATABASE: "1",
       OPERATING_LEDGER_DATABASE_URL: "databaseUrl",
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 33
+    pendingTests: 34,
+    requiresOperatingLedgerWriteSecret: true
   }
 ];
 
@@ -306,7 +309,13 @@ async function waitForPostgres(containerName, database) {
   fail("剩余数据库动态门临时 PostgreSQL 16 在 30 秒内未就绪");
 }
 
-function createRuntimeEnvironment(base, temporaryRoot, databaseUrl, group) {
+function createRuntimeEnvironment(
+  base,
+  temporaryRoot,
+  databaseUrl,
+  group,
+  operatingLedgerWriteSecret
+) {
   const environment = {
     PATH: base.PATH ?? "",
     HOME: base.HOME ?? temporaryRoot,
@@ -317,8 +326,11 @@ function createRuntimeEnvironment(base, temporaryRoot, databaseUrl, group) {
   for (const [key, value] of Object.entries(group.flags)) {
     environment[key] = value === "databaseUrl" ? databaseUrl : value;
   }
-  if (environment.RUN_OPERATING_LEDGER_DATABASE === "1") {
-    environment.OPERATING_LEDGER_DB_WRITE_SECRET = randomUUID();
+  if (group.requiresOperatingLedgerWriteSecret) {
+    if (!operatingLedgerWriteSecret) {
+      fail("经营账数据库动态门缺少本次运行的测试写入密钥");
+    }
+    environment.OPERATING_LEDGER_DB_WRITE_SECRET = operatingLedgerWriteSecret;
   }
   return environment;
 }
@@ -462,7 +474,8 @@ async function main(sourceEnv = process.env) {
         sourceEnv,
         temporaryRoot,
         databaseUrl,
-        group
+        group,
+        randomUUID()
       );
       process.stdout.write(
         `[database-dynamic-remaining] start ${group.id} (${group.pendingTests} pending tests)\n`
