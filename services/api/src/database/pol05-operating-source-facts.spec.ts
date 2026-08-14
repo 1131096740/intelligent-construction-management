@@ -244,8 +244,7 @@ async function seedFixture(
     data: {
       id: fixture.projectId,
       code: fixture.projectId,
-      name: "POL-05 经营来源项目",
-      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+      name: "POL-05 经营来源项目"
     }
   });
   await client.projectMember.createMany({
@@ -360,6 +359,11 @@ async function seedFixture(
       }
     });
   }
+
+  await client.project.update({
+    where: { id: fixture.projectId },
+    data: { operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z") }
+  });
 
   await client.contract.create({
     data: {
