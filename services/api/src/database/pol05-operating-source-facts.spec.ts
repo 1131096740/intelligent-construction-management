@@ -566,7 +566,7 @@ async function seedFixture(
       allocation(fixture, fixture.settlement2Id, 35_000n, 2),
       {
         ...allocation(fixture, `${fixture.prefix}_advance`, 10_000n, 1),
-        settlementId: null,
+        settlementId: fixture.settlement1Id,
         allocationType: "advance_deduction"
       }
     ]
