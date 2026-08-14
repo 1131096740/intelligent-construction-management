@@ -16,14 +16,27 @@ describe("operating ledger PostgreSQL concurrency", () => {
     "keeps formal facts, impact entries, permission, idempotency and append-only guards closed",
     async () => {
       const databaseUrl = assertDedicatedDatabase();
+      const runtimeRoleTest = process.env.RUN_OPERATING_LEDGER_RUNTIME_ROLE_DATABASE === "1";
       const clients = [0, 1, 2].map(
         () => new PrismaClient({ datasources: { db: { url: databaseUrl } } })
       );
+      const setupDatabaseUrl = runtimeRoleTest
+        ? process.env.OPERATING_LEDGER_SETUP_DATABASE_URL
+        : databaseUrl;
+      if (!setupDatabaseUrl) {
+        throw new Error(
+          "runtime role 并发测试必须配置 owner-only OPERATING_LEDGER_SETUP_DATABASE_URL"
+        );
+      }
+      const setupClient = runtimeRoleTest
+        ? new PrismaClient({ datasources: { db: { url: setupDatabaseUrl } } })
+        : clients[0]!;
       const fixture = fixtureIds();
 
       try {
         await Promise.all(clients.map((client) => client.$connect()));
-        await seedFixture(clients[0]!, fixture);
+        if (setupClient !== clients[0]!) await setupClient.$connect();
+        await seedFixture(setupClient, fixture);
         const service = new OperatingLedgerService(clients[0]! as never);
 
         await expect(
@@ -140,52 +153,96 @@ describe("operating ledger PostgreSQL concurrency", () => {
 
         await expectDatabaseError(
           () =>
-            clients[0]!.$executeRaw(Prisma.sql`
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) => tx.$executeRaw(Prisma.sql`
               UPDATE "OperatingFact" SET "amountCents" = 2000 WHERE "id" = ${first.id}
-            `),
-          "只允许追加"
+            `)),
+          runtimeRoleTest ? "permission denied" : "只允许追加"
         );
         await expectDatabaseError(
-          () => clients[0]!.$executeRaw(Prisma.sql`DELETE FROM "OperatingFact" WHERE "id" = ${first.id}`),
-          "只允许追加"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              tx.$executeRaw(Prisma.sql`DELETE FROM "OperatingFact" WHERE "id" = ${first.id}`)
+            ),
+          runtimeRoleTest ? "permission denied" : "只允许追加"
         );
         await expectDatabaseError(
-          () => clients[0]!.$executeRaw(Prisma.sql`TRUNCATE "OperatingImpactEntry"`),
-          "只允许追加"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              tx.$executeRaw(Prisma.sql`TRUNCATE "OperatingImpactEntry"`)
+            ),
+          runtimeRoleTest ? "permission denied" : "只允许追加"
         );
         await expectDatabaseError(
-          () => clients[0]!.$executeRaw(Prisma.sql`TRUNCATE "OperatingFact" CASCADE`),
-          "只允许追加"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              tx.$executeRaw(Prisma.sql`TRUNCATE "OperatingFact" CASCADE`)
+            ),
+          runtimeRoleTest ? "permission denied" : "只允许追加"
         );
         await expectDatabaseError(
-          () => insertCrossProjectCorrection(clients[0]!, fixture, first.id),
-          "同一项目"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              insertCrossProjectCorrection(tx, fixture, first.id)
+            ),
+          runtimeRoleTest ? "permission denied" : "同一项目"
         );
         await expectDatabaseError(
-          () => insertInvalidParticipatingCompanyImpact(clients[0]!, fixture, first.id),
-          "我方公司"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              insertInvalidParticipatingCompanyImpact(tx, fixture, first.id)
+            ),
+          runtimeRoleTest ? "permission denied" : "我方公司"
         );
         await expectDatabaseError(
-          () => insertUnsupportedSubjectImpact(clients[0]!, fixture, first.id),
-          "尚未接入该影响主体"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              insertUnsupportedSubjectImpact(tx, fixture, first.id)
+            ),
+          runtimeRoleTest ? "permission denied" : "尚未接入该影响主体"
         );
-        await clients[0]!.$executeRaw(Prisma.sql`
+        await setupClient.$executeRaw(Prisma.sql`
           UPDATE "Project" SET "isActive" = FALSE WHERE "id" = ${fixture.projectId}
         `);
         await expectDatabaseError(
-          () => insertDirectFact(clients[0]!, fixture, "inactive", "施工企业一"),
-          "停用"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              insertDirectFact(tx, fixture, "inactive", "施工企业一")
+            ),
+          runtimeRoleTest ? "permission denied" : "停用"
         );
-        await clients[0]!.$executeRaw(Prisma.sql`
+        await setupClient.$executeRaw(Prisma.sql`
           UPDATE "Project" SET "isActive" = TRUE WHERE "id" = ${fixture.projectId}
         `);
         await expectDatabaseError(
-          () => insertDirectFact(clients[0]!, fixture, "unauthorized", "施工企业一"),
-          "授权"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              insertDirectFact(tx, fixture, "unauthorized", "施工企业一")
+            ),
+          runtimeRoleTest ? "permission denied" : "授权"
         );
         await expectDatabaseError(
-          () => insertDirectFact(clients[0]!, fixture, "forged_snapshot", "伪造施工企业"),
-          "施工企业已失效"
+          () =>
+            runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
+              insertDirectFact(tx, fixture, "forged_snapshot", "伪造施工企业")
+            ),
+          runtimeRoleTest ? "permission denied" : "施工企业已失效"
+        );
+        await expectDatabaseError(
+          () =>
+            clients[0]!.$transaction(async (tx) => {
+              await tx.$executeRaw(
+                Prisma.sql`SELECT set_config('app.operating_ledger_actor', ${fixture.financeUserId}, true)`
+              );
+              return insertDirectFact(tx, fixture, "forged_guc", "施工企业一");
+            }),
+          runtimeRoleTest ? "permission denied" : "受控写入函数"
+        );
+        await expectDatabaseError(
+          () =>
+            clients[0]!.$queryRaw(
+              Prisma.sql`SELECT * FROM public."appendOperatingFactThroughService"(NULL::public."OperatingLedgerFactWritePayload", ${fixture.financeUserId}, 'wrong-secret')`
+            ),
+          "写入授权上下文"
         );
 
         const concurrentInput = baseInput(fixture, "concurrent");
@@ -224,6 +281,7 @@ describe("operating ledger PostgreSQL concurrency", () => {
         assert.equal(concurrentSummary?.amount, 1000n);
       } finally {
         await Promise.allSettled(clients.map((client) => client.$disconnect()));
+        if (setupClient !== clients[0]!) await setupClient.$disconnect();
       }
     },
     90_000
@@ -392,8 +450,27 @@ function baseInput(
   };
 }
 
-async function insertCrossProjectCorrection(
+type OperatingLedgerRawClient = Pick<PrismaClient, "$executeRaw">;
+
+async function runDirectWrite<T>(
   client: PrismaClient,
+  actorUserId: string,
+  runtimeRoleTest: boolean,
+  action: (tx: OperatingLedgerRawClient) => Promise<T>
+) {
+  if (runtimeRoleTest) return action(client);
+  const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+  if (!secret) throw new Error("OPERATING_LEDGER_DB_WRITE_SECRET 未配置");
+  return client.$transaction(async (tx) => {
+    await tx.$executeRaw(
+      Prisma.sql`SELECT public."authorizeOperatingLedgerWrite"(${actorUserId}, ${secret})`
+    );
+    return action(tx);
+  });
+}
+
+async function insertCrossProjectCorrection(
+  client: OperatingLedgerRawClient,
   fixture: ReturnType<typeof fixtureIds>,
   originalFactId: string
 ) {
@@ -415,7 +492,7 @@ async function insertCrossProjectCorrection(
 }
 
 async function insertInvalidParticipatingCompanyImpact(
-  client: PrismaClient,
+  client: OperatingLedgerRawClient,
   fixture: ReturnType<typeof fixtureIds>,
   factId: string
 ) {
@@ -434,7 +511,7 @@ async function insertInvalidParticipatingCompanyImpact(
 }
 
 async function insertUnsupportedSubjectImpact(
-  client: PrismaClient,
+  client: OperatingLedgerRawClient,
   fixture: ReturnType<typeof fixtureIds>,
   factId: string
 ) {
@@ -453,7 +530,7 @@ async function insertUnsupportedSubjectImpact(
 }
 
 async function insertDirectFact(
-  client: PrismaClient,
+  client: OperatingLedgerRawClient,
   fixture: ReturnType<typeof fixtureIds>,
   suffix: string,
   affiliateNameSnapshot: string

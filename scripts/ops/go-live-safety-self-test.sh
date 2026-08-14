@@ -6,6 +6,7 @@ TEST_ROOT="$(mktemp -d)"
 FAKE_BIN="$TEST_ROOT/bin"
 FAKE_LOG="$TEST_ROOT/fake.log"
 REAL_NODE="$(command -v node)"
+export REAL_NODE
 
 bash -n \
   "$SCRIPT_DIR/check-production-db-backup.sh" \
@@ -279,6 +280,9 @@ FAKE
 cat > "$FAKE_BIN/node" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${1:-}" == "-" ]]; then
+  exec "$REAL_NODE" "$@"
+fi
 printf 'node bucket=%s region=%s %s\n' \
   "${DB_BACKUP_COS_BUCKET:-missing}" \
   "${DB_BACKUP_COS_REGION:-missing}" \
@@ -669,6 +673,7 @@ make_deploy_fixture() {
     "$fixture/repo/services/api/dist" \
     "$fixture/repo/services/api/prisma" \
     "$fixture/repo/services/api/node_modules" \
+    "$fixture/repo/scripts/ops" \
     "$fixture/repo/apps/web-admin/dist" \
     "$fixture/repo/scripts/ops/systemd" \
     "$fixture/runtime/api/dist" \
@@ -677,6 +682,11 @@ make_deploy_fixture() {
     "$fixture/rollback-parent" \
     "$fixture/systemd" \
     "$fixture/backups"
+  cp "$SCRIPT_DIR/operating-ledger-owner-psql.sh" "$fixture/repo/scripts/ops/operating-ledger-owner-psql.sh"
+  cp "$SCRIPT_DIR/verify-operating-ledger-runtime-role.sh" "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
+  chmod +x \
+    "$fixture/repo/scripts/ops/operating-ledger-owner-psql.sh" \
+    "$fixture/repo/scripts/ops/verify-operating-ledger-runtime-role.sh"
   printf 'new-api-release\n' > "$fixture/repo/services/api/dist/release.txt"
   printf 'new-web-release\n' > "$fixture/repo/apps/web-admin/dist/release.txt"
   printf '[Unit]\nDescription=fixture retention service\n' \
@@ -689,7 +699,9 @@ make_deploy_fixture() {
     > "$fixture/repo/scripts/ops/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer"
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
-  printf 'DATABASE_URL=postgresql://local/jiangkong\n' > "$fixture/api.env"
+  printf 'DATABASE_URL=postgresql://runtime:runtime@local/jiangkong\n' > "$fixture/api.env"
+  printf 'DATABASE_MIGRATION_URL=postgresql://owner:owner@local/jiangkong\n' >> "$fixture/api.env"
+  printf 'OPERATING_LEDGER_RUNTIME_ROLE=runtime\n' >> "$fixture/api.env"
   printf 'UNRELATED_VALUE=$(touch %s)\n' "$fixture/api-env-command-must-not-run" >> "$fixture/api.env"
   cat > "$fixture/db-backup.env" <<'BACKUP_ENV'
 DB_BACKUP_COS_SECRET_ID=test-database-backup-secret-id

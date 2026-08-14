@@ -105,34 +105,117 @@ env_file=$1
 repo_root=$2
 database_url=""
 database_url_count=0
+database_migration_url=""
+database_migration_url_count=0
+operating_ledger_runtime_role=""
+operating_ledger_runtime_role_count=0
 
 while IFS= read -r line || [[ -n "$line" ]]; do
   line="${line%$'\r'}"
-  [[ "$line" == DATABASE_URL=* ]] || continue
-  database_url_count=$((database_url_count + 1))
-  database_url="${line#DATABASE_URL=}"
-  if [[ "$database_url" == \"* ]]; then
-    if [[ "$database_url" != *\" || ${#database_url} -lt 2 ]]; then
-      echo "API_ENV_FILE contains an invalid quoted DATABASE_URL" >&2
+  case "$line" in
+    DATABASE_URL=*)
+      database_url_count=$((database_url_count + 1))
+      value="${line#DATABASE_URL=}"
+      variable_name="DATABASE_URL"
+      ;;
+    DATABASE_MIGRATION_URL=*)
+      database_migration_url_count=$((database_migration_url_count + 1))
+      value="${line#DATABASE_MIGRATION_URL=}"
+      variable_name="DATABASE_MIGRATION_URL"
+      ;;
+    OPERATING_LEDGER_RUNTIME_ROLE=*)
+      operating_ledger_runtime_role_count=$((operating_ledger_runtime_role_count + 1))
+      value="${line#OPERATING_LEDGER_RUNTIME_ROLE=}"
+      variable_name="OPERATING_LEDGER_RUNTIME_ROLE"
+      ;;
+    *)
+      continue
+      ;;
+  esac
+  if [[ "$value" == \"* ]]; then
+    if [[ "$value" != *\" || ${#value} -lt 2 ]]; then
+      echo "API_ENV_FILE contains an invalid quoted $variable_name" >&2
       exit 1
     fi
-    database_url="${database_url:1:${#database_url}-2}"
-  elif [[ "$database_url" == \'* ]]; then
-    if [[ "$database_url" != *\' || ${#database_url} -lt 2 ]]; then
-      echo "API_ENV_FILE contains an invalid quoted DATABASE_URL" >&2
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'* ]]; then
+    if [[ "$value" != *\' || ${#value} -lt 2 ]]; then
+      echo "API_ENV_FILE contains an invalid quoted $variable_name" >&2
       exit 1
     fi
-    database_url="${database_url:1:${#database_url}-2}"
+    value="${value:1:${#value}-2}"
   fi
+  case "$variable_name" in
+    DATABASE_URL) database_url="$value" ;;
+    DATABASE_MIGRATION_URL) database_migration_url="$value" ;;
+    OPERATING_LEDGER_RUNTIME_ROLE) operating_ledger_runtime_role="$value" ;;
+  esac
 done < "$env_file"
 
 if [[ "$database_url_count" != 1 || -z "$database_url" ]]; then
   echo "API_ENV_FILE must contain exactly one non-empty DATABASE_URL" >&2
   exit 1
 fi
+if [[ "$database_migration_url_count" != 1 || -z "$database_migration_url" ]]; then
+  echo "API_ENV_FILE must contain exactly one non-empty DATABASE_MIGRATION_URL for owner-only migrations" >&2
+  exit 1
+fi
+if [[ "$operating_ledger_runtime_role_count" != 1 || -z "$operating_ledger_runtime_role" ]]; then
+  echo "API_ENV_FILE must contain exactly one non-empty OPERATING_LEDGER_RUNTIME_ROLE" >&2
+  exit 1
+fi
+
+runtime_database_target="$(DATABASE_URL="$database_url" node - <<'NODE'
+try {
+  const url = new URL(process.env.DATABASE_URL);
+  const user = decodeURIComponent(url.username);
+  const host = url.hostname.replace(/^\[|\]$/gu, "");
+  const port = url.port || "5432";
+  const database = decodeURIComponent(url.pathname.replace(/^\//u, ""));
+  if (!user || !host || !database || /[\t\r\n]/u.test(`${user}${host}${port}${database}`)) process.exit(1);
+  process.stdout.write([user, host, port, database].join("\t"));
+} catch {
+  process.exit(1);
+}
+NODE
+)" || {
+  echo "API_ENV_FILE DATABASE_URL must be a valid PostgreSQL URL with a user" >&2
+  exit 1
+}
+IFS=$'\t' read -r runtime_database_user runtime_database_host runtime_database_port runtime_database_name <<< "$runtime_database_target"
+migration_database_target="$(DATABASE_URL="$database_migration_url" node - <<'NODE'
+try {
+  const url = new URL(process.env.DATABASE_URL);
+  const user = decodeURIComponent(url.username);
+  const host = url.hostname.replace(/^\[|\]$/gu, "");
+  const port = url.port || "5432";
+  const database = decodeURIComponent(url.pathname.replace(/^\//u, ""));
+  if (!user || !host || !database || /[\t\r\n]/u.test(`${user}${host}${port}${database}`)) process.exit(1);
+  process.stdout.write([user, host, port, database].join("\t"));
+} catch {
+  process.exit(1);
+}
+NODE
+)" || {
+  echo "API_ENV_FILE DATABASE_MIGRATION_URL must be a valid PostgreSQL URL with a user" >&2
+  exit 1
+}
+IFS=$'\t' read -r migration_database_user migration_database_host migration_database_port migration_database_name <<< "$migration_database_target"
+if [[ "$runtime_database_user" != "$operating_ledger_runtime_role" ||
+  "$runtime_database_user" == "$migration_database_user" ||
+  "$runtime_database_host" != "$migration_database_host" ||
+  "$runtime_database_port" != "$migration_database_port" ||
+  "$runtime_database_name" != "$migration_database_name" ||
+  "$runtime_database_user" == "postgres" ||
+  "$migration_database_user" == "" ]]; then
+  echo "DATABASE_URL and DATABASE_MIGRATION_URL must target the same server/database with distinct runtime and owner roles" >&2
+  exit 1
+fi
 
 cd "$repo_root"
-DATABASE_URL="$database_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
+DATABASE_URL="$database_migration_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
+DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
+  "$repo_root/scripts/ops/verify-operating-ledger-runtime-role.sh"
 ROOT_MIGRATION
 }
 

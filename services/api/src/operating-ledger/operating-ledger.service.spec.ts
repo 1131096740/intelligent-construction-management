@@ -3,6 +3,20 @@ import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { OperatingLedgerService } from "./operating-ledger.service";
 
 describe("OperatingLedgerService", () => {
+  const previousWriteSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+
+  beforeAll(() => {
+    process.env.OPERATING_LEDGER_DB_WRITE_SECRET = "unit-test-operating-ledger-secret";
+  });
+
+  afterAll(() => {
+    if (previousWriteSecret === undefined) {
+      delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    } else {
+      process.env.OPERATING_LEDGER_DB_WRITE_SECRET = previousWriteSecret;
+    }
+  });
+
   it("requires project finance permission before appending a formal fact", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
@@ -48,9 +62,26 @@ describe("OperatingLedgerService", () => {
     );
 
     expect(first.id).toBe(replay.id);
-    expect(prisma.operatingFact.create).toHaveBeenCalledTimes(1);
-    expect(prisma.operatingImpactEntry.create).toHaveBeenCalledTimes(2);
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+    expect(prisma.operatingImpactEntry.create).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes new formal facts and impacts through controlled database write functions", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await service.appendFromSource(baseInput(), "actor-1");
+
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+    expect(prisma.operatingImpactEntry.create).not.toHaveBeenCalled();
   });
 
   it("keeps the original fact and rejects a correction that crosses projects", async () => {
@@ -205,8 +236,99 @@ function createPrismaMock(options: {
 }) {
   let storedFact = (options.existingFact as Record<string, unknown> | null) ?? null;
   const storedImpacts: Array<Record<string, unknown>> = [];
+  let controlledWriteCount = 0;
   const tx = {
     $executeRaw: jest.fn(),
+    $queryRaw: jest.fn().mockImplementation(async () => {
+      if (!storedFact) {
+        storedFact = {
+          id: "fact-1",
+          projectId: "project-1",
+          sourceType: "expense_claim",
+          sourceBusinessId: "expense-1",
+          sourceVersion: 1,
+          sourceBusinessCode: "BX-001",
+          occurredAt: new Date("2026-08-14T00:00:00.000Z"),
+          confirmedAt: new Date("2026-08-14T01:00:00.000Z"),
+          affiliateAssignmentId: "assignment-1",
+          affiliateBusinessPartyVersionId: "affiliate-version-1",
+          affiliateNameSnapshot: "施工企业",
+          affiliateCreditCodeSnapshot: "91110000000000000A",
+          operatingLedgerEffectiveDateSnapshot: new Date("2026-08-01T00:00:00.000Z"),
+          isBeforeOperatingLedgerEffectiveDate: false,
+          historicalTakeoverBatchId: null,
+          factKind: "expense",
+          operatingLevel: "project",
+          evidenceLevel: "A",
+          amountCents: 1000n,
+          currencyCode: "CNY",
+          direction: "outflow",
+          debtorSubjectKind: null,
+          debtorSubjectId: null,
+          creditorSubjectKind: null,
+          creditorSubjectId: null,
+          approvedPayerSubjectKind: null,
+          approvedPayerSubjectId: null,
+          actualPayerSubjectKind: null,
+          actualPayerSubjectId: null,
+          payeeSubjectKind: null,
+          payeeSubjectId: null,
+          costBearingCompanySubjectKind: "participating_company",
+          costBearingCompanySubjectId: "company-1",
+          subjectSnapshot: {
+            costBearingCompany: {
+              kind: "participating_company",
+              id: "company-1",
+              companyEntityId: "company-1",
+              companyEntityVersionId: "company-version-1",
+              name: "我方公司",
+              creditCode: "91110000000000000B"
+            }
+          },
+          sourceSnapshot: { businessCode: "BX-001", reason: "项目日常费用" },
+          basisSnapshot: null,
+          entryKind: "original",
+          adjustsFactId: null,
+          confirmedByUserId: "actor-1",
+          impacts: storedImpacts
+        };
+        controlledWriteCount += 1;
+        return [storedFact];
+      }
+
+      const created =
+        controlledWriteCount === 1
+          ? {
+              id: "impact-1",
+              factId: "fact-1",
+              projectId: "project-1",
+              sourceImpactKey: "cost",
+              impactKind: "confirmed_cost",
+              amountCents: 1000n,
+              direction: "increase",
+              subjectRole: "cost_bearing_company",
+              subjectKind: "participating_company",
+              subjectId: "company-1",
+              costCategoryCode: "project_daily_expense",
+              fundPurpose: null,
+              description: null,
+              impactSnapshot: {
+                subjectSnapshot: {
+                  kind: "participating_company",
+                  id: "company-1",
+                  companyEntityId: "company-1",
+                  companyEntityVersionId: "company-version-1",
+                  name: "我方公司",
+                  creditCode: "91110000000000000B"
+                }
+              }
+            }
+          : { id: `impact-${controlledWriteCount}` };
+      controlledWriteCount += 1;
+      storedImpacts.push(created);
+      storedFact.impacts = storedImpacts;
+      return [created];
+    }),
     user: { findUnique: jest.fn().mockResolvedValue(options.user ?? null) },
     projectMember: { findMany: jest.fn().mockResolvedValue(options.projectMembers ?? []) },
     userPosition: { findMany: jest.fn().mockResolvedValue([]) },

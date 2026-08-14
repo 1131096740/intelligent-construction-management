@@ -34,9 +34,9 @@ test("manifest derives all 87 pending tests as executable local coverage", () =>
     coveredTests: 87,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 127,
+    migrationCount: 128,
     terminalMigration:
-      "20260814100000_operating_ledger"
+      "20260814120000_operating_ledger_runtime_write_guard"
   });
 });
 

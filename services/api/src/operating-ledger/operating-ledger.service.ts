@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   BadRequestException,
   ForbiddenException,
@@ -105,6 +107,10 @@ export interface OperatingFactWriteResult {
 }
 
 type OperatingLedgerTransaction = Prisma.TransactionClient;
+type OperatingFactWriteRow = Pick<
+  OperatingFactWriteResult,
+  "id" | "projectId" | "sourceType" | "sourceBusinessId"
+>;
 
 const OPERATING_FACT_KIND_SET = new Set<string>(OPERATING_FACT_KINDS);
 const OPERATING_IMPACT_KIND_SET = new Set<string>(OPERATING_IMPACT_KINDS);
@@ -137,6 +143,56 @@ const REQUIRED_FACT_SUBJECT_ROLES: Record<string, Array<keyof OperatingFactSubje
 @Injectable()
 export class OperatingLedgerService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private operatingLedgerWriteSecret(): string {
+    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET?.trim();
+    if (!secret) {
+      throw new Error(
+        "OPERATING_LEDGER_DB_WRITE_SECRET 未配置，已拒绝经营账写入"
+      );
+    }
+    return secret;
+  }
+
+  private async appendFactRow(
+    tx: OperatingLedgerTransaction,
+    data: Record<string, unknown>,
+    actorUserId: string
+  ): Promise<OperatingFactWriteRow> {
+    const rows = await tx.$queryRaw<OperatingFactWriteRow[]>(
+      Prisma.sql`
+        SELECT *
+        FROM public."appendOperatingFactThroughService"(
+          ${operatingFactWritePayload(data)},
+          ${actorUserId},
+          ${this.operatingLedgerWriteSecret()}
+        )
+      `
+    );
+    const row = rows[0];
+    if (!row) throw new Error("经营账受控事实写入未返回记录");
+    return row;
+  }
+
+  private async appendImpactRow(
+    tx: OperatingLedgerTransaction,
+    data: Record<string, unknown>,
+    actorUserId: string
+  ): Promise<{ id: string }> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT *
+        FROM public."appendOperatingImpactThroughService"(
+          ${operatingImpactWritePayload(data)},
+          ${actorUserId},
+          ${this.operatingLedgerWriteSecret()}
+        )
+      `
+    );
+    const row = rows[0];
+    if (!row) throw new Error("经营账受控影响分录写入未返回记录");
+    return row;
+  }
 
   async appendFromSource(
     input: AppendOperatingFactInput,
@@ -196,10 +252,6 @@ export class OperatingLedgerService {
     const subjectSnapshot = await this.factSubjectSnapshot(tx, input);
 
     await tx.$executeRaw(
-      Prisma.sql`SELECT set_config('app.operating_ledger_actor', ${actorUserId}, true)`
-    );
-
-    await tx.$executeRaw(
       Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.sourceType}:${input.sourceBusinessId}`}, 0))`
     );
     const adjustsFactId =
@@ -239,7 +291,14 @@ export class OperatingLedgerService {
       assertCompatibleFact(existing, input, entryKind, writeScope.effectiveDate, subjectSnapshot);
       const impactIds = [...existing.impacts.map((impact) => impact.id)];
       for (const impact of input.impacts) {
-        const result = await this.appendImpact(tx, existing.id, existing.projectId, input, impact);
+        const result = await this.appendImpact(
+          tx,
+          existing.id,
+          existing.projectId,
+          input,
+          impact,
+          actorUserId
+        );
         if (!impactIds.includes(result.id)) impactIds.push(result.id);
       }
       return toWriteResult(existing, false, impactIds);
@@ -251,8 +310,10 @@ export class OperatingLedgerService {
       throw new BadRequestException("同一原经营事实不允许重复冲销");
     }
 
-    const created = await tx.operatingFact.create({
-      data: {
+    const created = await this.appendFactRow(
+      tx,
+      {
+        id: randomUUID(),
         projectId: input.projectId,
         sourceType: input.sourceType,
         sourceBusinessId: input.sourceBusinessId,
@@ -280,15 +341,22 @@ export class OperatingLedgerService {
         entryKind,
         adjustsFactId,
         idempotencyKey: input.idempotencyKey,
-        recordedByUserId: actorUserId,
         confirmedByUserId: input.confirmedByUserId,
         status: "confirmed"
-      }
-    });
+      },
+      actorUserId
+    );
 
     const impactIds: string[] = [];
     for (const impact of input.impacts) {
-      const result = await this.appendImpact(tx, created.id, created.projectId, input, impact);
+      const result = await this.appendImpact(
+        tx,
+        created.id,
+        created.projectId,
+        input,
+        impact,
+        actorUserId
+      );
       impactIds.push(result.id);
     }
     return toWriteResult(created, true, impactIds);
@@ -299,7 +367,8 @@ export class OperatingLedgerService {
     factId: string,
     projectId: string,
     input: AppendOperatingFactInput,
-    impact: OperatingImpactInput
+    impact: OperatingImpactInput,
+    actorUserId: string
   ) {
     const impactSnapshot = await this.impactSnapshotWithSubject(tx, input, impact);
     const existing = await tx.operatingImpactEntry.findUnique({
@@ -316,8 +385,10 @@ export class OperatingLedgerService {
       return existing;
     }
 
-    return tx.operatingImpactEntry.create({
-      data: {
+    return this.appendImpactRow(
+      tx,
+      {
+        id: randomUUID(),
         factId,
         projectId,
         sourceType: input.sourceType,
@@ -334,8 +405,9 @@ export class OperatingLedgerService {
         fundPurpose: impact.fundPurpose,
         description: impact.description,
         impactSnapshot
-      }
-    });
+      },
+      actorUserId
+    );
   }
 
   private async impactSnapshotWithSubject(
@@ -944,6 +1016,83 @@ function toWriteResult(
     created,
     impactIds
   };
+}
+
+function operatingFactWritePayload(data: Record<string, unknown>): Prisma.Sql {
+  return Prisma.sql`
+    ROW(
+      ${data.id}::text,
+      ${data.projectId}::text,
+      ${data.sourceType}::text,
+      ${data.sourceBusinessId}::text,
+      ${data.sourceVersion}::integer,
+      ${data.sourceBusinessCode}::text,
+      ${data.occurredAt}::timestamptz,
+      ${data.confirmedAt}::timestamptz,
+      ${data.affiliateAssignmentId}::text,
+      ${data.affiliateBusinessPartyVersionId}::text,
+      ${data.affiliateNameSnapshot}::text,
+      ${data.affiliateCreditCodeSnapshot}::text,
+      ${data.operatingLedgerEffectiveDateSnapshot}::date,
+      ${data.isBeforeOperatingLedgerEffectiveDate}::boolean,
+      ${data.historicalTakeoverBatchId}::text,
+      ${data.factKind}::text,
+      ${data.operatingLevel}::text,
+      ${data.evidenceLevel}::text,
+      ${data.amountCents}::bigint,
+      ${data.currencyCode}::text,
+      ${data.direction}::text,
+      ${data.debtorSubjectKind}::text,
+      ${data.debtorSubjectId}::text,
+      ${data.creditorSubjectKind}::text,
+      ${data.creditorSubjectId}::text,
+      ${data.approvedPayerSubjectKind}::text,
+      ${data.approvedPayerSubjectId}::text,
+      ${data.actualPayerSubjectKind}::text,
+      ${data.actualPayerSubjectId}::text,
+      ${data.payeeSubjectKind}::text,
+      ${data.payeeSubjectId}::text,
+      ${data.costBearingCompanySubjectKind}::text,
+      ${data.costBearingCompanySubjectId}::text,
+      ${jsonbWriteValue(data.subjectSnapshot)},
+      ${jsonbWriteValue(data.sourceSnapshot)},
+      ${jsonbWriteValue(data.basisSnapshot)},
+      ${data.entryKind}::text,
+      ${data.adjustsFactId}::text,
+      ${data.idempotencyKey}::text,
+      ${data.confirmedByUserId}::text,
+      ${data.status}::text
+    )::public."OperatingLedgerFactWritePayload"
+  `;
+}
+
+function operatingImpactWritePayload(data: Record<string, unknown>): Prisma.Sql {
+  return Prisma.sql`
+    ROW(
+      ${data.id}::text,
+      ${data.factId}::text,
+      ${data.projectId}::text,
+      ${data.sourceType}::text,
+      ${data.sourceBusinessId}::text,
+      ${data.sourceImpactKey}::text,
+      ${data.idempotencyKey}::text,
+      ${data.impactKind}::text,
+      ${data.amountCents}::bigint,
+      ${data.direction}::text,
+      ${data.subjectRole}::text,
+      ${data.subjectKind}::text,
+      ${data.subjectId}::text,
+      ${data.costCategoryCode}::text,
+      ${data.fundPurpose}::text,
+      ${data.description}::text,
+      ${jsonbWriteValue(data.impactSnapshot)}
+    )::public."OperatingLedgerImpactWritePayload"
+  `;
+}
+
+function jsonbWriteValue(value: unknown): Prisma.Sql {
+  if (value === null || value === undefined) return Prisma.sql`NULL::jsonb`;
+  return Prisma.sql`${JSON.stringify(value)}::jsonb`;
 }
 
 function requiredText(value: unknown, message: string): string {
