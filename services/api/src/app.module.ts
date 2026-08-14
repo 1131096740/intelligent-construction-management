@@ -23,6 +23,7 @@ import { HealthController } from "./health.controller";
 import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
+import { OperatingLedgerModule } from "./operating-ledger/operating-ledger.module";
 import { PaymentModule } from "./payment/payment.module";
 import { PdfModule } from "./pdf/pdf.module";
 import { ProjectExpenseModule } from "./project-expense/project-expense.module";
@@ -44,6 +45,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     ContractTakeoverModule,
     BusinessPartyModule,
     CompanyEntityModule,
+    OperatingLedgerModule,
     SettlementModule,
     PaymentModule,
     ProjectExpenseModule,

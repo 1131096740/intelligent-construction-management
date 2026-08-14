@@ -192,6 +192,92 @@ model ProjectParticipatingCompany {
   @@index([companyEntityVersionId])
 }
 
+// 正式经营事实信封只允许追加；更正和冲销通过新增事实引用原事实。
+model OperatingFact {
+  id                                   String                 @id @default(uuid())
+  projectId                            String
+  sourceType                           String
+  sourceBusinessId                     String
+  sourceVersion                        Int
+  sourceBusinessCode                   String
+  occurredAt                           DateTime
+  recordedAt                           DateTime               @default(now())
+  confirmedAt                          DateTime
+  affiliateAssignmentId                String
+  affiliateBusinessPartyVersionId      String
+  affiliateNameSnapshot                String
+  affiliateCreditCodeSnapshot          String?
+  operatingLedgerEffectiveDateSnapshot DateTime               @db.Date
+  isBeforeOperatingLedgerEffectiveDate Boolean
+  historicalTakeoverBatchId            String?
+  factKind                             String
+  operatingLevel                       String
+  evidenceLevel                        String
+  amountCents                          BigInt
+  currencyCode                         String                 @default("CNY")
+  direction                            String
+  debtorSubjectKind                    String?
+  debtorSubjectId                      String?
+  creditorSubjectKind                  String?
+  creditorSubjectId                    String?
+  approvedPayerSubjectKind             String?
+  approvedPayerSubjectId               String?
+  actualPayerSubjectKind               String?
+  actualPayerSubjectId                 String?
+  payeeSubjectKind                     String?
+  payeeSubjectId                       String?
+  costBearingCompanySubjectKind        String?
+  costBearingCompanySubjectId          String?
+  subjectSnapshot                      Json
+  sourceSnapshot                       Json
+  basisSnapshot                        Json?
+  entryKind                            String                 @default("original")
+  adjustsFactId                        String?
+  idempotencyKey                       String                 @unique
+  recordedByUserId                     String
+  confirmedByUserId                    String
+  status                               String                 @default("confirmed")
+  createdAt                            DateTime               @default(now())
+  impacts                              OperatingImpactEntry[] @relation("OperatingFactImpacts")
+  originalFact                         OperatingFact?         @relation("OperatingFactAdjustments", fields: [adjustsFactId], references: [id], onDelete: Restrict)
+  adjustments                          OperatingFact[]         @relation("OperatingFactAdjustments")
+
+  @@unique([sourceType, sourceBusinessId])
+  @@unique([id, projectId], map: "OperatingFact_id_projectId_key")
+  @@index([projectId, occurredAt])
+  @@index([projectId, status, occurredAt])
+  @@index([adjustsFactId])
+  @@index([affiliateAssignmentId])
+  @@index([historicalTakeoverBatchId])
+}
+
+model OperatingImpactEntry {
+  id               String       @id @default(uuid())
+  factId           String
+  projectId        String
+  sourceType       String
+  sourceBusinessId String
+  sourceImpactKey  String
+  idempotencyKey   String       @unique
+  impactKind       String
+  amountCents      BigInt
+  direction        String
+  subjectRole      String?
+  subjectKind      String?
+  subjectId        String?
+  costCategoryCode String?
+  fundPurpose      String?
+  description      String?
+  impactSnapshot   Json
+  createdAt        DateTime     @default(now())
+  fact             OperatingFact @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+
+  @@unique([factId, sourceImpactKey])
+  @@unique([sourceType, sourceBusinessId, sourceImpactKey], map: "OperatingImpactEntry_source_impact_key")
+  @@index([projectId, impactKind, createdAt])
+  @@index([factId])
+}
+
 model ProjectMember {
   id          String   @id @default(uuid())
   projectId   String
