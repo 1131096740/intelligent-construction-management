@@ -35,6 +35,16 @@ describe("operating source replay PostgreSQL consistency", () => {
             new OperatingSourceAdapterRegistry([adapter], [adapter.sourceType])
           )
         );
+        const missingAdapterBeforeReplay = createReplayService(
+          clients[0]!,
+          new OperatingSourceAdapterRegistry([], [adapter.sourceType])
+        );
+        await expect(
+          missingAdapterBeforeReplay.compareProject(
+            fixture.projectId,
+            fixture.replayUserId
+          )
+        ).rejects.toThrow("缺少经营来源适配器");
 
         await expect(
           services[0]!.replaySource(draftLocator(fixture), fixture.projectManagerId)
@@ -164,7 +174,7 @@ describe("operating source replay PostgreSQL consistency", () => {
 
         const missingRegistryService = createReplayService(
           clients[0]!,
-          new OperatingSourceAdapterRegistry([])
+          new OperatingSourceAdapterRegistry([], [adapter.sourceType])
         );
         await expect(
           missingRegistryService.compareProject(fixture.projectId, fixture.financeUserId)
