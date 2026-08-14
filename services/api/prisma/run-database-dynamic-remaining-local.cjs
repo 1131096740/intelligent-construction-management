@@ -13,11 +13,11 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 128;
+const EXPECTED_MIGRATION_COUNT = 129;
 const PROJECT_OPERATING_PROFILE_MIGRATION =
   "20260814010000_project_operating_profile";
 const TERMINAL_MIGRATION =
-  "20260814120000_operating_ledger_runtime_write_guard";
+  "20260814130000_pol05_operating_source_subjects";
 const prismaRoot = path.join(root, "services", "api", "prisma");
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
@@ -140,6 +140,7 @@ const GROUPS = [
       "src/database/project-operating-profile-db.spec.ts",
       "src/database/operating-ledger-concurrency.spec.ts",
       "src/database/operating-source-replay-consistency.spec.ts",
+      "src/database/pol05-operating-source-facts.spec.ts",
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
       "src/database/project-affiliate-subject-db.spec.ts"
@@ -155,12 +156,13 @@ const GROUPS = [
       RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
       RUN_OPERATING_LEDGER_DATABASE: "1",
       RUN_OPERATING_SOURCE_REPLAY_DATABASE: "1",
+      RUN_POL05_OPERATING_SOURCE_DATABASE: "1",
       OPERATING_LEDGER_DATABASE_URL: "databaseUrl",
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 34,
+    pendingTests: 35,
     requiresOperatingLedgerWriteSecret: true
   }
 ];

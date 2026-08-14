@@ -21,7 +21,7 @@ const {
 } = require("./money-bigint-runner-runtime.cjs");
 
 const DATABASE_NAME = "jiangkong_payment_execution_concurrency";
-const EXPECTED_MIGRATION_COUNT = 128;
+const EXPECTED_MIGRATION_COUNT = 129;
 const LATEST_MIGRATION =
   "20260728139000_payment_execution_idempotency";
 const PRE139_TEMPLATE_DATABASE =
