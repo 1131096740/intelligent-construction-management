@@ -5,7 +5,8 @@ import { PrismaService } from "../database/prisma.service";
 import {
   type AppendOperatingFactInput,
   OperatingLedgerService,
-  type OperatingLedgerTransaction
+  type OperatingLedgerTransaction,
+  type OperatingSourceComparisonState
 } from "./operating-ledger.service";
 import {
   mapOperatingSourceSnapshot,
@@ -17,6 +18,7 @@ import {
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<{
   include: { impacts: true };
 }>;
+type ExpectedOperatingFact = OperatingSourceComparisonState;
 
 export type OperatingConsistencyDifferenceKind =
   | "missing_fact"
@@ -60,12 +62,17 @@ export class OperatingSourceReplayService {
   async replaySource(locator: OperatingSourceLocator, actorUserId: string) {
     const adapter = this.registry.require(locator.sourceType);
     return this.prisma.$transaction(async (tx) => {
+      await this.operatingLedger.assertProjectFinanceAccessInTransaction(
+        tx,
+        actorUserId,
+        locator.projectId
+      );
       const snapshot = requireOperatingSourceSnapshot(
         await adapter.readSourceSnapshot(tx, locator),
         locator
       );
       const input = mapOperatingSourceSnapshot(adapter, snapshot, locator);
-      return this.operatingLedger.appendFromSourceInTransaction(
+      return this.operatingLedger.replayFromSourceInTransaction(
         tx,
         input,
         actorUserId
@@ -77,45 +84,49 @@ export class OperatingSourceReplayService {
     projectId: string,
     actorUserId: string
   ): Promise<OperatingConsistencyReport> {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw(Prisma.sql`SET TRANSACTION READ ONLY`);
-      const actualFacts = await this.operatingLedger.readFactsInTransaction(
-        tx,
-        projectId,
-        actorUserId
-      );
-      for (const fact of actualFacts) this.registry.require(fact.sourceType);
+    this.registry.assertComplete();
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw(Prisma.sql`SET TRANSACTION READ ONLY`);
+        const actualFacts = await this.operatingLedger.readFactsInTransaction(
+          tx,
+          projectId,
+          actorUserId
+        );
+        for (const fact of actualFacts) this.registry.require(fact.sourceType);
 
-      const expectedFacts = await this.readExpectedFacts(tx, projectId);
-      const differences = compareFacts(expectedFacts, actualFacts);
-      const expectedImpacts = expectedFacts.reduce(
-        (total, fact) => total + fact.impacts.length,
-        0
-      );
-      const actualImpacts = actualFacts.reduce(
-        (total, fact) => total + fact.impacts.length,
-        0
-      );
-      return {
-        projectId,
-        consistent: differences.length === 0,
-        summary: {
-          expectedFacts: expectedFacts.length,
-          actualFacts: actualFacts.length,
-          expectedImpacts,
-          actualImpacts,
-          differenceCount: differences.length
-        },
-        differences
-      };
-    });
+        const expectedFacts = await this.readExpectedFacts(tx, projectId);
+        const differences = compareFacts(expectedFacts, actualFacts);
+        const expectedImpacts = expectedFacts.reduce(
+          (total, fact) => total + fact.input.impacts.length,
+          0
+        );
+        const actualImpacts = actualFacts.reduce(
+          (total, fact) => total + fact.impacts.length,
+          0
+        );
+        return {
+          projectId,
+          consistent: differences.length === 0,
+          summary: {
+            expectedFacts: expectedFacts.length,
+            actualFacts: actualFacts.length,
+            expectedImpacts,
+            actualImpacts,
+            differenceCount: differences.length
+          },
+          differences
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
   }
 
   private async readExpectedFacts(
     tx: OperatingLedgerTransaction,
     projectId: string
-  ): Promise<AppendOperatingFactInput[]> {
-    const expected: AppendOperatingFactInput[] = [];
+  ): Promise<ExpectedOperatingFact[]> {
+    const expected: ExpectedOperatingFact[] = [];
     const seen = new Set<string>();
     for (const adapter of this.registry.list()) {
       const snapshots = await adapter.readProjectSnapshots(tx, projectId);
@@ -131,19 +142,24 @@ export class OperatingSourceReplayService {
           );
         }
         seen.add(key);
-        expected.push(input);
+        expected.push(
+          await this.operatingLedger.materializeSourceForComparisonInTransaction(
+            tx,
+            input
+          )
+        );
       }
     }
     return expected.sort((left, right) =>
-      sourceKey(left.sourceType, left.sourceBusinessId).localeCompare(
-        sourceKey(right.sourceType, right.sourceBusinessId)
+      sourceKey(left.input.sourceType, left.input.sourceBusinessId).localeCompare(
+        sourceKey(right.input.sourceType, right.input.sourceBusinessId)
       )
     );
   }
 }
 
 function compareFacts(
-  expectedFacts: readonly AppendOperatingFactInput[],
+  expectedFacts: readonly ExpectedOperatingFact[],
   actualFacts: readonly StoredOperatingFact[]
 ): OperatingConsistencyDifference[] {
   const differences: OperatingConsistencyDifference[] = [];
@@ -152,7 +168,8 @@ function compareFacts(
   );
   const expectedKeys = new Set<string>();
 
-  for (const expected of expectedFacts) {
+  for (const expectedState of expectedFacts) {
+    const expected = expectedState.input;
     const key = sourceKey(expected.sourceType, expected.sourceBusinessId);
     expectedKeys.add(key);
     const actual = actualBySource.get(key);
@@ -162,8 +179,8 @@ function compareFacts(
       );
       continue;
     }
-    compareFactFields(expected, actual, differences);
-    compareImpacts(expected, actual, differences);
+    compareFactFields(expectedState, actual, differences);
+    compareImpacts(expectedState, actual, differences);
   }
 
   for (const actual of actualFacts) {
@@ -181,10 +198,11 @@ function compareFacts(
 }
 
 function compareFactFields(
-  expected: AppendOperatingFactInput,
+  expectedState: ExpectedOperatingFact,
   actual: StoredOperatingFact,
   differences: OperatingConsistencyDifference[]
 ) {
+  const expected = expectedState.input;
   const fields: Array<[string, unknown, unknown]> = [
     ["sourceBusinessCode", expected.sourceBusinessCode, actual.sourceBusinessCode],
     ["sourceVersion", expected.sourceVersion, actual.sourceVersion],
@@ -223,16 +241,23 @@ function compareFactFields(
     ["entryKind", "original", actual.entryKind],
     ["status", "confirmed", actual.status],
     ["sourceSnapshot", expected.sourceSnapshot, actual.sourceSnapshot],
-    ["basisSnapshot", expected.basisSnapshot ?? null, actual.basisSnapshot]
+    ["basisSnapshot", expected.basisSnapshot ?? null, actual.basisSnapshot],
+    [
+      "operatingLedgerEffectiveDateSnapshot",
+      expectedState.operatingLedgerEffectiveDateSnapshot,
+      actual.operatingLedgerEffectiveDateSnapshot
+    ],
+    ["subjectSnapshot", expectedState.subjectSnapshot, actual.subjectSnapshot]
   ];
   for (const [field, expectedValue, actualValue] of fields) {
     if (sameValue(expectedValue, actualValue)) continue;
+    const fieldLabel = businessFieldLabel(field);
     differences.push(
       difference(
         expected,
         "fact_mismatch",
-        `经营事实字段与正式来源不一致：${field}`,
-        { field }
+        `经营事实字段与正式来源不一致：${fieldLabel}`,
+        { field: fieldLabel }
       )
     );
   }
@@ -241,22 +266,24 @@ function compareFactFields(
   for (const [field, expectedValue] of Object.entries(subjectFields)) {
     const actualValue = actual[field as keyof StoredOperatingFact];
     if (sameValue(expectedValue, actualValue)) continue;
+    const fieldLabel = businessFieldLabel(field);
     differences.push(
       difference(
         expected,
         "fact_mismatch",
-        `经营事实主体与正式来源不一致：${field}`,
-        { field }
+        `经营事实主体与正式来源不一致：${fieldLabel}`,
+        { field: fieldLabel }
       )
     );
   }
 }
 
 function compareImpacts(
-  expected: AppendOperatingFactInput,
+  expectedState: ExpectedOperatingFact,
   actual: StoredOperatingFact,
   differences: OperatingConsistencyDifference[]
 ) {
+  const expected = expectedState.input;
   const actualByKey = new Map(
     actual.impacts.map((impact) => [impact.sourceImpactKey, impact])
   );
@@ -290,25 +317,26 @@ function compareImpacts(
     ];
     for (const [field, expectedValue, actualValue] of fields) {
       if (sameValue(expectedValue, actualValue)) continue;
+      const fieldLabel = businessFieldLabel(field);
       differences.push(
         difference(
           expected,
           "impact_mismatch",
-          `经营影响分录与正式来源不一致：${field}`,
-          { field, sourceImpactKey: expectedImpact.sourceImpactKey }
+          `经营影响分录与正式来源不一致：${fieldLabel}`,
+          { field: fieldLabel, sourceImpactKey: expectedImpact.sourceImpactKey }
         )
       );
     }
-    if (
-      expectedImpact.impactSnapshot &&
-      !jsonContains(actualImpact.impactSnapshot, expectedImpact.impactSnapshot)
-    ) {
+    const expectedImpactSnapshot = expectedState.impactSnapshots.get(
+      expectedImpact.sourceImpactKey
+    );
+    if (!sameValue(actualImpact.impactSnapshot, expectedImpactSnapshot)) {
       differences.push(
         difference(
           expected,
           "impact_mismatch",
           "经营影响分录快照与正式来源不一致",
-          { field: "impactSnapshot", sourceImpactKey: expectedImpact.sourceImpactKey }
+          { field: "影响主体快照", sourceImpactKey: expectedImpact.sourceImpactKey }
         )
       );
     }
@@ -355,23 +383,6 @@ function sameValue(left: unknown, right: unknown): boolean {
   return left === right;
 }
 
-function jsonContains(actual: unknown, expected: unknown): boolean {
-  if (Array.isArray(expected)) {
-    return (
-      Array.isArray(actual) &&
-      expected.length === actual.length &&
-      expected.every((value, index) => jsonContains(actual[index], value))
-    );
-  }
-  if (expected && typeof expected === "object") {
-    if (!actual || typeof actual !== "object" || Array.isArray(actual)) return false;
-    return Object.entries(expected).every(([key, value]) =>
-      jsonContains((actual as Record<string, unknown>)[key], value)
-    );
-  }
-  return sameValue(actual, expected);
-}
-
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((entry) => sortJson(entry));
   if (value && typeof value === "object" && !(value instanceof Date)) {
@@ -382,6 +393,58 @@ function sortJson(value: unknown): unknown {
     );
   }
   return value;
+}
+
+const BUSINESS_FIELD_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  sourceBusinessCode: "来源业务编号",
+  sourceVersion: "来源修订",
+  occurredAt: "业务发生时间",
+  confirmedAt: "正式确认时间",
+  confirmedByUserId: "正式确认人",
+  factKind: "经营事实类型",
+  operatingLevel: "经营层级",
+  evidenceLevel: "证据等级",
+  amountCents: "金额（元）",
+  currencyCode: "币种",
+  direction: "收支方向",
+  isBeforeOperatingLedgerEffectiveDate: "经营账生效日前标记",
+  affiliateAssignmentId: "施工企业档案",
+  affiliateBusinessPartyVersionId: "施工企业档案版本",
+  affiliateNameSnapshot: "施工企业名称快照",
+  affiliateCreditCodeSnapshot: "施工企业信用代码快照",
+  historicalTakeoverBatchId: "历史接管批次",
+  idempotencyKey: "来源唯一键",
+  entryKind: "事实登记类型",
+  status: "事实状态",
+  sourceSnapshot: "来源冻结快照",
+  basisSnapshot: "业务依据快照",
+  operatingLedgerEffectiveDateSnapshot: "经营账生效日快照",
+  subjectSnapshot: "事实主体快照",
+  debtorSubjectKind: "债务主体类型",
+  debtorSubjectId: "债务主体",
+  creditorSubjectKind: "债权主体类型",
+  creditorSubjectId: "债权主体",
+  approvedPayerSubjectKind: "批准付款主体类型",
+  approvedPayerSubjectId: "批准付款主体",
+  actualPayerSubjectKind: "实际付款主体类型",
+  actualPayerSubjectId: "实际付款主体",
+  payeeSubjectKind: "收款主体类型",
+  payeeSubjectId: "收款主体",
+  costBearingCompanySubjectKind: "成本承担公司类型",
+  costBearingCompanySubjectId: "成本承担公司",
+  impactKind: "影响分录类型",
+  subjectRole: "主体角色",
+  subjectKind: "影响主体类型",
+  subjectId: "影响主体",
+  costCategoryCode: "成本分类",
+  fundPurpose: "资金用途",
+  description: "业务说明"
+});
+
+function businessFieldLabel(field: string): string {
+  const label = BUSINESS_FIELD_LABELS[field];
+  if (!label) throw new Error(`经营一致性字段缺少中文标签：${field}`);
+  return label;
 }
 
 function subjectColumns(input: AppendOperatingFactInput): Record<string, string | null> {

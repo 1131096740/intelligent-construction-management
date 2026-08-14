@@ -1,4 +1,5 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 
 import type { AppendOperatingFactInput } from "./operating-ledger.service";
 import {
@@ -17,13 +18,19 @@ describe("OperatingSourceReplayService", () => {
     ).toThrow("经营来源适配器重复");
     expect(() => new OperatingSourceAdapterRegistry([]).require("expense_claim"))
       .toThrow("缺少经营来源适配器");
+    expect(() =>
+      new OperatingSourceAdapterRegistry([], ["expense_claim"]).assertComplete()
+    ).toThrow("缺少经营来源适配器");
+    expect(() => new OperatingSourceAdapterRegistry([]).assertComplete()).toThrow(
+      "经营来源类型目录尚未配置"
+    );
   });
 
   it("replays a frozen formal source through the ledger transaction idempotently", async () => {
     const snapshot = sourceSnapshot();
     const adapter = createAdapter(snapshot);
     const harness = createHarness({ adapter });
-    harness.ledger.appendFromSourceInTransaction
+    harness.ledger.replayFromSourceInTransaction
       .mockResolvedValueOnce(writeResult(true))
       .mockResolvedValueOnce(writeResult(false));
 
@@ -38,8 +45,23 @@ describe("OperatingSourceReplayService", () => {
 
     expect(first).toEqual(writeResult(true));
     expect(repeated).toEqual(writeResult(false));
-    expect(harness.ledger.appendFromSourceInTransaction).toHaveBeenCalledTimes(2);
+    expect(harness.ledger.assertProjectFinanceAccessInTransaction).toHaveBeenCalledTimes(2);
+    expect(harness.ledger.replayFromSourceInTransaction).toHaveBeenCalledTimes(2);
     expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("checks project finance permission before reading any source state", async () => {
+    const adapter = createAdapter();
+    const harness = createHarness({ adapter });
+    harness.ledger.assertProjectFinanceAccessInTransaction.mockRejectedValue(
+      new ForbiddenException("只有当前项目财务人员可以登记经营事实")
+    );
+
+    await expect(
+      harness.service.replaySource(sourceLocator(), "project-manager")
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(adapter.readSourceSnapshot).not.toHaveBeenCalled();
+    expect(harness.ledger.replayFromSourceInTransaction).not.toHaveBeenCalled();
   });
 
   it("fails before opening a transaction when the requested adapter is missing", async () => {
@@ -80,12 +102,16 @@ describe("OperatingSourceReplayService", () => {
     );
 
     expect(harness.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(harness.prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
     expect(harness.ledger.readFactsInTransaction).toHaveBeenCalledWith(
       harness.tx,
       "project-1",
       "finance-user"
     );
-    expect(harness.ledger.appendFromSourceInTransaction).not.toHaveBeenCalled();
+    expect(harness.ledger.replayFromSourceInTransaction).not.toHaveBeenCalled();
     expect(report.summary).toEqual({
       expectedFacts: 1,
       actualFacts: 0,
@@ -105,6 +131,7 @@ describe("OperatingSourceReplayService", () => {
 
   it("fails closed when stored facts contain a source type outside the registry", async () => {
     const harness = createHarness({
+      requiredSourceTypes: ["pol04_test_source"],
       actualFacts: [
         {
           sourceType: "unregistered_source",
@@ -119,11 +146,21 @@ describe("OperatingSourceReplayService", () => {
       harness.service.compareProject("project-1", "finance-user")
     ).rejects.toThrow("缺少经营来源适配器");
   });
+
+  it("fails closed before comparing when the required source catalog is absent", async () => {
+    const harness = createHarness();
+
+    await expect(
+      harness.service.compareProject("project-1", "finance-user")
+    ).rejects.toThrow("经营来源类型目录尚未配置");
+    expect(harness.prisma.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 function createHarness(options: {
   adapter?: OperatingSourceAdapter;
   actualFacts?: unknown[];
+  requiredSourceTypes?: string[];
 } = {}) {
   const tx = { $executeRaw: jest.fn() };
   const prisma = {
@@ -132,11 +169,20 @@ function createHarness(options: {
     )
   };
   const ledger = {
-    appendFromSourceInTransaction: jest.fn(),
-    readFactsInTransaction: jest.fn().mockResolvedValue(options.actualFacts ?? [])
+    assertProjectFinanceAccessInTransaction: jest.fn(),
+    replayFromSourceInTransaction: jest.fn(),
+    readFactsInTransaction: jest.fn().mockResolvedValue(options.actualFacts ?? []),
+    materializeSourceForComparisonInTransaction: jest.fn().mockResolvedValue({
+      input: factInput(),
+      operatingLedgerEffectiveDateSnapshot: new Date("2026-08-01T00:00:00.000Z"),
+      subjectSnapshot: {},
+      impactSnapshots: new Map([["cost", {}]])
+    })
   };
   const registry = new OperatingSourceAdapterRegistry(
-    options.adapter ? [options.adapter] : []
+    options.adapter ? [options.adapter] : [],
+    options.requiredSourceTypes ??
+      (options.adapter ? [options.adapter.sourceType] : undefined)
   );
   const service = new OperatingSourceReplayService(
     prisma as never,

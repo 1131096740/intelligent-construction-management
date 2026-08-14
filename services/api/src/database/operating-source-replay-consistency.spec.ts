@@ -30,34 +30,37 @@ describe("operating source replay PostgreSQL consistency", () => {
         await Promise.all(clients.map((client) => client.$connect()));
         await seedFixture(clients[0]!, fixture);
         const services = clients.map((client) =>
-          createReplayService(client, new OperatingSourceAdapterRegistry([adapter]))
+          createReplayService(
+            client,
+            new OperatingSourceAdapterRegistry([adapter], [adapter.sourceType])
+          )
         );
 
         await expect(
-          services[0]!.replaySource(formalLocator(fixture), fixture.projectManagerId)
+          services[0]!.replaySource(draftLocator(fixture), fixture.projectManagerId)
         ).rejects.toThrow("只有当前项目财务人员可以登记经营事实");
         await expect(
-          services[0]!.replaySource(draftLocator(fixture), fixture.financeUserId)
+          services[0]!.replaySource(draftLocator(fixture), fixture.replayUserId)
         ).rejects.toThrow("只有正式来源快照可以重放");
         await expectFactCounts(clients[0]!, fixture, 0n, 0n, 0n);
 
         const concurrent = await Promise.all([
-          services[1]!.replaySource(formalLocator(fixture), fixture.financeUserId),
-          services[2]!.replaySource(formalLocator(fixture), fixture.financeUserId)
+          services[1]!.replaySource(formalLocator(fixture), fixture.replayUserId),
+          services[2]!.replaySource(formalLocator(fixture), fixture.replayUserId)
         ]);
         expect(concurrent.map((result) => result.created).sort()).toEqual([false, true]);
         await expectFactCounts(clients[0]!, fixture, 1n, 2n, 2000n);
 
         const repeated = await services[0]!.replaySource(
           formalLocator(fixture),
-          fixture.financeUserId
+          fixture.replayUserId
         );
         expect(repeated.created).toBe(false);
         await expectFactCounts(clients[0]!, fixture, 1n, 2n, 2000n);
 
         const clean = await services[0]!.compareProject(
           fixture.projectId,
-          fixture.financeUserId
+          fixture.replayUserId
         );
         expect(clean).toEqual(
           expect.objectContaining({
@@ -75,12 +78,44 @@ describe("operating source replay PostgreSQL consistency", () => {
         const writingAdapter = new WritingTestSourceAdapter();
         const writeAttemptService = createReplayService(
           clients[0]!,
-          new OperatingSourceAdapterRegistry([adapter, writingAdapter])
+          new OperatingSourceAdapterRegistry(
+            [adapter, writingAdapter],
+            [adapter.sourceType, writingAdapter.sourceType]
+          )
         );
         await expect(
-          writeAttemptService.compareProject(fixture.projectId, fixture.financeUserId)
+          writeAttemptService.compareProject(fixture.projectId, fixture.replayUserId)
         ).rejects.toThrow("read-only transaction");
         await expectFactCounts(clients[0]!, fixture, 1n, 2n, 2000n);
+
+        const comparisonReachedSource = deferred<void>();
+        const releaseComparison = deferred<void>();
+        const barrierAdapter = new PostgreSqlTestSourceAdapter(async () => {
+          comparisonReachedSource.resolve();
+          await releaseComparison.promise;
+        });
+        const barrierService = createReplayService(
+          clients[0]!,
+          new OperatingSourceAdapterRegistry(
+            [barrierAdapter],
+            [barrierAdapter.sourceType]
+          )
+        );
+        const stableComparison = barrierService.compareProject(
+          fixture.projectId,
+          fixture.replayUserId
+        );
+        await comparisonReachedSource.promise;
+        await clients[1]!.$executeRaw(Prisma.sql`
+          UPDATE "POL04TestSource"
+          SET "sourceVersion" = 2, "amountCents" = 1100
+          WHERE "projectId" = ${fixture.projectId}
+            AND "sourceBusinessId" = ${fixture.formalSourceId}
+        `);
+        releaseComparison.resolve();
+        await expect(stableComparison).resolves.toEqual(
+          expect.objectContaining({ consistent: true })
+        );
 
         await clients[0]!.$executeRaw(Prisma.sql`
           UPDATE "POL04TestSource"
@@ -91,7 +126,7 @@ describe("operating source replay PostgreSQL consistency", () => {
         const beforeCompare = await factCounts(clients[0]!, fixture);
         const drift = await services[0]!.compareProject(
           fixture.projectId,
-          fixture.financeUserId
+          fixture.replayUserId
         );
         const afterCompare = await factCounts(clients[0]!, fixture);
         expect(afterCompare).toEqual(beforeCompare);
@@ -103,7 +138,22 @@ describe("operating source replay PostgreSQL consistency", () => {
           )
         ).toBe(true);
         expect(drift.differences.map((difference) => difference.field)).toEqual(
-          expect.arrayContaining(["sourceVersion", "amountCents"])
+          expect.arrayContaining(["来源修订", "金额（元）"])
+        );
+        expect(JSON.stringify(drift)).not.toMatch(/sourceVersion|amountCents|confirmedByUserId/u);
+
+        await clients[0]!.$executeRaw(Prisma.sql`
+          UPDATE "ProjectParticipatingCompany"
+          SET "companyNameSnapshot" = 'POL-04我方公司修订名'
+          WHERE "projectId" = ${fixture.projectId}
+            AND "companyEntityVersionId" = ${fixture.companyVersionId}
+        `);
+        const subjectDrift = await services[0]!.compareProject(
+          fixture.projectId,
+          fixture.replayUserId
+        );
+        expect(subjectDrift.differences.map((difference) => difference.field)).toEqual(
+          expect.arrayContaining(["事实主体快照", "影响主体快照"])
         );
 
         const missingRegistryService = createReplayService(
@@ -124,10 +174,15 @@ describe("operating source replay PostgreSQL consistency", () => {
 class PostgreSqlTestSourceAdapter implements OperatingSourceAdapter {
   readonly sourceType = "pol04_test_source";
 
+  constructor(
+    private readonly beforeProjectRead?: () => Promise<void>
+  ) {}
+
   async readProjectSnapshots(
     tx: Prisma.TransactionClient,
     projectId: string
   ): Promise<readonly OperatingSourceSnapshot[]> {
+    await this.beforeProjectRead?.();
     const rows = await tx.$queryRaw<TestSourceRow[]>(Prisma.sql`
       SELECT *
       FROM "POL04TestSource"
@@ -241,6 +296,7 @@ function fixtureIds() {
   return {
     prefix,
     financeUserId: `${prefix}_finance`,
+    replayUserId: `${prefix}_replay_finance`,
     projectManagerId: `${prefix}_manager`,
     projectId: `${prefix}_project`,
     assignmentId: `${prefix}_assignment`,
@@ -262,7 +318,11 @@ async function seedFixture(client: PrismaClient, fixture: ReturnType<typeof fixt
     VALUES (1, crypt(${secret}, gen_salt('bf')))
     ON CONFLICT ("id") DO UPDATE SET "secretHash" = EXCLUDED."secretHash"
   `);
-  for (const userId of [fixture.financeUserId, fixture.projectManagerId]) {
+  for (const userId of [
+    fixture.financeUserId,
+    fixture.replayUserId,
+    fixture.projectManagerId
+  ]) {
     await client.$executeRaw(Prisma.sql`
       INSERT INTO "User" ("id", "name", "mustChangePassword", "isActive", "updatedAt")
       VALUES (${userId}, 'POL-04测试用户', FALSE, TRUE, CURRENT_TIMESTAMP)
@@ -276,6 +336,7 @@ async function seedFixture(client: PrismaClient, fixture: ReturnType<typeof fixt
     INSERT INTO "ProjectMember" ("id", "projectId", "userId", "positionKey")
     VALUES
       (${`${fixture.prefix}_finance_member`}, ${fixture.projectId}, ${fixture.financeUserId}, 'finance_staff'),
+      (${`${fixture.prefix}_replay_member`}, ${fixture.projectId}, ${fixture.replayUserId}, 'finance_staff'),
       (${`${fixture.prefix}_manager_member`}, ${fixture.projectId}, ${fixture.projectManagerId}, 'project_manager')
   `);
   await client.$executeRaw(Prisma.sql`
@@ -466,4 +527,12 @@ interface TestOperatingSourceSnapshot extends OperatingSourceSnapshot {
   affiliateVersionId: string;
   affiliateNameSnapshot: string;
   companyVersionId: string;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }

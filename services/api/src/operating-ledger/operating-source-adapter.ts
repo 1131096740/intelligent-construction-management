@@ -38,8 +38,12 @@ export interface OperatingSourceAdapter {
 export class OperatingSourceAdapterRegistry {
   private readonly adapters: readonly OperatingSourceAdapter[];
   private readonly adaptersBySourceType: ReadonlyMap<string, OperatingSourceAdapter>;
+  private readonly requiredSourceTypes?: readonly string[];
 
-  constructor(adapters: readonly OperatingSourceAdapter[]) {
+  constructor(
+    adapters: readonly OperatingSourceAdapter[],
+    requiredSourceTypes?: readonly string[]
+  ) {
     const copied = [...adapters];
     const bySourceType = new Map<string, OperatingSourceAdapter>();
     for (const adapter of copied) {
@@ -54,6 +58,19 @@ export class OperatingSourceAdapterRegistry {
     }
     this.adapters = Object.freeze(copied);
     this.adaptersBySourceType = bySourceType;
+    this.requiredSourceTypes = requiredSourceTypes
+      ? Object.freeze(
+          requiredSourceTypes.map((sourceType) =>
+            requiredText(sourceType, "经营来源类型目录不能包含空类型")
+          )
+        )
+      : undefined;
+    if (
+      this.requiredSourceTypes &&
+      new Set(this.requiredSourceTypes).size !== this.requiredSourceTypes.length
+    ) {
+      throw new BadRequestException("经营来源类型目录不能包含重复类型");
+    }
   }
 
   list(): readonly OperatingSourceAdapter[] {
@@ -67,6 +84,18 @@ export class OperatingSourceAdapterRegistry {
       throw new BadRequestException(`缺少经营来源适配器：${normalized}`);
     }
     return adapter;
+  }
+
+  assertComplete(): void {
+    if (!this.requiredSourceTypes?.length) {
+      throw new BadRequestException("经营来源类型目录尚未配置，不能执行一致性校验");
+    }
+    const missing = this.requiredSourceTypes.filter(
+      (sourceType) => !this.adaptersBySourceType.has(sourceType)
+    );
+    if (missing.length > 0) {
+      throw new BadRequestException(`缺少经营来源适配器：${missing.join("、")}`);
+    }
   }
 }
 
