@@ -618,7 +618,7 @@ function allocation(
     contractId: fixture.contractId,
     contractVersionId: fixture.contractVersionId,
     settlementId,
-    sourceType: "settlement",
+    sourceType: "contract_due",
     allocationType: "contract_due_payment",
     sourceRowId: settlementId,
     paymentTermsVersionId: fixture.paymentTermsVersionId,
