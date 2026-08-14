@@ -785,6 +785,9 @@ async function insertInvalidPayerRoleImpact(
     await tx.$executeRaw(
       Prisma.sql`SELECT public."authorizeOperatingLedgerWrite"(${fixture.financeUserId}, ${secret})`
     );
+    await tx.$executeRaw(
+      Prisma.sql`SELECT set_config('app.operating_ledger_actor', ${fixture.financeUserId}, true)`
+    );
     return tx.$executeRaw(Prisma.sql`
       INSERT INTO "OperatingImpactEntry" (
         "id", "factId", "projectId", "sourceType", "sourceBusinessId",
