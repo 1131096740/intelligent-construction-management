@@ -479,8 +479,10 @@ async function seedFixture(
         pageCount: 1,
         sourceRevision: 1,
         businessSnapshotToken: `${settlement.id}_snapshot`,
+        approvalActionSetHash: "b".repeat(64),
         status: "active",
         generationStatus: "completed",
+        generatedByUserId: fixture.financeUserId,
         confirmedByUserId: fixture.financeUserId,
         confirmedAt: new Date("2026-08-13T00:00:00.000Z")
       }
