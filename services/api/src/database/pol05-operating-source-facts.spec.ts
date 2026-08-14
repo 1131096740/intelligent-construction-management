@@ -442,6 +442,8 @@ async function seedFixture(
       code: `${fixture.prefix}-SET-1`,
       amountCents: 100_000n,
       payableAmountCents: 90_000n,
+      periodLabel: "2026年7月",
+      periodEnd: new Date("2026-07-31T00:00:00.000Z"),
       fileId: fileIds[0]!
     },
     {
@@ -449,6 +451,8 @@ async function seedFixture(
       code: `${fixture.prefix}-SET-2`,
       amountCents: 200_000n,
       payableAmountCents: 180_000n,
+      periodLabel: "2026年8月",
+      periodEnd: new Date("2026-08-12T00:00:00.000Z"),
       fileId: fileIds[1]!
     }
   ]) {
@@ -460,11 +464,11 @@ async function seedFixture(
         contractVersionId: fixture.contractVersionId,
         paymentTermsVersionId: fixture.paymentTermsVersionId,
         code: settlement.code,
-        periodLabel: "2026年8月",
+        periodLabel: settlement.periodLabel,
         status: "effective",
         amountCents: settlement.amountCents,
         payableAmountCents: settlement.payableAmountCents,
-        periodEnd: new Date("2026-08-12T00:00:00.000Z"),
+        periodEnd: settlement.periodEnd,
         calculationVersion: 1,
         governanceVersion: 1
       }
