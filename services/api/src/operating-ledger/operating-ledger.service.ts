@@ -106,7 +106,7 @@ export interface OperatingFactWriteResult {
   impactIds: string[];
 }
 
-type OperatingLedgerTransaction = Prisma.TransactionClient;
+export type OperatingLedgerTransaction = Prisma.TransactionClient;
 type OperatingFactWriteRow = Pick<
   OperatingFactWriteResult,
   "id" | "projectId" | "sourceType" | "sourceBusinessId"
@@ -230,13 +230,21 @@ export class OperatingLedgerService {
   }
 
   async readFacts(projectId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertProjectFinanceManager(tx, actorUserId, projectId);
-      return tx.operatingFact.findMany({
-        where: { projectId, status: "confirmed" },
-        include: { impacts: true },
-        orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
-      });
+    return this.prisma.$transaction((tx) =>
+      this.readFactsInTransaction(tx, projectId, actorUserId)
+    );
+  }
+
+  async readFactsInTransaction(
+    tx: OperatingLedgerTransaction,
+    projectId: string,
+    actorUserId: string
+  ) {
+    await this.assertProjectFinanceManager(tx, actorUserId, projectId);
+    return tx.operatingFact.findMany({
+      where: { projectId, status: "confirmed" },
+      include: { impacts: true },
+      orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
     });
   }
 
