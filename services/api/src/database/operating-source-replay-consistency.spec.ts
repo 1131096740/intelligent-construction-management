@@ -148,6 +148,11 @@ describe("operating source replay PostgreSQL consistency", () => {
           WHERE "projectId" = ${fixture.projectId}
             AND "companyEntityVersionId" = ${fixture.companyVersionId}
         `);
+        await clients[0]!.$executeRaw(Prisma.sql`
+          UPDATE "ProjectAffiliateAssignment"
+          SET "affiliateNameSnapshot" = 'POL-04施工企业修订名'
+          WHERE "id" = ${fixture.assignmentId}
+        `);
         const subjectDrift = await services[0]!.compareProject(
           fixture.projectId,
           fixture.replayUserId
