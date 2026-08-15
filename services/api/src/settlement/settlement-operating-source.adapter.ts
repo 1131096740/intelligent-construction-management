@@ -15,6 +15,7 @@ import {
 import type { AppendOperatingFactInput } from "../operating-ledger/operating-ledger.service";
 import type {
   OperatingSourceAdapter,
+  OperatingSourceFactInput,
   OperatingSourceLocator,
   OperatingSourceSnapshot
 } from "../operating-ledger/operating-source-adapter";
@@ -58,7 +59,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
     return row ? this.snapshot(tx, row) : null;
   }
 
-  toOperatingFactInput(snapshot: OperatingSourceSnapshot): AppendOperatingFactInput {
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
     const source = requiredJsonRecord(snapshot.sourceSnapshot, "下游结算正式来源");
     const affiliate = frozenAffiliateFromJson(source, "下游结算");
     const occurredAt = requiredJsonDate(source, "occurredAt", "下游结算");
@@ -117,7 +118,9 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       });
     }
     return {
-      projectId: snapshot.projectId,
+      entryKind: "original",
+      input: {
+        projectId: snapshot.projectId,
       sourceType: snapshot.sourceType,
       sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode,
@@ -156,7 +159,8 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         )
       }),
       subjects: { debtor, creditor },
-      impacts
+        impacts
+      }
     };
   }
 

@@ -18,6 +18,7 @@ import type {
 } from "../operating-ledger/operating-ledger.service";
 import type {
   OperatingSourceAdapter,
+  OperatingSourceFactInput,
   OperatingSourceLocator,
   OperatingSourceSnapshot
 } from "../operating-ledger/operating-source-adapter";
@@ -60,7 +61,7 @@ export class PaymentExecutionOperatingSourceAdapter
     return this.snapshot(tx, row, request);
   }
 
-  toOperatingFactInput(snapshot: OperatingSourceSnapshot): AppendOperatingFactInput {
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
     const source = requiredJsonRecord(snapshot.sourceSnapshot, "付款执行正式来源");
     const affiliate = frozenAffiliateFromJson(source, "付款执行");
     const occurredAt = requiredJsonDate(source, "paidAt", "付款执行");
@@ -128,7 +129,9 @@ export class PaymentExecutionOperatingSourceAdapter
       });
     }
     return {
-      projectId: snapshot.projectId,
+      entryKind: "original",
+      input: {
+        projectId: snapshot.projectId,
       sourceType: snapshot.sourceType,
       sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode,
@@ -171,7 +174,8 @@ export class PaymentExecutionOperatingSourceAdapter
         actualPayer,
         payee
       },
-      impacts
+        impacts
+      }
     };
   }
 

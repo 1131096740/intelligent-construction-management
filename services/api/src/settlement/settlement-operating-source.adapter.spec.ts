@@ -17,7 +17,8 @@ describe("SettlementOperatingSourceAdapter", () => {
         sourceBusinessId: "settlement-1"
       });
 
-      const input = adapter.toOperatingFactInput(snapshot!);
+      const { entryKind, input } = adapter.toOperatingFactInput(snapshot!);
+      expect(entryKind).toBe("original");
       expect(input).toEqual(
         expect.objectContaining({
           sourceType: "settlement",
@@ -63,7 +64,7 @@ describe("SettlementOperatingSourceAdapter", () => {
       sourceBusinessId: "settlement-1"
     });
 
-    expect(adapter.toOperatingFactInput(snapshot!).subjects.debtor).toEqual({
+    expect(adapter.toOperatingFactInput(snapshot!).input.subjects.debtor).toEqual({
       kind: "construction_enterprise",
       id: "affiliate-version-1"
     });

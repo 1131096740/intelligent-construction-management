@@ -16,6 +16,7 @@ import {
 import type { AppendOperatingFactInput } from "../operating-ledger/operating-ledger.service";
 import type {
   OperatingSourceAdapter,
+  OperatingSourceFactInput,
   OperatingSourceLocator,
   OperatingSourceSnapshot
 } from "../operating-ledger/operating-source-adapter";
@@ -63,7 +64,7 @@ export class ProjectUpstreamSettlementOperatingSourceAdapter
     return row ? this.snapshot(tx, row) : null;
   }
 
-  toOperatingFactInput(snapshot: OperatingSourceSnapshot): AppendOperatingFactInput {
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
     const source = requiredJsonRecord(
       snapshot.sourceSnapshot,
       "业主结算正式来源"
@@ -90,7 +91,9 @@ export class ProjectUpstreamSettlementOperatingSourceAdapter
       id: affiliate.businessPartyVersionId
     };
     return {
-      projectId: snapshot.projectId,
+      entryKind: "original",
+      input: {
+        projectId: snapshot.projectId,
       sourceType: snapshot.sourceType,
       sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode,
@@ -131,7 +134,7 @@ export class ProjectUpstreamSettlementOperatingSourceAdapter
         },
         creditor
       },
-      impacts: [
+        impacts: [
         {
           idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_income`,
           sourceImpactKey: "confirmed_income",
@@ -152,7 +155,8 @@ export class ProjectUpstreamSettlementOperatingSourceAdapter
           subject: creditor,
           description: "生效业主结算增加项目应收"
         }
-      ]
+        ]
+      }
     };
   }
 
@@ -242,7 +246,7 @@ export class ProjectProxyPaymentOperatingSourceAdapter
     return row ? this.snapshot(tx, row) : null;
   }
 
-  toOperatingFactInput(snapshot: OperatingSourceSnapshot): AppendOperatingFactInput {
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
     const source = requiredJsonRecord(
       snapshot.sourceSnapshot,
       "施工企业付款正式来源"
@@ -303,7 +307,9 @@ export class ProjectProxyPaymentOperatingSourceAdapter
       description: "施工企业实际付款减少施工企业项目资金"
     });
     return {
-      projectId: snapshot.projectId,
+      entryKind: "original",
+      input: {
+        projectId: snapshot.projectId,
       sourceType: snapshot.sourceType,
       sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode,
@@ -348,7 +354,8 @@ export class ProjectProxyPaymentOperatingSourceAdapter
         actualPayer,
         payee
       },
-      impacts
+        impacts
+      }
     };
   }
 

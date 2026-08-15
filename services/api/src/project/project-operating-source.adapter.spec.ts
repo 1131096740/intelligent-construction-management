@@ -41,7 +41,8 @@ describe("ProjectUpstreamSettlementOperatingSourceAdapter", () => {
       })
     );
 
-    const input = adapter.toOperatingFactInput(snapshot!);
+    const { entryKind, input } = adapter.toOperatingFactInput(snapshot!);
+    expect(entryKind).toBe("original");
     expect(input).toEqual(
       expect.objectContaining({
         projectId: "project-1",
@@ -107,7 +108,8 @@ describe("ProjectProxyPaymentOperatingSourceAdapter", () => {
       sourceType: adapter.sourceType,
       sourceBusinessId: "proxy-payment-1"
     });
-    const input = adapter.toOperatingFactInput(snapshot!);
+    const { entryKind, input } = adapter.toOperatingFactInput(snapshot!);
+    expect(entryKind).toBe("original");
 
     expect(input.subjects).toEqual({
       debtor: { kind: "construction_enterprise", id: "affiliate-version-1" },

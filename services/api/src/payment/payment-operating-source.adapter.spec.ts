@@ -12,7 +12,8 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
       sourceBusinessId: "execution-1"
     });
 
-    const input = adapter.toOperatingFactInput(snapshot!);
+    const { entryKind, input } = adapter.toOperatingFactInput(snapshot!);
+    expect(entryKind).toBe("original");
     expect(input).toEqual(
       expect.objectContaining({
         sourceType: "payment_execution",
@@ -76,7 +77,8 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
       sourceType: adapter.sourceType,
       sourceBusinessId: "execution-1"
     });
-    const input = adapter.toOperatingFactInput(snapshot!);
+    const { entryKind, input } = adapter.toOperatingFactInput(snapshot!);
+    expect(entryKind).toBe("original");
 
     expect(input.subjects.approvedPayer?.id).toBe("company-entity-1");
     expect(input.subjects.actualPayer?.id).toBe("proxy-company-entity");
