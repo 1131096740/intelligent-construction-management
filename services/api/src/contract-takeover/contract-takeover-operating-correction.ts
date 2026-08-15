@@ -202,7 +202,7 @@ async function correctionSnapshotFromRow(
   return buildContractTakeoverOperatingCorrectionSnapshot(
     originalSnapshot,
     projection,
-    row.correctionOperation === "reversal" ? "reversal" : "correction"
+    "correction"
   );
 }
 
