@@ -381,6 +381,15 @@ export class OperatingLedgerService {
     );
   }
 
+  async appendCorrectionInTransaction(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactCorrectionInput,
+    actorUserId: string,
+    entryKind: "correction" | "reversal" = "correction"
+  ): Promise<OperatingFactWriteResult> {
+    return this.appendEnvelope(tx, input, actorUserId, entryKind);
+  }
+
   async appendReversal(
     input: AppendOperatingFactCorrectionInput,
     actorUserId: string

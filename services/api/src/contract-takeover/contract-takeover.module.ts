@@ -9,9 +9,16 @@ import { ContractTakeoverController } from "./contract-takeover.controller";
 import { ContractTakeoverCorrectionService } from "./contract-takeover-correction.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
 import { ContractTakeoverService } from "./contract-takeover.service";
+import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 
 @Module({
-  imports: [AuditModule, AuthModule, FileModule, ContractTaxFactsModule],
+  imports: [
+    AuditModule,
+    AuthModule,
+    FileModule,
+    ContractTaxFactsModule,
+    OperatingLedgerModule
+  ],
   controllers: [ContractTakeoverController],
   providers: [
     ContractTakeoverService,
