@@ -252,6 +252,13 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
     if (!contract?.contractTypeKey || !version || !counterparty?.businessPartyVersionId) {
       throw new BadRequestException("生效结算缺少合同类型、签约主体或下游相对方快照");
     }
+    const historicalCorrectionDeltaCents =
+      row.sourceType === "historical_takeover" && row.sourceTakeoverId
+        ? await this.historicalSettlementCorrectionDelta(
+            tx,
+            row.sourceTakeoverId
+          )
+        : 0n;
     const occurredAt = row.periodEnd ?? confirmation.occurredAt;
     const [effectiveDate, affiliate] = await Promise.all([
       readOperatingLedgerEffectiveDate(tx, row.projectId),
@@ -282,8 +289,10 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
           typeof counterpartySnapshot.name === "string"
             ? counterpartySnapshot.name
             : null,
-        amountCents: row.amountCents.toString(),
-        payableAmountCents: row.payableAmountCents.toString(),
+        amountCents: (row.amountCents - historicalCorrectionDeltaCents).toString(),
+        payableAmountCents: (
+          row.payableAmountCents - historicalCorrectionDeltaCents
+        ).toString(),
         occurredAt: occurredAt.toISOString(),
         confirmedByUserId: confirmation.confirmedByUserId,
         confirmedAt: confirmation.confirmedAt.toISOString(),
@@ -292,6 +301,31 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         affiliate
       })
     };
+  }
+
+  private async historicalSettlementCorrectionDelta(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    takeoverId: string
+  ): Promise<bigint> {
+    const corrections = await tx.contractTakeoverCorrection.findMany({
+      where: {
+        takeoverId,
+        correctionScope: "historical_settlement",
+        status: "applied"
+      },
+      select: { deltaSnapshot: true }
+    });
+    return corrections.reduce((total, correction) => {
+      const delta = requiredJsonMoney(
+        requiredJsonRecord(
+          correction.deltaSnapshot ?? {},
+          "历史结算更正差额"
+        ),
+        "amountCents",
+        "历史结算更正"
+      );
+      return total + delta;
+    }, 0n);
   }
 
   private async confirmation(

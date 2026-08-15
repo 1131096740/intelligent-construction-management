@@ -1063,7 +1063,8 @@ export class ContractTakeoverCorrectionService {
     await this.operatingLedger.appendCorrectionInTransaction(
       tx,
       input,
-      actorUserId
+      actorUserId,
+      entryKind
     );
   }
 

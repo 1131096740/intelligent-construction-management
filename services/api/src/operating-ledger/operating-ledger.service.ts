@@ -384,9 +384,10 @@ export class OperatingLedgerService {
   async appendCorrectionInTransaction(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactCorrectionInput,
-    actorUserId: string
+    actorUserId: string,
+    entryKind: "correction" | "reversal" = "correction"
   ): Promise<OperatingFactWriteResult> {
-    return this.appendEnvelope(tx, input, actorUserId, "correction");
+    return this.appendEnvelope(tx, input, actorUserId, entryKind);
   }
 
   async appendReversal(

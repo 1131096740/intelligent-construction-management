@@ -343,16 +343,13 @@ describe("ContractTakeoverCorrectionService", () => {
         adjustsFactId: "operating-fact-1",
         amountCents: 10n
       }),
-      "finance-director-1"
+      "finance-director-1",
+      "correction"
     );
     expect(
       operatingLedger.appendCorrectionInTransaction.mock.calls[0][1].impacts
     ).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          impactKind: "company_project_funds_increase",
-          amountCents: 10n
-        }),
         expect.objectContaining({
           impactKind: "company_advance_for_project_decrease",
           amountCents: 10n

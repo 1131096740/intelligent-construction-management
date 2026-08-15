@@ -129,6 +129,9 @@ describe("SettlementOperatingSourceAdapter", () => {
       sourceTakeoverId: "takeover-1",
       updatedAt: new Date("2026-08-13T08:00:00.000Z")
     });
+    tx.contractTakeoverCorrection.findMany.mockResolvedValue([
+      { deltaSnapshot: { amountCents: "-10000" } }
+    ]);
     const snapshot = await adapter.readSourceSnapshot(tx as never, {
       projectId: "project-1",
       sourceType: adapter.sourceType,
@@ -139,7 +142,9 @@ describe("SettlementOperatingSourceAdapter", () => {
     expect(snapshot?.sourceSnapshot).toEqual(
       expect.objectContaining({
         archiveEvidenceId: "takeover-evidence-1",
-        occurredAt: "2026-07-31T00:00:00.000Z"
+        occurredAt: "2026-07-31T00:00:00.000Z",
+        amountCents: "110000",
+        payableAmountCents: "100000"
       })
     );
   });

@@ -208,6 +208,46 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(mapped.input.adjustsFactId).toBe("operating-fact-1");
     expect(mapped.input.sourceBusinessId).toBe("correction-1");
   });
+
+  it("keeps settlement-allocation corrections out of cash and gives each correction impact a unique key", async () => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    const original = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
+      sourceBusinessId: "historical-payment-1"
+    });
+    const makeCorrection = (id: string) =>
+      buildContractTakeoverOperatingCorrectionSnapshot(
+        original!,
+        {
+          id,
+          originalFactId: "operating-fact-1",
+          correctionOperation: "correction",
+          correctionScope: "historical_payment",
+          targetHistoricalPaymentId: "historical-payment-1",
+          beforeSnapshot: { allocationType: "settlement" },
+          deltaSnapshot: { amountCents: "-10000" },
+          applicationIdempotencyKey: `${id}-key`,
+          appliedByUserId: "finance-director-1",
+          appliedAt: new Date("2026-08-15T08:00:00.000Z")
+        },
+        "correction"
+      );
+
+    const first = adapter.toOperatingFactInput(makeCorrection("correction-1"));
+    const second = adapter.toOperatingFactInput(makeCorrection("correction-2"));
+
+    expect(first.input.impacts).toEqual([
+      expect.objectContaining({
+        sourceImpactKey: "correction:payable:initial-settlement-1",
+        amountCents: 10_000n
+      })
+    ]);
+    expect(first.input.impacts[0].idempotencyKey).not.toBe(
+      second.input.impacts[0].idempotencyKey
+    );
+  });
 });
 
 function historicalPaymentRow() {

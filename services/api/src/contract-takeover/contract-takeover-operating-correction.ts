@@ -403,7 +403,8 @@ export function buildOperatingCorrectionInput(
     projection.correctionScope,
     allocationType ?? projection.correctionScope,
     delta,
-    reclassification
+    reclassification,
+    projection.id
   );
   if (!impacts.length) {
     throw new BadRequestException("历史更正没有可投影的经营影响");
@@ -455,20 +456,19 @@ function operatingCorrectionImpacts(
   scope: ContractTakeoverCorrectionScope,
   allocationType: string | null,
   delta: bigint,
-  reclassification: Prisma.InputJsonObject | null
+  reclassification: Prisma.InputJsonObject | null,
+  correctionId: string
 ): OperatingImpactInput[] {
   if (scope === "historical_settlement") {
     return originalImpacts
       .filter((impact) => impact.impactKind !== "invoice_reference")
-      .map((impact) => signedImpact(impact, delta));
+      .map((impact) => signedImpact(impact, delta, correctionId));
   }
 
-  const funds = originalImpacts.find((impact) =>
-    impact.sourceImpactKey.endsWith("_funds_decrease")
-  );
   const balance = originalImpacts.find((impact) =>
-    ["historical_advance", "abnormal_overpay"].includes(impact.sourceImpactKey) ||
-    impact.sourceImpactKey.startsWith("inter_subject_balance:")
+    allocationType === "settlement"
+      ? impact.sourceImpactKey.startsWith("inter_subject_balance:")
+      : impact.sourceImpactKey === allocationType
   );
   const payable = originalImpacts.find((impact) =>
     impact.sourceImpactKey.startsWith("payable:")
@@ -482,12 +482,13 @@ function operatingCorrectionImpacts(
       {
         ...signedImpact(
           { ...balance, impactKind: inverseImpactKind(balance.impactKind) as OperatingImpactInput["impactKind"] },
-          amountCents
+          amountCents,
+          correctionId
         ),
         sourceImpactKey: `reclassification:${from}`
       },
       {
-        ...signedImpact(balance, amountCents),
+        ...signedImpact(balance, amountCents, correctionId),
         sourceImpactKey: `reclassification:${to}`,
         impactKind: balanceImpactKind(to, balance.impactKind)
       }
@@ -495,22 +496,25 @@ function operatingCorrectionImpacts(
   }
 
   const impacts: OperatingImpactInput[] = [];
-  if (funds) impacts.push(signedImpact(funds, delta));
   if (allocationType === "settlement") {
-    if (payable) impacts.push(signedImpact(payable, delta));
-    if (balance) impacts.push(signedImpact(balance, delta));
+    if (payable) impacts.push(signedImpact(payable, delta, correctionId));
+    if (balance) impacts.push(signedImpact(balance, delta, correctionId));
   } else if (balance && allocationType) {
-    impacts.push(signedImpact(balance, delta));
+    impacts.push(signedImpact(balance, delta, correctionId));
   }
   return impacts;
 }
 
-function signedImpact(impact: OperatingImpactInput, delta: bigint): OperatingImpactInput {
+function signedImpact(
+  impact: OperatingImpactInput,
+  delta: bigint,
+  correctionId: string
+): OperatingImpactInput {
   const positive = delta >= 0n;
   const amountCents = absBigInt(delta);
   return {
     ...impact,
-    idempotencyKey: `correction:${impact.sourceImpactKey}:${positive ? "increase" : "decrease"}`,
+    idempotencyKey: `correction:${correctionId}:${impact.sourceImpactKey}:${positive ? "increase" : "decrease"}`,
     sourceImpactKey: `correction:${impact.sourceImpactKey}`,
     impactKind: (positive ? impact.impactKind : inverseImpactKind(impact.impactKind)) as OperatingImpactInput["impactKind"],
     amountCents,
