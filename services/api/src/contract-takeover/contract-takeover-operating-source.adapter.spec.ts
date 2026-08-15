@@ -184,18 +184,18 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     const tx = historicalPaymentTx();
     tx.contractTakeoverHistoricalPayment.findUnique.mockResolvedValue({
       ...historicalPaymentRow(),
-      payerName: "重复主体"
+      payerName: "我方公司"
     });
     tx.projectAffiliateAssignment.findMany.mockResolvedValue([
       {
         businessPartyVersionId: "affiliate-version-2",
-        affiliateNameSnapshot: "重复主体"
+        affiliateNameSnapshot: "我方公司"
       }
     ]);
     tx.projectParticipatingCompany.findMany.mockResolvedValue([
       {
         companyEntityId: "company-2",
-        companyNameSnapshot: "重复主体"
+        companyNameSnapshot: "我方公司"
       }
     ]);
 

@@ -518,8 +518,6 @@ async function actualPayerIdentity(
       "历史接管实付缺少可验证的实际付款主体，不能进入正式经营账"
     );
   }
-  if (normalizedName === approvedPayer.displayName.trim()) return approvedPayer;
-
   const [affiliates, companies] = await Promise.all([
     tx.projectAffiliateAssignment.findMany({
       where: {
