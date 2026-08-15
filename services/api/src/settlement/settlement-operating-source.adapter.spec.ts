@@ -120,8 +120,8 @@ describe("SettlementOperatingSourceAdapter", () => {
       contractVersionId: "contract-version-1",
       code: "HT-OPEN-takeover-1",
       status: "effective",
-      amountCents: 1_000_00n,
-      payableAmountCents: 900_00n,
+      amountCents: 900_00n,
+      payableAmountCents: 800_00n,
       periodEnd: null,
       calculationVersion: null,
       governanceVersion: null,
@@ -143,8 +143,8 @@ describe("SettlementOperatingSourceAdapter", () => {
       expect.objectContaining({
         archiveEvidenceId: "takeover-evidence-1",
         occurredAt: "2026-07-31T00:00:00.000Z",
-        amountCents: "110000",
-        payableAmountCents: "100000"
+        amountCents: "100000",
+        payableAmountCents: "90000"
       })
     );
   });
