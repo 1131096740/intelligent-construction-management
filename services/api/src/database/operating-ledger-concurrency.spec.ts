@@ -198,7 +198,9 @@ describe("operating ledger PostgreSQL concurrency", () => {
             runDirectWrite(clients[0]!, fixture.financeUserId, runtimeRoleTest, (tx) =>
               insertUnsupportedSubjectImpact(tx, fixture, first.id)
             ),
-          runtimeRoleTest ? "permission denied" : "尚未接入该影响主体"
+          runtimeRoleTest
+            ? "permission denied"
+            : "正式经营影响必须通过已授权的经营账服务登记"
         );
         await setupClient.$executeRaw(Prisma.sql`
           UPDATE "Project" SET "isActive" = FALSE WHERE "id" = ${fixture.projectId}

@@ -66,6 +66,8 @@
 
 - [x] POL-06 CI 基线收口修补：PR #135 首轮 CI #31873228790 的质量门已绿，但动态数据库门发现源码有 130 个迁移、清单和 9 个 runner 尚固定 129，静态 Unit 门另漏结算草稿与受环境门控的付款实付并发断言，页面动作清单也因旧项目支出写入口收口产生源码行号漂移。已将动态门清单、runner、静态断言和说明同步到第 130 条迁移 `20260815150000_pol06_expense_employee_subjects`（含 SHA-256 钉住的 settlement-approval-withdrawal runner），并用现有生成器刷新页面动作清单。`--validate-manifest` 确认 130 迁移、89 测试/37 文件且 remaining=0；8 个受影响 API suite 52 passed / 1 skipped；全量 `pnpm test` 为 shared-domain 165、Web 1953、API 6133 passed（98 个受环境门控用例 skipped），`pnpm typecheck`、`pnpm lint`、`pnpm inspect:release-manifests` 和 `git diff --check` 均通过。未执行动态门 `--execute`、迁移或数据库写入；PR 重跑 CI 待核验，未 merge、未关闭 Issue。
 
+- [x] POL-06 第 2 次 CI 收口修补：上述候选的 CI #31873836131 又发现 65 项 remaining PostgreSQL 16 动态分片中，一条故意绕过服务的未接入影响主体直写，已被 POL-06 新增的“正式经营影响必须通过已授权的经营账服务登记”守卫更早拒绝；该失败关闭语义未放宽，仅更新测试断言为实际且更严格的守卫消息。能力矩阵检查还要求把已刷新页面动作清单的 SHA-256 回写至 JSON/Markdown 生成文件。动态门只读校验、全量 `pnpm test`（shared-domain 165、Web 1953、API 6133 passed；98 skipped）、`pnpm typecheck`、`pnpm lint`、`pnpm inspect:release-manifests`、页面动作与能力矩阵 ready 检查、`git diff --check` 均通过；未执行动态门、迁移或数据库写入。此修补推送后才重新触发 CI；未 merge、未关闭 Issue。
+
 ### P0：已删除草稿生命周期
 
 #### Contract Architecture V3 父票 #53：文档验收收口
