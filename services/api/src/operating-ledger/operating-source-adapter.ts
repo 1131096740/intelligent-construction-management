@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import type {
   AppendOperatingFactInput,
+  OperatingFactEntryKind,
   OperatingLedgerTransaction
 } from "./operating-ledger.service";
 
@@ -22,6 +23,11 @@ export interface OperatingSourceLocator {
   sourceBusinessId: string;
 }
 
+export interface OperatingSourceFactInput {
+  entryKind: OperatingFactEntryKind;
+  input: AppendOperatingFactInput;
+}
+
 export interface OperatingSourceAdapter {
   readonly sourceType: string;
   readProjectSnapshots(
@@ -32,7 +38,7 @@ export interface OperatingSourceAdapter {
     tx: OperatingLedgerTransaction,
     locator: OperatingSourceLocator
   ): Promise<OperatingSourceSnapshot | null>;
-  toOperatingFactInput(snapshot: OperatingSourceSnapshot): AppendOperatingFactInput;
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput;
 }
 
 export class OperatingSourceAdapterRegistry {
@@ -103,7 +109,7 @@ export function mapOperatingSourceSnapshot(
   adapter: OperatingSourceAdapter,
   snapshot: OperatingSourceSnapshot,
   expected?: OperatingSourceLocator
-): AppendOperatingFactInput {
+): OperatingSourceFactInput {
   if (snapshot.status !== "confirmed") {
     throw new BadRequestException("只有正式来源快照可以重放或参与一致性校验");
   }
@@ -126,7 +132,14 @@ export function mapOperatingSourceSnapshot(
     throw new BadRequestException("来源快照与请求坐标不一致");
   }
 
-  const input = adapter.toOperatingFactInput(snapshot);
+  const mapped = adapter.toOperatingFactInput(snapshot);
+  if (!OPERATING_FACT_ENTRY_KINDS.has(mapped.entryKind)) {
+    throw new BadRequestException("来源适配器返回了未知事实登记类型");
+  }
+  const input = mapped.input;
+  if (mapped.entryKind !== "original") {
+    requiredText(input.adjustsFactId ?? "", "来源更正或冲销必须引用原经营事实");
+  }
   if (
     input.projectId !== snapshot.projectId ||
     input.sourceType !== snapshot.sourceType ||
@@ -137,7 +150,7 @@ export function mapOperatingSourceSnapshot(
   ) {
     throw new BadRequestException("来源适配器输出与冻结来源坐标不一致");
   }
-  return input;
+  return mapped;
 }
 
 export function requireOperatingSourceSnapshot(
@@ -173,3 +186,9 @@ function requiredText(value: string, message: string): string {
   if (!normalized) throw new BadRequestException(message);
   return normalized;
 }
+
+const OPERATING_FACT_ENTRY_KINDS: ReadonlySet<OperatingFactEntryKind> = new Set<OperatingFactEntryKind>([
+  "original",
+  "correction",
+  "reversal"
+]);

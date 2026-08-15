@@ -108,6 +108,7 @@ export interface OperatingFactWriteResult {
 
 export interface OperatingSourceComparisonState {
   input: AppendOperatingFactInput;
+  entryKind: OperatingFactEntryKind;
   operatingLedgerEffectiveDateSnapshot: Date;
   subjectSnapshot: Prisma.InputJsonObject;
   impactSnapshots: ReadonlyMap<string, Prisma.InputJsonObject>;
@@ -221,13 +222,14 @@ export class OperatingLedgerService {
   async replayFromSourceInTransaction(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
-    actorUserId: string
+    actorUserId: string,
+    entryKind: OperatingFactEntryKind = "original"
   ): Promise<OperatingFactWriteResult> {
     return this.appendEnvelope(
       tx,
       input,
       actorUserId,
-      "original",
+      entryKind,
       "frozen_source"
     );
   }
@@ -279,7 +281,8 @@ export class OperatingLedgerService {
 
   async materializeSourceForComparisonInTransaction(
     tx: OperatingLedgerTransaction,
-    rawInput: AppendOperatingFactInput
+    rawInput: AppendOperatingFactInput,
+    entryKind: OperatingFactEntryKind = "original"
   ): Promise<OperatingSourceComparisonState> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
@@ -303,6 +306,7 @@ export class OperatingLedgerService {
     }
     return {
       input,
+      entryKind,
       operatingLedgerEffectiveDateSnapshot: project.operatingLedgerEffectiveDate,
       subjectSnapshot,
       impactSnapshots

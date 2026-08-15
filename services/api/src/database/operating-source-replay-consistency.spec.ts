@@ -226,60 +226,63 @@ class PostgreSqlTestSourceAdapter implements OperatingSourceAdapter {
   toOperatingFactInput(snapshot: OperatingSourceSnapshot) {
     const source = snapshot as TestOperatingSourceSnapshot;
     return {
-      projectId: source.projectId,
-      sourceType: source.sourceType,
-      sourceBusinessId: source.sourceBusinessId,
-      sourceBusinessCode: source.sourceBusinessCode,
-      sourceVersion: source.sourceVersion,
-      idempotencyKey: `${source.sourceBusinessId}:fact`,
-      occurredAt: source.occurredAt,
-      confirmedAt: source.confirmedAt,
-      confirmedByUserId: source.confirmedByUserId,
-      factKind: "expense" as const,
-      operatingLevel: "project" as const,
-      evidenceLevel: "A" as const,
-      amountCents: source.amountCents,
-      currencyCode: "CNY",
-      direction: "outflow" as const,
-      isBeforeOperatingLedgerEffectiveDate: false,
-      affiliateAssignmentId: source.affiliateAssignmentId,
-      affiliateBusinessPartyVersionId: source.affiliateVersionId,
-      affiliateNameSnapshot: source.affiliateNameSnapshot,
-      sourceSnapshot: source.sourceSnapshot,
-      subjects: {
-        costBearingCompany: {
-          kind: "participating_company" as const,
-          id: source.companyVersionId
-        }
-      },
-      impacts: [
-        {
-          idempotencyKey: `${source.sourceBusinessId}:cost`,
-          sourceImpactKey: "cost",
-          impactKind: "confirmed_cost" as const,
-          amountCents: source.amountCents,
-          direction: "increase" as const,
-          costCategoryCode: "project_daily_expense" as const,
-          impactSnapshot: { source: "POL-04 PostgreSQL test", kind: "cost" }
-        },
-        {
-          idempotencyKey: `${source.sourceBusinessId}:payable`,
-          sourceImpactKey: "payable",
-          impactKind: "payable_increase" as const,
-          amountCents: source.amountCents,
-          direction: "increase" as const,
-          subjectRole: "debtor" as const,
-          subject: {
-            kind: "construction_enterprise" as const,
-            id: source.affiliateVersionId
-          },
-          impactSnapshot: {
-            source: "POL-04 PostgreSQL test",
-            kind: "payable",
-            label: source.impactLabel
+      entryKind: "original" as const,
+      input: {
+        projectId: source.projectId,
+        sourceType: source.sourceType,
+        sourceBusinessId: source.sourceBusinessId,
+        sourceBusinessCode: source.sourceBusinessCode,
+        sourceVersion: source.sourceVersion,
+        idempotencyKey: `${source.sourceBusinessId}:fact`,
+        occurredAt: source.occurredAt,
+        confirmedAt: source.confirmedAt,
+        confirmedByUserId: source.confirmedByUserId,
+        factKind: "expense" as const,
+        operatingLevel: "project" as const,
+        evidenceLevel: "A" as const,
+        amountCents: source.amountCents,
+        currencyCode: "CNY",
+        direction: "outflow" as const,
+        isBeforeOperatingLedgerEffectiveDate: false,
+        affiliateAssignmentId: source.affiliateAssignmentId,
+        affiliateBusinessPartyVersionId: source.affiliateVersionId,
+        affiliateNameSnapshot: source.affiliateNameSnapshot,
+        sourceSnapshot: source.sourceSnapshot,
+        subjects: {
+          costBearingCompany: {
+            kind: "participating_company" as const,
+            id: source.companyVersionId
           }
-        }
-      ]
+        },
+        impacts: [
+          {
+            idempotencyKey: `${source.sourceBusinessId}:cost`,
+            sourceImpactKey: "cost",
+            impactKind: "confirmed_cost" as const,
+            amountCents: source.amountCents,
+            direction: "increase" as const,
+            costCategoryCode: "project_daily_expense" as const,
+            impactSnapshot: { source: "POL-04 PostgreSQL test", kind: "cost" }
+          },
+          {
+            idempotencyKey: `${source.sourceBusinessId}:payable`,
+            sourceImpactKey: "payable",
+            impactKind: "payable_increase" as const,
+            amountCents: source.amountCents,
+            direction: "increase" as const,
+            subjectRole: "debtor" as const,
+            subject: {
+              kind: "construction_enterprise" as const,
+              id: source.affiliateVersionId
+            },
+            impactSnapshot: {
+              source: "POL-04 PostgreSQL test",
+              kind: "payable",
+              label: source.impactLabel
+            }
+          }
+        ]
+      }
     };
   }
 }

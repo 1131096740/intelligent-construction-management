@@ -5,6 +5,7 @@ import type { AppendOperatingFactInput } from "./operating-ledger.service";
 import {
   OperatingSourceAdapterRegistry,
   type OperatingSourceAdapter,
+  type OperatingSourceFactInput,
   type OperatingSourceSnapshot
 } from "./operating-source-adapter";
 import { OperatingSourceReplayService } from "./operating-source-replay.service";
@@ -50,6 +51,87 @@ describe("OperatingSourceReplayService", () => {
     expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 
+  it("replays frozen corrections and reversals with their original fact reference", async () => {
+    const correctionSnapshot = sourceSnapshot({
+      sourceBusinessId: "correction-1",
+      sourceBusinessCode: "来源更正一号",
+      sourceSnapshot: { businessCode: "来源更正一号", amountCents: "1000" }
+    });
+    const correction = mappedFact("correction", {
+      ...factInput(),
+      sourceBusinessId: correctionSnapshot.sourceBusinessId,
+      sourceBusinessCode: correctionSnapshot.sourceBusinessCode,
+      idempotencyKey: "correction-1",
+      sourceSnapshot: correctionSnapshot.sourceSnapshot,
+      adjustsFactId: "original-fact"
+    });
+    const correctionHarness = createHarness({
+      adapter: createAdapter(correctionSnapshot, correction)
+    });
+    correctionHarness.ledger.replayFromSourceInTransaction.mockResolvedValue(writeResult(true));
+
+    await correctionHarness.service.replaySource(
+      sourceLocator(correctionSnapshot),
+      "finance-user"
+    );
+
+    expect(correctionHarness.ledger.replayFromSourceInTransaction).toHaveBeenCalledWith(
+      correctionHarness.tx,
+      correction.input,
+      "finance-user",
+      "correction"
+    );
+
+    const reversalSnapshot = sourceSnapshot({
+      sourceBusinessId: "reversal-1",
+      sourceBusinessCode: "来源冲销一号",
+      sourceSnapshot: { businessCode: "来源冲销一号", amountCents: "1000" }
+    });
+    const reversal = mappedFact("reversal", {
+      ...factInput(),
+      sourceBusinessId: reversalSnapshot.sourceBusinessId,
+      sourceBusinessCode: reversalSnapshot.sourceBusinessCode,
+      idempotencyKey: "reversal-1",
+      sourceSnapshot: reversalSnapshot.sourceSnapshot,
+      adjustsFactId: "original-fact",
+      impacts: [
+        {
+          ...factInput().impacts[0]!,
+          amountCents: 1000n,
+          direction: "decrease"
+        }
+      ]
+    });
+    const reversalHarness = createHarness({
+      adapter: createAdapter(reversalSnapshot, reversal)
+    });
+    reversalHarness.ledger.replayFromSourceInTransaction.mockResolvedValue(writeResult(true));
+
+    await reversalHarness.service.replaySource(
+      sourceLocator(reversalSnapshot),
+      "finance-user"
+    );
+
+    expect(reversalHarness.ledger.replayFromSourceInTransaction).toHaveBeenCalledWith(
+      reversalHarness.tx,
+      reversal.input,
+      "finance-user",
+      "reversal"
+    );
+  });
+
+  it("rejects a frozen correction without its original fact reference", async () => {
+    const snapshot = sourceSnapshot();
+    const harness = createHarness({
+      adapter: createAdapter(snapshot, mappedFact("correction", factInput()))
+    });
+
+    await expect(harness.service.replaySource(sourceLocator(snapshot), "finance-user")).rejects.toThrow(
+      "来源更正或冲销必须引用原经营事实"
+    );
+    expect(harness.ledger.replayFromSourceInTransaction).not.toHaveBeenCalled();
+  });
+
   it("checks project finance permission before reading any source state", async () => {
     const adapter = createAdapter();
     const harness = createHarness({ adapter });
@@ -83,10 +165,13 @@ describe("OperatingSourceReplayService", () => {
       draftHarness.service.replaySource(sourceLocator(), "finance-user")
     ).rejects.toThrow("只有正式来源快照可以重放");
 
-    const changedCoordinateAdapter = createAdapter(sourceSnapshot(), {
-      ...factInput(),
-      sourceBusinessId: "other-source"
-    });
+    const changedCoordinateAdapter = createAdapter(
+      sourceSnapshot(),
+      mappedFact("original", {
+        ...factInput(),
+        sourceBusinessId: "other-source"
+      })
+    );
     const changedHarness = createHarness({ adapter: changedCoordinateAdapter });
     await expect(
       changedHarness.service.replaySource(sourceLocator(), "finance-user")
@@ -174,6 +259,7 @@ function createHarness(options: {
     readFactsInTransaction: jest.fn().mockResolvedValue(options.actualFacts ?? []),
     materializeSourceForComparisonInTransaction: jest.fn().mockResolvedValue({
       input: factInput(),
+      entryKind: "original",
       operatingLedgerEffectiveDateSnapshot: new Date("2026-08-01T00:00:00.000Z"),
       subjectSnapshot: {},
       impactSnapshots: new Map([["cost", {}]])
@@ -194,7 +280,7 @@ function createHarness(options: {
 
 function createAdapter(
   snapshot = sourceSnapshot(),
-  mappedInput = factInput()
+  mappedInput = mappedFact()
 ): OperatingSourceAdapter {
   return {
     sourceType: "pol04_test_source",
@@ -204,7 +290,9 @@ function createAdapter(
   };
 }
 
-function sourceSnapshot(): OperatingSourceSnapshot {
+function sourceSnapshot(
+  overrides: Partial<OperatingSourceSnapshot> = {}
+): OperatingSourceSnapshot {
   return {
     projectId: "project-1",
     sourceType: "pol04_test_source",
@@ -212,16 +300,24 @@ function sourceSnapshot(): OperatingSourceSnapshot {
     sourceBusinessCode: "来源业务一号",
     sourceVersion: 1,
     status: "confirmed",
-    sourceSnapshot: { businessCode: "来源业务一号", amountCents: "1000" }
+    sourceSnapshot: { businessCode: "来源业务一号", amountCents: "1000" },
+    ...overrides
   };
 }
 
-function sourceLocator() {
+function sourceLocator(snapshot = sourceSnapshot()) {
   return {
-    projectId: "project-1",
-    sourceType: "pol04_test_source",
-    sourceBusinessId: "source-1"
+    projectId: snapshot.projectId,
+    sourceType: snapshot.sourceType,
+    sourceBusinessId: snapshot.sourceBusinessId
   };
+}
+
+function mappedFact(
+  entryKind: OperatingSourceFactInput["entryKind"] = "original",
+  input = factInput()
+): OperatingSourceFactInput {
+  return { entryKind, input };
 }
 
 function factInput(): AppendOperatingFactInput {

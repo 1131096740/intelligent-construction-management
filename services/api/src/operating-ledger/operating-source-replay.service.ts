@@ -71,11 +71,12 @@ export class OperatingSourceReplayService {
         await adapter.readSourceSnapshot(tx, locator),
         locator
       );
-      const input = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+      const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
       return this.operatingLedger.replayFromSourceInTransaction(
         tx,
-        input,
-        actorUserId
+        mapped.input,
+        actorUserId,
+        mapped.entryKind
       );
     });
   }
@@ -131,7 +132,8 @@ export class OperatingSourceReplayService {
     for (const adapter of this.registry.list()) {
       const snapshots = await adapter.readProjectSnapshots(tx, projectId);
       for (const snapshot of snapshots) {
-        const input = mapOperatingSourceSnapshot(adapter, snapshot);
+        const mapped = mapOperatingSourceSnapshot(adapter, snapshot);
+        const input = mapped.input;
         if (input.projectId !== projectId) {
           throw new BadRequestException("来源适配器返回了其他项目的冻结快照");
         }
@@ -145,7 +147,8 @@ export class OperatingSourceReplayService {
         expected.push(
           await this.operatingLedger.materializeSourceForComparisonInTransaction(
             tx,
-            input
+            input,
+            mapped.entryKind
           )
         );
       }
@@ -238,7 +241,12 @@ function compareFactFields(
       actual.historicalTakeoverBatchId
     ],
     ["idempotencyKey", expected.idempotencyKey, actual.idempotencyKey],
-    ["entryKind", "original", actual.entryKind],
+    ["entryKind", expectedState.entryKind, actual.entryKind],
+    [
+      "adjustsFactId",
+      expectedState.entryKind === "original" ? null : expected.adjustsFactId ?? null,
+      actual.adjustsFactId
+    ],
     ["status", "confirmed", actual.status],
     ["sourceSnapshot", expected.sourceSnapshot, actual.sourceSnapshot],
     ["basisSnapshot", expected.basisSnapshot ?? null, actual.basisSnapshot],
@@ -415,6 +423,7 @@ const BUSINESS_FIELD_LABELS: Readonly<Record<string, string>> = Object.freeze({
   historicalTakeoverBatchId: "历史接管批次",
   idempotencyKey: "来源唯一键",
   entryKind: "事实登记类型",
+  adjustsFactId: "原经营事实引用",
   status: "事实状态",
   sourceSnapshot: "来源冻结快照",
   basisSnapshot: "业务依据快照",
