@@ -58,6 +58,7 @@ const ALLOWED_INTERNAL_ERRORS = [
   { file: "src/project/project-affiliate-company-contract.service.ts", kind: "Error", message: "Auth service is required to confirm affiliate-company contract", expectedOccurrences: 1, reason: "挂靠企业线下合同认证依赖缺失时的内部保护" },
   { file: "src/project/project.controller.ts", kind: "Error", message: "Affiliate business fact service is not available", expectedOccurrences: 1, reason: "挂靠外部事实可选模块缺失时的内部构造保护" },
   { file: "src/project/project.controller.ts", kind: "Error", message: "Affiliate-company contract service is not available", expectedOccurrences: 1, reason: "挂靠企业线下合同可选模块缺失时的内部构造保护" },
+  { file: "src/project/project.controller.ts", kind: "Error", message: "Project operating profile service is not available", expectedOccurrences: 1, reason: "项目经营档案可选模块缺失时的内部构造保护" },
   { file: "src/project/project.service.ts", kind: "Error", message: "Auth service is required to confirm upstream fund fact", expectedOccurrences: 1, reason: "上游资金事实认证依赖缺失时的内部保护" },
   { file: "src/project/project.service.ts", kind: "Error", message: "Auth service is required to confirm upstream settlement", expectedOccurrences: 1, reason: "对上结算认证依赖缺失时的内部保护" },
   { file: "src/project/project.service.ts", kind: "Error", message: "Auth service is required to confirm project owner contract", expectedOccurrences: 1, reason: "业主主合同认证依赖缺失时的内部保护" },
