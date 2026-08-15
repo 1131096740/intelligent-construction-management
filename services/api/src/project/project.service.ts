@@ -360,30 +360,35 @@ export class ProjectService {
   ) {
     const businessPartyVersionId = requiredTrimmed(
       input.businessPartyVersionId,
-      "挂靠企业版本不能为空"
+      "施工企业版本不能为空"
     );
     const changeReason = requiredTrimmed(
       input.changeReason,
-      "挂靠关系配置或变更原因不能为空"
+      "施工企业配置或变更原因不能为空"
     );
     const effectiveFrom = new Date(input.effectiveFrom);
     if (Number.isNaN(effectiveFrom.getTime())) {
-      throw new BadRequestException("挂靠关系生效时间格式不正确");
+      throw new BadRequestException("施工企业生效时间格式不正确");
     }
     if (effectiveFrom.getTime() > Date.now()) {
-      throw new BadRequestException("挂靠关系生效时间不能晚于当前时间");
+      throw new BadRequestException("施工企业生效时间不能晚于当前时间");
     }
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const [project] = await tx.$queryRaw<Array<{ id: string; isActive: boolean }>>(Prisma.sql`
-          SELECT "id", "isActive"
+        const [project] = await tx.$queryRaw<Array<{
+          id: string;
+          isActive: boolean;
+          constructionEnterpriseLockedAt: Date | null;
+          operatingLedgerEffectiveDate: Date | null;
+        }>>(Prisma.sql`
+          SELECT "id", "isActive", "constructionEnterpriseLockedAt", "operatingLedgerEffectiveDate"
           FROM "Project"
           WHERE "id" = ${projectId}
           FOR UPDATE
         `);
         if (!project?.isActive) {
-          throw new NotFoundException("项目不存在或已停用，不能配置挂靠企业");
+          throw new NotFoundException("项目不存在或已停用，不能配置施工企业");
         }
 
         const currentAssignments = await tx.$queryRaw<
@@ -402,15 +407,27 @@ export class ProjectService {
         `);
         if (currentAssignments.length > 1) {
           throw new BadRequestException(
-            "项目存在多个当前挂靠企业，不能直接覆盖；请先按人工清单消除冲突"
+            "项目存在多个当前施工企业，不能直接覆盖；请先按人工清单消除冲突"
           );
         }
         const currentAssignment = currentAssignments[0];
+        if (project.constructionEnterpriseLockedAt) {
+          throw new BadRequestException(
+            "项目已有正式经营事实，施工企业已经锁定，不能普通设置或更换"
+          );
+        }
+        if (
+          project.operatingLedgerEffectiveDate &&
+          effectiveFrom.toISOString().slice(0, 10) >
+            project.operatingLedgerEffectiveDate.toISOString().slice(0, 10)
+        ) {
+          throw new BadRequestException("施工企业生效日不得晚于经营账生效日");
+        }
         if (
           currentAssignment?.effectiveFrom &&
           effectiveFrom.getTime() < currentAssignment.effectiveFrom.getTime()
         ) {
-          throw new BadRequestException("新挂靠关系生效时间不能早于当前挂靠关系生效时间");
+          throw new BadRequestException("新施工企业生效时间不能早于当前施工企业生效时间");
         }
 
         const version = await tx.businessPartyVersion.findUnique({
@@ -418,14 +435,14 @@ export class ProjectService {
           select: { id: true, businessPartyId: true, snapshot: true }
         });
         if (!version) {
-          throw new NotFoundException("所选挂靠企业版本不存在");
+          throw new NotFoundException("所选施工企业版本不存在");
         }
         const party = await tx.businessParty.findUnique({
           where: { id: version.businessPartyId },
           select: { id: true, status: true }
         });
         if (!party || party.status !== "active") {
-          throw new BadRequestException("所选挂靠企业已停用，不能建立新的项目映射");
+          throw new BadRequestException("所选施工企业已停用，不能建立新的项目映射");
         }
         const snapshot = version.snapshot as {
           name?: unknown;
@@ -433,7 +450,7 @@ export class ProjectService {
         };
         const affiliateNameSnapshot = requiredTrimmed(
           snapshot.name,
-          "所选挂靠企业版本缺少企业名称，不能建立项目映射"
+          "所选施工企业版本缺少企业名称，不能建立项目映射"
         );
         const affiliateCreditCodeSnapshot =
           typeof snapshot.unifiedSocialCreditCode === "string"
@@ -482,7 +499,7 @@ export class ProjectService {
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw new BadRequestException(
-          "项目当前挂靠企业已被其他操作更新，请刷新人工映射报告后重试"
+          "项目当前施工企业已被其他操作更新，请刷新项目经营档案后重试"
         );
       }
       throw error;

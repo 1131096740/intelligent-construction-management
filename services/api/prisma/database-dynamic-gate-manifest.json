@@ -3,8 +3,8 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 125,
-    "terminalMigration": "20260811090000_contract_document_content_revision",
+    "expectedDirectoryCount": 126,
+    "terminalMigration": "20260814010000_project_operating_profile",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -25,12 +25,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 32,
-    "fullyPendingSuites": 23,
-    "partiallyPendingSuites": 9,
-    "pendingTests": 66,
-    "coveredFiles": 32,
-    "coveredTests": 66,
+    "pendingFiles": 34,
+    "fullyPendingSuites": 24,
+    "partiallyPendingSuites": 10,
+    "pendingTests": 86,
+    "coveredFiles": 34,
+    "coveredTests": 86,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -174,7 +174,7 @@
     },
     {
       "id": "remaining_dynamic_postgresql16",
-    "pendingTests": 42,
+    "pendingTests": 62,
       "testFiles": [
         {
           "path": "services/api/src/database/contract-draft-aggregate-concurrency.spec.ts",
@@ -203,7 +203,7 @@
         },
         {
           "path": "services/api/src/database/contract-ended-application-purge.spec.ts",
-          "pendingTests": 5,
+          "pendingTests": 6,
           "suiteStatus": "fully_pending"
         },
         {
@@ -275,6 +275,16 @@
           "path": "services/api/src/database/project-upstream-fund-fact-db.spec.ts",
           "pendingTests": 2,
           "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-operating-profile-upgrade.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/project-operating-profile-db.spec.ts",
+          "pendingTests": 17,
+          "suiteStatus": "partial_pending"
         },
         {
           "path": "services/api/src/database/contract-governance-file-concurrency.spec.ts",

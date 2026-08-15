@@ -15,6 +15,21 @@ describeDatabase("project affiliate business PostgreSQL constraints", () => {
 
   it("allows a complete external confirmation transition and then locks the contract fact", async () => {
     const id = randomUUID();
+    await prisma.project.create({
+      data: { id: `project-${id}`, code: `AFFILIATE-${id}`, name: "施工企业业务事实测试项目" }
+    });
+    await prisma.projectAffiliateAssignment.create({
+      data: {
+        id: `assignment-${id}`,
+        projectId: `project-${id}`,
+        businessPartyId: `party-${id}`,
+        businessPartyVersionId: `party-version-${id}`,
+        affiliateNameSnapshot: "挂靠建设集团",
+        effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+        changeReason: "数据库测试夹具",
+        assignedByUserId: "contract-constraint"
+      }
+    });
     await prisma.projectAffiliateContractFact.create({
       data: {
         id,

@@ -7,6 +7,7 @@ import { ProjectAffiliateBusinessService } from "./project-affiliate-business.se
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectController } from "./project.controller";
 import { ProjectService } from "./project.service";
+import { ProjectOperatingProfileService } from "./project-operating-profile.service";
 
 @Module({
   imports: [AuditModule, AuthModule, FileModule, ProjectFundingModule],
@@ -14,7 +15,8 @@ import { ProjectService } from "./project.service";
   providers: [
     ProjectService,
     ProjectAffiliateBusinessService,
-    ProjectAffiliateCompanyContractService
+    ProjectAffiliateCompanyContractService,
+    ProjectOperatingProfileService
   ]
 })
 export class ProjectModule {}

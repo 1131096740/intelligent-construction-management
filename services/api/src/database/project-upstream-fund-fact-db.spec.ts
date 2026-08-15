@@ -15,6 +15,11 @@ describeDatabase("project upstream fund fact PostgreSQL constraints", () => {
 
   it("allows only a complete confirmation transition and then locks the fact", async () => {
     const id = `upstream-fund-${randomUUID()}`;
+    await createProjectAssignment(prisma, {
+      projectId: `project-${id}`,
+      assignmentId: `assignment-${id}`,
+      partyVersionId: `party-version-${id}`
+    });
     await prisma.projectUpstreamFundFact.create({
       data: {
         id,
@@ -95,6 +100,12 @@ describeDatabase("project upstream fund fact PostgreSQL constraints", () => {
       recordedByRoleKey: "finance_staff"
     };
 
+    await createProjectAssignment(prisma, {
+      projectId: common.projectId,
+      assignmentId: common.affiliateAssignmentId,
+      partyVersionId: common.affiliateBusinessPartyVersionId
+    });
+
     await prisma.projectUpstreamFundFact.create({
       data: {
         id: originalId,
@@ -134,3 +145,24 @@ describeDatabase("project upstream fund fact PostgreSQL constraints", () => {
     ).rejects.toMatchObject({ code: "P2002" });
   });
 });
+
+async function createProjectAssignment(
+  prisma: PrismaClient,
+  input: { projectId: string; assignmentId: string; partyVersionId: string }
+) {
+  await prisma.project.create({
+    data: { id: input.projectId, code: `UPSTREAM-${randomUUID()}`, name: "上游资金事实测试项目" }
+  });
+  await prisma.projectAffiliateAssignment.create({
+    data: {
+      id: input.assignmentId,
+      projectId: input.projectId,
+      businessPartyId: `party-${randomUUID()}`,
+      businessPartyVersionId: input.partyVersionId,
+      affiliateNameSnapshot: "挂靠建设集团",
+      effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+      changeReason: "数据库测试夹具",
+      assignedByUserId: "finance-constraint"
+    }
+  });
+}

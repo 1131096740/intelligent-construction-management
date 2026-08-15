@@ -180,6 +180,25 @@ export const PROJECT_STAGE_LABELS = Object.freeze({
   project_funds_cleared: "项目资金结清"
 } as const satisfies Readonly<Record<ProjectStage, string>>);
 
+export const PROJECT_OPERATING_TAKEOVER_STATUSES = Object.freeze([
+  "preparing",
+  "operating_with_takeover",
+  "balance_review",
+  "takeover_completed",
+  "supplemental_review"
+] as const);
+
+export type ProjectOperatingTakeoverStatus =
+  (typeof PROJECT_OPERATING_TAKEOVER_STATUSES)[number];
+
+export const PROJECT_OPERATING_TAKEOVER_STATUS_LABELS = Object.freeze({
+  preparing: "准备中",
+  operating_with_takeover: "正式使用、历史接管中",
+  balance_review: "余额复核中",
+  takeover_completed: "经营接管完成",
+  supplemental_review: "需要补充复核"
+} as const satisfies Readonly<Record<ProjectOperatingTakeoverStatus, string>>);
+
 export const FINANCIAL_RECONCILIATION_STATUSES = Object.freeze([
   "matched",
   "partially_matched",

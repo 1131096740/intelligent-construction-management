@@ -4137,6 +4137,66 @@
       "wrappers": [
         { "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts", "name": "confirmProjectAffiliatePaymentFact" }
       ]
+    },
+    {
+      "id": "project-operating-profile.save",
+      "usage": "page_action",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": { "element": "t-form", "event": "submit", "handler": "saveProfile" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "profile.canManage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "updateProjectOperatingProfile" }
+      ]
+    },
+    {
+      "id": "project-operating-profile.set-construction-enterprise",
+      "usage": "page_action",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": { "element": "t-form", "event": "submit", "handler": "saveConstructionEnterprise" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "profile.canManage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "assignProjectConstructionEnterprise" }
+      ]
+    },
+    {
+      "id": "project-operating-profile.add-participating-company",
+      "usage": "page_action",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": { "element": "t-form", "event": "submit", "handler": "addParticipant" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "profile.canManage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "addProjectParticipatingCompany" }
+      ]
+    },
+    {
+      "id": "project-operating-profile.deactivate-participating-company",
+      "usage": "page_action",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": { "element": "t-dialog", "event": "confirm", "handler": "confirmDeactivate" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "profile.canManage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "deactivateProjectParticipatingCompany" }
+      ]
+    },
+    {
+      "id": "project-operating-profile.remove-participating-company",
+      "usage": "page_action",
+      "routePaths": ["/项目经营"],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": { "element": "t-popconfirm", "event": "confirm", "handler": "remove" },
+      "semantic": "business_write",
+      "capability": { "kind": "server_boolean", "source": "profile.canManage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "removeProjectParticipatingCompany" }
+      ]
     }
   ]
 }

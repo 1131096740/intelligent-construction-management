@@ -106,6 +106,18 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
             name: "历史变更基线并发测试项目"
           }
         });
+        await prisma.projectAffiliateAssignment.create({
+          data: {
+            id: `takeover-baseline-construction-enterprise-${suffix}`,
+            projectId,
+            businessPartyId: `takeover-baseline-party-${suffix}`,
+            businessPartyVersionId: `takeover-baseline-party-version-${suffix}`,
+            affiliateNameSnapshot: "历史变更基线测试施工企业",
+            effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+            changeReason: "数据库测试夹具",
+            assignedByUserId: userId
+          }
+        });
         await prisma.contract.create({
           data: {
             id: contractId,
@@ -361,6 +373,18 @@ describe("historical takeover confirmation PostgreSQL concurrency", () => {
             id: projectId,
             code: `TAKEOVER-ROUTE-${suffix}`,
             name: "历史接管双边确认路由测试项目"
+          }
+        });
+        await prisma.projectAffiliateAssignment.create({
+          data: {
+            id: `takeover-route-construction-enterprise-${suffix}`,
+            projectId,
+            businessPartyId: `takeover-route-party-${suffix}`,
+            businessPartyVersionId: `takeover-route-party-version-${suffix}`,
+            affiliateNameSnapshot: "历史接管路由测试施工企业",
+            effectiveFrom: new Date("2020-01-01T00:00:00.000Z"),
+            changeReason: "数据库测试夹具",
+            assignedByUserId: contractUserId
           }
         });
         await prisma.companyEntity.create({

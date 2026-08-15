@@ -138,12 +138,16 @@ model UserPosition {
 }
 
 model Project {
-  id        String   @id @default(uuid())
-  code      String   @unique
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                           String    @id @default(uuid())
+  code                         String    @unique
+  name                         String
+  operatingLedgerEffectiveDate DateTime? @db.Date
+  takeoverCompletedDate        DateTime? @db.Date
+  takeoverStatus               String    @default("preparing")
+  constructionEnterpriseLockedAt DateTime?
+  isActive                     Boolean   @default(true)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 }
 
 // 项目挂靠企业只通过显式映射生效；变更时结束旧行并新增快照，不覆盖历史事实。
@@ -165,6 +169,27 @@ model ProjectAffiliateAssignment {
   @@index([projectId, effectiveFrom])
   @@index([businessPartyId])
   @@index([businessPartyVersionId])
+}
+
+// 项目参与公司按生效期间追加；已有正式事实的历史行不得覆盖。
+model ProjectParticipatingCompany {
+  id                        String    @id @default(uuid())
+  projectId                 String
+  companyEntityId           String
+  companyEntityVersionId    String
+  companyNameSnapshot       String
+  companyCreditCodeSnapshot String?
+  effectiveFrom             DateTime  @db.Date
+  endedAt                   DateTime? @db.Date
+  changeReason              String
+  addedByUserId             String
+  endedByUserId             String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([projectId, effectiveFrom])
+  @@index([companyEntityId])
+  @@index([companyEntityVersionId])
 }
 
 model ProjectMember {

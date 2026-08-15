@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 237,
-    "pageActionCount": 46,
+    "registeredActionCount": 242,
+    "pageActionCount": 51,
     "backgroundActionCount": 191,
-    "reachableVueFileCount": 126,
+    "reachableVueFileCount": 127,
     "routeRootCount": 47,
-    "totalVueFileCount": 144,
-    "parsedVueFileCount": 144,
-    "reachableProductionModuleCount": 225,
-    "templateEventDirectiveCount": 832,
+    "totalVueFileCount": 145,
+    "parsedVueFileCount": 145,
+    "reachableProductionModuleCount": 227,
+    "templateEventDirectiveCount": 838,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 228,
-    "candidateProductionMutationConsumerCount": 228,
-    "acceptedProductionMutationConsumerCount": 228,
-    "productionMutationConsumerPairCount": 228,
+    "coveredProductionMutationConsumerCount": 233,
+    "candidateProductionMutationConsumerCount": 233,
+    "acceptedProductionMutationConsumerCount": 233,
+    "productionMutationConsumerPairCount": 233,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 251,
-    "reachableProductionModuleCount": 225,
-    "totalVueFileCount": 144,
-    "parsedVueFileCount": 144
+    "totalProductionModuleCount": 253,
+    "reachableProductionModuleCount": 227,
+    "totalVueFileCount": 145,
+    "parsedVueFileCount": 145
   },
   "actions": [
     {
@@ -8649,7 +8649,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 2027,
+        "sourceLine": 2035,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8714,7 +8714,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1988,
+        "sourceLine": 1996,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8779,7 +8779,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1527,
+        "sourceLine": 1535,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8844,7 +8844,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 1511,
+        "sourceLine": 1519,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9147,7 +9147,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 1947,
+        "sourceLine": 1955,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10157,6 +10157,326 @@
       ]
     },
     {
+      "id": "project-operating-profile.add-participating-company",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "addParticipant",
+        "kind": "event",
+        "sourceLine": 141,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "addProjectParticipatingCompany",
+          "method": "POST",
+          "path": "/projects/:param/participating-companies",
+          "normalizedKey": "POST /projects/:param/participating-companies",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/participating-companies",
+            "normalizedKey": "POST /projects/:param/participating-companies",
+            "controller": "ProjectController",
+            "handler": "addParticipatingCompany",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "addParticipant",
+              "addProjectParticipatingCompany"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.deactivate-participating-company",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmDeactivate",
+        "kind": "event",
+        "sourceLine": 173,
+        "sourceColumn": 6
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "deactivateProjectParticipatingCompany",
+          "method": "PATCH",
+          "path": "/projects/:param/participating-companies/:param/deactivation",
+          "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/participating-companies/:participantId/deactivation",
+            "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
+            "controller": "ProjectController",
+            "handler": "deactivateParticipatingCompany",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "confirmDeactivate",
+              "deactivateProjectParticipatingCompany"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.remove-participating-company",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-popconfirm",
+        "event": "confirm",
+        "handler": "remove",
+        "kind": "event",
+        "sourceLine": 128,
+        "sourceColumn": 14
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "removeProjectParticipatingCompany",
+          "method": "DELETE",
+          "path": "/projects/:param/participating-companies/:param",
+          "normalizedKey": "DELETE /projects/:param/participating-companies/:param",
+          "bodyKind": "none",
+          "nestRoute": {
+            "method": "DELETE",
+            "path": "/projects/:projectId/participating-companies/:participantId",
+            "normalizedKey": "DELETE /projects/:param/participating-companies/:param",
+            "controller": "ProjectController",
+            "handler": "removeParticipatingCompany",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "remove",
+              "removeProjectParticipatingCompany"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.save",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "saveProfile",
+        "kind": "event",
+        "sourceLine": 19,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "updateProjectOperatingProfile",
+          "method": "PATCH",
+          "path": "/projects/:param/operating-profile",
+          "normalizedKey": "PATCH /projects/:param/operating-profile",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/operating-profile",
+            "normalizedKey": "PATCH /projects/:param/operating-profile",
+            "controller": "ProjectController",
+            "handler": "updateOperatingProfile",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveProfile",
+              "updateProjectOperatingProfile"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "project-operating-profile.set-construction-enterprise",
+      "usage": "page_action",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "ownerRoutePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue",
+      "trigger": {
+        "element": "t-form",
+        "event": "submit",
+        "handler": "saveConstructionEnterprise",
+        "kind": "event",
+        "sourceLine": 82,
+        "sourceColumn": 8
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "profile.canManage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+          "wrapper": "assignProjectConstructionEnterprise",
+          "method": "POST",
+          "path": "/projects/:param/construction-enterprise",
+          "normalizedKey": "POST /projects/:param/construction-enterprise",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/construction-enterprise",
+            "normalizedKey": "POST /projects/:param/construction-enterprise",
+            "controller": "ProjectController",
+            "handler": "assignConstructionEnterprise",
+            "sourceFile": "services/api/src/project/project.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "project.operating_profile.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "saveConstructionEnterprise",
+              "assignProjectConstructionEnterprise"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "project.affiliate-contract.confirm",
       "usage": "background",
       "routePaths": [
@@ -10857,7 +11177,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1243,
+        "sourceLine": 1251,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10925,7 +11245,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 1252,
+        "sourceLine": 1260,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10993,7 +11313,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1731,
+        "sourceLine": 1739,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11058,7 +11378,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 1670,
+        "sourceLine": 1678,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -11123,7 +11443,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 1654,
+        "sourceLine": 1662,
         "sourceColumn": 0
       },
       "semantic": "business_write",

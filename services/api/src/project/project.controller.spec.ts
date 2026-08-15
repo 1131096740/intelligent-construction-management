@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { BadRequestException, GoneException } from "@nestjs/common";
 import { REQUIRED_POSITIONS_KEY } from "../auth/decorators/require-positions.decorator";
+import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { PROJECT_OVERVIEW_READ_POSITION_KEYS } from "../auth/ledger-read-positions";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { ProjectController } from "./project.controller";
@@ -852,10 +853,13 @@ describe("ProjectController authorization wiring", () => {
     );
   });
 
-  it("limits affiliate mapping writes to company decision roles and exposes a read-only review report", () => {
+  it("limits legacy affiliate mapping writes to project finance and exposes a read-only review report", () => {
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.assignAffiliate)
-    ).toEqual(projectCreatePositions);
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ProjectController.prototype.assignAffiliate)
+    ).toBe("project.operating_profile.manage");
     expect(
       Reflect.getMetadata(REQUIRED_POSITIONS_KEY, ProjectController.prototype.affiliateMappingReport)
     ).toEqual(["chairman", "general_manager", "contract_director"]);
