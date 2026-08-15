@@ -11,9 +11,9 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_spot_procurement_concurrency_verify";
-const EXPECTED_MIGRATION_COUNT = 129;
+const EXPECTED_MIGRATION_COUNT = 130;
 const TERMINAL_MIGRATION =
-  "20260814130000_pol05_operating_source_subjects";
+  "20260815150000_pol06_expense_employee_subjects";
 const root = path.resolve(__dirname, "../../..");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
