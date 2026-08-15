@@ -350,10 +350,7 @@ function createRuntimeEnvironment(
     environment[key] = value === "databaseUrl" ? databaseUrl : value;
   }
   if (group.requiresOperatingLedgerWriteSecret) {
-    if (!operatingLedgerWriteSecret) {
-      fail("经营账数据库动态门缺少本次运行的测试写入密钥");
-    }
-    environment.OPERATING_LEDGER_DB_WRITE_SECRET = operatingLedgerWriteSecret;
+    environment.OPERATING_LEDGER_DB_WRITE_SECRET = operatingLedgerWriteSecret ?? randomUUID();
   }
   return environment;
 }
