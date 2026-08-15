@@ -322,6 +322,14 @@ function assertDedicatedDatabase() {
 }
 
 async function seedFixture(client: PrismaClient, fixture: ReturnType<typeof fixtureIds>) {
+  const writeSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET?.trim();
+  if (!writeSecret) {
+    throw new Error("经营事实账并发测试必须配置隔离写入密钥");
+  }
+  await client.$executeRaw(Prisma.sql`
+    INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
+    VALUES (1, crypt(${writeSecret}, gen_salt('bf')))
+  `);
   for (const userId of [fixture.financeUserId, fixture.projectManagerId]) {
     await client.$executeRaw(Prisma.sql`
       INSERT INTO "User" ("id", "name", "mustChangePassword", "isActive", "updatedAt")

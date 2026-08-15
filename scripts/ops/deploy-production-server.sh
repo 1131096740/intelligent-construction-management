@@ -11,6 +11,7 @@ DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-}"
 DEPLOY_CONFIRMATION_TIMEOUT_SECONDS="${DEPLOY_CONFIRMATION_TIMEOUT_SECONDS:-1800}"
 TARGET_SHA="${TARGET_SHA:-}"
 API_ENV_FILE="${API_ENV_FILE:-/etc/jiangkong/api.env}"
+DATABASE_MIGRATION_ENV_FILE="${DATABASE_MIGRATION_ENV_FILE:-/etc/jiangkong/db-migration.env}"
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
 DB_BACKUP_ENV_FILE="${DB_BACKUP_ENV_FILE:-/etc/jiangkong/db-backup.env}"
@@ -98,72 +99,78 @@ run_pre_migration_backup() {
 run_prisma_migrations() {
   sudo --non-interactive env \
     COREPACK_HOME="$DEPLOY_COREPACK_HOME" \
-    bash -s -- "$API_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
+    bash -s -- "$API_ENV_FILE" "$DATABASE_MIGRATION_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
 set -euo pipefail
 
-env_file=$1
-repo_root=$2
-database_url=""
-database_url_count=0
-database_migration_url=""
-database_migration_url_count=0
-operating_ledger_runtime_role=""
-operating_ledger_runtime_role_count=0
+api_env_file=$1
+migration_env_file=$2
+repo_root=$3
 
-while IFS= read -r line || [[ -n "$line" ]]; do
-  line="${line%$'\r'}"
-  case "$line" in
-    DATABASE_URL=*)
-      database_url_count=$((database_url_count + 1))
-      value="${line#DATABASE_URL=}"
-      variable_name="DATABASE_URL"
-      ;;
-    DATABASE_MIGRATION_URL=*)
-      database_migration_url_count=$((database_migration_url_count + 1))
-      value="${line#DATABASE_MIGRATION_URL=}"
-      variable_name="DATABASE_MIGRATION_URL"
-      ;;
-    OPERATING_LEDGER_RUNTIME_ROLE=*)
-      operating_ledger_runtime_role_count=$((operating_ledger_runtime_role_count + 1))
-      value="${line#OPERATING_LEDGER_RUNTIME_ROLE=}"
-      variable_name="OPERATING_LEDGER_RUNTIME_ROLE"
-      ;;
-    *)
-      continue
-      ;;
-  esac
-  if [[ "$value" == \"* ]]; then
-    if [[ "$value" != *\" || ${#value} -lt 2 ]]; then
-      echo "API_ENV_FILE contains an invalid quoted $variable_name" >&2
-      exit 1
+read_single_env_value() {
+  local env_file=$1
+  local variable_name=$2
+  local env_file_label=$3
+  local value=""
+  local value_count=0
+  local line=""
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      "$variable_name"=*)
+        value_count=$((value_count + 1))
+        value="${line#*=}"
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    if [[ "$value" == \"* ]]; then
+      if [[ "$value" != *\" || ${#value} -lt 2 ]]; then
+        echo "$env_file_label contains an invalid quoted $variable_name" >&2
+        exit 1
+      fi
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'* ]]; then
+      if [[ "$value" != *\' || ${#value} -lt 2 ]]; then
+        echo "$env_file_label contains an invalid quoted $variable_name" >&2
+        exit 1
+      fi
+      value="${value:1:${#value}-2}"
     fi
-    value="${value:1:${#value}-2}"
-  elif [[ "$value" == \'* ]]; then
-    if [[ "$value" != *\' || ${#value} -lt 2 ]]; then
-      echo "API_ENV_FILE contains an invalid quoted $variable_name" >&2
-      exit 1
-    fi
-    value="${value:1:${#value}-2}"
+  done < "$env_file"
+
+  if [[ "$value_count" != 1 || -z "$value" ]]; then
+    echo "$env_file_label must contain exactly one non-empty $variable_name" >&2
+    exit 1
   fi
-  case "$variable_name" in
-    DATABASE_URL) database_url="$value" ;;
-    DATABASE_MIGRATION_URL) database_migration_url="$value" ;;
-    OPERATING_LEDGER_RUNTIME_ROLE) operating_ledger_runtime_role="$value" ;;
-  esac
-done < "$env_file"
+  printf '%s' "$value"
+}
 
-if [[ "$database_url_count" != 1 || -z "$database_url" ]]; then
-  echo "API_ENV_FILE must contain exactly one non-empty DATABASE_URL" >&2
+if [[ ! -r "$api_env_file" ]]; then
+  echo "API_ENV_FILE is not readable" >&2
   exit 1
 fi
-if [[ "$database_migration_url_count" != 1 || -z "$database_migration_url" ]]; then
-  echo "API_ENV_FILE must contain exactly one non-empty DATABASE_MIGRATION_URL for owner-only migrations" >&2
+if [[ ! -r "$migration_env_file" ]]; then
+  echo "DATABASE_MIGRATION_ENV_FILE is not readable" >&2
   exit 1
 fi
-if [[ "$operating_ledger_runtime_role_count" != 1 || -z "$operating_ledger_runtime_role" ]]; then
-  echo "API_ENV_FILE must contain exactly one non-empty OPERATING_LEDGER_RUNTIME_ROLE" >&2
+migration_env_metadata="$(stat -c '%u:%g:%a' "$migration_env_file" 2>/dev/null || stat -f '%u:%g:%Lp' "$migration_env_file")" || {
+  echo "DATABASE_MIGRATION_ENV_FILE metadata cannot be read" >&2
+  exit 1
+}
+if [[ "$migration_env_metadata" != "0:0:600" ]]; then
+  echo "DATABASE_MIGRATION_ENV_FILE must be root:root with mode 0600" >&2
   exit 1
 fi
+if grep -Eq '^[[:space:]]*(export[[:space:]]+)?DATABASE_MIGRATION_URL[[:space:]]*=' "$api_env_file"; then
+  echo "API_ENV_FILE must not contain DATABASE_MIGRATION_URL; use DATABASE_MIGRATION_ENV_FILE" >&2
+  exit 1
+fi
+
+database_url="$(read_single_env_value "$api_env_file" "DATABASE_URL" "API_ENV_FILE")"
+operating_ledger_runtime_role="$(read_single_env_value "$api_env_file" "OPERATING_LEDGER_RUNTIME_ROLE" "API_ENV_FILE")"
+database_migration_url="$(read_single_env_value "$migration_env_file" "DATABASE_MIGRATION_URL" "DATABASE_MIGRATION_ENV_FILE")"
 
 runtime_database_target="$(DATABASE_URL="$database_url" node - <<'NODE'
 try {
@@ -197,7 +204,7 @@ try {
 }
 NODE
 )" || {
-  echo "API_ENV_FILE DATABASE_MIGRATION_URL must be a valid PostgreSQL URL with a user" >&2
+  echo "DATABASE_MIGRATION_ENV_FILE DATABASE_MIGRATION_URL must be a valid PostgreSQL URL with a user" >&2
   exit 1
 }
 IFS=$'\t' read -r migration_database_user migration_database_host migration_database_port migration_database_name <<< "$migration_database_target"

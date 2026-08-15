@@ -118,6 +118,16 @@ cat > "$FAKE_BIN/stat" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}:${2:-}" in
+  -c:%u:%g:%a)
+    if [[ -n "${FAKE_STAT_METADATA:-}" ]]; then
+      printf '%s\n' "$FAKE_STAT_METADATA"
+      exit 0
+    fi
+    if /usr/bin/stat -c '%u:%g:%a' "$3" >/dev/null 2>&1; then
+      exec /usr/bin/stat -c '%u:%g:%a' "$3"
+    fi
+    exec /usr/bin/stat -f '%u:%g:%Lp' "$3"
+    ;;
   -c:%a)
     if /usr/bin/stat -c '%a' "$3" >/dev/null 2>&1; then
       exec /usr/bin/stat -c '%a' "$3"
@@ -700,9 +710,10 @@ make_deploy_fixture() {
   printf 'old-api\n' > "$fixture/runtime/api/dist/release.txt"
   printf 'old-web\n' > "$fixture/runtime/web-admin/dist/release.txt"
   printf 'DATABASE_URL=postgresql://runtime:runtime@local/jiangkong\n' > "$fixture/api.env"
-  printf 'DATABASE_MIGRATION_URL=postgresql://owner:owner@local/jiangkong\n' >> "$fixture/api.env"
   printf 'OPERATING_LEDGER_RUNTIME_ROLE=runtime\n' >> "$fixture/api.env"
   printf 'UNRELATED_VALUE=$(touch %s)\n' "$fixture/api-env-command-must-not-run" >> "$fixture/api.env"
+  printf 'DATABASE_MIGRATION_URL=postgresql://owner:owner@local/jiangkong\n' \
+    > "$fixture/db-migration.env"
   cat > "$fixture/db-backup.env" <<'BACKUP_ENV'
 DB_BACKUP_COS_SECRET_ID=test-database-backup-secret-id
 DB_BACKUP_COS_SECRET_KEY=database-backup-secret-for-tests-only
@@ -710,7 +721,7 @@ DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719
 DB_BACKUP_COS_REGION=ap-chengdu
 DB_BACKUP_COS_PREFIX=database-backups
 BACKUP_ENV
-  chmod 600 "$fixture/api.env" "$fixture/db-backup.env"
+  chmod 600 "$fixture/api.env" "$fixture/db-migration.env" "$fixture/db-backup.env"
   cat > "$fixture/health.sh" <<'HEALTH'
 #!/usr/bin/env bash
 exit 0
@@ -730,6 +741,8 @@ run_deploy_fixture() {
     API_RUNTIME_DIR="$fixture/runtime/api" \
     WEB_RUNTIME_DIR="$fixture/runtime/web-admin" \
     API_ENV_FILE="$fixture/api.env" \
+    DATABASE_MIGRATION_ENV_FILE="$fixture/db-migration.env" \
+    FAKE_STAT_METADATA=0:0:600 \
     BACKUP_DIR="$fixture/backups" \
     BACKUP_SCRIPT="$SCRIPT_DIR/db-backup.sh" \
     BACKUP_RUN_AS_ROOT=true \
@@ -760,6 +773,17 @@ find "$migration_failure_fixture/backups" -name '*.dump' -type f | grep -q . ||
   fail "deployment did not create a pre-migration backup"
 find "$migration_failure_fixture/backups" -name '*.offsite.json' -type f | grep -q . ||
   fail "deployment did not require a verified offsite pre-migration backup"
+
+migration_env_permission_fixture="$TEST_ROOT/deploy-migration-env-permission"
+make_deploy_fixture "$migration_env_permission_fixture"
+: > "$FAKE_LOG"
+if run_deploy_fixture "$migration_env_permission_fixture" \
+  env FAKE_STAT_METADATA=501:20:600 >/dev/null 2>&1; then
+  fail "deployment must reject a migration environment file readable by the runtime user"
+fi
+if grep -q ' prisma migrate deploy ' "$FAKE_LOG"; then
+  fail "deployment ran migrations with an insecure migration environment file"
+fi
 
 offsite_failure_fixture="$TEST_ROOT/deploy-offsite-failure"
 make_deploy_fixture "$offsite_failure_fixture"

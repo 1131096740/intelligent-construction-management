@@ -315,6 +315,9 @@ function createRuntimeEnvironment(base, temporaryRoot, databaseUrl, group) {
   for (const [key, value] of Object.entries(group.flags)) {
     environment[key] = value === "databaseUrl" ? databaseUrl : value;
   }
+  if (environment.RUN_OPERATING_LEDGER_DATABASE === "1") {
+    environment.OPERATING_LEDGER_DB_WRITE_SECRET = randomUUID();
+  }
   return environment;
 }
 
