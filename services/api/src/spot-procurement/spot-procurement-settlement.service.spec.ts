@@ -1044,6 +1044,15 @@ describe("SpotProcurementSettlementService refund workflow", () => {
 
   it("requires the exact full refund, locks the project before files, and replays one immutable fact", async () => {
     const harness = paidRefundHarness();
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest
+        .fn()
+        .mockResolvedValue(null)
+    };
+    Object.assign(
+      harness.service as unknown as { operatingSources: typeof operatingSources },
+      { operatingSources }
+    );
 
     await expect(
       harness.service.recordRefund(
@@ -1091,6 +1100,17 @@ describe("SpotProcurementSettlementService refund workflow", () => {
         paymentId: "payment-1"
       })
     });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      harness.tx,
+      {
+        projectId: "project-1",
+        sourceType: "spot_procurement_refund",
+        sourceBusinessId: "refund-created"
+      },
+      ACTORS.financeStaff
+    );
     expect(harness.funding.reverseExecution).toHaveBeenCalledWith(
       harness.tx,
       {

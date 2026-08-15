@@ -38,9 +38,9 @@ test("manifest derives all 89 pending tests as executable local coverage", () =>
     coveredTests: 89,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 130,
+    migrationCount: 131,
     terminalMigration:
-      "20260815150000_pol06_expense_employee_subjects"
+      "20260815170000_pol07_spot_procurement_operating_sources"
   });
 });
 

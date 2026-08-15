@@ -5,6 +5,7 @@ import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { FileModule } from "../file/file.module";
 import { InvoiceLedgerModule } from "../invoice-ledger/invoice-ledger.module";
+import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.module";
 import { ProjectFundingModule } from "../project-funding/project-funding.module";
 import { ReceiptWatermarkService } from "./receipt-watermark.service";
 import { SpotProcurementApplicationService } from "./spot-procurement-application.service";
@@ -32,6 +33,7 @@ import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment
     AuthModule,
     FileModule,
     InvoiceLedgerModule,
+    OperatingLedgerModule,
     ProjectFundingModule,
     SpotProcurementClosureModule,
     SpotProcurementAccessModule

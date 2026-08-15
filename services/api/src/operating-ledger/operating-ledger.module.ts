@@ -18,6 +18,16 @@ import {
   ProjectUpstreamSettlementOperatingSourceAdapter,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "../project/project-operating-source.adapter";
+import {
+  SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE,
+  SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE,
+  SPOT_PROCUREMENT_RECEIPT_REVIEW_SOURCE_TYPE,
+  SPOT_PROCUREMENT_REFUND_SOURCE_TYPE,
+  SpotProcurementInvoiceOperatingSourceAdapter,
+  SpotProcurementPaymentExecutionOperatingSourceAdapter,
+  SpotProcurementReceiptOperatingSourceAdapter,
+  SpotProcurementRefundOperatingSourceAdapter
+} from "../spot-procurement/spot-procurement-operating-source.adapter";
 import { SettlementOperatingSourceAdapter } from "../settlement/settlement-operating-source.adapter";
 import { OperatingLedgerService } from "./operating-ledger.service";
 import { OperatingSourceAdapterRegistry } from "./operating-source-adapter";
@@ -30,7 +40,11 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE,
   EXPENSE_CLAIM_PAYMENT_EXECUTION_SOURCE_TYPE,
-  EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE
+  EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE,
+  SPOT_PROCUREMENT_RECEIPT_REVIEW_SOURCE_TYPE,
+  SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE,
+  SPOT_PROCUREMENT_REFUND_SOURCE_TYPE,
+  SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE
 ] as const);
 
 export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry {
@@ -42,7 +56,11 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
       new ProjectProxyPaymentOperatingSourceAdapter(),
       new ExpenseClaimApprovalOperatingSourceAdapter(),
       new ExpenseClaimPaymentExecutionOperatingSourceAdapter(),
-      new EmployeeProjectLoanEntryOperatingSourceAdapter()
+      new EmployeeProjectLoanEntryOperatingSourceAdapter(),
+      new SpotProcurementReceiptOperatingSourceAdapter(),
+      new SpotProcurementPaymentExecutionOperatingSourceAdapter(),
+      new SpotProcurementRefundOperatingSourceAdapter(),
+      new SpotProcurementInvoiceOperatingSourceAdapter()
     ],
     OPERATING_SOURCE_TYPES
   );

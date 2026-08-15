@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException
@@ -16,6 +17,11 @@ import {
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
 import { hasNonReceiptBusinessFileBinding } from "../file/file-business-binding";
 import { FileService } from "../file/file.service";
 import { acquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
@@ -60,6 +66,7 @@ import {
   SPOT_PROCUREMENT_RECEIPT_MAX_PHOTO_COUNT,
   SPOT_PROCUREMENT_RECEIPT_PDF_TEMPLATE_KEY
 } from "./spot-procurement.constants";
+import { SPOT_PROCUREMENT_RECEIPT_REVIEW_SOURCE_TYPE } from "./spot-procurement-operating-source.adapter";
 
 const RECEIPT_EDITABLE_STATUSES = new Set([
   "draft",
@@ -327,7 +334,10 @@ export class SpotProcurementReceiptService {
     private readonly access: SpotProcurementAccessService,
     private readonly receiptPdfs: SpotProcurementReceiptPdfService,
     private readonly closure: SpotProcurementClosureService,
-    private readonly archives?: SpotProcurementPaymentArchiveService
+    private readonly archives?: SpotProcurementPaymentArchiveService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async getReceipt(procurementId: string, actorUserId: string) {
@@ -2136,6 +2146,17 @@ export class SpotProcurementReceiptService {
             });
           replenishmentResolvedDiscrepancyCount =
             replenishmentResolved.count;
+          if (context.receipt.actualCostCents > 0n) {
+            await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+              tx,
+              {
+                projectId: context.receipt.projectId,
+                sourceType: SPOT_PROCUREMENT_RECEIPT_REVIEW_SOURCE_TYPE,
+                sourceBusinessId: review.id
+              },
+              actorUserId
+            );
+          }
         } else {
           currentRevisionNo =
             await this.advanceReceiptCorrectionRevision(

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Inject,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -19,6 +20,11 @@ import { snapshotApprovalSignature } from "../approval/approval-signature-snapsh
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
 import { FileService } from "../file/file.service";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
@@ -44,6 +50,7 @@ import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-
 import { isSpotPaymentPayerTaskComplete } from "./spot-payment-payer-task";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
+import { SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE } from "./spot-procurement-operating-source.adapter";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 import { calculateSpotProcurementLine } from "./spot-procurement-money";
 
@@ -214,7 +221,10 @@ export class SpotProcurementPaymentService {
     private readonly approvalForms: ApprovalFormService,
     private readonly closure: SpotProcurementClosureService,
     private readonly projectFunding: ProjectFundingAvailabilityService,
-    private readonly archives?: SpotProcurementPaymentArchiveService
+    private readonly archives?: SpotProcurementPaymentArchiveService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async recordExecution(
@@ -591,6 +601,15 @@ export class SpotProcurementPaymentService {
             "付款状态或已付金额已变化，请刷新后重试"
           );
         }
+        await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+          tx,
+          {
+            projectId: version.projectId,
+            sourceType: SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE,
+            sourceBusinessId: execution.id
+          },
+          actorUserId
+        );
 
         const paymentAfter = {
           ...payment,

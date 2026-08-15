@@ -60,6 +60,7 @@ export const OPERATING_IMPACT_KINDS = Object.freeze([
   "temporary_profit_distribution",
   "final_profit_distribution",
   "profit_distribution_adjustment",
+  "invoice_reference",
   "evidence_gap_notice"
 ] as const);
 
@@ -88,6 +89,7 @@ export const OPERATING_IMPACT_KIND_LABELS = Object.freeze({
   temporary_profit_distribution: "暂分利润",
   final_profit_distribution: "最终利润分配",
   profit_distribution_adjustment: "盈亏分配退补",
+  invoice_reference: "发票登记依据",
   evidence_gap_notice: "历史资料缺口提示"
 } as const satisfies Readonly<Record<OperatingImpactKind, string>>);
 

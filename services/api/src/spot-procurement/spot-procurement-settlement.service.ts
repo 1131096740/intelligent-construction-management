@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Inject,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -15,6 +16,11 @@ import { ApprovalFormService } from "../approval/approval-form.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
 import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
@@ -29,6 +35,7 @@ import { SpotProcurementClosureService } from "./spot-procurement-closure.servic
 import { deriveSpotProcurementPaymentExecutionStatus } from "./spot-procurement-payment-status";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment-archive.service";
+import { SPOT_PROCUREMENT_REFUND_SOURCE_TYPE } from "./spot-procurement-operating-source.adapter";
 import { spotPaymentRefundOwnerId } from "./spot-payment-refund-owner";
 import { SPOT_PROCUREMENT_BUSINESS_TYPES } from "./spot-procurement.constants";
 
@@ -184,7 +191,10 @@ export class SpotProcurementSettlementService {
     private readonly approvalForms: ApprovalFormService,
     private readonly closure: SpotProcurementClosureService,
     private readonly funding: ProjectFundingAvailabilityService,
-    private readonly archives?: SpotProcurementPaymentArchiveService
+    private readonly archives?: SpotProcurementPaymentArchiveService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async createOrConfirmDiscrepancy(
@@ -762,6 +772,15 @@ export class SpotProcurementSettlementService {
             "待退款差异状态已变化，请刷新后重试"
           );
         }
+        await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+          tx,
+          {
+            projectId: context.procurement.projectId,
+            sourceType: SPOT_PROCUREMENT_REFUND_SOURCE_TYPE,
+            sourceBusinessId: refund.id
+          },
+          actorUserId
+        );
         const discrepancyAfter = {
           ...discrepancy,
           status: "resolved",

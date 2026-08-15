@@ -885,6 +885,15 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       ],
       payments: [{ id: "payment-1", settledCents: 9_000n }]
     });
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest
+        .fn()
+        .mockResolvedValue(null)
+    };
+    Object.assign(
+      harness.service as unknown as { operatingSources: typeof operatingSources },
+      { operatingSources }
+    );
     const input = createInvoiceInput({
       totalAmountCents: "9000",
       lines: [
@@ -919,6 +928,18 @@ describe("InvoiceLedgerService invoice facts and allocations", () => {
       "procurement-1",
       ACTORS.handler,
       input
+    );
+
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      harness.tx,
+      {
+        projectId: "project-1",
+        sourceType: "spot_procurement_invoice_record",
+        sourceBusinessId: result.invoice.id
+      },
+      ACTORS.handler
     );
 
     expect(result).toMatchObject({
