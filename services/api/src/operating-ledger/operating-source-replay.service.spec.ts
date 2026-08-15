@@ -189,7 +189,41 @@ describe("OperatingSourceReplayService", () => {
     expect(adapter.readSourceSnapshot).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects a non-original source projection from the business confirmation entry point", async () => {
+  it("allows only an employee-loan repayment reversal from the business confirmation entry point", async () => {
+    const snapshot = sourceSnapshot({ sourceType: "employee_project_loan_entry" });
+    const adapter = createAdapter(
+      snapshot,
+      mappedFact("reversal", {
+        ...factInput(),
+        sourceType: snapshot.sourceType,
+        adjustsFactId: "original-fact"
+      })
+    );
+    const harness = createHarness({ adapter });
+    harness.tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+
+    harness.ledger.appendConfirmedEmployeeLoanReversalInTransaction.mockResolvedValue(
+      writeResult(true)
+    );
+
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(snapshot),
+        "contract-director"
+      )
+    ).resolves.toEqual(writeResult(true));
+    expect(harness.ledger.appendConfirmedEmployeeLoanReversalInTransaction).toHaveBeenCalledWith(
+      harness.tx,
+      expect.objectContaining({ adjustsFactId: "original-fact" }),
+      "contract-director"
+    );
+    expect(harness.ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("continues to reject every other correction or reversal from the business confirmation entry point", async () => {
     const adapter = createAdapter(
       sourceSnapshot(),
       mappedFact("correction", { ...factInput(), adjustsFactId: "original-fact" })
@@ -206,6 +240,9 @@ describe("OperatingSourceReplayService", () => {
         "contract-director"
       )
     ).rejects.toThrow("正式业务来源写入只接受原始经营事实");
+    expect(
+      harness.ledger.appendConfirmedEmployeeLoanReversalInTransaction
+    ).not.toHaveBeenCalled();
     expect(harness.ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
   });
 
@@ -337,6 +374,7 @@ function createHarness(options: {
   const ledger = {
     assertProjectFinanceAccessInTransaction: jest.fn(),
     appendConfirmedSourceInTransaction: jest.fn(),
+    appendConfirmedEmployeeLoanReversalInTransaction: jest.fn(),
     replayFromSourceInTransaction: jest.fn(),
     readFactsInTransaction: jest.fn().mockResolvedValue(options.actualFacts ?? []),
     materializeSourceForComparisonInTransaction: jest.fn().mockResolvedValue({
@@ -365,7 +403,7 @@ function createAdapter(
   mappedInput = mappedFact()
 ): OperatingSourceAdapter {
   return {
-    sourceType: "pol04_test_source",
+    sourceType: snapshot.sourceType,
     readProjectSnapshots: jest.fn().mockResolvedValue([snapshot]),
     readSourceSnapshot: jest.fn().mockResolvedValue(snapshot),
     toOperatingFactInput: jest.fn().mockReturnValue(mappedInput)

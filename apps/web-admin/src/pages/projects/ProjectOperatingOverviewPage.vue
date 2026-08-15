@@ -1099,12 +1099,7 @@ const canReadProjectExpenseLedger = computed(
     ) ?? false
 );
 
-const canCreateProjectExpense = computed(
-  () =>
-    auth.user?.roleKeys.some((role) =>
-      ["employee", "project_manager", "material_staff"].includes(role)
-    ) ?? false
-);
+const canCreateProjectExpense = computed(() => false);
 
 const cashItems = computed(() => {
   const cash = overview.value?.cash;

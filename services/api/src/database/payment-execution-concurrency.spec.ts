@@ -12,7 +12,7 @@ import { PaymentRequestService } from "../payment/payment-request.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 
 const DATABASE_NAME = "jiangkong_payment_execution_concurrency";
-const EXPECTED_MIGRATION_COUNT = 129;
+const EXPECTED_MIGRATION_COUNT = 130;
 const COMPANY_ENTITY_ID = "payment-execution-company";
 const COMPANY_ENTITY_NAME = "付款实付并发验收建设有限公司";
 const COMPANY_ENTITY_CREDIT_CODE = "91310000PAYEXEC0001";

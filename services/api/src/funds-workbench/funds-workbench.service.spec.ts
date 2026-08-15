@@ -78,6 +78,49 @@ describe("FundsWorkbenchService", () => {
     await expect(service.list("finance-1", { source: "unknown" })).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("lists project-scoped incidental expense actual payments as a separate funds source", async () => {
+    findMany
+      .mockResolvedValueOnce([{ id: "project-1", code: "JG-001", name: "科技园" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "incidental-1",
+          code: "LXFY-001",
+          claimType: "incidental_expense",
+          status: "approved_pending_payment",
+          projectId: "project-1",
+          reason: "临时机械台班",
+          companyEntityNameSnapshot: "建工",
+          paymentSubjectNameSnapshot: "项目公司",
+          payeeNameSnapshot: "机械服务商",
+          requestedAmountCents: 12000n,
+          companyPayableAmountCents: 12000n,
+          fundedAmountCents: 0n,
+          updatedAt: new Date("2026-08-15T01:00:00.000Z")
+        }
+      ])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      service.list("finance-1", {
+        view: "pending_funds",
+        source: "incidental_expense"
+      })
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          code: "LXFY-001",
+          source: "incidental_expense",
+          sourceDocument: "零星费用实际付款",
+          project: { id: "project-1", code: "JG-001", name: "科技园" },
+          remainingAmountCents: "12000"
+        })
+      ],
+      sourceCounts: { incidental_expense: 1 }
+    });
+  });
+
   it("projects partial payment from source facts without treating it as completed", async () => {
     findMany
       .mockResolvedValueOnce([])

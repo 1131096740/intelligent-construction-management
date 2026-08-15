@@ -4,7 +4,7 @@ import * as assert from "node:assert/strict";
 import { Prisma, PrismaClient } from "@prisma/client";
 
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
-import { createPol05OperatingSourceRegistry } from "../operating-ledger/operating-ledger.module";
+import { createOperatingSourceRegistry } from "../operating-ledger/operating-ledger.module";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 
 describe("POL-05 formal operating sources PostgreSQL", () => {
@@ -231,7 +231,7 @@ function replayService(client: PrismaClient) {
   return new OperatingSourceReplayService(
     client as never,
     new OperatingLedgerService(client as never),
-    createPol05OperatingSourceRegistry()
+    createOperatingSourceRegistry()
   );
 }
 

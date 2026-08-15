@@ -1,20 +1,23 @@
 import {
-  createPol05OperatingSourceRegistry,
-  POL05_OPERATING_SOURCE_TYPES
+  createOperatingSourceRegistry,
+  OPERATING_SOURCE_TYPES
 } from "./operating-ledger.module";
 
-describe("OperatingLedgerModule POL-05 registry", () => {
-  it("registers the complete formal source catalog without treating FinanceRecord as an economic fact", () => {
-    const registry = createPol05OperatingSourceRegistry();
+describe("OperatingLedgerModule formal source registry", () => {
+  it("registers the POL-06 expense and loan sources without treating FinanceRecord as an economic fact", () => {
+    const registry = createOperatingSourceRegistry();
 
     expect(registry.list().map((adapter) => adapter.sourceType).sort()).toEqual(
-      [...POL05_OPERATING_SOURCE_TYPES].sort()
+      [...OPERATING_SOURCE_TYPES].sort()
     );
-    expect(POL05_OPERATING_SOURCE_TYPES).toEqual([
+    expect(OPERATING_SOURCE_TYPES).toEqual([
       "project_upstream_settlement",
       "settlement",
       "payment_execution",
-      "project_proxy_payment"
+      "project_proxy_payment",
+      "expense_claim_approval",
+      "expense_claim_payment_execution",
+      "employee_project_loan_entry"
     ]);
     expect(() => registry.assertComplete()).not.toThrow();
     expect(() => registry.require("finance_record")).toThrow(
