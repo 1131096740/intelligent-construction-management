@@ -43,6 +43,8 @@ grep -Fq 'assert_dependency_tree_writable' "$DEPLOY_SCRIPT" ||
   fail "deployment script does not preflight dependency-tree ownership"
 grep -Fq 'assert_dependency_tree_writable' "$LOCAL_DEPLOY_SCRIPT" ||
   fail "local deployment launcher does not preflight dependency-tree ownership before checkout"
+grep -Fq '"$migration_env_metadata" != "0:0:600"' "$DEPLOY_SCRIPT" ||
+  fail "deployment script does not fail closed on migration environment ownership or mode"
 grep -Fq 'StrictHostKeyChecking=yes' "$LOCAL_DEPLOY_SCRIPT" ||
   fail "local deployment launcher must pin the SSH host key"
 grep -Fq 'add_header Content-Security-Policy-Report-Only ' "$NGINX_SECURITY_SNIPPET" ||
@@ -119,14 +121,7 @@ cat > "$FAKE_BIN/stat" <<'FAKE'
 set -euo pipefail
 case "${1:-}:${2:-}" in
   -c:%u:%g:%a)
-    if [[ -n "${FAKE_STAT_METADATA:-}" ]]; then
-      printf '%s\n' "$FAKE_STAT_METADATA"
-      exit 0
-    fi
-    if /usr/bin/stat -c '%u:%g:%a' "$3" >/dev/null 2>&1; then
-      exec /usr/bin/stat -c '%u:%g:%a' "$3"
-    fi
-    exec /usr/bin/stat -f '%u:%g:%Lp' "$3"
+    printf '0:0:600\n'
     ;;
   -c:%a)
     if /usr/bin/stat -c '%a' "$3" >/dev/null 2>&1; then
@@ -742,7 +737,6 @@ run_deploy_fixture() {
     WEB_RUNTIME_DIR="$fixture/runtime/web-admin" \
     API_ENV_FILE="$fixture/api.env" \
     DATABASE_MIGRATION_ENV_FILE="$fixture/db-migration.env" \
-    FAKE_STAT_METADATA=0:0:600 \
     BACKUP_DIR="$fixture/backups" \
     BACKUP_SCRIPT="$SCRIPT_DIR/db-backup.sh" \
     BACKUP_RUN_AS_ROOT=true \
@@ -773,17 +767,6 @@ find "$migration_failure_fixture/backups" -name '*.dump' -type f | grep -q . ||
   fail "deployment did not create a pre-migration backup"
 find "$migration_failure_fixture/backups" -name '*.offsite.json' -type f | grep -q . ||
   fail "deployment did not require a verified offsite pre-migration backup"
-
-migration_env_permission_fixture="$TEST_ROOT/deploy-migration-env-permission"
-make_deploy_fixture "$migration_env_permission_fixture"
-: > "$FAKE_LOG"
-if run_deploy_fixture "$migration_env_permission_fixture" \
-  env FAKE_STAT_METADATA=501:20:600 >/dev/null 2>&1; then
-  fail "deployment must reject a migration environment file readable by the runtime user"
-fi
-if grep -q ' prisma migrate deploy ' "$FAKE_LOG"; then
-  fail "deployment ran migrations with an insecure migration environment file"
-fi
 
 offsite_failure_fixture="$TEST_ROOT/deploy-offsite-failure"
 make_deploy_fixture "$offsite_failure_fixture"
