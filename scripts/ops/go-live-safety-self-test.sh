@@ -391,7 +391,7 @@ grep -q 'database-backups/[0-9]\{4\}/[0-9]\{2\}/[0-9]\{2\}/jiangkong-' "$FAKE_LO
 offsite_retry_dir="$TEST_ROOT/backup-offsite-retry"
 offsite_retry_count="$TEST_ROOT/backup-offsite-retry.count"
 mkdir -p "$offsite_retry_dir"
-offsite_retry_file="$(
+if ! offsite_retry_file="$(
   PATH="$FAKE_BIN:$PATH" \
     FAKE_LOG="$FAKE_LOG" \
     FAKE_NODE_COUNT_FILE="$offsite_retry_count" \
@@ -405,7 +405,9 @@ offsite_retry_file="$(
     DB_BACKUP_COS_REGION="ap-chengdu" \
     DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
     "$SCRIPT_DIR/db-backup.sh"
-)"
+)"; then
+  fail "transient COS failure was not retried once"
+fi
 assert_file "$offsite_retry_file.offsite.json"
 [[ "$(< "$offsite_retry_count")" == 3 ]] || fail "transient COS failure was not retried once"
 
