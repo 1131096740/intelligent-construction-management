@@ -520,8 +520,8 @@ async function actualPayerIdentity(
   }
   if (normalizedName === approvedPayer.displayName.trim()) return approvedPayer;
 
-  const [affiliate, company] = await Promise.all([
-    tx.projectAffiliateAssignment.findFirst({
+  const [affiliates, companies] = await Promise.all([
+    tx.projectAffiliateAssignment.findMany({
       where: {
         projectId,
         affiliateNameSnapshot: normalizedName,
@@ -534,7 +534,7 @@ async function actualPayerIdentity(
       },
       orderBy: { effectiveFrom: "desc" }
     }),
-    tx.projectParticipatingCompany.findFirst({
+    tx.projectParticipatingCompany.findMany({
       where: {
         projectId,
         companyNameSnapshot: normalizedName,
@@ -545,19 +545,34 @@ async function actualPayerIdentity(
       orderBy: { effectiveFrom: "desc" }
     })
   ]);
-  if (affiliate) {
-    return {
-      type: "affiliate",
+  const matches = [
+    ...affiliates.map((affiliate) => ({
+      type: "affiliate" as const,
       id: affiliate.businessPartyVersionId,
       displayName: affiliate.affiliateNameSnapshot
-    };
-  }
-  if (company) {
-    return {
-      type: "our_company",
+    })),
+    ...companies.map((company) => ({
+      type: "our_company" as const,
       id: company.companyEntityId,
       displayName: company.companyNameSnapshot
-    };
+    }))
+  ];
+  if (matches.length === 0 && normalizedName === approvedPayer.displayName.trim()) {
+    return approvedPayer;
+  }
+  if (matches.length === 1) {
+    const match = matches[0];
+    if (
+      normalizedName !== approvedPayer.displayName.trim() ||
+      (match.type === approvedPayer.type && match.id === approvedPayer.id)
+    ) {
+      return match;
+    }
+  }
+  if (matches.length > 1 || normalizedName === approvedPayer.displayName.trim()) {
+    throw new BadRequestException(
+      "历史接管实付实际付款主体名称匹配多个冻结主体，不能进入正式经营账"
+    );
   }
   throw new BadRequestException(
     "历史接管实付实际付款主体未匹配项目已冻结主体，不能进入正式经营账"

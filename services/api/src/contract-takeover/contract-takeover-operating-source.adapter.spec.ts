@@ -137,10 +137,12 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
       ...historicalPaymentRow(),
       payerName: "代付公司"
     });
-    tx.projectParticipatingCompany.findFirst.mockResolvedValue({
-      companyEntityId: "company-2",
-      companyNameSnapshot: "代付公司"
-    });
+    tx.projectParticipatingCompany.findMany.mockResolvedValue([
+      {
+        companyEntityId: "company-2",
+        companyNameSnapshot: "代付公司"
+      }
+    ]);
     tx.projectAffiliateAssignment.findFirst
       .mockResolvedValueOnce({
         id: "affiliate-assignment-1",
@@ -175,6 +177,35 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
         })
       ])
     );
+  });
+
+  it("rejects an ambiguous payer name that matches both frozen subject types", async () => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    tx.contractTakeoverHistoricalPayment.findUnique.mockResolvedValue({
+      ...historicalPaymentRow(),
+      payerName: "重复主体"
+    });
+    tx.projectAffiliateAssignment.findMany.mockResolvedValue([
+      {
+        businessPartyVersionId: "affiliate-version-2",
+        affiliateNameSnapshot: "重复主体"
+      }
+    ]);
+    tx.projectParticipatingCompany.findMany.mockResolvedValue([
+      {
+        companyEntityId: "company-2",
+        companyNameSnapshot: "重复主体"
+      }
+    ]);
+
+    await expect(
+      adapter.readSourceSnapshot(tx as never, {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "historical-payment-1"
+      })
+    ).rejects.toThrow("匹配多个冻结主体");
   });
 
   it("replays an append-only correction against the original operating fact id", async () => {
@@ -348,10 +379,12 @@ function historicalPaymentTx() {
         businessPartyVersionId: "affiliate-version-1",
         affiliateNameSnapshot: "施工企业甲",
         affiliateCreditCodeSnapshot: "91310000000000000X"
-      })
+      }),
+      findMany: jest.fn().mockResolvedValue([])
     },
     projectParticipatingCompany: {
-      findFirst: jest.fn().mockResolvedValue(null)
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([])
     },
     contractTakeoverCorrection: {
       findMany: jest.fn().mockResolvedValue([]),

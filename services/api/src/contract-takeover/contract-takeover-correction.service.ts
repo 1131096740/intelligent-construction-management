@@ -1054,16 +1054,16 @@ export class ContractTakeoverCorrectionService {
       appliedByUserId: actorUserId,
       appliedAt
     };
-    const input = buildOperatingCorrectionInput(
-      originalInput,
-      originalSnapshot,
-      projection,
-      entryKind
-    );
     // This business reversal reopens one balance impact; it is not a reversal
     // of the entire historical payment fact. Keep the ledger entry partial so
     // it satisfies the ledger's full-reversal invariant.
     const operatingEntryKind = entryKind === "reversal" ? "correction" : entryKind;
+    const input = buildOperatingCorrectionInput(
+      originalInput,
+      originalSnapshot,
+      projection,
+      operatingEntryKind
+    );
     await this.operatingLedger.appendCorrectionInTransaction(
       tx,
       input,

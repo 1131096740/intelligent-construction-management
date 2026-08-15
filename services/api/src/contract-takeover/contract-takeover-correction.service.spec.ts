@@ -899,7 +899,8 @@ describe("ContractTakeoverCorrectionService", () => {
       tx,
       expect.objectContaining({
         sourceBusinessId: "correction-1",
-        adjustsFactId: "operating-fact-1"
+        adjustsFactId: "operating-fact-1",
+        sourceSnapshot: expect.objectContaining({ entryKind: "correction" })
       }),
       "finance-director-1",
       "correction"
