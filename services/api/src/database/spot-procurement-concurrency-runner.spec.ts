@@ -72,13 +72,13 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
       "utf8"
     );
 
-    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 126");
+    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 128");
     expect(
       runner.match(/"migrate",\s*"deploy"/gu) ?? []
     ).toHaveLength(2);
     expect(runner).toContain("_prisma_migrations");
     expect(runner).toContain(
-      "20260814010000_project_operating_profile"
+      "20260814120000_operating_ledger_runtime_write_guard"
     );
     expect(runner).toContain("appliedMigrationCount");
     expect(runner).toContain("terminalMigrationCount");

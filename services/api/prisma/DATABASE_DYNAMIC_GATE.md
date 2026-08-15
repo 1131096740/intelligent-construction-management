@@ -1,10 +1,10 @@
 # 本机 PostgreSQL 16 动态门
 
-本入口把当前 80 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
+本入口把当前 87 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
 `database-dynamic-gate-manifest.json` 为机器真相；可编排不等于已经通过，必须以执行收据为准。
 
-当前迁移基线是 126 个目录，终点为
-`20260814010000_project_operating_profile`。
+当前迁移基线是 128 个目录，终点为
+`20260814120000_operating_ledger_runtime_write_guard`。
 
 ## 只读检查
 
@@ -29,7 +29,7 @@ node --test services/api/prisma/run-database-dynamic-gate-local.test.cjs
 - 进程没有继承 `DATABASE_URL` 或任何 `*_DATABASE_URL`；
 - Docker context 解析为本机 Unix socket 或 Windows named pipe；
 - 本机已经缓存 `postgres:16`，入口不会拉取镜像；
-- 源码仍精确包含 126 个迁移目录及当前终点迁移。
+- 源码仍精确包含 128 个迁移目录及当前终点迁移。
 
 执行格式如下，`<CURRENT_40_CHAR_SHA>` 必须手工替换为已核验候选：
 
@@ -55,7 +55,7 @@ node services/api/prisma/run-database-dynamic-gate-local.cjs \
 PostgreSQL 或子测试 runner 的情况下预览同一选择。
 
 不提供 `--group` 的全量入口先生成 Prisma Client 并构建 API，然后按清单串行调用 9 组 runner。已有 8 组保持独立收据；第 9 组由
-`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 9 个子组，覆盖原先缺少编排的 56 条。
+`run-database-dynamic-remaining-local.cjs` 再按专库和环境开关拆成 10 个子组，覆盖原先缺少编排的 63 条。
 每个 runner 自建仅绑定 `127.0.0.1` 的一次性 PostgreSQL 16 容器/数据库并自行清理；任一组失败即停止。
 最终标准输出是一行机器可读 JSON 收据，固定登记候选 SHA、迁移基线、镜像 ID、实际执行组及其测试覆盖。
 
@@ -75,7 +75,7 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | settlement draft lifecycle | 1 | 1 |
 | 合计 | 24 | 9 |
 
-## 新增编排的 56 条
+## 新增编排的 63 条
 
 | 测试文件 | pending tests | RUN 开关 |
 | --- | ---: | --- |
@@ -99,10 +99,12 @@ PostgreSQL 或子测试 runner 的情况下预览同一选择。
 | spot-material-classification-concurrency.spec.ts | 1 | `RUN_SPOT_MATERIAL_CLASSIFICATION_DATABASE` |
 | contract-change-baseline-concurrency.spec.ts | 1 | `RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY` |
 | project-upstream-fund-fact-db.spec.ts | 2 | `RUN_PROJECT_UPSTREAM_FUND_DB_TESTS` |
-| project-operating-profile-db.spec.ts | 13 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
+| project-operating-profile-upgrade.spec.ts | 2 | `RUN_PROJECT_OPERATING_PROFILE_UPGRADE` |
+| project-operating-profile-db.spec.ts | 17 | `RUN_PROJECT_OPERATING_PROFILE_DB_TESTS` |
+| operating-ledger-concurrency.spec.ts | 1 | `RUN_OPERATING_LEDGER_DATABASE` |
 | contract-governance-file-concurrency.spec.ts | 1 | `RUN_CONTRACT_GOVERNANCE_CONCURRENCY` |
 | project-external-upstream-db.spec.ts | 2 | `RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS` |
 | project-affiliate-subject-db.spec.ts | 2 | `RUN_PROJECT_AFFILIATE_DB_TESTS` |
-| 合计 | 56 | 24 个文件 |
+| 合计 | 63 | 26 个文件 |
 
-这 56 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。
+这 63 条已通过统一 runner 补齐一次性数据库命名、127.0.0.1 绑定、完整迁移、固定环境开关、失败清理与候选收据；执行失败仍会使动态数据库总门保持阻塞。

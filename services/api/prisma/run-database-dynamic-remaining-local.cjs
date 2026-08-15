@@ -13,9 +13,11 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 126;
-const TERMINAL_MIGRATION =
+const EXPECTED_MIGRATION_COUNT = 128;
+const PROJECT_OPERATING_PROFILE_MIGRATION =
   "20260814010000_project_operating_profile";
+const TERMINAL_MIGRATION =
+  "20260814120000_operating_ledger_runtime_write_guard";
 const prismaRoot = path.join(root, "services", "api", "prisma");
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
@@ -136,6 +138,7 @@ const GROUPS = [
       "src/database/contract-change-baseline-concurrency.spec.ts",
       "src/database/project-upstream-fund-fact-db.spec.ts",
       "src/database/project-operating-profile-db.spec.ts",
+      "src/database/operating-ledger-concurrency.spec.ts",
       "src/database/contract-governance-file-concurrency.spec.ts",
       "src/database/project-external-upstream-db.spec.ts",
       "src/database/project-affiliate-subject-db.spec.ts"
@@ -149,11 +152,13 @@ const GROUPS = [
       RUN_CONTRACT_CHANGE_BASELINE_CONCURRENCY: "1",
       RUN_PROJECT_UPSTREAM_FUND_DB_TESTS: "1",
       RUN_PROJECT_OPERATING_PROFILE_DB_TESTS: "1",
+      RUN_OPERATING_LEDGER_DATABASE: "1",
+      OPERATING_LEDGER_DATABASE_URL: "databaseUrl",
       RUN_CONTRACT_GOVERNANCE_CONCURRENCY: "1",
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 32
+    pendingTests: 33
   }
 ];
 
@@ -312,6 +317,9 @@ function createRuntimeEnvironment(base, temporaryRoot, databaseUrl, group) {
   for (const [key, value] of Object.entries(group.flags)) {
     environment[key] = value === "databaseUrl" ? databaseUrl : value;
   }
+  if (environment.RUN_OPERATING_LEDGER_DATABASE === "1") {
+    environment.OPERATING_LEDGER_DB_WRITE_SECRET = randomUUID();
+  }
   return environment;
 }
 
@@ -341,7 +349,12 @@ async function prepareProjectOperatingProfileUpgrade(
   await cp(path.join(prismaRoot, "schema.prisma"), path.join(fixturePrismaRoot, "schema.prisma"));
   await cp(path.join(prismaRoot, "migrations"), path.join(fixturePrismaRoot, "migrations"), {
     recursive: true,
-    filter: (source) => path.basename(source) !== TERMINAL_MIGRATION
+    filter: (source) => {
+      const relativePath = path.relative(path.join(prismaRoot, "migrations"), source);
+      if (!relativePath || relativePath === "migration_lock.toml") return true;
+      const [migrationName] = relativePath.split(path.sep);
+      return migrationName < PROJECT_OPERATING_PROFILE_MIGRATION;
+    }
   });
   await run(
     pnpm,

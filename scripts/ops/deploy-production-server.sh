@@ -11,6 +11,7 @@ DEPLOY_CONFIRMATION_FILE="${DEPLOY_CONFIRMATION_FILE:-}"
 DEPLOY_CONFIRMATION_TIMEOUT_SECONDS="${DEPLOY_CONFIRMATION_TIMEOUT_SECONDS:-1800}"
 TARGET_SHA="${TARGET_SHA:-}"
 API_ENV_FILE="${API_ENV_FILE:-/etc/jiangkong/api.env}"
+DATABASE_MIGRATION_ENV_FILE="${DATABASE_MIGRATION_ENV_FILE:-/etc/jiangkong/db-migration.env}"
 API_SERVICE="${API_SERVICE:-jiangkong-api}"
 BACKUP_DIR="${BACKUP_DIR:-/srv/jiangkong-backups/db}"
 DB_BACKUP_ENV_FILE="${DB_BACKUP_ENV_FILE:-/etc/jiangkong/db-backup.env}"
@@ -98,41 +99,130 @@ run_pre_migration_backup() {
 run_prisma_migrations() {
   sudo --non-interactive env \
     COREPACK_HOME="$DEPLOY_COREPACK_HOME" \
-    bash -s -- "$API_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
+    bash -s -- "$API_ENV_FILE" "$DATABASE_MIGRATION_ENV_FILE" "$REPO_ROOT" <<'ROOT_MIGRATION'
 set -euo pipefail
 
-env_file=$1
-repo_root=$2
-database_url=""
-database_url_count=0
+api_env_file=$1
+migration_env_file=$2
+repo_root=$3
 
-while IFS= read -r line || [[ -n "$line" ]]; do
-  line="${line%$'\r'}"
-  [[ "$line" == DATABASE_URL=* ]] || continue
-  database_url_count=$((database_url_count + 1))
-  database_url="${line#DATABASE_URL=}"
-  if [[ "$database_url" == \"* ]]; then
-    if [[ "$database_url" != *\" || ${#database_url} -lt 2 ]]; then
-      echo "API_ENV_FILE contains an invalid quoted DATABASE_URL" >&2
-      exit 1
+read_single_env_value() {
+  local env_file=$1
+  local variable_name=$2
+  local env_file_label=$3
+  local value=""
+  local value_count=0
+  local line=""
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      "$variable_name"=*)
+        value_count=$((value_count + 1))
+        value="${line#*=}"
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    if [[ "$value" == \"* ]]; then
+      if [[ "$value" != *\" || ${#value} -lt 2 ]]; then
+        echo "$env_file_label contains an invalid quoted $variable_name" >&2
+        exit 1
+      fi
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'* ]]; then
+      if [[ "$value" != *\' || ${#value} -lt 2 ]]; then
+        echo "$env_file_label contains an invalid quoted $variable_name" >&2
+        exit 1
+      fi
+      value="${value:1:${#value}-2}"
     fi
-    database_url="${database_url:1:${#database_url}-2}"
-  elif [[ "$database_url" == \'* ]]; then
-    if [[ "$database_url" != *\' || ${#database_url} -lt 2 ]]; then
-      echo "API_ENV_FILE contains an invalid quoted DATABASE_URL" >&2
-      exit 1
-    fi
-    database_url="${database_url:1:${#database_url}-2}"
+  done < "$env_file"
+
+  if [[ "$value_count" != 1 || -z "$value" ]]; then
+    echo "$env_file_label must contain exactly one non-empty $variable_name" >&2
+    exit 1
   fi
-done < "$env_file"
+  printf '%s' "$value"
+}
 
-if [[ "$database_url_count" != 1 || -z "$database_url" ]]; then
-  echo "API_ENV_FILE must contain exactly one non-empty DATABASE_URL" >&2
+if [[ ! -r "$api_env_file" ]]; then
+  echo "API_ENV_FILE is not readable" >&2
+  exit 1
+fi
+if [[ ! -r "$migration_env_file" ]]; then
+  echo "DATABASE_MIGRATION_ENV_FILE is not readable" >&2
+  exit 1
+fi
+migration_env_metadata="$(stat -c '%u:%g:%a' "$migration_env_file" 2>/dev/null || stat -f '%u:%g:%Lp' "$migration_env_file")" || {
+  echo "DATABASE_MIGRATION_ENV_FILE metadata cannot be read" >&2
+  exit 1
+}
+if [[ "$migration_env_metadata" != "0:0:600" ]]; then
+  echo "DATABASE_MIGRATION_ENV_FILE must be root:root with mode 0600" >&2
+  exit 1
+fi
+if grep -Eq '^[[:space:]]*(export[[:space:]]+)?DATABASE_MIGRATION_URL[[:space:]]*=' "$api_env_file"; then
+  echo "API_ENV_FILE must not contain DATABASE_MIGRATION_URL; use DATABASE_MIGRATION_ENV_FILE" >&2
+  exit 1
+fi
+
+database_url="$(read_single_env_value "$api_env_file" "DATABASE_URL" "API_ENV_FILE")"
+operating_ledger_runtime_role="$(read_single_env_value "$api_env_file" "OPERATING_LEDGER_RUNTIME_ROLE" "API_ENV_FILE")"
+database_migration_url="$(read_single_env_value "$migration_env_file" "DATABASE_MIGRATION_URL" "DATABASE_MIGRATION_ENV_FILE")"
+
+runtime_database_target="$(DATABASE_URL="$database_url" node - <<'NODE'
+try {
+  const url = new URL(process.env.DATABASE_URL);
+  const user = decodeURIComponent(url.username);
+  const host = url.hostname.replace(/^\[|\]$/gu, "");
+  const port = url.port || "5432";
+  const database = decodeURIComponent(url.pathname.replace(/^\//u, ""));
+  if (!user || !host || !database || /[\t\r\n]/u.test(`${user}${host}${port}${database}`)) process.exit(1);
+  process.stdout.write([user, host, port, database].join("\t"));
+} catch {
+  process.exit(1);
+}
+NODE
+)" || {
+  echo "API_ENV_FILE DATABASE_URL must be a valid PostgreSQL URL with a user" >&2
+  exit 1
+}
+IFS=$'\t' read -r runtime_database_user runtime_database_host runtime_database_port runtime_database_name <<< "$runtime_database_target"
+migration_database_target="$(DATABASE_URL="$database_migration_url" node - <<'NODE'
+try {
+  const url = new URL(process.env.DATABASE_URL);
+  const user = decodeURIComponent(url.username);
+  const host = url.hostname.replace(/^\[|\]$/gu, "");
+  const port = url.port || "5432";
+  const database = decodeURIComponent(url.pathname.replace(/^\//u, ""));
+  if (!user || !host || !database || /[\t\r\n]/u.test(`${user}${host}${port}${database}`)) process.exit(1);
+  process.stdout.write([user, host, port, database].join("\t"));
+} catch {
+  process.exit(1);
+}
+NODE
+)" || {
+  echo "DATABASE_MIGRATION_ENV_FILE DATABASE_MIGRATION_URL must be a valid PostgreSQL URL with a user" >&2
+  exit 1
+}
+IFS=$'\t' read -r migration_database_user migration_database_host migration_database_port migration_database_name <<< "$migration_database_target"
+if [[ "$runtime_database_user" != "$operating_ledger_runtime_role" ||
+  "$runtime_database_user" == "$migration_database_user" ||
+  "$runtime_database_host" != "$migration_database_host" ||
+  "$runtime_database_port" != "$migration_database_port" ||
+  "$runtime_database_name" != "$migration_database_name" ||
+  "$runtime_database_user" == "postgres" ||
+  "$migration_database_user" == "" ]]; then
+  echo "DATABASE_URL and DATABASE_MIGRATION_URL must target the same server/database with distinct runtime and owner roles" >&2
   exit 1
 fi
 
 cd "$repo_root"
-DATABASE_URL="$database_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
+DATABASE_URL="$database_migration_url" pnpm --filter @jiangkong/api exec prisma migrate deploy
+DATABASE_OWNER_URL="$database_migration_url" OPERATING_LEDGER_RUNTIME_ROLE="$operating_ledger_runtime_role" \
+  "$repo_root/scripts/ops/verify-operating-ledger-runtime-role.sh"
 ROOT_MIGRATION
 }
 
