@@ -27,7 +27,7 @@ const EXPECTED_MIGRATION_COUNT = 128;
 const TERMINAL_MIGRATION =
   "20260814120000_operating_ledger_runtime_write_guard";
 const TERMINAL_MIGRATION_CHECKSUM =
-  "9830b10c0955e48b19a99fc06a5bb6c806c4f3fbf03ffb603c39a0f4b09cf5cb";
+  "8330844c064c72bf72f6e4c85908ac1e92f2654db23766a88ba178f53ee4bf1a";
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
 const pnpm =

@@ -46,9 +46,9 @@ describe("settlement approval withdrawal PostgreSQL runner", () => {
     expect(runner.VERIFICATION_SCOPE).toBe(
       "settlement-approval-withdrawal"
     );
-    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(127);
+    expect(runner.EXPECTED_MIGRATION_COUNT).toBe(128);
     expect(runner.TERMINAL_MIGRATION).toBe(
-      "20260814100000_operating_ledger"
+      "20260814120000_operating_ledger_runtime_write_guard"
     );
     expect(runner.TERMINAL_MIGRATION_CHECKSUM).toBe(
       createHash("sha256").update(migration).digest("hex")
