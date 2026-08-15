@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-set -Euo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEST_ROOT="$(mktemp -d)"
 FAKE_BIN="$TEST_ROOT/bin"
 FAKE_LOG="$TEST_ROOT/fake.log"
 REAL_NODE="$(command -v node)"
-SELF_TEST_STAGE=setup
 export REAL_NODE
 
 bash -n \
@@ -19,22 +18,10 @@ bash -n \
   "$SCRIPT_DIR/run-production-db-backup.sh"
 
 cleanup() {
-  local status=$?
-  local cleanup_status=0
-  trap - EXIT
-  if (( status != 0 )); then
-    echo "self-test stopped during stage: $SELF_TEST_STAGE" >&2
-  fi
   chmod -R u+w "$TEST_ROOT" 2>/dev/null || true
-  rm -rf "$TEST_ROOT" || cleanup_status=$?
-  if (( cleanup_status != 0 )); then
-    echo "self-test cleanup failed with exit=$cleanup_status" >&2
-    exit "$cleanup_status"
-  fi
-  exit "$status"
+  rm -rf "$TEST_ROOT"
 }
 trap cleanup EXIT
-trap 'status=$?; echo "self-test unexpected failure at line $LINENO (exit=$status)" >&2; exit "$status"' ERR
 
 fail() {
   echo "self-test failed: $*" >&2
@@ -278,9 +265,6 @@ FAKE
 cat > "$FAKE_BIN/sleep" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${FAKE_NODE_TRACE:-false}" == true ]]; then
-  echo "fake sleep invoked" >&2
-fi
 if [[ -n "${FAKE_DEPLOY_CONFIRMATION_FILE:-}" ]] &&
   [[ ! -e "$FAKE_DEPLOY_CONFIRMATION_FILE" ]]; then
   printf '%s %s\n' \
@@ -301,7 +285,7 @@ FAKE
 cat > "$FAKE_BIN/node" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-}" == "-" ]]; then
+if [[ "${1:-}" == "-" || $# -eq 0 ]]; then
   exec "$REAL_NODE" "$@"
 fi
 printf 'node bucket=%s region=%s %s\n' \
@@ -314,9 +298,6 @@ if [[ -n "${FAKE_NODE_COUNT_FILE:-}" ]]; then
     count="$(( $(< "$FAKE_NODE_COUNT_FILE") + 1 ))"
   fi
   printf '%s\n' "$count" > "$FAKE_NODE_COUNT_FILE"
-fi
-if [[ "${FAKE_NODE_TRACE:-false}" == true ]]; then
-  echo "fake node upload attempt $count" >&2
 fi
 if [[ "${FAKE_NODE_FAIL_ON:-0}" == "$count" ]] ||
   { [[ "${FAKE_NODE_FAIL_FROM:-0}" != 0 ]] && (( count >= FAKE_NODE_FAIL_FROM )); }; then
@@ -409,12 +390,10 @@ grep -q 'database-backups/[0-9]\{4\}/[0-9]\{2\}/[0-9]\{2\}/jiangkong-' "$FAKE_LO
 offsite_retry_dir="$TEST_ROOT/backup-offsite-retry"
 offsite_retry_count="$TEST_ROOT/backup-offsite-retry.count"
 mkdir -p "$offsite_retry_dir"
-SELF_TEST_STAGE=offsite-retry
-if ! offsite_retry_file="$(
+offsite_retry_file="$(
   PATH="$FAKE_BIN:$PATH" \
     FAKE_LOG="$FAKE_LOG" \
     FAKE_NODE_COUNT_FILE="$offsite_retry_count" \
-    FAKE_NODE_TRACE=true \
     FAKE_NODE_FAIL_ON=1 \
     DATABASE_URL="postgresql://local/jiangkong" \
     BACKUP_DIR="$offsite_retry_dir" \
@@ -425,14 +404,10 @@ if ! offsite_retry_file="$(
     DB_BACKUP_COS_REGION="ap-chengdu" \
     DB_BACKUP_TRANSFER_SCRIPT="$SCRIPT_DIR/cos-backup-transfer.mjs" \
     "$SCRIPT_DIR/db-backup.sh"
-)"; then
-  fail "transient COS failure was not retried once"
-fi
+)"
 assert_file "$offsite_retry_file.offsite.json"
 [[ "$(< "$offsite_retry_count")" == 3 ]] || fail "transient COS failure was not retried once"
-echo "self-test completed stage: offsite-retry" >&2
 
-SELF_TEST_STAGE=offsite-failure
 offsite_failure_dir="$TEST_ROOT/backup-offsite-failure"
 offsite_failure_count="$TEST_ROOT/backup-offsite-failure.count"
 mkdir -p "$offsite_failure_dir"
@@ -458,9 +433,7 @@ find "$offsite_failure_dir" -name '*.dump' -type f | grep -q . ||
 find "$offsite_failure_dir" -name '*.dump.sha256' -type f | grep -q . ||
   fail "offsite failure removed the verified local checksum"
 assert_no_files "$offsite_failure_dir" '*.offsite.json'
-echo "self-test completed stage: offsite-failure" >&2
 
-SELF_TEST_STAGE=credential-file-safety
 insecure_env_file="$TEST_ROOT/insecure-backup.env"
 printf 'DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719\n' > "$insecure_env_file"
 chmod 644 "$insecure_env_file"
@@ -548,9 +521,7 @@ if PATH="$FAKE_BIN:$PATH" \
 fi
 assert_no_files "$backup_failure_dir" '*.dump'
 assert_no_files "$backup_failure_dir" '*.sha256'
-echo "self-test completed stage: credential-file-safety" >&2
 
-SELF_TEST_STAGE=restore-drill-safety
 : > "$FAKE_LOG"
 if PATH="$FAKE_BIN:$PATH" \
   FAKE_LOG="$FAKE_LOG" \
@@ -586,10 +557,8 @@ PATH="$FAKE_BIN:$PATH" \
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "restore drill did not validate the archive"
 grep -q 'pg_restore --exit-on-error --dbname ' "$FAKE_LOG" ||
   fail "restore drill did not enable exit-on-error"
-echo "self-test completed stage: restore-drill-safety" >&2
 
 candidate_restore_root="$TEST_ROOT/candidate-restore"
-SELF_TEST_STAGE=candidate-restore-drill
 candidate_migrations="$candidate_restore_root/services/api/prisma/migrations"
 mkdir -p "$candidate_migrations"
 for migration_number in $(seq 1 51); do
@@ -664,7 +633,6 @@ fi
 if grep -q '^pg_restore --exit-on-error ' "$FAKE_LOG"; then
   fail "candidate restore drill restored data before verifying candidate checkout cleanliness"
 fi
-echo "self-test completed stage: candidate-restore-drill" >&2
 
 rm -f "$candidate_migration_marker"
 if PATH="$FAKE_BIN:$PATH" \
@@ -785,7 +753,6 @@ run_deploy_fixture() {
 }
 
 migration_failure_fixture="$TEST_ROOT/deploy-migration-failure"
-SELF_TEST_STAGE=deployment-safety
 make_deploy_fixture "$migration_failure_fixture"
 : > "$FAKE_LOG"
 if run_deploy_fixture "$migration_failure_fixture" env FAKE_MIGRATE_FAIL=true >/dev/null 2>&1; then
@@ -800,7 +767,6 @@ find "$migration_failure_fixture/backups" -name '*.dump' -type f | grep -q . ||
   fail "deployment did not create a pre-migration backup"
 find "$migration_failure_fixture/backups" -name '*.offsite.json' -type f | grep -q . ||
   fail "deployment did not require a verified offsite pre-migration backup"
-echo "self-test completed deployment fixture: migration-failure" >&2
 
 offsite_failure_fixture="$TEST_ROOT/deploy-offsite-failure"
 make_deploy_fixture "$offsite_failure_fixture"
@@ -814,7 +780,6 @@ fi
 if grep -q ' prisma migrate deploy ' "$FAKE_LOG"; then
   fail "deployment migrated the database before the offsite backup was verified"
 fi
-echo "self-test completed deployment fixture: offsite-failure" >&2
 
 invalid_scope_fixture="$TEST_ROOT/deploy-invalid-scope"
 make_deploy_fixture "$invalid_scope_fixture"
@@ -825,7 +790,6 @@ fi
 if [[ -s "$FAKE_LOG" ]]; then
   fail "deployment performed work before rejecting an unknown deployment scope"
 fi
-echo "self-test completed deployment fixture: invalid-scope" >&2
 
 invalid_candidate_fixture="$TEST_ROOT/deploy-invalid-candidate"
 make_deploy_fixture "$invalid_candidate_fixture"
@@ -837,7 +801,6 @@ fi
 if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment performed work before rejecting the candidate SHA"
 fi
-echo "self-test completed deployment fixture: invalid-candidate" >&2
 
 api_only_fixture="$TEST_ROOT/deploy-api-only"
 make_deploy_fixture "$api_only_fixture"
@@ -864,7 +827,6 @@ grep -Fq 'curl args=-fsS http://127.0.0.1:3000/health/readiness runtime=' "$FAKE
   fail "deployment did not install the pristine draft deletion receipt purge service"
 [[ -f "$api_only_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer" ]] ||
   fail "deployment did not install the pristine draft deletion receipt purge timer"
-echo "self-test completed deployment fixture: api-only" >&2
 
 api_only_health_failure_fixture="$TEST_ROOT/deploy-api-only-health-failure"
 make_deploy_fixture "$api_only_health_failure_fixture"
@@ -880,7 +842,6 @@ fi
 if grep -Fq "$api_only_health_failure_fixture/runtime/web-admin" "$FAKE_LOG"; then
   fail "API-only recovery touched the Web runtime"
 fi
-echo "self-test completed deployment fixture: api-only-health-failure" >&2
 
 manual_confirmation_fixture="$TEST_ROOT/deploy-manual-confirmation"
 make_deploy_fixture "$manual_confirmation_fixture"
@@ -900,7 +861,6 @@ run_deploy_fixture "$manual_confirmation_fixture" env \
   fail "manually confirmed deployment did not keep the new Web runtime"
 [[ ! -e "$manual_confirmation_file" ]] ||
   fail "manual confirmation marker was not removed"
-echo "self-test completed deployment fixture: manual-confirmation" >&2
 
 manual_rollback_fixture="$TEST_ROOT/deploy-manual-rollback"
 make_deploy_fixture "$manual_rollback_fixture"
@@ -922,7 +882,6 @@ fi
   fail "manual rollback did not restore the Web runtime"
 [[ ! -e "$manual_rollback_file" ]] ||
   fail "manual rollback marker was not removed"
-echo "self-test completed deployment fixture: manual-rollback" >&2
 
 manual_timeout_fixture="$TEST_ROOT/deploy-manual-timeout"
 make_deploy_fixture "$manual_timeout_fixture"
@@ -940,7 +899,6 @@ fi
   fail "manual confirmation timeout did not restore the API runtime"
 [[ "$(< "$manual_timeout_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
   fail "manual confirmation timeout did not restore the Web runtime"
-echo "self-test completed deployment fixture: manual-timeout" >&2
 
 stale_confirmation_fixture="$TEST_ROOT/deploy-stale-confirmation"
 make_deploy_fixture "$stale_confirmation_fixture"
@@ -957,7 +915,6 @@ fi
 if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment performed work before rejecting a stale confirmation marker"
 fi
-echo "self-test completed deployment fixture: stale-confirmation" >&2
 
 unwritable_dependency_fixture="$TEST_ROOT/deploy-unwritable-dependency-tree"
 make_deploy_fixture "$unwritable_dependency_fixture"
@@ -974,7 +931,6 @@ fi
 if grep -Eq '^(systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment mutated runtime or database state before rejecting an unwritable dependency tree"
 fi
-echo "self-test completed deployment fixture: unwritable-dependency-tree" >&2
 
 health_failure_fixture="$TEST_ROOT/deploy-health-failure"
 make_deploy_fixture "$health_failure_fixture"
@@ -990,10 +946,8 @@ fi
   fail "Web runtime snapshot was not restored"
 restart_count="$(grep -c '^systemctl restart jiangkong-api$' "$FAKE_LOG")"
 [[ "$restart_count" -ge 2 ]] || fail "recovery did not restart the restored API runtime"
-echo "self-test completed stage: deployment-safety" >&2
 
 "$REAL_NODE" --test "$SCRIPT_DIR/cos-backup-transfer.test.mjs" >/dev/null
-SELF_TEST_STAGE=operations-node-tests
 "$REAL_NODE" --test "$SCRIPT_DIR/check-production-db-backup.test.mjs" >/dev/null
 
 echo "go-live ops safety self-test passed"
