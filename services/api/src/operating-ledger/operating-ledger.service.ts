@@ -106,7 +106,15 @@ export interface OperatingFactWriteResult {
   impactIds: string[];
 }
 
-type OperatingLedgerTransaction = Prisma.TransactionClient;
+export interface OperatingSourceComparisonState {
+  input: AppendOperatingFactInput;
+  entryKind: OperatingFactEntryKind;
+  operatingLedgerEffectiveDateSnapshot: Date;
+  subjectSnapshot: Prisma.InputJsonObject;
+  impactSnapshots: ReadonlyMap<string, Prisma.InputJsonObject>;
+}
+
+export type OperatingLedgerTransaction = Prisma.TransactionClient;
 type OperatingFactWriteRow = Pick<
   OperatingFactWriteResult,
   "id" | "projectId" | "sourceType" | "sourceBusinessId"
@@ -211,6 +219,21 @@ export class OperatingLedgerService {
     return this.appendEnvelope(tx, input, actorUserId, "original");
   }
 
+  async replayFromSourceInTransaction(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactInput,
+    actorUserId: string,
+    entryKind: OperatingFactEntryKind = "original"
+  ): Promise<OperatingFactWriteResult> {
+    return this.appendEnvelope(
+      tx,
+      input,
+      actorUserId,
+      entryKind,
+      "frozen_source"
+    );
+  }
+
   async appendCorrection(
     input: AppendOperatingFactCorrectionInput,
     actorUserId: string
@@ -230,25 +253,81 @@ export class OperatingLedgerService {
   }
 
   async readFacts(projectId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertProjectFinanceManager(tx, actorUserId, projectId);
-      return tx.operatingFact.findMany({
-        where: { projectId, status: "confirmed" },
-        include: { impacts: true },
-        orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
-      });
+    return this.prisma.$transaction((tx) =>
+      this.readFactsInTransaction(tx, projectId, actorUserId)
+    );
+  }
+
+  async readFactsInTransaction(
+    tx: OperatingLedgerTransaction,
+    projectId: string,
+    actorUserId: string
+  ) {
+    await this.assertProjectFinanceManager(tx, actorUserId, projectId);
+    return tx.operatingFact.findMany({
+      where: { projectId, status: "confirmed" },
+      include: { impacts: true },
+      orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
     });
+  }
+
+  async assertProjectFinanceAccessInTransaction(
+    tx: OperatingLedgerTransaction,
+    actorUserId: string,
+    projectId: string
+  ): Promise<void> {
+    await this.assertProjectFinanceManager(tx, actorUserId, projectId);
+  }
+
+  async materializeSourceForComparisonInTransaction(
+    tx: OperatingLedgerTransaction,
+    rawInput: AppendOperatingFactInput,
+    entryKind: OperatingFactEntryKind = "original"
+  ): Promise<OperatingSourceComparisonState> {
+    const input = normalizeFactInput(rawInput);
+    validateFactInput(input);
+    const project = await tx.project.findUnique({
+      where: { id: input.projectId },
+      select: { isActive: true, operatingLedgerEffectiveDate: true }
+    });
+    if (!project?.isActive) {
+      throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+    }
+    if (!project.operatingLedgerEffectiveDate) {
+      throw new BadRequestException("项目尚未启用经营账，不能执行一致性校验");
+    }
+    const subjectSnapshot = await this.factSubjectSnapshot(tx, input);
+    const impactSnapshots = new Map<string, Prisma.InputJsonObject>();
+    for (const impact of input.impacts) {
+      impactSnapshots.set(
+        impact.sourceImpactKey,
+        await this.impactSnapshotWithSubject(tx, input, impact)
+      );
+    }
+    return {
+      input,
+      entryKind,
+      operatingLedgerEffectiveDateSnapshot: project.operatingLedgerEffectiveDate,
+      subjectSnapshot,
+      impactSnapshots
+    };
   }
 
   private async appendEnvelope(
     tx: OperatingLedgerTransaction,
     rawInput: AppendOperatingFactInput,
     actorUserId: string,
-    entryKind: OperatingFactEntryKind
+    entryKind: OperatingFactEntryKind,
+    confirmationAuthority: "actor" | "frozen_source" = "actor"
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
-    const writeScope = await this.assertWriteScope(tx, input, actorUserId);
+    const writeScope = await this.assertWriteScope(
+      tx,
+      input,
+      actorUserId,
+      confirmationAuthority
+    );
     const subjectSnapshot = await this.factSubjectSnapshot(tx, input);
 
     await tx.$executeRaw(
@@ -507,7 +586,8 @@ export class OperatingLedgerService {
   private async assertWriteScope(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
-    actorUserId: string
+    actorUserId: string,
+    confirmationAuthority: "actor" | "frozen_source"
   ): Promise<{
     effectiveDate: Date;
   }> {
@@ -520,8 +600,21 @@ export class OperatingLedgerService {
         operatingLedgerEffectiveDate: true
       }
     });
-    if (requiredText(input.confirmedByUserId, "正式确认人不能为空") !== actorUserId) {
+    const confirmedByUserId = requiredText(
+      input.confirmedByUserId,
+      "正式确认人不能为空"
+    );
+    if (confirmationAuthority === "actor" && confirmedByUserId !== actorUserId) {
       throw new ForbiddenException("正式确认人必须是当前财务操作人");
+    }
+    if (confirmationAuthority === "frozen_source") {
+      const sourceConfirmer = await tx.user.findUnique({
+        where: { id: confirmedByUserId },
+        select: { id: true }
+      });
+      if (!sourceConfirmer) {
+        throw new BadRequestException("冻结来源的正式确认人不存在，不能执行重放");
+      }
     }
     if (!project?.isActive) {
       throw new NotFoundException("项目不存在或已停用，请刷新后重试");
