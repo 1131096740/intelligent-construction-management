@@ -118,6 +118,39 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("accepts the frozen source confirmer without granting that domain actor finance access", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "contract-director", isActive: true },
+      projectMembers: [{ positionKey: "contract_director" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = {
+      ...baseInput(),
+      confirmedByUserId: "contract-director",
+      factKind: "downstream_settlement" as const,
+      subjects: {
+        debtor: {
+          kind: "construction_enterprise" as const,
+          id: "affiliate-version-1"
+        },
+        creditor: {
+          kind: "downstream_counterparty" as const,
+          id: "counterparty-version-1"
+        }
+      }
+    };
+
+    await expect(
+      service.appendConfirmedSourceInTransaction(
+        prisma as never,
+        input,
+        "contract-director"
+      )
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+  });
+
   it("does not let a C-level fact create formal impacts", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
@@ -159,6 +192,102 @@ describe("OperatingLedgerService", () => {
         "actor-1"
       )
     ).rejects.toThrow("尚未接入该主体种类");
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a company-only fact role uses a counterparty kind", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...baseInput(),
+          subjects: {
+            costBearingCompany: {
+              kind: "downstream_counterparty",
+              id: "counterparty-version-1"
+            }
+          }
+        },
+        "actor-1"
+      )
+    ).rejects.toThrow("成本承担公司主体只能是施工企业或我方公司");
+    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts an owner as the actual payer of an owner payment", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = baseInput();
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...input,
+          factKind: "owner_payment",
+          direction: "inflow",
+          subjects: {
+            actualPayer: { kind: "owner", id: "owner-1" },
+            payee: {
+              kind: "construction_enterprise",
+              id: "affiliate-version-1"
+            }
+          },
+          impacts: [
+            {
+              ...input.impacts[0]!,
+              impactKind: "receivable_decrease",
+              costCategoryCode: undefined,
+              direction: "decrease",
+              subjectRole: "actual_payer",
+              subject: { kind: "owner", id: "owner-1" }
+            }
+          ]
+        },
+        "actor-1"
+      )
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+  });
+
+  it("fails closed when an impact payer role uses a downstream counterparty", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(),
+      assignment: assignmentRecord()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+    const input = baseInput();
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...input,
+          impacts: [
+            {
+              ...input.impacts[0]!,
+              subjectRole: "actual_payer",
+              subject: {
+                kind: "downstream_counterparty",
+                id: "counterparty-version-1"
+              }
+            }
+          ]
+        },
+        "actor-1"
+      )
+    ).rejects.toThrow("实际付款主体只能是业主或施工企业或我方公司");
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 });

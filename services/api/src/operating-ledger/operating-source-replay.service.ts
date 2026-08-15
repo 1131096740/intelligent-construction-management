@@ -51,6 +51,35 @@ export interface OperatingConsistencyReport {
   differences: OperatingConsistencyDifference[];
 }
 
+export type OperatingSourceAppendPort = Pick<
+  OperatingSourceReplayService,
+  "appendConfirmedSourceIfEnabledInTransaction"
+>;
+
+export function missingOperatingSourceReplayService(): OperatingSourceAppendPort {
+  return {
+    async appendConfirmedSourceIfEnabledInTransaction(
+      tx: OperatingLedgerTransaction,
+      locator: OperatingSourceLocator
+    ) {
+      const projectClient = (
+        tx as unknown as {
+          project?: typeof tx.project;
+        }
+      ).project;
+      if (!projectClient) return null;
+      const project = await projectClient.findUnique({
+        where: { id: locator.projectId },
+        select: { operatingLedgerEffectiveDate: true }
+      });
+      if (project?.operatingLedgerEffectiveDate) {
+        throw new Error("经营账来源投影服务未注入，已拒绝正式来源写入");
+      }
+      return null;
+    }
+  };
+}
+
 @Injectable()
 export class OperatingSourceReplayService {
   constructor(
@@ -79,6 +108,33 @@ export class OperatingSourceReplayService {
         mapped.entryKind
       );
     });
+  }
+
+  async appendConfirmedSourceIfEnabledInTransaction(
+    tx: OperatingLedgerTransaction,
+    locator: OperatingSourceLocator,
+    actorUserId: string
+  ) {
+    const project = await tx.project.findUnique({
+      where: { id: locator.projectId },
+      select: { operatingLedgerEffectiveDate: true }
+    });
+    if (!project?.operatingLedgerEffectiveDate) return null;
+
+    const adapter = this.registry.require(locator.sourceType);
+    const snapshot = requireOperatingSourceSnapshot(
+      await adapter.readSourceSnapshot(tx, locator),
+      locator
+    );
+    const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+    if (mapped.entryKind !== "original") {
+      throw new BadRequestException("正式业务来源写入只接受原始经营事实");
+    }
+    return this.operatingLedger.appendConfirmedSourceInTransaction(
+      tx,
+      mapped.input,
+      actorUserId
+    );
   }
 
   async compareProject(

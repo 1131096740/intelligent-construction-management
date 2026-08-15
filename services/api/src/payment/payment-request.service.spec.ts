@@ -5107,12 +5107,20 @@ describe("PaymentRequestService", () => {
     const prisma = {
       $transaction: jest.fn(async (callback) => callback(paymentExecutionGuardTx(tx)))
     };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
     const paymentService = paymentExecutionService(
       new PaymentAmountService(),
       prisma as never,
       undefined,
       undefined,
-      auth as never
+      auth as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      operatingSources as never
     );
 
     const execution = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
@@ -5125,6 +5133,17 @@ describe("PaymentRequestService", () => {
 
     expect(execution.id).toBe("execution-1");
     expect(execution.amountCents).toBe("30000");
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        projectId: "project-1",
+        sourceType: "payment_execution",
+        sourceBusinessId: "execution-1"
+      },
+      "cashier-1"
+    );
     expect(auth.confirmPassword).toHaveBeenCalledWith("cashier-1", "current-password");
     expect(tx.$queryRaw).toHaveBeenCalled();
     expect(tx.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(

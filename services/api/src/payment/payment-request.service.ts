@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Inject,
   Injectable,
   Optional
 } from "@nestjs/common";
@@ -36,6 +37,12 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
+import { PAYMENT_EXECUTION_SOURCE_TYPE } from "./payment-operating-source.adapter";
 import {
   dbMoneyToBigInt,
   formatMoneyCentsAsYuan,
@@ -214,7 +221,10 @@ export class PaymentRequestService {
     private readonly approvalForms?: ApprovalFormService,
     private readonly projectFunding?: ProjectFundingAvailabilityService,
     @Optional()
-    private readonly takeoverBalances?: ContractTakeoverBalanceService
+    private readonly takeoverBalances?: ContractTakeoverBalanceService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   assertSettlementEffective(status: SettlementStatus): void {
@@ -2990,6 +3000,12 @@ export class PaymentRequestService {
             occurredAt: paidAt,
             actorUserId
           });
+          await this.appendOperatingPaymentExecution(
+            tx,
+            payment.projectId,
+            existingExecution.id,
+            actorUserId
+          );
           return existingExecution;
         }
 
@@ -3172,6 +3188,13 @@ export class PaymentRequestService {
           });
         }
 
+        await this.appendOperatingPaymentExecution(
+          tx,
+          payment.projectId,
+          execution.id,
+          actorUserId
+        );
+
         await this.audit.record(tx, {
           actorUserId,
           action: "payment.execution.record",
@@ -3239,6 +3262,23 @@ export class PaymentRequestService {
       }
       throw error;
     }
+  }
+
+  private async appendOperatingPaymentExecution(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    paymentExecutionId: string,
+    actorUserId: string
+  ): Promise<void> {
+    await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      tx,
+      {
+        projectId,
+        sourceType: PAYMENT_EXECUTION_SOURCE_TYPE,
+        sourceBusinessId: paymentExecutionId
+      },
+      actorUserId
+    );
   }
 
   private assertSamePaymentExecutionFacts(

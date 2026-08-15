@@ -1404,7 +1404,16 @@ describe("ProjectService", () => {
     const auth = {
       confirmPassword: jest.fn().mockResolvedValue(undefined)
     };
-    const service = new ProjectService(prisma as never, undefined, auth as never);
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn()
+    };
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      auth as never,
+      undefined,
+      operatingSources as never
+    );
 
     const result = await service.recordProxyPayment("project-1", "finance-1", {
       paidAt,
@@ -1440,6 +1449,17 @@ describe("ProjectService", () => {
       createdAt: createdAt.toISOString()
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith("finance-1", "current-password");
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        projectId: "project-1",
+        sourceType: "project_proxy_payment",
+        sourceBusinessId: "proxy-payment-1"
+      },
+      "finance-1"
+    );
     expect(tx.projectProxyPayment.create).toHaveBeenCalledWith({
       data: {
         projectId: "project-1",

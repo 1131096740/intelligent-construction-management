@@ -124,10 +124,56 @@ const OPERATING_FACT_KIND_SET = new Set<string>(OPERATING_FACT_KINDS);
 const OPERATING_IMPACT_KIND_SET = new Set<string>(OPERATING_IMPACT_KINDS);
 const OPERATING_SUBJECT_KIND_SET = new Set<string>(OPERATING_SUBJECT_KINDS);
 const OPERATING_SUPPORTED_SUBJECT_KIND_SET = new Set([
+  "owner",
   "construction_enterprise",
-  "participating_company"
+  "participating_company",
+  "downstream_counterparty"
 ]);
 const OPERATING_SUBJECT_ROLE_SET = new Set<string>(OPERATING_SUBJECT_ROLES);
+const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
+  Record<OperatingSubjectRole, ReadonlySet<OperatingSubjectKind>>
+> = {
+  debtor: new Set(["owner", "construction_enterprise", "participating_company"]),
+  creditor: new Set([
+    "construction_enterprise",
+    "participating_company",
+    "downstream_counterparty"
+  ]),
+  approved_payer: new Set(["construction_enterprise", "participating_company"]),
+  actual_payer: new Set([
+    "owner",
+    "construction_enterprise",
+    "participating_company"
+  ]),
+  payee: new Set([
+    "owner",
+    "construction_enterprise",
+    "participating_company",
+    "downstream_counterparty"
+  ]),
+  cost_bearing_company: new Set([
+    "construction_enterprise",
+    "participating_company"
+  ])
+};
+const OPERATING_SUBJECT_ROLE_LABELS: Readonly<Record<OperatingSubjectRole, string>> = {
+  debtor: "债务主体",
+  creditor: "债权主体",
+  approved_payer: "批准付款主体",
+  actual_payer: "实际付款主体",
+  payee: "收款主体",
+  cost_bearing_company: "成本承担公司主体"
+};
+const FACT_SUBJECT_ROLE_BY_PROPERTY: Readonly<
+  Record<keyof OperatingFactSubjects, OperatingSubjectRole>
+> = {
+  debtor: "debtor",
+  creditor: "creditor",
+  approvedPayer: "approved_payer",
+  actualPayer: "actual_payer",
+  payee: "payee",
+  costBearingCompany: "cost_bearing_company"
+};
 const EVIDENCE_LEVEL_SET = new Set<string>(EVIDENCE_LEVELS);
 const PRIMARY_COST_CATEGORY_SET = new Set<string>(PRIMARY_COST_CATEGORY_CODES);
 const PROFIT_DISTRIBUTION_IMPACT_KIND_SET = new Set([
@@ -234,6 +280,20 @@ export class OperatingLedgerService {
     );
   }
 
+  async appendConfirmedSourceInTransaction(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactInput,
+    actorUserId: string
+  ): Promise<OperatingFactWriteResult> {
+    return this.appendEnvelope(
+      tx,
+      input,
+      actorUserId,
+      "original",
+      "source_actor"
+    );
+  }
+
   async appendCorrection(
     input: AppendOperatingFactCorrectionInput,
     actorUserId: string
@@ -318,7 +378,7 @@ export class OperatingLedgerService {
     rawInput: AppendOperatingFactInput,
     actorUserId: string,
     entryKind: OperatingFactEntryKind,
-    confirmationAuthority: "actor" | "frozen_source" = "actor"
+    confirmationAuthority: "actor" | "frozen_source" | "source_actor" = "actor"
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
     validateFactInput(input);
@@ -587,11 +647,15 @@ export class OperatingLedgerService {
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
     actorUserId: string,
-    confirmationAuthority: "actor" | "frozen_source"
+    confirmationAuthority: "actor" | "frozen_source" | "source_actor"
   ): Promise<{
     effectiveDate: Date;
   }> {
-    await this.assertProjectFinanceManager(tx, actorUserId, input.projectId);
+    if (confirmationAuthority === "source_actor") {
+      await this.assertActiveActor(tx, actorUserId);
+    } else {
+      await this.assertProjectFinanceManager(tx, actorUserId, input.projectId);
+    }
     const project = await tx.project.findUnique({
       where: { id: input.projectId },
       select: {
@@ -604,8 +668,15 @@ export class OperatingLedgerService {
       input.confirmedByUserId,
       "正式确认人不能为空"
     );
-    if (confirmationAuthority === "actor" && confirmedByUserId !== actorUserId) {
-      throw new ForbiddenException("正式确认人必须是当前财务操作人");
+    if (
+      (confirmationAuthority === "actor" || confirmationAuthority === "source_actor") &&
+      confirmedByUserId !== actorUserId
+    ) {
+      throw new ForbiddenException(
+        confirmationAuthority === "actor"
+          ? "正式确认人必须是当前财务操作人"
+          : "正式确认人必须是当前业务操作人"
+      );
     }
     if (confirmationAuthority === "frozen_source") {
       const sourceConfirmer = await tx.user.findUnique({
@@ -688,11 +759,7 @@ export class OperatingLedgerService {
     actorUserId: string,
     projectId: string
   ) {
-    const actor = await tx.user.findUnique({
-      where: { id: actorUserId },
-      select: { id: true, isActive: true }
-    });
-    if (!actor?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
+    await this.assertActiveActor(tx, actorUserId);
 
     const [projectMembers, projectPositions] = await Promise.all([
       tx.projectMember.findMany({ where: { userId: actorUserId, projectId }, select: { positionKey: true } }),
@@ -708,6 +775,17 @@ export class OperatingLedgerService {
     if (!keys.some((key) => key === "finance_staff" || key === "finance_director")) {
       throw new ForbiddenException("只有当前项目财务人员可以登记经营事实");
     }
+  }
+
+  private async assertActiveActor(
+    tx: OperatingLedgerTransaction,
+    actorUserId: string
+  ): Promise<void> {
+    const actor = await tx.user.findUnique({
+      where: { id: actorUserId },
+      select: { id: true, isActive: true }
+    });
+    if (!actor?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
   }
 
   private async assertAdjustmentTarget(
@@ -871,10 +949,13 @@ function validateFactInput(input: AppendOperatingFactInput) {
   if (!input.sourceSnapshot || typeof input.sourceSnapshot !== "object" || Array.isArray(input.sourceSnapshot)) {
     throw new BadRequestException("经营事实必须保留来源快照");
   }
-  for (const subject of Object.values(input.subjects)) {
+  for (const [property, subject] of Object.entries(input.subjects) as Array<
+    [keyof OperatingFactSubjects, OperatingSubjectReference | undefined]
+  >) {
     if (subject && !OPERATING_SUPPORTED_SUBJECT_KIND_SET.has(subject.kind)) {
       throw new BadRequestException("当前经营账尚未接入该主体种类，不能登记正式事实");
     }
+    if (subject) validateSubjectRoleKind(FACT_SUBJECT_ROLE_BY_PROPERTY[property], subject);
   }
   for (const role of REQUIRED_FACT_SUBJECT_ROLES[input.factKind] ?? []) {
     if (!input.subjects[role]) {
@@ -926,6 +1007,9 @@ function validateImpactInput(impact: OperatingImpactInput) {
   if (impact.subjectRole && !impact.subject) {
     throw new BadRequestException("影响分录指定主体角色时必须同时指定主体");
   }
+  if (impact.subjectRole && impact.subject) {
+    validateSubjectRoleKind(impact.subjectRole, impact.subject);
+  }
   if (impact.impactSnapshot !== undefined &&
       (typeof impact.impactSnapshot !== "object" || impact.impactSnapshot === null || Array.isArray(impact.impactSnapshot))) {
     throw new BadRequestException("影响分录快照格式不正确");
@@ -933,6 +1017,29 @@ function validateImpactInput(impact: OperatingImpactInput) {
   if (impact.costCategoryCode && !PRIMARY_COST_CATEGORY_SET.has(impact.costCategoryCode)) {
     throw new BadRequestException("影响分录成本分类不正确");
   }
+}
+
+function validateSubjectRoleKind(
+  role: OperatingSubjectRole,
+  subject: OperatingSubjectReference
+): void {
+  if (!OPERATING_SUBJECT_KINDS_BY_ROLE[role].has(subject.kind)) {
+    throw new BadRequestException(
+      `${OPERATING_SUBJECT_ROLE_LABELS[role]}只能是${allowedSubjectKindsLabel(
+        OPERATING_SUBJECT_KINDS_BY_ROLE[role]
+      )}`
+    );
+  }
+}
+
+function allowedSubjectKindsLabel(kinds: ReadonlySet<OperatingSubjectKind>): string {
+  const labels: Partial<Record<OperatingSubjectKind, string>> = {
+    owner: "业主",
+    construction_enterprise: "施工企业",
+    participating_company: "我方公司",
+    downstream_counterparty: "下游相对方"
+  };
+  return [...kinds].map((kind) => labels[kind] ?? kind).join("或");
 }
 
 function assertCompatibleFact(

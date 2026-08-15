@@ -8,7 +8,10 @@ import {
   type OperatingSourceFactInput,
   type OperatingSourceSnapshot
 } from "./operating-source-adapter";
-import { OperatingSourceReplayService } from "./operating-source-replay.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService
+} from "./operating-source-replay.service";
 
 describe("OperatingSourceReplayService", () => {
   it("closes the adapter set and rejects duplicate or missing source types", () => {
@@ -146,6 +149,81 @@ describe("OperatingSourceReplayService", () => {
     expect(harness.ledger.replayFromSourceInTransaction).not.toHaveBeenCalled();
   });
 
+  it("appends a source-domain confirmation in the same transaction only when the ledger is enabled", async () => {
+    const adapter = createAdapter();
+    const harness = createHarness({ adapter });
+    harness.tx.project.findUnique.mockResolvedValueOnce({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+    harness.ledger.appendConfirmedSourceInTransaction.mockResolvedValue(
+      writeResult(true)
+    );
+
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "contract-director"
+      )
+    ).resolves.toEqual(writeResult(true));
+    expect(adapter.readSourceSnapshot).toHaveBeenCalledWith(
+      harness.tx,
+      sourceLocator()
+    );
+    expect(harness.ledger.appendConfirmedSourceInTransaction).toHaveBeenCalledWith(
+      harness.tx,
+      factInput(),
+      "contract-director"
+    );
+
+    harness.tx.project.findUnique.mockResolvedValueOnce({
+      operatingLedgerEffectiveDate: null
+    });
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "contract-director"
+      )
+    ).resolves.toBeNull();
+    expect(adapter.readSourceSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a non-original source projection from the business confirmation entry point", async () => {
+    const adapter = createAdapter(
+      sourceSnapshot(),
+      mappedFact("correction", { ...factInput(), adjustsFactId: "original-fact" })
+    );
+    const harness = createHarness({ adapter });
+    harness.tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "contract-director"
+      )
+    ).rejects.toThrow("正式业务来源写入只接受原始经营事实");
+    expect(harness.ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an enabled project is missing the source projection service", async () => {
+    const harness = createHarness();
+    harness.tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+
+    await expect(
+      missingOperatingSourceReplayService().appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "finance-user"
+      )
+    ).rejects.toThrow("经营账来源投影服务未注入");
+  });
+
   it("fails before opening a transaction when the requested adapter is missing", async () => {
     const harness = createHarness();
 
@@ -247,7 +325,10 @@ function createHarness(options: {
   actualFacts?: unknown[];
   requiredSourceTypes?: string[];
 } = {}) {
-  const tx = { $executeRaw: jest.fn() };
+  const tx = {
+    $executeRaw: jest.fn(),
+    project: { findUnique: jest.fn() }
+  };
   const prisma = {
     $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
       callback(tx)
@@ -255,6 +336,7 @@ function createHarness(options: {
   };
   const ledger = {
     assertProjectFinanceAccessInTransaction: jest.fn(),
+    appendConfirmedSourceInTransaction: jest.fn(),
     replayFromSourceInTransaction: jest.fn(),
     readFactsInTransaction: jest.fn().mockResolvedValue(options.actualFacts ?? []),
     materializeSourceForComparisonInTransaction: jest.fn().mockResolvedValue({
