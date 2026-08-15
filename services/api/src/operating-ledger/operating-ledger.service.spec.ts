@@ -174,7 +174,7 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
-  it("fails closed for subject kinds without a project validator", async () => {
+  it("accepts an employee payee for POL-06 employee reimbursement", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
       projectMembers: [{ positionKey: "finance_staff" }],
@@ -187,12 +187,14 @@ describe("OperatingLedgerService", () => {
       service.appendFromSource(
         {
           ...baseInput(),
-          subjects: { payee: { kind: "employee", id: "employee-1" } }
+          subjects: {
+            ...baseInput().subjects,
+            payee: { kind: "employee", id: "employee-1" }
+          }
         },
         "actor-1"
       )
-    ).rejects.toThrow("尚未接入该主体种类");
-    expect(prisma.operatingFact.create).not.toHaveBeenCalled();
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
   });
 
   it("fails closed when a company-only fact role uses a counterparty kind", async () => {
@@ -290,6 +292,41 @@ describe("OperatingLedgerService", () => {
     ).rejects.toThrow("实际付款主体只能是业主或施工企业或我方公司");
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
+
+  it("writes an employee repayment reversal only against its original repayment fact", async () => {
+    const input = employeeLoanRepaymentReversalInput();
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      project: projectRecord(),
+      assignment: assignmentRecord(),
+      originalFact: employeeLoanRepaymentFact()
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await expect(
+      service.appendConfirmedEmployeeLoanReversalInTransaction(prisma as never, input, "actor-1")
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects an employee repayment reversal when its original fact reference does not match", async () => {
+    const input = employeeLoanRepaymentReversalInput();
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true },
+      project: projectRecord(),
+      assignment: assignmentRecord(),
+      originalFact: {
+        ...employeeLoanRepaymentFact(),
+        sourceBusinessId: "loan-entry-other"
+      }
+    });
+    const service = new OperatingLedgerService(prisma as never);
+
+    await expect(
+      service.appendConfirmedEmployeeLoanReversalInTransaction(prisma as never, input, "actor-1")
+    ).rejects.toThrow("员工借款还款冲销引用的原经营事实不一致");
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
 });
 
 function baseInput(projectId = "project-1") {
@@ -330,6 +367,100 @@ function baseInput(projectId = "project-1") {
         costCategoryCode: "project_daily_expense" as const
       }
     ]
+  };
+}
+
+function employeeLoanRepaymentReversalInput() {
+  return {
+    ...baseInput(),
+    sourceType: "employee_project_loan_entry",
+    sourceBusinessId: "loan-entry-reversal-1",
+    sourceBusinessCode: "员工借款账户/loan-account-1/loan-entry-reversal-1",
+    idempotencyKey: "employee_project_loan_entry:loan-entry-reversal-1",
+    sourceSnapshot: {
+      entryType: "reversal",
+      sourceRepaymentId: "repayment-1",
+      reversalOfEntryId: "loan-entry-repayment-1"
+    },
+    factKind: "employee_loan" as const,
+    direction: "outflow" as const,
+    amountCents: 1000n,
+    subjects: {
+      debtor: { kind: "employee" as const, id: "employee-1" },
+      creditor: { kind: "participating_company" as const, id: "company-1" },
+      actualPayer: { kind: "employee" as const, id: "employee-1" },
+      payee: { kind: "participating_company" as const, id: "company-1" }
+    },
+    impacts: [
+      {
+        idempotencyKey: "employee_project_loan_entry:loan-entry-reversal-1:receivable",
+        sourceImpactKey: "receivable",
+        impactKind: "receivable_decrease" as const,
+        amountCents: 1000n,
+        direction: "increase" as const,
+        subjectRole: "creditor" as const,
+        subject: { kind: "participating_company" as const, id: "company-1" }
+      },
+      {
+        idempotencyKey: "employee_project_loan_entry:loan-entry-reversal-1:funds",
+        sourceImpactKey: "funds",
+        impactKind: "company_project_funds_increase" as const,
+        amountCents: 1000n,
+        direction: "decrease" as const,
+        subjectRole: "payee" as const,
+        subject: { kind: "participating_company" as const, id: "company-1" }
+      }
+    ],
+    adjustsFactId: "fact-1"
+  };
+}
+
+function employeeLoanRepaymentFact() {
+  return {
+    id: "fact-1",
+    projectId: "project-1",
+    sourceType: "employee_project_loan_entry",
+    sourceBusinessId: "loan-entry-repayment-1",
+    factKind: "employee_loan",
+    entryKind: "original",
+    amountCents: 1000n,
+    debtorSubjectKind: "employee",
+    debtorSubjectId: "employee-1",
+    creditorSubjectKind: "participating_company",
+    creditorSubjectId: "company-1",
+    approvedPayerSubjectKind: null,
+    approvedPayerSubjectId: null,
+    actualPayerSubjectKind: "employee",
+    actualPayerSubjectId: "employee-1",
+    payeeSubjectKind: "participating_company",
+    payeeSubjectId: "company-1",
+    costBearingCompanySubjectKind: null,
+    costBearingCompanySubjectId: null,
+    impacts: [
+      {
+        sourceImpactKey: "receivable",
+        impactKind: "receivable_decrease",
+        amountCents: 1000n,
+        direction: "decrease",
+        subjectRole: "creditor",
+        subjectKind: "participating_company",
+        subjectId: "company-1",
+        costCategoryCode: null,
+        fundPurpose: null
+      },
+      {
+        sourceImpactKey: "funds",
+        impactKind: "company_project_funds_increase",
+        amountCents: 1000n,
+        direction: "increase",
+        subjectRole: "payee",
+        subjectKind: "participating_company",
+        subjectId: "company-1",
+        costCategoryCode: null,
+        fundPurpose: null
+      }
+    ],
+    adjustments: []
   };
 }
 

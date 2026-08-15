@@ -15,6 +15,8 @@ import {
   requireOperatingSourceSnapshot
 } from "./operating-source-adapter";
 
+const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
+
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<{
   include: { impacts: true };
 }>;
@@ -127,14 +129,24 @@ export class OperatingSourceReplayService {
       locator
     );
     const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
-    if (mapped.entryKind !== "original") {
-      throw new BadRequestException("正式业务来源写入只接受原始经营事实");
+    if (mapped.entryKind === "original") {
+      return this.operatingLedger.appendConfirmedSourceInTransaction(
+        tx,
+        mapped.input,
+        actorUserId
+      );
     }
-    return this.operatingLedger.appendConfirmedSourceInTransaction(
-      tx,
-      mapped.input,
-      actorUserId
-    );
+    if (
+      locator.sourceType === EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE &&
+      mapped.entryKind === "reversal"
+    ) {
+      return this.operatingLedger.appendConfirmedEmployeeLoanReversalInTransaction(
+        tx,
+        mapped.input,
+        actorUserId
+      );
+    }
+    throw new BadRequestException("正式业务来源写入只接受原始经营事实");
   }
 
   async compareProject(

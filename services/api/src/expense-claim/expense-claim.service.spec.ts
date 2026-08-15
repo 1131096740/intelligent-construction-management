@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
 
-function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock } }) {
+function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock } }) {
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
@@ -31,7 +31,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
   const visibility = { visibleProjectIds: jest.fn().mockResolvedValue(["project-1"]) };
-  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never);
+  const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never);
   return { service, tx, numbering, audit, visibility };
 }
 
@@ -209,6 +209,7 @@ describe("ExpenseClaimService", () => {
         companyEntityId: "company-1",
         projectId: "project-1",
         applicantUserId: "user-a",
+        payeeName: "机械服务商",
         reason: "临时机械台班",
         requestedAmountCents: "999999999999"
       } as never)
@@ -259,6 +260,7 @@ describe("ExpenseClaimService", () => {
         companyEntityId: "company-1",
         projectId: "project-1",
         applicantUserId: "user-a",
+        payeeName: "材料供应商",
         reason: "材料费用",
         requestedAmountCents: "1000"
       } as never)
@@ -343,11 +345,15 @@ describe("ExpenseClaimService", () => {
         storageStatus: "active"
       })
     };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null)
+    };
     const { service, tx, audit } = createHarness({
       claim,
       auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) },
       files,
-      projectFunding
+      projectFunding,
+      operatingSources
     });
     tx.expenseClaim.findUnique.mockResolvedValue({ id: "claim-1", projectId: "project-1" });
     tx.fileObject.findUnique.mockResolvedValue({ id: "voucher-1", uploadedByUserId: "finance-1" });
@@ -379,6 +385,17 @@ describe("ExpenseClaimService", () => {
     ).toBeLessThan(tx.expenseClaim.update.mock.invocationCallOrder[0]);
     expect(files.assertFileHasNoBusinessBinding).toHaveBeenCalledWith(tx, "voucher-1");
     expect(tx.expenseClaim.update).toHaveBeenCalledWith(expect.objectContaining({ data: { fundedAmountCents: 1200n, status: "paid" } }));
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "expense_claim_payment_execution",
+        sourceBusinessId: "payment-1"
+      },
+      "finance-1"
+    );
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
       action: "expense_claim.reimbursement.payment.record",
       metadata: expect.objectContaining({
@@ -602,7 +619,14 @@ describe("ExpenseClaimService", () => {
 
   it("corrects a confirmed repayment by appending one reversal entry without mutating the original entry", async () => {
     const claim = { id: "claim-1", claimType: "loan", projectId: "project-1", applicantUserId: "employee-1" };
-    const { service, tx, audit } = createHarness({ claim, auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) } });
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null)
+    };
+    const { service, tx, audit } = createHarness({
+      claim,
+      auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) },
+      operatingSources
+    });
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([{ id: "repayment-1", loanAccountId: "account-1", amountCents: 300n, status: "confirmed", confirmedByUserId: "finance-director-1" }])
@@ -621,6 +645,17 @@ describe("ExpenseClaimService", () => {
     }) }));
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith(expect.objectContaining({ data: { repaidAmountCents: 0n, balanceAmountCents: 1000n } }));
     expect(tx.employeeLoanRepayment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "reversed", reversedByUserId: "finance-director-1" }) }));
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "employee_project_loan_entry",
+        sourceBusinessId: "reversal-entry-1"
+      },
+      "finance-director-1"
+    );
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.loan_repayment.reverse" }));
   });
 
@@ -886,7 +921,13 @@ describe("ExpenseClaimService", () => {
         }
       ]
     };
-    const { service, tx } = createHarness({ roles: ["general_manager"] });
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null)
+    };
+    const { service, tx } = createHarness({
+      roles: ["general_manager"],
+      operatingSources
+    });
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([instance])
@@ -925,6 +966,17 @@ describe("ExpenseClaimService", () => {
         status: "approved_pending_payment"
       })
     });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "expense_claim_approval",
+        sourceBusinessId: "claim-incidental-1"
+      },
+      "leader-1"
+    );
   });
 
   it("records a voucher-backed actual loan disbursement and only then increases the locked account balance", async () => {
@@ -945,10 +997,14 @@ describe("ExpenseClaimService", () => {
         storageStatus: "active"
       })
     };
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null)
+    };
     const { service, tx, audit } = createHarness({
       auth,
       files,
-      projectFunding
+      projectFunding,
+      operatingSources
     });
     const claim = { id: "claim-1", claimType: "loan", status: "approved_pending_disbursement", projectId: "project-1", companyEntityId: "company-1", applicantUserId: "user-a", requestedAmountCents: 10000n, fundedAmountCents: 2000n };
     tx.expenseClaim.findUnique.mockResolvedValue({ id: "claim-1", projectId: "project-1" });
@@ -986,6 +1042,17 @@ describe("ExpenseClaimService", () => {
     expect(files.assertFileHasNoBusinessBinding).toHaveBeenCalledWith(tx, "voucher-1");
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { fundedAmountCents: 5000n, balanceAmountCents: 5000n } });
     expect(tx.expenseClaim.update).toHaveBeenCalledWith({ where: { id: "claim-1" }, data: { fundedAmountCents: 5000n, status: "partially_disbursed" } });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "employee_project_loan_entry",
+        sourceBusinessId: "entry-2"
+      },
+      "finance-1"
+    );
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
       action: "expense_claim.loan.disbursement.record",
       metadata: expect.objectContaining({
@@ -1129,7 +1196,14 @@ describe("ExpenseClaimService", () => {
     const claim = { id: "claim-r", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", applicantUserId: "user-a", handledByUserId: "user-a", factWitnessUserId: null, requestedAmountCents: 3000n, loanOffsetAmountCents: 3000n, companyPayableAmountCents: 0n };
     const instance = { id: "approval-r", currentNodeIndex: 0, applicantUserId: "user-a", frozenNodes: [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIds: ["comp-1"], candidateUserIdsByRole: { comprehensive_director: ["comp-1"] } }] };
     const approvalForms = { generateForInstance: jest.fn().mockResolvedValue({ id: "pdf-1" }) };
-    const { service, tx } = createHarness({ roles: ["comprehensive_director"], approvalForms });
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null)
+    };
+    const { service, tx } = createHarness({
+      roles: ["comprehensive_director"],
+      approvalForms,
+      operatingSources
+    });
     tx.$queryRaw
       .mockResolvedValueOnce([claim])
       .mockResolvedValueOnce([instance])
@@ -1139,18 +1213,33 @@ describe("ExpenseClaimService", () => {
       .mockResolvedValueOnce([{ id: "account-1", offsetAmountCents: 0n, reservedOffsetAmountCents: 3000n, balanceAmountCents: 3000n }])
       .mockResolvedValueOnce([{ nextSequenceNo: 5n }]);
     tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ id: "reserve-1", loanAccountId: "account-1", amountCents: 3000n }]);
+    tx.employeeProjectLoanEntry.create.mockResolvedValue({ id: "loan-entry-offset-1" });
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-r", status: "offset_completed" });
 
     await expect(service.review("claim-r", "comp-1", { decision: "approve" })).resolves.toEqual({ id: "claim-r", status: "offset_completed", completed: true });
     expect(approvalForms.generateForInstance).toHaveBeenCalledWith("approval-r", "comp-1");
     expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ entryType: "offset", sourceExpenseClaimId: "claim-r", sourceReservationId: "reserve-1", amountCents: 3000n, balanceDeltaCents: -3000n }) });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "employee_project_loan_entry",
+        sourceBusinessId: "loan-entry-offset-1"
+      },
+      "comp-1"
+    );
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { offsetAmountCents: 3000n, reservedOffsetAmountCents: 0n, balanceAmountCents: 0n } });
     expect(tx.expenseLoanOffsetReservation.updateMany).toHaveBeenCalledWith({ where: { id: { in: ["reserve-1"] }, status: "reserved" }, data: expect.objectContaining({ status: "posted" }) });
   });
 
   it("records repayment without reducing the balance, then confirms it as an immutable ledger entry", async () => {
     const auth = { confirmPassword: jest.fn().mockResolvedValue({}) };
-    const { service, tx } = createHarness({ auth });
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest.fn().mockResolvedValue(null)
+    };
+    const { service, tx } = createHarness({ auth, operatingSources });
     const claim = { id: "loan-1", claimType: "loan", projectId: "project-1", applicantUserId: "user-a" };
     tx.$queryRaw.mockResolvedValueOnce([claim]);
     tx.employeeProjectLoanAccount.findUnique.mockResolvedValue({ id: "account-1" });
@@ -1164,6 +1253,17 @@ describe("ExpenseClaimService", () => {
     await expect(service.confirmEmployeeLoanRepayment("loan-1", "repayment-1", "finance-director-1", { confirmationPassword: "current-password" })).resolves.toEqual({ id: "repayment-1", status: "confirmed", amountCents: "2000" });
     expect(tx.employeeProjectLoanEntry.create).toHaveBeenCalledWith({ data: expect.objectContaining({ entryType: "repayment", sourceRepaymentId: "repayment-1", balanceDeltaCents: -2000n }) });
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { repaidAmountCents: 3000n, balanceAmountCents: 3000n } });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      tx,
+      {
+        projectId: "project-1",
+        sourceType: "employee_project_loan_entry",
+        sourceBusinessId: "entry-4"
+      },
+      "finance-director-1"
+    );
   });
 
   it("blocks over-balance repayment confirmation before writing a ledger entry", async () => {

@@ -36,6 +36,7 @@ const sourceOptions = [
   { label: "合同付款", value: "contract_payment" },
   { label: "零星材料付款", value: "spot_procurement_payment" },
   { label: "费用报销补付", value: "expense_reimbursement" },
+  { label: "零星费用实际付款", value: "incidental_expense" },
   { label: "借款放款", value: "loan_disbursement" }
 ];
 const columns = [
@@ -52,7 +53,7 @@ const columns = [
 const summary = computed(() => `待我办理 ${counts.value.pending_action} 条 · 审批中 ${counts.value.in_progress} 条 · 已批待付 ${counts.value.pending_funds} 条 · 部分支付 ${counts.value.partial_payment} 条 · 待退款 ${counts.value.pending_refund} 条 · 待补票据 ${counts.value.pending_evidence} 条 · 已完成 ${counts.value.completed} 条`);
 
 function sourceLabel(value: FundsWorkbenchItem["source"]) {
-  return ({ contract_payment: "合同付款", spot_procurement_payment: "零星材料付款", expense_reimbursement: "费用报销补付", loan_disbursement: "借款放款" } as Record<string, string>)[value];
+  return ({ contract_payment: "合同付款", spot_procurement_payment: "零星材料付款", expense_reimbursement: "费用报销补付", incidental_expense: "零星费用实际付款", loan_disbursement: "借款放款" } as Record<string, string>)[value];
 }
 function statusTone(row: FundsWorkbenchItem) {
   if (row.statusLabel === "已完成") return "success" as const;
@@ -92,7 +93,7 @@ onMounted(() => void loadWorkbench());
   <JgWorkbenchShell
     class="funds-workbench"
     title="统一资金办理工作台"
-    description="汇集合同付款、零星材料付款、费用报销补付和借款放款；本页只读投影，实际付款仍在各来源的受控流程中办理。"
+    description="汇集合同付款、零星材料付款、费用报销补付、零星费用实际付款和借款放款；本页只读投影，实际付款仍在各来源的受控流程中办理。"
   >
     <template #actions>
       <t-button

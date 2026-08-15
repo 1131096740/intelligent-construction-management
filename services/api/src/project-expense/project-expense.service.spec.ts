@@ -121,27 +121,6 @@ describe("ProjectExpenseService", () => {
     };
   }
 
-  function governedApprovalCandidateTables({
-    projectCandidates = [
-      { userId: "project-manager-1", roleKey: "project_manager" }
-    ],
-    positionedCandidates = [
-      { userId: "comprehensive-1", roleKey: "comprehensive_director" },
-      { userId: "finance-1", roleKey: "finance_director" },
-      { userId: "chairman-1", roleKey: "chairman" },
-      { userId: "general-manager-1", roleKey: "general_manager" }
-    ]
-  }: {
-    projectCandidates?: Array<{ userId: string; roleKey: string }>;
-    positionedCandidates?: Array<{ userId: string; roleKey: string }>;
-  } = {}) {
-    return {
-      $queryRaw: jest.fn()
-        .mockResolvedValueOnce(projectCandidates)
-        .mockResolvedValueOnce(positionedCandidates)
-    };
-  }
-
   function approvalDetailFixture({
     actorRoleKeys = ["finance_director"],
     applicantUserId = "applicant-1",
@@ -1566,261 +1545,34 @@ describe("ProjectExpenseService", () => {
   );
 
   it.each([
-    ["travel", "差旅费"],
-    ["entertainment", "业务招待费"]
-  ] as const)("submits a comprehensive expense request for %s", async (expenseSubtype, reason) => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
-    const tx = {
-      ...cashPool,
-      ...governedApprovalCandidateTables(),
-      project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
-      },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn().mockResolvedValue({
-          id: "expense-1",
-          code: "ZH-2026-001",
-          status: "approval_pending"
+    ["comprehensive_expense", "travel"],
+    ["reimbursement", "reimbursement"],
+    ["loan_reserve", "project_reserve"]
+  ] as const)(
+    "closes the legacy %s writer before creating a replacement request",
+    async (expenseType, expenseSubtype) => {
+      const prisma = { $transaction: jest.fn() };
+      const service = new ProjectExpenseService(
+        prisma as never,
+        audit as never,
+        auth as never
+      );
+
+      await expect(
+        service.create("project-1", "handler-1", {
+          code: "LX-2026-RETIRED",
+          expenseType,
+          expenseSubtype,
+          paymentSubject: "建工智管",
+          reason: "已由费用与报销模块承接",
+          requestedAmountCents: "10000",
+          paymentMethod: "bank_transfer"
         })
-      },
-      approvalInstance: {
-        create: jest.fn()
-      },
-      auditLog: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
+      ).rejects.toThrow("旧项目支出入口已停止新建，请使用费用与报销流程");
 
-    await service.create("project-1", "handler-1", {
-      code: "ZH-2026-001",
-      expenseType: "comprehensive_expense",
-      expenseSubtype,
-      paymentSubject: "建工智管",
-      reason,
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer",
-      counterpartyName: "经办人"
-    });
-
-    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        expenseType: "comprehensive_expense",
-        expenseSubtype,
-        reason,
-        requestedAmountCents: 30_000n,
-        status: "approval_pending"
-      })
-    });
-  });
-
-  it("submits a reimbursement request with the confirmed four-step approval route", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
-    const tx = {
-      ...cashPool,
-      ...governedApprovalCandidateTables(),
-      project: {
-        findFirst: jest.fn().mockResolvedValue({ id: "project-1" })
-      },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn().mockResolvedValue({
-          id: "expense-1",
-          code: "BX-2026-001",
-          status: "approval_pending"
-        })
-      },
-      approvalInstance: {
-        create: jest.fn()
-      },
-      auditLog: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    await service.create("project-1", "handler-1", {
-      code: "BX-2026-001",
-      expenseType: "reimbursement",
-      expenseSubtype: "reimbursement",
-      paymentSubject: "日常报销",
-      reason: "办公用品发票报销",
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer",
-      counterpartyName: "经办人"
-    });
-
-    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        expenseType: "reimbursement",
-        expenseSubtype: "reimbursement",
-        reason: "办公用品发票报销",
-        requestedAmountCents: 30_000n,
-        status: "approval_pending"
-      })
-    });
-    expect(tx.approvalInstance.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        frozenNodes: [
-          {
-            name: "综合部主管",
-            mode: "any",
-            roleKeys: ["comprehensive_director"],
-            candidateUserIds: ["comprehensive-1"],
-            candidateUserIdsByRole: { comprehensive_director: ["comprehensive-1"] }
-          },
-          {
-            name: "项目经理",
-            mode: "any",
-            roleKeys: ["project_manager"],
-            candidateUserIds: ["project-manager-1"],
-            candidateUserIdsByRole: { project_manager: ["project-manager-1"] }
-          },
-          {
-            name: "财务总监",
-            mode: "any",
-            roleKeys: ["finance_director"],
-            candidateUserIds: ["finance-1"],
-            candidateUserIdsByRole: { finance_director: ["finance-1"] }
-          },
-          {
-            name: "董事长/总经理",
-            mode: "any",
-            roleKeys: ["chairman", "general_manager"],
-            candidateUserIds: ["chairman-1", "general-manager-1"],
-            candidateUserIdsByRole: {
-              chairman: ["chairman-1"],
-              general_manager: ["general-manager-1"]
-            }
-          }
-        ]
-      })
-    });
-  });
-
-  it("fails create when an ordinary applicant is the only candidate for a required node", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
-    const tx = {
-      ...cashPool,
-      ...governedApprovalCandidateTables({
-        positionedCandidates: [
-          { userId: "handler-1", roleKey: "comprehensive_director" },
-          { userId: "finance-1", roleKey: "finance_director" },
-          { userId: "chairman-1", roleKey: "chairman" }
-        ]
-      }),
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn()
-      },
-      approvalInstance: { create: jest.fn() }
-    };
-    const service = new ProjectExpenseService(
-      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
-      audit as never,
-      auth as never
-    );
-
-    await expect(service.create("project-1", "handler-1", {
-      code: "BX-2026-SELF-ONLY",
-      expenseType: "reimbursement",
-      expenseSubtype: "reimbursement",
-      paymentSubject: "日常报销",
-      reason: "申请人不能成为普通节点唯一审批人",
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer"
-    })).rejects.toThrow("综合部主管缺少当前有效且可审批的人员");
-
-    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
-    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
-  });
-
-  it("fails create when one user ambiguously matches both roles of the same approval node", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
-    const tx = {
-      ...cashPool,
-      ...governedApprovalCandidateTables({
-        positionedCandidates: [
-          { userId: "comprehensive-1", roleKey: "comprehensive_director" },
-          { userId: "finance-1", roleKey: "finance_director" },
-          { userId: "ambiguous-leader-1", roleKey: "chairman" },
-          { userId: "ambiguous-leader-1", roleKey: "general_manager" }
-        ]
-      }),
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn()
-      },
-      approvalInstance: { create: jest.fn() }
-    };
-    const service = new ProjectExpenseService(
-      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
-      audit as never,
-      auth as never
-    );
-
-    await expect(service.create("project-1", "handler-1", {
-      code: "BX-2026-AMBIGUOUS-LEADER",
-      expenseType: "reimbursement",
-      expenseSubtype: "reimbursement",
-      paymentSubject: "日常报销",
-      reason: "同一人员不能以两个角色形成歧义审批身份",
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer"
-    })).rejects.toThrow("董事长/总经理缺少当前有效且可审批的人员");
-
-    expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
-    expect(tx.approvalInstance.create).not.toHaveBeenCalled();
-  });
-
-  it("keeps a chairman applicant as a governed final-node candidate", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
-    const tx = {
-      ...cashPool,
-      ...governedApprovalCandidateTables({
-        positionedCandidates: [
-          { userId: "comprehensive-1", roleKey: "comprehensive_director" },
-          { userId: "finance-1", roleKey: "finance_director" },
-          { userId: "chairman-applicant-1", roleKey: "chairman" }
-        ]
-      }),
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn().mockResolvedValue({
-          id: "expense-chairman-self",
-          code: "BX-2026-CHAIRMAN-SELF",
-          status: "approval_pending"
-        })
-      },
-      approvalInstance: { create: jest.fn() }
-    };
-    const service = new ProjectExpenseService(
-      { $transaction: jest.fn(async (callback) => callback(tx)) } as never,
-      audit as never,
-      auth as never
-    );
-
-    await service.create("project-1", "chairman-applicant-1", {
-      code: "BX-2026-CHAIRMAN-SELF",
-      expenseType: "reimbursement",
-      expenseSubtype: "reimbursement",
-      paymentSubject: "日常报销",
-      reason: "董事长申请人领导自审路由",
-      requestedAmountCents: "30000",
-      paymentMethod: "bank_transfer"
-    });
-
-    const frozenNodes = tx.approvalInstance.create.mock.calls[0]?.[0].data.frozenNodes;
-    expect(frozenNodes.at(-1)).toEqual(expect.objectContaining({
-      candidateUserIds: ["chairman-applicant-1"],
-      candidateUserIdsByRole: {
-        chairman: ["chairman-applicant-1"],
-        general_manager: []
-      }
-    }));
-  });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    }
+  );
 
   it("fails closed when a caller tries to create spot procurement in the legacy expense table", async () => {
     const cashPool = cashPoolTables({ receiptAmountCents: 100_000n });
@@ -1900,57 +1652,6 @@ describe("ProjectExpenseService", () => {
       })
     ).rejects.toThrow("旧零星采购入口已停止新建，请使用零星材料申请流程");
     expect(tx.projectExpenseRequest.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects mismatched project expense type and subtype", async () => {
-    const service = new ProjectExpenseService({} as never, audit as never, auth as never);
-
-    await expect(
-      service.create("project-1", "handler-1", {
-        code: "LX-2026-002",
-        expenseType: "loan_reserve",
-        expenseSubtype: "sporadic_material",
-        paymentSubject: "建工智管",
-        reason: "错误分类",
-        requestedAmountCents: "10000",
-        paymentMethod: "cash"
-      })
-    ).rejects.toThrow("项目支出类型与明细类型不匹配");
-  });
-
-  it("persists project expense amounts above the legacy database integer range as bigint", async () => {
-    const cashPool = cashPoolTables({ receiptAmountCents: 3_000_000_000n });
-    const tx = {
-      ...cashPool,
-      ...governedApprovalCandidateTables(),
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
-      projectExpenseRequest: {
-        ...cashPool.projectExpenseRequest,
-        create: jest.fn().mockResolvedValue({
-          id: "expense-large",
-          code: "LX-2026-LARGE",
-          status: "approval_pending"
-        })
-      },
-      approvalInstance: { create: jest.fn() },
-      auditLog: { create: jest.fn() }
-    };
-    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
-    const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
-
-    await service.create("project-1", "handler-1", {
-      code: "LX-2026-LARGE",
-      expenseType: "loan_reserve",
-      expenseSubtype: "project_reserve",
-      paymentSubject: "建工智管",
-      reason: "超大备用金",
-      requestedAmountCents: "2147483648",
-      paymentMethod: "cash"
-    });
-
-    expect(tx.projectExpenseRequest.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ requestedAmountCents: 2_147_483_648n })
-    });
   });
 
   it("does not occupy project financing quota when the retired sporadic writer is rejected", async () => {

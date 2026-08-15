@@ -10,6 +10,7 @@ const FUND_SOURCES = [
   "contract_payment",
   "spot_procurement_payment",
   "expense_reimbursement",
+  "incidental_expense",
   "loan_disbursement"
 ] as const;
 
@@ -74,7 +75,7 @@ export class FundsWorkbenchService {
       this.prisma.expenseClaim.findMany({
         where: {
           OR: [{ projectId: { in: visibleProjectIds } }, { projectId: null }],
-          claimType: { in: ["reimbursement", "loan"] }
+          claimType: { in: ["reimbursement", "incidental_expense", "loan"] }
         },
         select: {
           id: true, code: true, claimType: true, status: true, projectId: true, reason: true,
@@ -237,6 +238,25 @@ export class FundsWorkbenchService {
         source: "expense_reimbursement",
         project,
         sourceDocument: "费用报销补付",
+        reason: expense.reason,
+        payeeName: expense.payeeNameSnapshot,
+        payerName: expense.paymentSubjectNameSnapshot ?? expense.companyEntityNameSnapshot,
+        requested: expense.companyPayableAmountCents,
+        paid: expense.fundedAmountCents,
+        status: expense.status,
+        updatedAt: expense.updatedAt
+      })];
+    }
+    if (
+      expense.claimType === "incidental_expense" &&
+      expense.companyPayableAmountCents > 0n
+    ) {
+      return [this.row({
+        id: expense.id,
+        code: expense.code,
+        source: "incidental_expense",
+        project,
+        sourceDocument: "零星费用实际付款",
         reason: expense.reason,
         payeeName: expense.payeeNameSnapshot,
         payerName: expense.paymentSubjectNameSnapshot ?? expense.companyEntityNameSnapshot,

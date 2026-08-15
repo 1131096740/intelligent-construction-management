@@ -123,17 +123,24 @@ type OperatingFactWriteRow = Pick<
 const OPERATING_FACT_KIND_SET = new Set<string>(OPERATING_FACT_KINDS);
 const OPERATING_IMPACT_KIND_SET = new Set<string>(OPERATING_IMPACT_KINDS);
 const OPERATING_SUBJECT_KIND_SET = new Set<string>(OPERATING_SUBJECT_KINDS);
+const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
 const OPERATING_SUPPORTED_SUBJECT_KIND_SET = new Set([
   "owner",
   "construction_enterprise",
   "participating_company",
-  "downstream_counterparty"
+  "downstream_counterparty",
+  "employee"
 ]);
 const OPERATING_SUBJECT_ROLE_SET = new Set<string>(OPERATING_SUBJECT_ROLES);
 const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
   Record<OperatingSubjectRole, ReadonlySet<OperatingSubjectKind>>
 > = {
-  debtor: new Set(["owner", "construction_enterprise", "participating_company"]),
+  debtor: new Set([
+    "owner",
+    "construction_enterprise",
+    "participating_company",
+    "employee"
+  ]),
   creditor: new Set([
     "construction_enterprise",
     "participating_company",
@@ -143,13 +150,15 @@ const OPERATING_SUBJECT_KINDS_BY_ROLE: Readonly<
   actual_payer: new Set([
     "owner",
     "construction_enterprise",
-    "participating_company"
+    "participating_company",
+    "employee"
   ]),
   payee: new Set([
     "owner",
     "construction_enterprise",
     "participating_company",
-    "downstream_counterparty"
+    "downstream_counterparty",
+    "employee"
   ]),
   cost_bearing_company: new Set([
     "construction_enterprise",
@@ -290,6 +299,75 @@ export class OperatingLedgerService {
       input,
       actorUserId,
       "original",
+      "source_actor"
+    );
+  }
+
+  async appendConfirmedEmployeeLoanReversalInTransaction(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactInput,
+    actorUserId: string
+  ): Promise<OperatingFactWriteResult> {
+    const reversalOfEntryId = requiredText(
+      input.sourceSnapshot.reversalOfEntryId,
+      "仅员工借款还款冲销可由正式来源写入经营账"
+    );
+    requiredText(
+      input.sourceSnapshot.sourceRepaymentId,
+      "仅员工借款还款冲销可由正式来源写入经营账"
+    );
+    const adjustsFactId = requiredText(
+      input.adjustsFactId,
+      "仅员工借款还款冲销可由正式来源写入经营账"
+    );
+    if (
+      input.sourceType !== EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE ||
+      input.factKind !== "employee_loan" ||
+      input.sourceSnapshot.entryType !== "reversal"
+    ) {
+      throw new BadRequestException("仅员工借款还款冲销可由正式来源写入经营账");
+    }
+    const original = await tx.operatingFact.findUnique({
+      where: { id: adjustsFactId },
+      select: {
+        projectId: true,
+        sourceType: true,
+        sourceBusinessId: true,
+        factKind: true,
+        entryKind: true,
+        amountCents: true,
+        debtorSubjectKind: true,
+        debtorSubjectId: true,
+        creditorSubjectKind: true,
+        creditorSubjectId: true,
+        approvedPayerSubjectKind: true,
+        approvedPayerSubjectId: true,
+        actualPayerSubjectKind: true,
+        actualPayerSubjectId: true,
+        payeeSubjectKind: true,
+        payeeSubjectId: true,
+        costBearingCompanySubjectKind: true,
+        costBearingCompanySubjectId: true
+      }
+    });
+    const expectedSubjects = subjectColumns(input.subjects);
+    if (
+      !original ||
+      original.projectId !== input.projectId ||
+      original.sourceType !== EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE ||
+      original.sourceBusinessId !== reversalOfEntryId ||
+      original.factKind !== "employee_loan" ||
+      original.entryKind !== "original" ||
+      original.amountCents !== input.amountCents ||
+      !sameFactSubjects(original, expectedSubjects)
+    ) {
+      throw new BadRequestException("员工借款还款冲销引用的原经营事实不一致");
+    }
+    return this.appendEnvelope(
+      tx,
+      input,
+      actorUserId,
+      "reversal",
       "source_actor"
     );
   }
@@ -1037,7 +1115,8 @@ function allowedSubjectKindsLabel(kinds: ReadonlySet<OperatingSubjectKind>): str
     owner: "业主",
     construction_enterprise: "施工企业",
     participating_company: "我方公司",
-    downstream_counterparty: "下游相对方"
+    downstream_counterparty: "下游相对方",
+    employee: "员工"
   };
   return [...kinds].map((kind) => labels[kind] ?? kind).join("或");
 }
@@ -1201,6 +1280,15 @@ function subjectColumns(subjects: OperatingFactSubjects) {
     costBearingCompanySubjectKind: subjects.costBearingCompany?.kind,
     costBearingCompanySubjectId: subjects.costBearingCompany?.id
   };
+}
+
+function sameFactSubjects(
+  original: Record<keyof ReturnType<typeof subjectColumns>, string | null>,
+  expected: ReturnType<typeof subjectColumns>
+): boolean {
+  return (Object.keys(expected) as Array<keyof typeof expected>).every(
+    (key) => (original[key] ?? null) === (expected[key] ?? null)
+  );
 }
 
 function toWriteResult(
