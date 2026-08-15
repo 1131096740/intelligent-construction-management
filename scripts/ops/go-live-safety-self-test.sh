@@ -6,6 +6,7 @@ TEST_ROOT="$(mktemp -d)"
 FAKE_BIN="$TEST_ROOT/bin"
 FAKE_LOG="$TEST_ROOT/fake.log"
 REAL_NODE="$(command -v node)"
+SELF_TEST_STAGE=setup
 export REAL_NODE
 
 bash -n \
@@ -18,8 +19,19 @@ bash -n \
   "$SCRIPT_DIR/run-production-db-backup.sh"
 
 cleanup() {
+  local status=$?
+  local cleanup_status=0
+  trap - EXIT
+  if (( status != 0 )); then
+    echo "self-test stopped during stage: $SELF_TEST_STAGE" >&2
+  fi
   chmod -R u+w "$TEST_ROOT" 2>/dev/null || true
-  rm -rf "$TEST_ROOT"
+  rm -rf "$TEST_ROOT" || cleanup_status=$?
+  if (( cleanup_status != 0 )); then
+    echo "self-test cleanup failed with exit=$cleanup_status" >&2
+    exit "$cleanup_status"
+  fi
+  exit "$status"
 }
 trap cleanup EXIT
 trap 'status=$?; echo "self-test unexpected failure at line $LINENO (exit=$status)" >&2; exit "$status"' ERR
@@ -397,6 +409,7 @@ grep -q 'database-backups/[0-9]\{4\}/[0-9]\{2\}/[0-9]\{2\}/jiangkong-' "$FAKE_LO
 offsite_retry_dir="$TEST_ROOT/backup-offsite-retry"
 offsite_retry_count="$TEST_ROOT/backup-offsite-retry.count"
 mkdir -p "$offsite_retry_dir"
+SELF_TEST_STAGE=offsite-retry
 if ! offsite_retry_file="$(
   PATH="$FAKE_BIN:$PATH" \
     FAKE_LOG="$FAKE_LOG" \
@@ -418,6 +431,7 @@ fi
 assert_file "$offsite_retry_file.offsite.json"
 [[ "$(< "$offsite_retry_count")" == 3 ]] || fail "transient COS failure was not retried once"
 
+SELF_TEST_STAGE=offsite-failure
 offsite_failure_dir="$TEST_ROOT/backup-offsite-failure"
 offsite_failure_count="$TEST_ROOT/backup-offsite-failure.count"
 mkdir -p "$offsite_failure_dir"
@@ -444,6 +458,7 @@ find "$offsite_failure_dir" -name '*.dump.sha256' -type f | grep -q . ||
   fail "offsite failure removed the verified local checksum"
 assert_no_files "$offsite_failure_dir" '*.offsite.json'
 
+SELF_TEST_STAGE=credential-file-safety
 insecure_env_file="$TEST_ROOT/insecure-backup.env"
 printf 'DB_BACKUP_COS_BUCKET=jiangkong-prod-db-backups-1438687719\n' > "$insecure_env_file"
 chmod 644 "$insecure_env_file"
@@ -532,6 +547,7 @@ fi
 assert_no_files "$backup_failure_dir" '*.dump'
 assert_no_files "$backup_failure_dir" '*.sha256'
 
+SELF_TEST_STAGE=restore-drill-safety
 : > "$FAKE_LOG"
 if PATH="$FAKE_BIN:$PATH" \
   FAKE_LOG="$FAKE_LOG" \
@@ -569,6 +585,7 @@ grep -q 'pg_restore --exit-on-error --dbname ' "$FAKE_LOG" ||
   fail "restore drill did not enable exit-on-error"
 
 candidate_restore_root="$TEST_ROOT/candidate-restore"
+SELF_TEST_STAGE=candidate-restore-drill
 candidate_migrations="$candidate_restore_root/services/api/prisma/migrations"
 mkdir -p "$candidate_migrations"
 for migration_number in $(seq 1 51); do
@@ -763,6 +780,7 @@ run_deploy_fixture() {
 }
 
 migration_failure_fixture="$TEST_ROOT/deploy-migration-failure"
+SELF_TEST_STAGE=deployment-safety
 make_deploy_fixture "$migration_failure_fixture"
 : > "$FAKE_LOG"
 if run_deploy_fixture "$migration_failure_fixture" env FAKE_MIGRATE_FAIL=true >/dev/null 2>&1; then
@@ -958,6 +976,7 @@ restart_count="$(grep -c '^systemctl restart jiangkong-api$' "$FAKE_LOG")"
 [[ "$restart_count" -ge 2 ]] || fail "recovery did not restart the restored API runtime"
 
 "$REAL_NODE" --test "$SCRIPT_DIR/cos-backup-transfer.test.mjs" >/dev/null
+SELF_TEST_STAGE=operations-node-tests
 "$REAL_NODE" --test "$SCRIPT_DIR/check-production-db-backup.test.mjs" >/dev/null
 
 echo "go-live ops safety self-test passed"
