@@ -22,6 +22,12 @@ import type {
   OperatingSourceLocator,
   OperatingSourceSnapshot
 } from "../operating-ledger/operating-source-adapter";
+import {
+  buildOperatingCorrectionInput,
+  parseContractTakeoverOperatingCorrectionSnapshot,
+  readContractTakeoverCorrectionSnapshot,
+  readContractTakeoverCorrectionSnapshots
+} from "./contract-takeover-operating-correction";
 
 export const CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE =
   "contract_takeover_historical_payment";
@@ -47,7 +53,6 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       select: { id: true }
     });
     if (!takeovers.length) return [];
-
     const rows = await tx.contractTakeoverHistoricalPayment.findMany({
       where: {
         takeoverId: { in: takeovers.map((takeover) => takeover.id) },
@@ -56,9 +61,17 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       orderBy: [{ paidAt: "asc" }, { id: "asc" }]
     });
     const snapshots = await Promise.all(rows.map((row) => this.snapshot(tx, row)));
-    return snapshots.filter(
+    const originalSnapshots = snapshots.filter(
       (snapshot): snapshot is OperatingSourceSnapshot => snapshot !== null
     );
+    const correctionSnapshots = await readContractTakeoverCorrectionSnapshots(
+      tx,
+      projectId,
+      this.sourceType,
+      ["historical_payment", "historical_advance", "abnormal_overpay"],
+      resolveHistoricalPaymentSourceBusinessId
+    );
+    return [...originalSnapshots, ...correctionSnapshots];
   }
 
   async readSourceSnapshot(
@@ -68,13 +81,38 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
     const row = await tx.contractTakeoverHistoricalPayment.findUnique({
       where: { id: locator.sourceBusinessId }
     });
-    if (!row || row.status !== "activated") return null;
-    return this.snapshot(tx, row, locator.projectId);
+    if (row && row.status === "activated") {
+      return this.snapshot(tx, row, locator.projectId);
+    }
+    return readContractTakeoverCorrectionSnapshot(
+      tx,
+      locator,
+      ["historical_payment", "historical_advance", "abnormal_overpay"],
+      resolveHistoricalPaymentSourceBusinessId
+    );
   }
 
   toOperatingFactInput(
     snapshot: OperatingSourceSnapshot
   ): OperatingSourceFactInput {
+    const correction = parseContractTakeoverOperatingCorrectionSnapshot(
+      snapshot.sourceSnapshot
+    );
+    if (correction) {
+      const original = this.toOperatingFactInput(correction.originalSnapshot);
+      if (original.entryKind !== "original") {
+        throw new BadRequestException("历史更正原经营来源不能是更正事实");
+      }
+      return {
+        entryKind: correction.entryKind,
+        input: buildOperatingCorrectionInput(
+          original.input,
+          correction.originalSnapshot,
+          correction.projection,
+          correction.entryKind
+        )
+      };
+    }
     const source = requiredJsonRecord(
       snapshot.sourceSnapshot,
       "历史接管实付正式来源"
@@ -108,6 +146,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       requiredJsonText(source, "actualPayerType", "历史接管实付"),
       requiredJsonText(source, "actualPayerId", "历史接管实付")
     );
+    const sameApprovedPayer = sameSubject(approvedPayer, actualPayer);
     const payee: OperatingSubjectReference = {
       kind: "downstream_counterparty",
       id: requiredJsonText(source, "payeeVersionId", "历史接管实付")
@@ -156,7 +195,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
     );
     if (advance) {
       const advanceImpactKind =
-        actualPayer.kind === "participating_company"
+        sameApprovedPayer && actualPayer.kind === "participating_company"
           ? "company_advance_for_project_increase"
           : "inter_subject_balance_increase";
       impacts.push({
@@ -175,7 +214,7 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
     );
     if (abnormalOverpay) {
       const abnormalImpactKind =
-        actualPayer.kind === "participating_company"
+        sameApprovedPayer && actualPayer.kind === "participating_company"
           ? "company_returnable_to_project_increase"
           : "inter_subject_balance_increase";
       impacts.push({
@@ -335,8 +374,19 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
       assignmentId: version.affiliateAssignmentId,
       businessPartyVersionId: version.affiliateBusinessPartyVersionId
     });
+    if (!occurredBeforeEffectiveDate(row.paidAt, effectiveDate)) {
+      throw new BadRequestException(
+        "生效日后的我方付款必须走正式付款流程，不能通过历史接管进入经营账"
+      );
+    }
     const approvedPayer = approvedPayerIdentity(version);
-    const actualPayer = actualPayerIdentity(row.payerName, approvedPayer);
+    const actualPayer = await actualPayerIdentity(
+      tx,
+      takeover.projectId,
+      row.paidAt,
+      row.payerName,
+      approvedPayer
+    );
     return {
       projectId: takeover.projectId,
       sourceType: this.sourceType,
@@ -371,7 +421,11 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
         approvedPayerId: approvedPayer.id,
         actualPayerType: actualPayer.type,
         actualPayerId: actualPayer.id,
-        actualPayerEvidence: "payer_name_matches_approved_subject_snapshot",
+        actualPayerEvidence:
+          actualPayer.id === approvedPayer.id &&
+          actualPayer.type === approvedPayer.type
+            ? "payer_name_matches_approved_subject_snapshot"
+            : "payer_name_matches_project_subject_snapshot",
         payeeVersionId: counterparty.businessPartyVersionId,
         historicalInitialSettlementId: takeover.historicalInitialSettlementId,
         allocationRows: allocations.map((allocation) => ({
@@ -439,19 +493,84 @@ function approvedPayerIdentity(version: {
   };
 }
 
-function actualPayerIdentity(
+async function actualPayerIdentity(
+  tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+  projectId: string,
+  paidAt: Date,
   payerName: string | null,
   approvedPayer: { type: "affiliate" | "our_company"; id: string; displayName: string }
-) {
-  if (
-    !payerName?.trim() ||
-    payerName.trim() !== approvedPayer.displayName.trim()
-  ) {
+): Promise<{ type: "affiliate" | "our_company"; id: string; displayName: string }> {
+  const normalizedName = payerName?.trim();
+  if (!normalizedName) {
     throw new BadRequestException(
       "历史接管实付缺少可验证的实际付款主体，不能进入正式经营账"
     );
   }
-  return approvedPayer;
+  if (normalizedName === approvedPayer.displayName.trim()) return approvedPayer;
+
+  const [affiliate, company] = await Promise.all([
+    tx.projectAffiliateAssignment.findFirst({
+      where: {
+        projectId,
+        affiliateNameSnapshot: normalizedName,
+        effectiveFrom: { lte: paidAt },
+        OR: [{ endedAt: null }, { endedAt: { gt: paidAt } }]
+      },
+      select: {
+        businessPartyVersionId: true,
+        affiliateNameSnapshot: true
+      },
+      orderBy: { effectiveFrom: "desc" }
+    }),
+    tx.projectParticipatingCompany.findFirst({
+      where: {
+        projectId,
+        companyNameSnapshot: normalizedName,
+        effectiveFrom: { lte: paidAt },
+        OR: [{ endedAt: null }, { endedAt: { gt: paidAt } }]
+      },
+      select: { companyEntityId: true, companyNameSnapshot: true },
+      orderBy: { effectiveFrom: "desc" }
+    })
+  ]);
+  if (affiliate) {
+    return {
+      type: "affiliate",
+      id: affiliate.businessPartyVersionId,
+      displayName: affiliate.affiliateNameSnapshot
+    };
+  }
+  if (company) {
+    return {
+      type: "our_company",
+      id: company.companyEntityId,
+      displayName: company.companyNameSnapshot
+    };
+  }
+  throw new BadRequestException(
+    "历史接管实付实际付款主体未匹配项目已冻结主体，不能进入正式经营账"
+  );
+}
+
+async function resolveHistoricalPaymentSourceBusinessId(
+  tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+  row: { takeoverId: string; targetHistoricalPaymentId: string | null; correctionScope: string | null }
+): Promise<string | null> {
+  if (row.targetHistoricalPaymentId) return row.targetHistoricalPaymentId;
+  const rows = await tx.$queryRaw<Array<{ historicalPaymentId: string }>>(
+    Prisma.sql`
+      SELECT allocation."historicalPaymentId"
+      FROM "ContractTakeoverHistoricalPaymentAllocation" allocation
+      JOIN "ContractTakeoverHistoricalPayment" payment
+        ON payment."id" = allocation."historicalPaymentId"
+      WHERE payment."takeoverId" = ${row.takeoverId}
+        AND payment."status" = 'activated'
+        AND allocation."allocationType" = ${row.correctionScope}
+      ORDER BY payment."sequenceNo", allocation."allocationOrder"
+      LIMIT 1
+    `
+  );
+  return rows[0]?.historicalPaymentId ?? null;
 }
 
 function payerSubject(type: string, id: string): OperatingSubjectReference {

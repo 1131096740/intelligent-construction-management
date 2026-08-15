@@ -20,6 +20,12 @@ import type {
   OperatingSourceLocator,
   OperatingSourceSnapshot
 } from "../operating-ledger/operating-source-adapter";
+import {
+  buildOperatingCorrectionInput,
+  parseContractTakeoverOperatingCorrectionSnapshot,
+  readContractTakeoverCorrectionSnapshot,
+  readContractTakeoverCorrectionSnapshots
+} from "../contract-takeover/contract-takeover-operating-correction";
 
 const EFFECTIVE_SETTLEMENT_STATUSES = ["effective", "partially_paid", "paid"];
 const CONTRACT_COST_CATEGORY: Readonly<Record<string, PrimaryCostCategoryCode>> = {
@@ -41,9 +47,17 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       orderBy: [{ periodEnd: "asc" }, { id: "asc" }]
     });
     const snapshots = await Promise.all(rows.map((row) => this.snapshot(tx, row)));
-    return snapshots.filter(
+    const originalSnapshots = snapshots.filter(
       (snapshot): snapshot is OperatingSourceSnapshot => snapshot !== null
     );
+    const correctionSnapshots = await readContractTakeoverCorrectionSnapshots(
+      tx,
+      projectId,
+      this.sourceType,
+      ["historical_settlement"],
+      resolveHistoricalSettlementSourceBusinessId
+    );
+    return [...originalSnapshots, ...correctionSnapshots];
   }
 
   async readSourceSnapshot(
@@ -57,10 +71,34 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         status: { in: EFFECTIVE_SETTLEMENT_STATUSES }
       }
     });
-    return row ? this.snapshot(tx, row) : null;
+    if (row) return this.snapshot(tx, row);
+    return readContractTakeoverCorrectionSnapshot(
+      tx,
+      locator,
+      ["historical_settlement"],
+      resolveHistoricalSettlementSourceBusinessId
+    );
   }
 
   toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
+    const correction = parseContractTakeoverOperatingCorrectionSnapshot(
+      snapshot.sourceSnapshot
+    );
+    if (correction) {
+      const original = this.toOperatingFactInput(correction.originalSnapshot);
+      if (original.entryKind !== "original") {
+        throw new BadRequestException("历史更正原经营来源不能是更正事实");
+      }
+      return {
+        entryKind: correction.entryKind,
+        input: buildOperatingCorrectionInput(
+          original.input,
+          correction.originalSnapshot,
+          correction.projection,
+          correction.entryKind
+        )
+      };
+    }
     const source = requiredJsonRecord(snapshot.sourceSnapshot, "下游结算正式来源");
     const affiliate = frozenAffiliateFromJson(source, "下游结算");
     const occurredAt = requiredJsonDate(source, "occurredAt", "下游结算");
@@ -402,6 +440,17 @@ function payerSubject(
     };
   }
   throw new BadRequestException("下游结算签约主体类型不正确");
+}
+
+async function resolveHistoricalSettlementSourceBusinessId(
+  tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+  row: { takeoverId: string }
+): Promise<string | null> {
+  const takeover = await tx.contractTakeover.findUnique({
+    where: { id: row.takeoverId },
+    select: { historicalInitialSettlementId: true }
+  });
+  return takeover?.historicalInitialSettlementId ?? null;
 }
 
 function absolute(value: bigint): bigint {

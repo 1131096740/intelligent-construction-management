@@ -13,13 +13,16 @@ import { FileService } from "../file/file.service";
 import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import {
-  OperatingLedgerService,
-  type AppendOperatingFactInput,
-  type OperatingImpactInput,
-  type OperatingSubjectReference
+  OperatingLedgerService
 } from "../operating-ledger/operating-ledger.service";
 import { CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE } from "./contract-takeover-operating-source.adapter";
 import { ContractTakeoverBalanceService } from "./contract-takeover-balance.service";
+import {
+  buildOperatingCorrectionInput,
+  operatingInputFromStoredFact,
+  type ContractTakeoverCorrectionProjection,
+  type StoredOperatingFact
+} from "./contract-takeover-operating-correction";
 import type { ReviewContractTakeoverCorrectionDto } from "./dto/review-contract-takeover-correction.dto";
 import type {
   ContractTakeoverCorrectionScope,
@@ -337,7 +340,8 @@ export class ContractTakeoverCorrectionService {
             takeover,
             correction,
             scope,
-            actorUserId
+            actorUserId,
+            now
           );
           const applied =
             await tx.contractTakeoverCorrection.updateMany({
@@ -743,13 +747,16 @@ export class ContractTakeoverCorrectionService {
       applicationIdempotencyKey: string | null;
     },
     scope: ContractTakeoverCorrectionScope,
-    actorUserId: string
+    actorUserId: string,
+    appliedAt: Date
   ) {
     const applicationIdempotencyKey = required(
       correction.applicationIdempotencyKey,
       "历史更正缺少应用幂等键"
     );
+    let entryKind: "correction" | "reversal" = "correction";
     if (correction.correctionOperation === "reversal") {
+      entryKind = "reversal";
       const entryId = required(
         correction.targetBalanceEntryId,
         "历史反向更正缺少原流水"
@@ -767,18 +774,7 @@ export class ContractTakeoverCorrectionService {
         `${applicationIdempotencyKey}:reversal`,
         correction.id
       );
-      await this.appendOperatingCorrection(
-        tx,
-        takeover,
-        correction,
-        scope,
-        actorUserId,
-        applicationIdempotencyKey,
-        "reversal"
-      );
-      return;
-    }
-    if (correction.correctionOperation === "reclassification") {
+    } else if (correction.correctionOperation === "reclassification") {
       await this.applyReclassification(
         tx,
         takeover,
@@ -787,70 +783,41 @@ export class ContractTakeoverCorrectionService {
         actorUserId,
         applicationIdempotencyKey
       );
-      await this.appendOperatingCorrection(
-        tx,
-        takeover,
-        correction,
-        scope,
-        actorUserId,
-        applicationIdempotencyKey,
-        "correction"
+    } else {
+      const deltaCents = jsonMoney(
+        correction.deltaSnapshot,
+        "amountCents",
+        "历史更正差额"
       );
-      return;
+      if (scope === "historical_settlement") {
+        await this.applySettlementCorrection(
+          tx,
+          takeover,
+          correction,
+          deltaCents,
+          actorUserId
+        );
+      } else if (scope === "historical_payment") {
+        await this.applyPaymentCorrection(
+          tx,
+          takeover,
+          correction,
+          deltaCents,
+          actorUserId,
+          applicationIdempotencyKey
+        );
+      } else {
+        await this.applyBalanceCorrection(
+          tx,
+          takeover,
+          correction,
+          this.parseBalanceType(scope),
+          deltaCents,
+          actorUserId,
+          applicationIdempotencyKey
+        );
+      }
     }
-    const deltaCents = jsonMoney(
-      correction.deltaSnapshot,
-      "amountCents",
-      "历史更正差额"
-    );
-    if (scope === "historical_settlement") {
-      await this.applySettlementCorrection(
-        tx,
-        takeover,
-        correction,
-        deltaCents,
-        actorUserId
-      );
-      await this.appendOperatingCorrection(
-        tx,
-        takeover,
-        correction,
-        scope,
-        actorUserId,
-        applicationIdempotencyKey,
-        "correction"
-      );
-      return;
-    }
-    if (scope === "historical_payment") {
-      await this.applyPaymentCorrection(
-        tx,
-        takeover,
-        correction,
-        deltaCents,
-        actorUserId,
-        applicationIdempotencyKey
-      );
-      await this.appendOperatingCorrection(
-        tx,
-        takeover,
-        correction,
-        scope,
-        actorUserId,
-        applicationIdempotencyKey,
-        "correction"
-      );
-      return;
-    }
-    await this.applyBalanceCorrection(
-      tx,
-      takeover,
-      correction,
-      this.parseBalanceType(scope),
-      deltaCents,
-      actorUserId,
-      applicationIdempotencyKey
-    );
     await this.appendOperatingCorrection(
       tx,
       takeover,
@@ -858,7 +825,8 @@ export class ContractTakeoverCorrectionService {
       scope,
       actorUserId,
       applicationIdempotencyKey,
-      "correction"
+      entryKind,
+      appliedAt
     );
   }
 
@@ -1007,7 +975,8 @@ export class ContractTakeoverCorrectionService {
     scope: ContractTakeoverCorrectionScope,
     actorUserId: string,
     idempotencyKey: string,
-    entryKind: "correction" | "reversal"
+    entryKind: "correction" | "reversal",
+    appliedAt: Date
   ) {
     if (!this.operatingLedger) return;
     const project = await tx.project.findUnique({
@@ -1052,73 +1021,39 @@ export class ContractTakeoverCorrectionService {
       throw new ConflictException("历史更正对应的原经营事实不存在");
     }
 
-    const delta = correctionDelta(correction.deltaSnapshot);
-    const before = asObject(correction.beforeSnapshot, "历史更正前快照");
-    const allocationType =
-      typeof before.allocationType === "string"
-        ? before.allocationType
-        : null;
-    const reclassification =
-      correction.correctionOperation === "reclassification"
-        ? asObject(correction.deltaSnapshot, "历史重分类差额")
-        : null;
-    const impacts = operatingCorrectionImpacts(
-      original.impacts,
-      scope,
-      allocationType ?? scope,
-      delta,
-      reclassification
+    const originalInput = operatingInputFromStoredFact(
+      original as StoredOperatingFact
     );
-    if (!impacts.length) {
-      throw new ConflictException("历史更正没有可投影的经营影响");
-    }
-
+    const originalSnapshot = {
+      projectId: original.projectId,
+      sourceType,
+      sourceBusinessId,
+      sourceBusinessCode: original.sourceBusinessCode,
+      sourceVersion: original.sourceVersion,
+      status: "confirmed" as const,
+      sourceSnapshot: original.sourceSnapshot as Prisma.InputJsonObject
+    };
+    const projection: ContractTakeoverCorrectionProjection = {
+      id: correction.id,
+      originalFactId: original.id,
+      correctionOperation: correction.correctionOperation,
+      correctionScope: scope,
+      targetHistoricalPaymentId: correction.targetHistoricalPaymentId,
+      beforeSnapshot: correction.beforeSnapshot,
+      deltaSnapshot: correction.deltaSnapshot,
+      applicationIdempotencyKey: idempotencyKey,
+      appliedByUserId: actorUserId,
+      appliedAt
+    };
+    const input = buildOperatingCorrectionInput(
+      originalInput,
+      originalSnapshot,
+      projection,
+      entryKind
+    );
     await this.operatingLedger.appendCorrectionInTransaction(
       tx,
-      {
-        projectId: original.projectId,
-        sourceType,
-        sourceBusinessId: correction.id,
-        sourceBusinessCode: `${original.sourceBusinessCode}/更正/${correction.id}`,
-        sourceVersion: original.sourceVersion,
-        idempotencyKey: `${idempotencyKey}:operating:${entryKind}`,
-        occurredAt: new Date(),
-        confirmedAt: new Date(),
-        confirmedByUserId: actorUserId,
-        factKind: original.factKind as AppendOperatingFactInput["factKind"],
-        operatingLevel:
-          original.operatingLevel as AppendOperatingFactInput["operatingLevel"],
-        evidenceLevel: original.evidenceLevel as AppendOperatingFactInput["evidenceLevel"],
-        amountCents: absBigInt(delta),
-        currencyCode: original.currencyCode,
-        direction: correctionDirection(original.direction, delta),
-        isBeforeOperatingLedgerEffectiveDate:
-          original.isBeforeOperatingLedgerEffectiveDate,
-        affiliateAssignmentId: original.affiliateAssignmentId,
-        affiliateBusinessPartyVersionId: original.affiliateBusinessPartyVersionId,
-        affiliateNameSnapshot: original.affiliateNameSnapshot,
-        ...(original.affiliateCreditCodeSnapshot
-          ? { affiliateCreditCodeSnapshot: original.affiliateCreditCodeSnapshot }
-          : {}),
-        ...(original.historicalTakeoverBatchId
-          ? { historicalTakeoverBatchId: original.historicalTakeoverBatchId }
-          : {}),
-        sourceSnapshot: {
-          authority: "contract_takeover_append_only_correction",
-          correctionId: correction.id,
-          correctionOperation: correction.correctionOperation,
-          correctionScope: scope,
-          originalSourceType: sourceType,
-          originalSourceBusinessId: sourceBusinessId
-        },
-        basisSnapshot: {
-          authority: "contract_takeover_correction_review",
-          correctionId: correction.id
-        },
-        subjects: operatingSubjects(original),
-        impacts,
-        adjustsFactId: original.id
-      },
+      input,
       actorUserId
     );
   }
@@ -1935,221 +1870,6 @@ export class ContractTakeoverCorrectionService {
     }
     throw error;
   }
-}
-
-type StoredOperatingImpact = {
-  sourceImpactKey: string;
-  impactKind: string;
-  amountCents: bigint;
-  direction: string;
-  subjectRole: string | null;
-  subjectKind: string | null;
-  subjectId: string | null;
-  costCategoryCode: string | null;
-  fundPurpose: string | null;
-  description: string | null;
-  impactSnapshot: Prisma.JsonValue;
-};
-
-type StoredOperatingFact = {
-  projectId: string;
-  sourceType: string;
-  sourceBusinessId: string;
-  sourceVersion: number;
-  sourceBusinessCode: string;
-  occurredAt: Date;
-  confirmedAt: Date;
-  affiliateAssignmentId: string;
-  affiliateBusinessPartyVersionId: string;
-  affiliateNameSnapshot: string;
-  affiliateCreditCodeSnapshot: string | null;
-  operatingLedgerEffectiveDateSnapshot: Date;
-  isBeforeOperatingLedgerEffectiveDate: boolean;
-  historicalTakeoverBatchId: string | null;
-  factKind: string;
-  operatingLevel: string;
-  evidenceLevel: string;
-  amountCents: bigint;
-  currencyCode: string;
-  direction: string;
-  debtorSubjectKind: string | null;
-  debtorSubjectId: string | null;
-  creditorSubjectKind: string | null;
-  creditorSubjectId: string | null;
-  approvedPayerSubjectKind: string | null;
-  approvedPayerSubjectId: string | null;
-  actualPayerSubjectKind: string | null;
-  actualPayerSubjectId: string | null;
-  payeeSubjectKind: string | null;
-  payeeSubjectId: string | null;
-  costBearingCompanySubjectKind: string | null;
-  costBearingCompanySubjectId: string | null;
-  impacts: StoredOperatingImpact[];
-};
-
-function operatingSubjects(fact: StoredOperatingFact) {
-  return {
-    ...(fact.debtorSubjectKind && fact.debtorSubjectId
-      ? { debtor: { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } }
-      : {}),
-    ...(fact.creditorSubjectKind && fact.creditorSubjectId
-      ? { creditor: { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } }
-      : {}),
-    ...(fact.approvedPayerSubjectKind && fact.approvedPayerSubjectId
-      ? {
-          approvedPayer: {
-            kind: fact.approvedPayerSubjectKind,
-            id: fact.approvedPayerSubjectId
-          }
-        }
-      : {}),
-    ...(fact.actualPayerSubjectKind && fact.actualPayerSubjectId
-      ? {
-          actualPayer: {
-            kind: fact.actualPayerSubjectKind,
-            id: fact.actualPayerSubjectId
-          }
-        }
-      : {}),
-    ...(fact.payeeSubjectKind && fact.payeeSubjectId
-      ? { payee: { kind: fact.payeeSubjectKind, id: fact.payeeSubjectId } }
-      : {}),
-    ...(fact.costBearingCompanySubjectKind && fact.costBearingCompanySubjectId
-      ? {
-          costBearingCompany: {
-            kind: fact.costBearingCompanySubjectKind,
-            id: fact.costBearingCompanySubjectId
-          }
-        }
-      : {})
-  } as AppendOperatingFactInput["subjects"];
-}
-
-function correctionDelta(value: Prisma.JsonValue | null): bigint {
-  return jsonMoney(value, "amountCents", "历史更正差额");
-}
-
-function operatingCorrectionImpacts(
-  originalImpacts: readonly StoredOperatingImpact[],
-  scope: ContractTakeoverCorrectionScope,
-  allocationType: string | null,
-  delta: bigint,
-  reclassification: Prisma.JsonObject | null
-): OperatingImpactInput[] {
-  if (scope === "historical_settlement") {
-    return originalImpacts
-      .filter((impact) => impact.impactKind !== "invoice_reference")
-      .map((impact) => signedImpact(impact, delta));
-  }
-
-  const funds = originalImpacts.find((impact) =>
-    impact.sourceImpactKey.endsWith("_funds_decrease")
-  );
-  const balance = originalImpacts.find((impact) =>
-    ["historical_advance", "abnormal_overpay"].includes(impact.sourceImpactKey)
-  );
-  const payable = originalImpacts.find((impact) =>
-    impact.sourceImpactKey.startsWith("payable:")
-  );
-    if (reclassification && balance) {
-    const from = typeof reclassification.from === "string" ? reclassification.from : null;
-    const to = typeof reclassification.to === "string" ? reclassification.to : null;
-    if (!from || !to) throw new BadRequestException("历史重分类缺少来源或目标余额");
-    const amountCents = jsonMoney(
-      reclassification,
-      "amountCents",
-      "历史重分类差额"
-    );
-    return [
-      signedImpact(
-        {
-          ...balance,
-          sourceImpactKey: `reclassification:${from}`,
-          impactKind: inverseImpactKind(balance.impactKind)
-        },
-        amountCents
-      ),
-      {
-        ...signedImpact(
-          balance,
-          amountCents
-        ),
-        sourceImpactKey: `reclassification:${to}`,
-        impactKind: balanceImpactKind(
-          to,
-          balance.impactKind
-        ) as OperatingImpactInput["impactKind"]
-      }
-    ];
-  }
-
-  const impacts: OperatingImpactInput[] = [];
-  if (funds) impacts.push(signedImpact(funds, delta));
-  if (allocationType === "settlement" && payable) {
-    impacts.push(signedImpact(payable, delta));
-  } else if (balance && allocationType) {
-    impacts.push(signedImpact(balance, delta));
-  }
-  return impacts;
-}
-
-function signedImpact(impact: StoredOperatingImpact, delta: bigint): OperatingImpactInput {
-  const positive = delta >= 0n;
-  const amountCents = absBigInt(delta);
-  const impactKind = positive ? impact.impactKind : inverseImpactKind(impact.impactKind);
-  return {
-    idempotencyKey: `correction:${impact.sourceImpactKey}:${positive ? "increase" : "decrease"}`,
-    sourceImpactKey: `correction:${impact.sourceImpactKey}`,
-    impactKind: impactKind as OperatingImpactInput["impactKind"],
-    amountCents,
-    direction: positive ? "increase" : "decrease",
-    ...(impact.subjectRole && impact.subjectKind && impact.subjectId
-      ? {
-          subjectRole: impact.subjectRole as OperatingImpactInput["subjectRole"],
-          subject: {
-            kind: impact.subjectKind as OperatingSubjectReference["kind"],
-            id: impact.subjectId
-          }
-        }
-      : {}),
-    ...(impact.costCategoryCode
-      ? { costCategoryCode: impact.costCategoryCode as OperatingImpactInput["costCategoryCode"] }
-      : {}),
-    ...(impact.fundPurpose ? { fundPurpose: impact.fundPurpose } : {}),
-    description: `历史更正：${impact.description ?? impact.sourceImpactKey}`,
-    impactSnapshot:
-      impact.impactSnapshot && typeof impact.impactSnapshot === "object" && !Array.isArray(impact.impactSnapshot)
-        ? (impact.impactSnapshot as Prisma.InputJsonObject)
-        : {}
-  };
-}
-
-function inverseImpactKind(kind: string): string {
-  if (kind.endsWith("_increase")) return `${kind.slice(0, -9)}_decrease`;
-  if (kind.endsWith("_decrease")) return `${kind.slice(0, -9)}_increase`;
-  return kind;
-}
-
-function balanceImpactKind(balanceType: string, originalKind: string): string {
-  if (balanceType === "historical_advance") {
-    return originalKind.includes("company_advance")
-      ? "company_advance_for_project_increase"
-      : "inter_subject_balance_increase";
-  }
-  return originalKind.includes("company_returnable")
-    ? "company_returnable_to_project_increase"
-    : "inter_subject_balance_increase";
-}
-
-function correctionDirection(direction: string, delta: bigint): AppendOperatingFactInput["direction"] {
-  if (delta >= 0n) return direction as AppendOperatingFactInput["direction"];
-  if (direction === "outflow") return "inflow";
-  if (direction === "inflow") return "outflow";
-  return "neutral";
-}
-
-function absBigInt(value: bigint): bigint {
-  return value < 0n ? -value : value;
 }
 
 function required(value: string | null | undefined, message: string) {

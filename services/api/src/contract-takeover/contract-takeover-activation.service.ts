@@ -165,7 +165,7 @@ export class ContractTakeoverActivationService {
       }
     }
 
-    const capacityCents = isSettlementContract ? historicalSettledCents : null;
+    const capacityCents = isSettlementContract ? historicalSettledCents : 0n;
     const requestedExcessTreatment =
       financeFacts.excessTreatment === "historical_advance" ||
       financeFacts.excessTreatment === "abnormal_overpay"

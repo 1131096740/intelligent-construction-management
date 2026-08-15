@@ -331,7 +331,8 @@ describe("ContractTakeoverCorrectionService", () => {
       "historical_payment",
       "finance-director-1",
       "correction-key",
-      "correction"
+      "correction",
+      new Date("2026-08-15T08:00:00.000Z")
     );
 
     expect(operatingLedger.appendCorrectionInTransaction).toHaveBeenCalledWith(

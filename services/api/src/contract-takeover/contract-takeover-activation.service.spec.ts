@@ -127,6 +127,74 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
       operatingSources.appendConfirmedSourceIfEnabledInTransaction
     ).not.toHaveBeenCalled();
   });
+
+  it("keeps direct-contract historical payments as advance or overpay without creating an opening settlement", async () => {
+    const audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as AuditService;
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest
+        .fn()
+        .mockResolvedValue({ created: true })
+    } as unknown as OperatingSourceReplayService;
+    const service = new ContractTakeoverActivationService(audit, operatingSources);
+    const tx = activationTx();
+    tx.contractTakeoverExcessEvidence.count.mockResolvedValue(1);
+    tx.contractTakeoverBalanceAccount.create.mockResolvedValue({
+      id: "balance-account-1"
+    });
+
+    await service.executePreparedActivation(
+      tx as never,
+      {
+        takeover: {
+          id: "takeover-direct-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-1",
+          takeoverLevel: "A"
+        },
+        contractFacts: {
+          historicalSettledCents: 0n,
+          zeroSettlementDeclared: true
+        },
+        financeFacts: {
+          zeroPaymentDeclared: false,
+          excessTreatment: "historical_advance"
+        },
+        payments: [
+          { id: "historical-payment-direct-1", amountCents: 100_000n, status: "draft" }
+        ],
+        vouchers: [{ historicalPaymentId: "historical-payment-direct-1" }],
+        contract: {
+          contractTypeKey: "other",
+          companyEntityId: null,
+          companyEntityIsActive: null,
+          companyEntityDataStatus: null,
+          companyEntityVersionId: null,
+          companyEntityVersionName: null,
+          companyEntityCreditCode: null,
+          companyEntityRegisteredAddress: null
+        },
+        contractVersion: { amountCents: 1_000_000n, amountLimitType: "capped" }
+      },
+      "finance-director-1",
+      "activate-direct-1"
+    );
+
+    expect(tx.settlement.create).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverHistoricalPaymentAllocation.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          historicalPaymentId: "historical-payment-direct-1",
+          allocationType: "historical_advance",
+          amountCents: 100_000n
+        })
+      ]
+    });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledTimes(1);
+  });
 });
 
 function activationTx() {

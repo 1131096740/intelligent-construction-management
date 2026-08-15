@@ -2,6 +2,7 @@ import {
   CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
   ContractTakeoverHistoricalPaymentOperatingSourceAdapter
 } from "./contract-takeover-operating-source.adapter";
+import { buildContractTakeoverOperatingCorrectionSnapshot } from "./contract-takeover-operating-correction";
 
 describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
   it("maps an activated A-level payment to funds, payable and advance impacts without confirmed cost", async () => {
@@ -112,9 +113,117 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
       ])
     );
   });
+
+  it("rejects a historical payment dated on or after the operating-ledger effective date", async () => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-07-01T00:00:00.000Z")
+    });
+
+    await expect(
+      adapter.readSourceSnapshot(tx as never, {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "historical-payment-1"
+      })
+    ).rejects.toThrow("生效日后的我方付款必须走正式付款流程");
+  });
+
+  it("keeps a different frozen project subject as the actual payer and maps the inter-subject balance", async () => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    tx.contractTakeoverHistoricalPayment.findUnique.mockResolvedValue({
+      ...historicalPaymentRow(),
+      payerName: "代付公司"
+    });
+    tx.projectParticipatingCompany.findFirst.mockResolvedValue({
+      companyEntityId: "company-2",
+      companyNameSnapshot: "代付公司"
+    });
+    tx.projectAffiliateAssignment.findFirst
+      .mockResolvedValueOnce({
+        id: "affiliate-assignment-1",
+        businessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        affiliateCreditCodeSnapshot: "91310000000000000X"
+      })
+      .mockResolvedValueOnce(null);
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "historical-payment-1"
+    });
+    const mapped = adapter.toOperatingFactInput(snapshot!);
+
+    expect(mapped.input.operatingLevel).toBe("inter_subject");
+    expect(mapped.input.subjects.actualPayer).toEqual({
+      kind: "participating_company",
+      id: "company-2"
+    });
+    expect(mapped.input.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceImpactKey: "historical_advance",
+          impactKind: "inter_subject_balance_increase"
+        })
+      ])
+    );
+  });
+
+  it("replays an append-only correction against the original operating fact id", async () => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    const original = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "historical-payment-1"
+    });
+    const correction = buildContractTakeoverOperatingCorrectionSnapshot(
+      original!,
+      {
+        id: "correction-1",
+        originalFactId: "operating-fact-1",
+        correctionOperation: "correction",
+        correctionScope: "historical_payment",
+        targetHistoricalPaymentId: "historical-payment-1",
+        beforeSnapshot: { allocationType: "historical_advance" },
+        deltaSnapshot: { amountCents: "-10000" },
+        applicationIdempotencyKey: "correction-key",
+        appliedByUserId: "finance-director-1",
+        appliedAt: new Date("2026-08-15T08:00:00.000Z")
+      },
+      "correction"
+    );
+
+    const mapped = adapter.toOperatingFactInput(correction);
+
+    expect(mapped.entryKind).toBe("correction");
+    expect(mapped.input.adjustsFactId).toBe("operating-fact-1");
+    expect(mapped.input.sourceBusinessId).toBe("correction-1");
+  });
 });
 
+function historicalPaymentRow() {
+  return {
+    id: "historical-payment-1",
+    takeoverId: "takeover-1",
+    rowKey: "row-1",
+    sequenceNo: 1,
+    amountCents: 150_000n,
+    paidAt: new Date("2026-07-30T00:00:00.000Z"),
+    payerName: "我方公司",
+    payeeName: "供应商",
+    bankReference: "BANK-1",
+    paymentMethod: "bank",
+    note: "历史付款",
+    status: "activated"
+  };
+}
+
 function historicalPaymentTx() {
+  const payment = historicalPaymentRow();
   return {
     project: {
       findUnique: jest.fn().mockResolvedValue({
@@ -140,33 +249,11 @@ function historicalPaymentTx() {
     contractTakeoverHistoricalPayment: {
       findMany: jest.fn().mockResolvedValue([
         {
-          id: "historical-payment-1",
-          takeoverId: "takeover-1",
-          rowKey: "row-1",
-          sequenceNo: 1,
-          amountCents: 150_000n,
-          paidAt: new Date("2026-07-30T00:00:00.000Z"),
-          payerName: "我方公司",
-          payeeName: "供应商",
-          bankReference: "BANK-1",
-          paymentMethod: "bank",
-          note: "历史付款",
-          status: "activated"
+          ...payment
         }
       ]),
       findUnique: jest.fn().mockResolvedValue({
-        id: "historical-payment-1",
-        takeoverId: "takeover-1",
-        rowKey: "row-1",
-        sequenceNo: 1,
-        amountCents: 150_000n,
-        paidAt: new Date("2026-07-30T00:00:00.000Z"),
-        payerName: "我方公司",
-        payeeName: "供应商",
-        bankReference: "BANK-1",
-        paymentMethod: "bank",
-        note: "历史付款",
-        status: "activated"
+        ...payment
       })
     },
     contract: {
@@ -217,6 +304,13 @@ function historicalPaymentTx() {
         affiliateNameSnapshot: "施工企业甲",
         affiliateCreditCodeSnapshot: "91310000000000000X"
       })
+    },
+    projectParticipatingCompany: {
+      findFirst: jest.fn().mockResolvedValue(null)
+    },
+    contractTakeoverCorrection: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null)
     }
   };
 }

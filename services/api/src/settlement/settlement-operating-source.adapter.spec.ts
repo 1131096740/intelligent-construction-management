@@ -172,6 +172,13 @@ function settlementTx(
       }),
       findMany: jest.fn().mockResolvedValue([])
     },
+    contractTakeover: {
+      findUnique: jest.fn().mockResolvedValue(null)
+    },
+    contractTakeoverCorrection: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null)
+    },
     contract: {
       findUnique: jest.fn().mockResolvedValue({ contractTypeKey })
     },
