@@ -173,6 +173,18 @@ export class ContractTakeoverHistoricalPaymentOperatingSourceAdapter
         subject: payee,
         description: "历史逐笔实付清偿期初结算应付"
       });
+      if (!sameApprovedPayer) {
+        impacts.push({
+          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:inter_subject_balance:${allocation.sourceId}`,
+          sourceImpactKey: `inter_subject_balance:${allocation.sourceId}`,
+          impactKind: "inter_subject_balance_increase",
+          amountCents: allocation.amountCents,
+          direction: "increase",
+          subjectRole: "actual_payer",
+          subject: actualPayer,
+          description: "历史代付清偿原债务并形成主体间往来"
+        });
+      }
     }
 
     const fundsImpactKind =
@@ -567,9 +579,14 @@ async function resolveHistoricalPaymentSourceBusinessId(
         AND payment."status" = 'activated'
         AND allocation."allocationType" = ${row.correctionScope}
       ORDER BY payment."sequenceNo", allocation."allocationOrder"
-      LIMIT 1
+      LIMIT 2
     `
   );
+  if (rows.length > 1) {
+    throw new BadRequestException(
+      "历史余额更正必须引用唯一的历史实付来源，不能自动选择首笔付款"
+    );
+  }
   return rows[0]?.historicalPaymentId ?? null;
 }
 

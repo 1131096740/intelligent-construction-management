@@ -467,7 +467,8 @@ function operatingCorrectionImpacts(
     impact.sourceImpactKey.endsWith("_funds_decrease")
   );
   const balance = originalImpacts.find((impact) =>
-    ["historical_advance", "abnormal_overpay"].includes(impact.sourceImpactKey)
+    ["historical_advance", "abnormal_overpay"].includes(impact.sourceImpactKey) ||
+    impact.sourceImpactKey.startsWith("inter_subject_balance:")
   );
   const payable = originalImpacts.find((impact) =>
     impact.sourceImpactKey.startsWith("payable:")
@@ -495,8 +496,9 @@ function operatingCorrectionImpacts(
 
   const impacts: OperatingImpactInput[] = [];
   if (funds) impacts.push(signedImpact(funds, delta));
-  if (allocationType === "settlement" && payable) {
-    impacts.push(signedImpact(payable, delta));
+  if (allocationType === "settlement") {
+    if (payable) impacts.push(signedImpact(payable, delta));
+    if (balance) impacts.push(signedImpact(balance, delta));
   } else if (balance && allocationType) {
     impacts.push(signedImpact(balance, delta));
   }

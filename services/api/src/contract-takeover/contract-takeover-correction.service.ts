@@ -2,8 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
-  Optional
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -88,7 +88,9 @@ export class ContractTakeoverCorrectionService {
     private readonly auth: AuthService,
     private readonly files: FileService,
     private readonly balances: ContractTakeoverBalanceService,
-    @Optional() private readonly operatingLedger?: OperatingLedgerService
+    @Inject(OperatingLedgerService)
+    private readonly operatingLedger: OperatingLedgerService =
+      missingOperatingLedgerService()
   ) {}
 
   async submit(
@@ -978,7 +980,6 @@ export class ContractTakeoverCorrectionService {
     entryKind: "correction" | "reversal",
     appliedAt: Date
   ) {
-    if (!this.operatingLedger) return;
     const project = await tx.project.findUnique({
       where: { id: takeover.projectId },
       select: { operatingLedgerEffectiveDate: true }
@@ -989,25 +990,33 @@ export class ContractTakeoverCorrectionService {
       scope === "historical_settlement"
         ? "settlement"
         : CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE;
-    const sourceBusinessId =
+    let sourceBusinessId =
       scope === "historical_settlement"
         ? takeover.historicalInitialSettlementId
-        : correction.targetHistoricalPaymentId ??
-          (
-            await tx.$queryRaw<Array<{ historicalPaymentId: string }>>(
-              Prisma.sql`
-                SELECT allocation."historicalPaymentId"
-                FROM "ContractTakeoverHistoricalPaymentAllocation" allocation
-                JOIN "ContractTakeoverHistoricalPayment" payment
-                  ON payment."id" = allocation."historicalPaymentId"
-                WHERE payment."takeoverId" = ${takeover.id}
-                  AND payment."status" = 'activated'
-                  AND allocation."allocationType" = ${scope}
-                ORDER BY payment."sequenceNo", allocation."allocationOrder"
-                LIMIT 1
-              `
-            )
-          )[0]?.historicalPaymentId;
+        : correction.targetHistoricalPaymentId;
+    if (scope !== "historical_settlement" && !sourceBusinessId) {
+      const candidates = await tx.$queryRaw<
+        Array<{ historicalPaymentId: string }>
+      >(
+        Prisma.sql`
+          SELECT allocation."historicalPaymentId"
+          FROM "ContractTakeoverHistoricalPaymentAllocation" allocation
+          JOIN "ContractTakeoverHistoricalPayment" payment
+            ON payment."id" = allocation."historicalPaymentId"
+          WHERE payment."takeoverId" = ${takeover.id}
+            AND payment."status" = 'activated'
+            AND allocation."allocationType" = ${scope}
+          ORDER BY payment."sequenceNo", allocation."allocationOrder"
+          LIMIT 2
+        `
+      );
+      if (candidates.length !== 1) {
+        throw new ConflictException(
+          "历史余额更正必须引用唯一的历史实付来源，不能自动选择首笔付款"
+        );
+      }
+      sourceBusinessId = candidates[0].historicalPaymentId;
+    }
     if (!sourceBusinessId) {
       throw new ConflictException("历史更正缺少可追溯的经营来源");
     }
@@ -1870,6 +1879,14 @@ export class ContractTakeoverCorrectionService {
     }
     throw error;
   }
+}
+
+function missingOperatingLedgerService(): OperatingLedgerService {
+  return {
+    appendCorrectionInTransaction: async () => {
+      throw new Error("经营账更正服务未注入，已拒绝正式来源写入");
+    }
+  } as unknown as OperatingLedgerService;
 }
 
 function required(value: string | null | undefined, message: string) {

@@ -165,6 +165,11 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     expect(mapped.input.impacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          sourceImpactKey: "inter_subject_balance:initial-settlement-1",
+          impactKind: "inter_subject_balance_increase",
+          amountCents: 100_000n
+        }),
+        expect.objectContaining({
           sourceImpactKey: "historical_advance",
           impactKind: "inter_subject_balance_increase"
         })

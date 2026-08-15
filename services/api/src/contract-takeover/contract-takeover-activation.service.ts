@@ -1,10 +1,11 @@
-import { ConflictException, Injectable, Optional } from "@nestjs/common";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import {
   OperatingSourceReplayService,
-  missingOperatingSourceReplayService
+  missingOperatingSourceReplayService,
+  type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import {
   CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE
@@ -88,7 +89,9 @@ export interface ContractTakeoverActivationResult {
 export class ContractTakeoverActivationService {
   constructor(
     private readonly audit: AuditService,
-    @Optional() private readonly operatingSources?: OperatingSourceReplayService
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async executePreparedActivation(
@@ -337,10 +340,8 @@ export class ContractTakeoverActivationService {
       );
     }
 
-    const operatingSources =
-      this.operatingSources ?? missingOperatingSourceReplayService();
     if (historicalInitialSettlementId) {
-      await operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
         tx,
         {
           projectId: takeover.projectId,
@@ -351,7 +352,7 @@ export class ContractTakeoverActivationService {
       );
     }
     for (const payment of payments) {
-      await operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
         tx,
         {
           projectId: takeover.projectId,
