@@ -5610,7 +5610,7 @@ describe("PaymentRequestService", () => {
     [
       "non-company payment request",
       { paymentSubjectType: "affiliate" },
-      "付款申请或合同版本不是我方付款主体，不能登记实际付款"
+      "施工企业付款申请不得登记我方实际付款，请登记施工企业外部付款事实"
     ],
     [
       "incomplete company snapshot",

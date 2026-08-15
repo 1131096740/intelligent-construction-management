@@ -1293,7 +1293,7 @@ describe("ProjectController authorization wiring", () => {
     expect(() =>
       controller.recordProxyPayment("project-1", { id: "finance-1" } as never, body)
     ).toThrow(
-      "旧挂靠代付一步式写入口已停用，请使用挂靠业务持续接管的合同、结算、付款事实链"
+      "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
     expect(projects.recordProxyPayment).not.toHaveBeenCalled();
   });

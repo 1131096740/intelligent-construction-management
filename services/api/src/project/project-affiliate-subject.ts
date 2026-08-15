@@ -33,12 +33,12 @@ export async function resolveCurrentProjectAffiliate(
 
   if (assignments.length === 0) {
     throw new BadRequestException(
-      "项目尚未明确配置唯一挂靠企业，不能继续上游或挂靠业务；请先完成项目挂靠企业人工映射"
+      "项目尚未明确配置唯一施工企业，不能继续上游或施工企业业务；请先完成项目施工企业人工映射"
     );
   }
   if (assignments.length !== 1) {
     throw new BadRequestException(
-      "项目存在多个当前挂靠企业，不能继续上游或挂靠业务；请先按人工清单消除冲突"
+      "项目存在多个当前施工企业，不能继续上游或施工企业业务；请先按人工清单消除冲突"
     );
   }
 
@@ -67,8 +67,8 @@ export async function assertContractSigningSubject(
   if (version.signingSubjectType !== expected) {
     throw new BadRequestException(
       expected === "our_company"
-        ? "该合同冻结为挂靠企业签约，不能创建或登记我方付款"
-        : "该合同冻结为我方签约，不能登记挂靠企业付款"
+        ? "该合同冻结为施工企业签约，不能创建或登记我方付款"
+        : "该合同冻结为我方签约，不能登记施工企业付款"
     );
   }
 }

@@ -16,6 +16,11 @@ import {
 } from "./operating-source-adapter";
 
 const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
+const POL08_ENTRY_SOURCE_TYPES = new Set([
+  "project_upstream_fund_fact",
+  "project_affiliate_settlement_fact",
+  "project_affiliate_payment_fact"
+]);
 
 type StoredOperatingFact = Prisma.OperatingFactGetPayload<{
   include: { impacts: true };
@@ -69,7 +74,7 @@ export function missingOperatingSourceReplayService(): OperatingSourceAppendPort
           project?: typeof tx.project;
         }
       ).project;
-      if (!projectClient) return null;
+      if (!projectClient || typeof projectClient.findUnique !== "function") return null;
       const project = await projectClient.findUnique({
         where: { id: locator.projectId },
         select: { operatingLedgerEffectiveDate: true }
@@ -144,6 +149,14 @@ export class OperatingSourceReplayService {
         tx,
         mapped.input,
         actorUserId
+      );
+    }
+    if (POL08_ENTRY_SOURCE_TYPES.has(locator.sourceType)) {
+      return this.operatingLedger.appendConfirmedSourceInTransaction(
+        tx,
+        mapped.input,
+        actorUserId,
+        mapped.entryKind
       );
     }
     throw new BadRequestException("正式业务来源写入只接受原始经营事实");

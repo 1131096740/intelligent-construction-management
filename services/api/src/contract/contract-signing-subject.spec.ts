@@ -95,7 +95,7 @@ describe("ContractService signing subject snapshots", () => {
         businessTemplateVersionId: "template-version-1",
         signingSubjectType: "affiliate"
       } as never, "contract-staff-1")
-    ).rejects.toThrow("项目尚未明确配置唯一挂靠企业");
+    ).rejects.toThrow("项目尚未明确配置唯一施工企业");
     expect(tx.contract.create).not.toHaveBeenCalled();
     expect(tx.contractVersion.create).not.toHaveBeenCalled();
   });

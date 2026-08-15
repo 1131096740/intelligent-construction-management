@@ -2590,6 +2590,7 @@ model ProjectUpstreamFundFact {
   basisType                       String
   deductionCategory               String?
   upstreamSettlementId            String?
+  companyEntityId                 String?
   affiliateAssignmentId           String
   affiliateBusinessPartyVersionId String
   affiliateNameSnapshot           String
@@ -2614,6 +2615,7 @@ model ProjectUpstreamFundFact {
   @@index([projectId, factType, status, occurredAt])
   @@index([adjustsFactId])
   @@index([upstreamSettlementId])
+  @@index([companyEntityId])
   @@index([evidenceFileId])
 }
 
@@ -2707,6 +2709,7 @@ model ProjectAffiliatePaymentFact {
   projectId                       String
   contractLedgerId                String
   settlementLedgerId              String?
+  paymentRequestId                String?
   entryKind                       String    @default("original")
   adjustsFactId                   String?
   effectDirection                 String    @default("increase")
@@ -2740,6 +2743,7 @@ model ProjectAffiliatePaymentFact {
   @@index([projectId, ledgerId, status])
   @@index([contractLedgerId])
   @@index([settlementLedgerId])
+  @@index([paymentRequestId])
   @@index([adjustsFactId])
   @@index([evidenceFileId])
   @@index([externalPaymentReference])

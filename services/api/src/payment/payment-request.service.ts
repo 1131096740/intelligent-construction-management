@@ -587,7 +587,7 @@ export class PaymentRequestService {
           projectId: settlement.projectId,
           settlementId: settlement.id,
           sourceType: "settlement",
-          paymentSubjectType: "our_company",
+          paymentSubjectType: normalizedInput.paymentSubjectType ?? "our_company",
           contractId: settlement.contractId,
           contractVersionId: settlement.contractVersionId,
           paymentTermsVersionId: settlement.paymentTermsVersionId,
@@ -746,7 +746,7 @@ export class PaymentRequestService {
         projectId: contract.projectId,
         settlementId: null,
         sourceType: "contract_due",
-        paymentSubjectType: "our_company",
+        paymentSubjectType: input.paymentSubjectType ?? "our_company",
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,
@@ -1057,7 +1057,7 @@ export class PaymentRequestService {
         projectId: contract.projectId,
         settlementId: null,
         sourceType: "contract_advance",
-        paymentSubjectType: "our_company",
+        paymentSubjectType: input.paymentSubjectType ?? "our_company",
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,
@@ -2348,16 +2348,18 @@ export class PaymentRequestService {
         });
       if (
         flowCompleted &&
-        (
-          payerFacts.paymentSubjectType !== "our_company" ||
-          payerFacts.signingSubjectType !== "our_company" ||
-          !payerFacts.companyEntityIdSnapshot?.trim() ||
-          !payerFacts.companyEntityNameSnapshot?.trim() ||
-          !payerFacts.companyEntityCreditCodeSnapshot?.trim()
-        )
+        (payerFacts.paymentSubjectType === "affiliate"
+          ? payerFacts.signingSubjectType !== "affiliate"
+          : payerFacts.paymentSubjectType !== "our_company" ||
+            payerFacts.signingSubjectType !== "our_company" ||
+            !payerFacts.companyEntityIdSnapshot?.trim() ||
+            !payerFacts.companyEntityNameSnapshot?.trim() ||
+            !payerFacts.companyEntityCreditCodeSnapshot?.trim())
       ) {
         throw new BadRequestException(
-          "付款合同不是完整的我方付款主体，不能完成付款审批"
+          payerFacts.paymentSubjectType === "affiliate"
+            ? "施工企业付款申请必须关联施工企业签约合同"
+            : "付款合同不是完整的我方付款主体，不能完成付款审批"
         );
       }
 
@@ -2939,9 +2941,12 @@ export class PaymentRequestService {
           actorUserId,
           payment.projectId
         );
-        if (payment.signingSubjectType === "affiliate") {
+        if (
+          payment.paymentSubjectType === "affiliate" ||
+          payment.signingSubjectType === "affiliate"
+        ) {
           throw new BadRequestException(
-            "该合同冻结为挂靠企业签约，不能创建或登记我方付款"
+            "施工企业付款申请不得登记我方实际付款，请登记施工企业外部付款事实"
           );
         }
         if (

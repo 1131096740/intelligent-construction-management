@@ -40,7 +40,7 @@ export type ProjectAffiliateAmountNature =
   (typeof PROJECT_AFFILIATE_AMOUNT_NATURES)[number];
 
 export class RecordProjectAffiliateContractFactDto {
-  @IsIn(PROJECT_AFFILIATE_CONTRACT_TYPES, { message: "挂靠对下合同类型不正确" })
+  @IsIn(PROJECT_AFFILIATE_CONTRACT_TYPES, { message: "施工企业对下合同类型不正确" })
   contractType!: ProjectAffiliateContractType;
 
   @IsRequiredText({
@@ -91,22 +91,22 @@ export class RecordProjectAffiliateContractFactDto {
   @IsString({ message: "预付款约定摘要必须是文字" })
   advanceTermsSummary?: string;
 
-  @IsUUID("4", { message: "挂靠合同登记幂等键必须是 UUID" })
+  @IsUUID("4", { message: "施工企业合同登记幂等键必须是 UUID" })
   idempotencyKey!: string;
 
   @IsOptional()
-  @IsIn(PROJECT_AFFILIATE_ENTRY_KINDS, { message: "挂靠合同追加类型不正确" })
+  @IsIn(PROJECT_AFFILIATE_ENTRY_KINDS, { message: "施工企业合同追加类型不正确" })
   entryKind?: ProjectAffiliateEntryKind;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "被调整挂靠合同事实编号必须是文字" })
+  @IsString({ message: "被调整施工企业合同事实编号必须是文字" })
   adjustsFactId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsIn(["increase", "decrease"], { message: "挂靠合同金额调整方向不正确" })
+  @IsIn(["increase", "decrease"], { message: "施工企业合同金额调整方向不正确" })
   effectDirection?: "increase" | "decrease";
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "挂靠合同说明必须是文字" })
+  @IsString({ message: "施工企业合同说明必须是文字" })
   description?: string;
 }

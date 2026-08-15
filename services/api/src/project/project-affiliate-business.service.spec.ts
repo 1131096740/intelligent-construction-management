@@ -211,7 +211,7 @@ describe("ProjectAffiliateBusinessService", () => {
         "employee-1",
         "contract"
       )
-    ).rejects.toThrow("当前岗位不能为该挂靠外部事实补充依据");
+    ).rejects.toThrow("当前岗位不能为该施工企业外部事实补充依据");
     expect(tx.projectAffiliateContractFact.findFirst).not.toHaveBeenCalled();
   });
 
@@ -325,6 +325,40 @@ describe("ProjectAffiliateBusinessService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("rejects a post-effective normal payment without an approved payment request", async () => {
+    const tx = {
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
+        findUnique: jest.fn().mockResolvedValue({
+          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+        })
+      },
+      projectAffiliatePaymentFact: {
+        findUnique: jest.fn().mockResolvedValue(null)
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    await expect(
+      service.recordPaymentFact("project-1", "finance-1", {
+        contractLedgerId: "contract-ledger-1",
+        settlementLedgerId: "settlement-ledger-1",
+        counterpartyName: "材料供应商",
+        paidAt: "2026-08-02",
+        amountCents: "5000",
+        paymentKind: "normal",
+        externalPaymentReference: "BANK-20260802-001",
+        basisType: "oral",
+        idempotencyKey: "a87e7a4f-57c7-4c75-8a75-702d02b5d90a"
+      })
+    ).rejects.toThrow("经营账生效日后的正常施工企业付款必须关联已审批付款申请");
+  });
+
   it("records an external settlement without creating company approval work", async () => {
     const created = settlementFact({
       status: "pending_confirm",
@@ -377,8 +411,22 @@ describe("ProjectAffiliateBusinessService", () => {
     const created = paymentFact();
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "contract-fact-1" }]),
-      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      project: {
+        findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
+        findUnique: jest.fn().mockResolvedValue({
+          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+        })
+      },
       ...roleTables("finance_staff"),
+      paymentRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "payment-request-1",
+          status: "approved_pending_payment",
+          paymentSubjectType: "affiliate",
+          approvedAmountCents: 5000n,
+          requestedAmountCents: 5000n
+        })
+      },
       projectAffiliateContractFact: {
         findMany: jest.fn().mockResolvedValue([contractFact()])
       },
@@ -405,10 +453,11 @@ describe("ProjectAffiliateBusinessService", () => {
       contractLedgerId: "contract-ledger-1",
       settlementLedgerId: "settlement-ledger-1",
       counterpartyName: "材料供应商",
-      paidAt: "2026-07-29",
+      paidAt: "2026-08-02",
       amountCents: "5000",
       paymentKind: "normal",
       externalPaymentReference: "BANK-20260729-001",
+      paymentRequestId: "payment-request-1",
       basisType: "oral",
       idempotencyKey: "cdad0cb7-2e78-48db-ae27-86253bf54bbd"
     });
@@ -520,7 +569,7 @@ describe("ProjectAffiliateBusinessService", () => {
         basisType: "oral",
         idempotencyKey: "fc09b6c6-f1d2-44e1-af8b-688042ed980b"
       })
-    ).rejects.toThrow("付款对象必须与挂靠企业对下合同相对方完全一致");
+    ).rejects.toThrow("付款对象必须与施工企业对下合同相对方完全一致");
   });
 
   it("requires a finance director to confirm an oral payment and freezes the signature", async () => {

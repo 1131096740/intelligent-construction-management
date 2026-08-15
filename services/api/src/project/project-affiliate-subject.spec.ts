@@ -13,7 +13,7 @@ describe("project affiliate signing and payment subject invariants", () => {
     };
 
     await expect(resolveCurrentProjectAffiliate(tx as never, "project-1")).rejects.toThrow(
-      "项目尚未明确配置唯一挂靠企业"
+      "项目尚未明确配置唯一施工企业"
     );
   });
 
@@ -28,7 +28,7 @@ describe("project affiliate signing and payment subject invariants", () => {
     };
 
     await expect(resolveCurrentProjectAffiliate(tx as never, "project-1")).rejects.toThrow(
-      "项目存在多个当前挂靠企业"
+      "项目存在多个当前施工企业"
     );
   });
 

@@ -292,13 +292,14 @@ export class OperatingLedgerService {
   async appendConfirmedSourceInTransaction(
     tx: OperatingLedgerTransaction,
     input: AppendOperatingFactInput,
-    actorUserId: string
+    actorUserId: string,
+    entryKind: OperatingFactEntryKind = "original"
   ): Promise<OperatingFactWriteResult> {
     return this.appendEnvelope(
       tx,
       input,
       actorUserId,
-      "original",
+      entryKind,
       "source_actor"
     );
   }

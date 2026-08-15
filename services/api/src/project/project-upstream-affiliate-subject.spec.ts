@@ -31,7 +31,7 @@ describe("ProjectService upstream affiliate snapshots", () => {
         isFinal: false,
         voucherFileId: "file-1"
       })
-    ).rejects.toThrow("项目尚未明确配置唯一挂靠企业");
+    ).rejects.toThrow("项目尚未明确配置唯一施工企业");
     expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
     expect(tx.projectUpstreamSettlement.create).not.toHaveBeenCalled();
   });
@@ -63,7 +63,7 @@ describe("ProjectService upstream affiliate snapshots", () => {
         confirmationPassword: "current-password"
       })
     ).rejects.toThrow(
-      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+      "旧项目收款入口已停止新增；请分别登记业主付款、施工企业向我方拨款、施工企业扣款或待核对到账差额"
     );
     expect(tx.fileObject.findUnique).not.toHaveBeenCalled();
     expect(tx.projectReceipt.create).not.toHaveBeenCalled();

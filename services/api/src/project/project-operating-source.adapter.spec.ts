@@ -1,7 +1,79 @@
 import {
+  ProjectAffiliatePaymentFactOperatingSourceAdapter,
+  ProjectAffiliateSettlementFactOperatingSourceAdapter,
+  ProjectUpstreamFundFactOperatingSourceAdapter,
   ProjectProxyPaymentOperatingSourceAdapter,
   ProjectUpstreamSettlementOperatingSourceAdapter
 } from "./project-operating-source.adapter";
+
+describe("POL-08 construction-enterprise operating source adapters", () => {
+  it("maps an owner payment to construction-enterprise funds without income or company cash", async () => {
+    const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(
+      upstreamFundTx() as never,
+      {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "fund-fact-1"
+      }
+    );
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.factKind).toBe("owner_payment");
+    expect(input.subjects).toEqual({
+      debtor: { kind: "owner", id: "owner:建设单位" },
+      creditor: { kind: "construction_enterprise", id: "affiliate-version-1" }
+    });
+    expect(input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "construction_enterprise_funds_increase",
+        amountCents: 1_000_00n,
+        direction: "increase"
+      })
+    ]);
+    expect(input.impacts.some((impact) => impact.impactKind === "confirmed_income")).toBe(false);
+    expect(input.impacts.some((impact) => impact.impactKind.startsWith("company_") || impact.impactKind === "company_project_funds_increase")).toBe(false);
+  });
+
+  it("maps construction-enterprise settlement and payment as cost then payable/funds settlement", async () => {
+    const settlementAdapter = new ProjectAffiliateSettlementFactOperatingSourceAdapter();
+    const settlementSnapshot = await settlementAdapter.readSourceSnapshot(
+      affiliateFactTx() as never,
+      {
+        projectId: "project-1",
+        sourceType: settlementAdapter.sourceType,
+        sourceBusinessId: "settlement-fact-1"
+      }
+    );
+    const settlement = settlementAdapter.toOperatingFactInput(settlementSnapshot!).input;
+    expect(settlement.factKind).toBe("downstream_settlement");
+    expect(settlement.impacts).toEqual([
+      expect.objectContaining({ impactKind: "confirmed_cost", amountCents: 2_000_00n }),
+      expect.objectContaining({ impactKind: "payable_increase", amountCents: 2_000_00n })
+    ]);
+
+    const paymentAdapter = new ProjectAffiliatePaymentFactOperatingSourceAdapter();
+    const paymentSnapshot = await paymentAdapter.readSourceSnapshot(
+      affiliateFactTx() as never,
+      {
+        projectId: "project-1",
+        sourceType: paymentAdapter.sourceType,
+        sourceBusinessId: "payment-fact-1"
+      }
+    );
+    const payment = paymentAdapter.toOperatingFactInput(paymentSnapshot!).input;
+    expect(payment.factKind).toBe("downstream_payment");
+    expect(payment.impacts).toEqual([
+      expect.objectContaining({ impactKind: "payable_decrease", amountCents: 500_00n }),
+      expect.objectContaining({
+        impactKind: "construction_enterprise_funds_decrease",
+        amountCents: 500_00n
+      })
+    ]);
+    expect(payment.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
+  });
+});
 
 describe("ProjectUpstreamSettlementOperatingSourceAdapter", () => {
   it("maps only a confirmed upstream settlement to income and receivable once", async () => {
@@ -241,5 +313,122 @@ function upstreamSettlement(overrides: Record<string, unknown> = {}) {
     confirmedAt: new Date("2026-08-13T08:00:00.000Z"),
     voidedAt: null,
     ...overrides
+  };
+}
+
+function upstreamFundTx() {
+  return {
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+      })
+    },
+    projectUpstreamFundFact: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "fund-fact-1",
+        projectId: "project-1",
+        factType: "owner_payment_to_affiliate",
+        entryKind: "original",
+        adjustsFactId: null,
+        effectDirection: "increase",
+        occurredAt: new Date("2026-08-12T00:00:00.000Z"),
+        amountCents: 1_000_00n,
+        counterpartyName: "建设单位",
+        basisType: "written",
+        deductionCategory: null,
+        upstreamSettlementId: null,
+        affiliateAssignmentId: "affiliate-assignment-1",
+        affiliateBusinessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        description: "业主已付款",
+        evidenceFileId: "file-1",
+        documentVersion: 2,
+        recordedByUserId: "finance-1",
+        confirmedByUserId: "finance-director-1",
+        confirmedAt: new Date("2026-08-12T01:00:00.000Z")
+      })
+    },
+    projectAffiliateAssignment: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "affiliate-assignment-1",
+        businessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        affiliateCreditCodeSnapshot: "91310000000000000X"
+      })
+    }
+  };
+}
+
+function affiliateFactTx() {
+  return {
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+      })
+    },
+    projectAffiliateAssignment: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "affiliate-assignment-1",
+        businessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        affiliateCreditCodeSnapshot: "91310000000000000X"
+      })
+    },
+    projectAffiliateContractFact: {
+      findFirst: jest.fn().mockResolvedValue({ contractType: "labor_subcontract" })
+    },
+    projectAffiliateSettlementFact: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "settlement-fact-1",
+        ledgerId: "settlement-ledger-1",
+        projectId: "project-1",
+        contractLedgerId: "contract-ledger-1",
+        entryKind: "original",
+        adjustsFactId: null,
+        effectDirection: "increase",
+        counterpartyName: "供应商乙",
+        settledAt: new Date("2026-08-12T00:00:00.000Z"),
+        periodLabel: "2026-08",
+        amountCents: 2_000_00n,
+        affiliateAssignmentId: "affiliate-assignment-1",
+        affiliateBusinessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        basisType: "written",
+        description: "下游结算",
+        evidenceFileId: "file-2",
+        documentVersion: 1,
+        recordedByUserId: "finance-1",
+        confirmedByUserId: "finance-director-1",
+        confirmedAt: new Date("2026-08-12T01:00:00.000Z")
+      })
+    },
+    projectAffiliatePaymentFact: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "payment-fact-1",
+        ledgerId: "payment-ledger-1",
+        projectId: "project-1",
+        contractLedgerId: "contract-ledger-1",
+        settlementLedgerId: "settlement-ledger-1",
+        paymentRequestId: "payment-request-1",
+        entryKind: "original",
+        adjustsFactId: null,
+        effectDirection: "increase",
+        counterpartyName: "供应商乙",
+        paidAt: new Date("2026-08-13T00:00:00.000Z"),
+        amountCents: 500_00n,
+        paymentKind: "normal",
+        externalPaymentReference: "BANK-1",
+        affiliateAssignmentId: "affiliate-assignment-1",
+        affiliateBusinessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        basisType: "written",
+        description: "下游实付",
+        evidenceFileId: "file-3",
+        documentVersion: 1,
+        recordedByUserId: "finance-1",
+        confirmedByUserId: "finance-director-1",
+        confirmedAt: new Date("2026-08-13T01:00:00.000Z")
+      })
+    }
   };
 }

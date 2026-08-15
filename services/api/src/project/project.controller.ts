@@ -458,7 +458,7 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body("idempotencyKey") idempotencyKey?: string
   ) {
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠合同依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业合同依据");
   }
 
   @Post(":projectId/affiliate-contract-facts/:factId/confirmation")
@@ -499,7 +499,7 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body("idempotencyKey") idempotencyKey?: string
   ) {
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠结算依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业结算依据");
   }
 
   @Post(":projectId/affiliate-settlement-facts/:factId/confirmation")
@@ -540,7 +540,7 @@ export class ProjectController {
     @CurrentUser() user: AuthenticatedUser,
     @Body("idempotencyKey") idempotencyKey?: string
   ) {
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠付款依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业付款依据");
   }
 
   @Post(":projectId/affiliate-payment-facts/:factId/confirmation")
@@ -596,7 +596,7 @@ export class ProjectController {
       user.id,
       businessType
     );
-    return this.uploadPrivateFile(file, user, idempotencyKey, "挂靠业务补充依据");
+    return this.uploadPrivateFile(file, user, idempotencyKey, "施工企业业务补充依据");
   }
 
   @Post(":projectId/proxy-payments")
@@ -610,7 +610,7 @@ export class ProjectController {
     void user;
     void body;
     throw new GoneException(
-      "旧挂靠代付一步式写入口已停用，请使用挂靠业务持续接管的合同、结算、付款事实链"
+      "旧施工企业代付一步式写入口已停用，请使用施工企业业务持续接管的合同、结算、付款事实链"
     );
   }
 

@@ -54,6 +54,7 @@ import {
   type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import {
+  PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "./project-operating-source.adapter";
@@ -96,7 +97,7 @@ import {
 } from "./project-financing-quota-approval";
 
 const UPSTREAM_SETTLEMENT_GAP =
-  "缺少已确认上游结算，当前经营收入仅按已确认业主付款事实展示，不把挂靠拨款误作收入。";
+  "缺少已确认上游结算，当前经营收入仅按已确认业主付款事实展示，不把施工企业拨款误作收入。";
 const FINANCING_LIMIT_GAP = "缺少项目垫资额度台账，当前可用资金未包含批准垫资额度。";
 const PROJECT_OPTION_POSITIONS = new Set<RoleKey>([
   ...PROJECT_OVERVIEW_READ_POSITION_KEYS,
@@ -138,9 +139,9 @@ const ROLE_LABELS: Record<RoleKey, string> = {
   super_admin: "系统管理员"
 };
 const UPSTREAM_FUND_FACT_LABELS: Record<ProjectUpstreamFundFactType, string> = {
-  owner_payment_to_affiliate: "业主向挂靠企业付款",
-  affiliate_remittance_to_company: "挂靠企业向我方拨款",
-  affiliate_deduction: "挂靠企业扣款",
+  owner_payment_to_affiliate: "业主向施工企业付款",
+  affiliate_remittance_to_company: "施工企业向我方拨款",
+  affiliate_deduction: "施工企业扣款",
   unreconciled_receipt_difference: "待核对到账差额"
 };
 const PROXY_PAYMENT_TYPE_LABELS: Record<ProjectProxyPaymentType, string> = {
@@ -825,7 +826,7 @@ export class ProjectService {
       (total, payment) =>
         total +
         (payment.effectDirection === "decrease" ? -1n : 1n) *
-          dbMoneyToBigInt(payment.amountCents, "挂靠企业对下付款金额"),
+          dbMoneyToBigInt(payment.amountCents, "施工企业对下付款金额"),
       0n
     );
     const upstreamSettlementCents = sumDbMoneyToBigInt(
@@ -964,7 +965,7 @@ export class ProjectService {
     void actorUserId;
     void input;
     throw new GoneException(
-      "旧项目收款入口已停止新增；请分别登记业主付款、挂靠企业向我方拨款、挂靠扣款或待核对到账差额"
+      "旧项目收款入口已停止新增；请分别登记业主付款、施工企业向我方拨款、施工企业扣款或待核对到账差额"
     );
   }
 
@@ -987,6 +988,7 @@ export class ProjectService {
       input.deductionCategory
     );
     const upstreamSettlementId = optionalTrimmed(input.upstreamSettlementId);
+    const companyEntityId = optionalTrimmed(input.companyEntityId);
     const evidenceFileId = optionalTrimmed(input.evidenceFileId);
     const adjustsFactId = optionalTrimmed(input.adjustsFactId);
     const effectDirection = normalizeUpstreamFundEffectDirection(
@@ -1026,6 +1028,7 @@ export class ProjectService {
       counterpartyName,
       deductionCategory,
       upstreamSettlementId,
+      companyEntityId,
       evidenceFileId,
       description
     });
@@ -1048,7 +1051,7 @@ export class ProjectService {
 
         const project = await tx.project.findFirst({
           where: { id: projectId, isActive: true },
-          select: { id: true }
+          select: { id: true, operatingLedgerEffectiveDate: true }
         });
         if (!project) {
           throw new NotFoundException("项目不存在或已停用，请刷新后重试");
@@ -1061,6 +1064,28 @@ export class ProjectService {
             : null;
         if (!recordedByRoleKey) {
           throw new ForbiddenException("只有项目财务人员或财务主管可以登记上游资金事实");
+        }
+
+        if (
+          factType === "affiliate_remittance_to_company" &&
+          project.operatingLedgerEffectiveDate &&
+          !companyEntityId
+        ) {
+          throw new BadRequestException("施工企业向我方公司拨款必须明确具体我方公司");
+        }
+        if (companyEntityId) {
+          const participant = await tx.projectParticipatingCompany.findFirst({
+            where: {
+              projectId,
+              companyEntityId,
+              effectiveFrom: { lte: occurredAt },
+              OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }]
+            },
+            select: { companyEntityId: true }
+          });
+          if (!participant) {
+            throw new BadRequestException("上游资金指定的我方公司在事实日未参与当前项目");
+          }
         }
 
         const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
@@ -1154,6 +1179,7 @@ export class ProjectService {
             basisType,
             deductionCategory,
             upstreamSettlementId,
+            companyEntityId,
             affiliateAssignmentId: currentAffiliate.assignmentId,
             affiliateBusinessPartyVersionId:
               currentAffiliate.businessPartyVersionId,
@@ -1185,6 +1211,7 @@ export class ProjectService {
             basisType,
             deductionCategory,
             upstreamSettlementId,
+            companyEntityId,
             affiliateAssignmentId: currentAffiliate.assignmentId,
             affiliateBusinessPartyVersionId:
               currentAffiliate.businessPartyVersionId,
@@ -1357,6 +1384,16 @@ export class ProjectService {
       if (!confirmed) {
         throw new InternalServerErrorException("上游资金确认结果未正确保存，请稍后重试");
       }
+
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+        tx,
+        {
+          projectId,
+          sourceType: PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+          sourceBusinessId: confirmed.id
+        },
+        actorUserId
+      );
 
       await this.audit.record(tx, {
         actorUserId,
@@ -1632,14 +1669,14 @@ export class ProjectService {
       throw new NotFoundException("关联合同版本不存在，请重新选择");
     }
     if (version.signingSubjectType !== "affiliate") {
-      throw new BadRequestException("该合同冻结为我方签约，不能登记挂靠企业付款");
+      throw new BadRequestException("该合同冻结为我方签约，不能登记施工企业付款");
     }
     if (
       !version.affiliateAssignmentId ||
       !version.affiliateBusinessPartyVersionId ||
       !version.affiliateNameSnapshot
     ) {
-      throw new BadRequestException("关联合同缺少冻结的挂靠企业主体快照，不能登记挂靠付款");
+      throw new BadRequestException("关联合同缺少冻结的施工企业主体快照，不能登记施工企业付款");
     }
     return {
       assignmentId: version.affiliateAssignmentId,
@@ -4372,7 +4409,7 @@ function normalizeDeductionCategory(
 ): ProjectAffiliateDeductionCategory | null {
   if (factType !== "affiliate_deduction") {
     if (value !== undefined && value !== null && value !== "") {
-      throw new BadRequestException("非挂靠扣款事实不能填写扣款类型");
+      throw new BadRequestException("非施工企业扣款事实不能填写扣款类型");
     }
     return null;
   }
@@ -4380,7 +4417,7 @@ function normalizeDeductionCategory(
     typeof value !== "string" ||
     !(PROJECT_AFFILIATE_DEDUCTION_CATEGORIES as readonly string[]).includes(value)
   ) {
-    throw new BadRequestException("请选择挂靠扣款类型");
+    throw new BadRequestException("请选择施工企业扣款类型");
   }
   return value as ProjectAffiliateDeductionCategory;
 }
@@ -4441,7 +4478,7 @@ function assertUpstreamFundAdjustment(
       requested.factType !== "affiliate_deduction" ||
       requested.effectDirection !== "increase"
     ) {
-      throw new BadRequestException("只有待核对到账差额可以重分类为挂靠扣款");
+    throw new BadRequestException("只有待核对到账差额可以重分类为施工企业扣款");
     }
     const alreadyClassified = existingAdjustments
       .filter((adjustment) => adjustment.entryKind === "reclassification")
@@ -4561,6 +4598,7 @@ function toUpstreamFundFactReadModel(fact: {
   basisType: string;
   deductionCategory: string | null;
   upstreamSettlementId: string | null;
+  companyEntityId?: string | null;
   affiliateAssignmentId: string;
   affiliateBusinessPartyVersionId: string;
   affiliateNameSnapshot: string;
@@ -4607,6 +4645,7 @@ function toUpstreamFundFactReadModel(fact: {
     basisType: fact.basisType,
     deductionCategory: fact.deductionCategory,
     upstreamSettlementId: fact.upstreamSettlementId,
+    companyEntityId: fact.companyEntityId ?? null,
     affiliateAssignmentId: fact.affiliateAssignmentId,
     affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId,
     affiliateNameSnapshot: fact.affiliateNameSnapshot,

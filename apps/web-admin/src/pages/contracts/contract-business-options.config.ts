@@ -84,7 +84,10 @@ export function buildPaymentCreatePayload(
   const commonPayload = {
     sourceType: form.sourceType,
     code: requiredText(form.code, "付款编号"),
-    requestedAmountCents: yuanToCents(form.requestedAmountYuan, "申请金额")
+    requestedAmountCents: yuanToCents(form.requestedAmountYuan, "申请金额"),
+    ...(contract?.paymentSubjectType === "affiliate"
+      ? { paymentSubjectType: "affiliate" as const }
+      : {})
   };
 
   if (form.sourceType === "settlement") {

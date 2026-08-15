@@ -2221,7 +2221,7 @@ export class FileService {
       ) {
         return;
       }
-      throw new ForbiddenException("当前账号无权下载该挂靠外部业务资料");
+      throw new ForbiddenException("当前账号无权下载该施工企业外部业务资料");
     }
 
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {

@@ -161,7 +161,7 @@ const drawerTitle = computed(() => {
     correction: "追加更正",
     reversal: "追加反向"
   }[recordMode.value];
-  return `挂靠企业对下${typeLabel}${modeLabel}`;
+  return `施工企业对下${typeLabel}${modeLabel}`;
 });
 const canSubmitRecord = computed(() => !recordBusy.value);
 
@@ -181,7 +181,7 @@ async function load() {
   try {
     data.value = await fetchProjectAffiliateBusinessFacts(props.projectId);
   } catch (error) {
-    loadError.value = errorMessage(error, "挂靠业务持续接管台账读取失败");
+    loadError.value = errorMessage(error, "施工企业业务持续接管台账读取失败");
   } finally {
     loading.value = false;
   }
@@ -240,6 +240,7 @@ function openAdjustment(target: ConfirmTarget, mode: "correction" | "reversal") 
     paymentForm.value = {
       contractLedgerId: fact.contractLedgerId,
       settlementLedgerId: fact.settlementLedgerId ?? "",
+      paymentRequestId: fact.paymentRequestId ?? "",
       counterpartyName: fact.counterpartyName,
       paidAt: dateText(fact.paidAt),
       amountYuan: centsTextToYuanText(fact.amountCents),
@@ -334,7 +335,7 @@ async function submitRecord() {
           ).id
         : undefined;
       await recordProjectAffiliateSettlementFactWithCapability(props.projectId, {
-        contractLedgerId: required(form.contractLedgerId, "关联挂靠合同"),
+        contractLedgerId: required(form.contractLedgerId, "关联施工企业合同"),
         counterpartyName: required(form.counterpartyName, "结算相对方"),
         settledAt: required(form.settledAt, "外部结算日期"),
         periodLabel: required(form.periodLabel, "结算期间"),
@@ -362,9 +363,12 @@ async function submitRecord() {
           ).id
         : undefined;
       await recordProjectAffiliatePaymentFactWithCapability(props.projectId, {
-        contractLedgerId: required(form.contractLedgerId, "关联挂靠合同"),
+        contractLedgerId: required(form.contractLedgerId, "关联施工企业合同"),
         ...(form.settlementLedgerId
           ? { settlementLedgerId: form.settlementLedgerId }
+          : {}),
+        ...(form.paymentRequestId && form.paymentKind === "normal"
+          ? { paymentRequestId: form.paymentRequestId }
           : {}),
         counterpartyName: required(form.counterpartyName, "付款相对方"),
         paidAt: required(form.paidAt, "外部付款日期"),
@@ -415,12 +419,12 @@ async function recordProjectAffiliateContractFactWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedBusinessType = capability.businessType === "contract";
   if (!matchesRequestedBusinessType) {
-    throw new Error("挂靠合同登记上下文已变化，请刷新后重试");
+    throw new Error("施工企业合同登记上下文已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "record_affiliate_contract_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能登记该挂靠合同事实");
+  if (!operationAllowed) throw new Error("当前用户不能登记该施工企业合同事实");
   return recordProjectAffiliateContractFact(projectId, body);
 }
 
@@ -440,12 +444,12 @@ async function recordProjectAffiliateSettlementFactWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedBusinessType = capability.businessType === "settlement";
   if (!matchesRequestedBusinessType) {
-    throw new Error("挂靠结算登记上下文已变化，请刷新后重试");
+    throw new Error("施工企业结算登记上下文已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "record_affiliate_settlement_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能登记该挂靠结算事实");
+  if (!operationAllowed) throw new Error("当前用户不能登记该施工企业结算事实");
   return recordProjectAffiliateSettlementFact(projectId, body);
 }
 
@@ -465,12 +469,12 @@ async function recordProjectAffiliatePaymentFactWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedBusinessType = capability.businessType === "payment";
   if (!matchesRequestedBusinessType) {
-    throw new Error("挂靠付款登记上下文已变化，请刷新后重试");
+    throw new Error("施工企业付款登记上下文已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "record_affiliate_payment_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能登记该挂靠付款事实");
+  if (!operationAllowed) throw new Error("当前用户不能登记该施工企业付款事实");
   return recordProjectAffiliatePaymentFact(projectId, body);
 }
 
@@ -490,12 +494,12 @@ async function uploadProjectAffiliateContractEvidenceWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedBusinessType = capability.businessType === "contract";
   if (!matchesRequestedBusinessType) {
-    throw new Error("挂靠合同登记上下文已变化，请刷新后重试");
+    throw new Error("施工企业合同登记上下文已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "record_affiliate_contract_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能上传该挂靠合同依据");
+  if (!operationAllowed) throw new Error("当前用户不能上传该施工企业合同依据");
   return uploadProjectAffiliateContractPrivateFile(projectId, file, file.name);
 }
 
@@ -515,12 +519,12 @@ async function uploadProjectAffiliateSettlementEvidenceWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedBusinessType = capability.businessType === "settlement";
   if (!matchesRequestedBusinessType) {
-    throw new Error("挂靠结算登记上下文已变化，请刷新后重试");
+    throw new Error("施工企业结算登记上下文已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "record_affiliate_settlement_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能上传该挂靠结算依据");
+  if (!operationAllowed) throw new Error("当前用户不能上传该施工企业结算依据");
   return uploadProjectAffiliateSettlementPrivateFile(projectId, file, file.name);
 }
 
@@ -540,12 +544,12 @@ async function uploadProjectAffiliatePaymentEvidenceWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedBusinessType = capability.businessType === "payment";
   if (!matchesRequestedBusinessType) {
-    throw new Error("挂靠付款登记上下文已变化，请刷新后重试");
+    throw new Error("施工企业付款登记上下文已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "record_affiliate_payment_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能上传该挂靠付款依据");
+  if (!operationAllowed) throw new Error("当前用户不能上传该施工企业付款依据");
   return uploadProjectAffiliatePaymentPrivateFile(projectId, file, file.name);
 }
 
@@ -608,11 +612,11 @@ async function confirmProjectAffiliateContractFactWithCapability(
   const matchesRequestedProject = capability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedFact = capability.factId === factId;
-  if (!matchesRequestedFact) throw new Error("挂靠合同事实已变化，请刷新后重试");
+  if (!matchesRequestedFact) throw new Error("施工企业合同事实已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes(
     "confirm_affiliate_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能确认该挂靠外部事实");
+  if (!operationAllowed) throw new Error("当前用户不能确认该施工企业外部事实");
   return confirmProjectAffiliateContractFact(projectId, factId, body);
 }
 
@@ -629,11 +633,11 @@ async function confirmProjectAffiliateSettlementFactWithCapability(
   const matchesRequestedProject = capability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedFact = capability.factId === factId;
-  if (!matchesRequestedFact) throw new Error("挂靠结算事实已变化，请刷新后重试");
+  if (!matchesRequestedFact) throw new Error("施工企业结算事实已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes(
     "confirm_affiliate_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能确认该挂靠外部事实");
+  if (!operationAllowed) throw new Error("当前用户不能确认该施工企业外部事实");
   return confirmProjectAffiliateSettlementFact(projectId, factId, body);
 }
 
@@ -650,11 +654,11 @@ async function confirmProjectAffiliatePaymentFactWithCapability(
   const matchesRequestedProject = capability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedFact = capability.factId === factId;
-  if (!matchesRequestedFact) throw new Error("挂靠付款事实已变化，请刷新后重试");
+  if (!matchesRequestedFact) throw new Error("施工企业付款事实已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes(
     "confirm_affiliate_fact"
   );
-  if (!operationAllowed) throw new Error("当前用户不能确认该挂靠外部事实");
+  if (!operationAllowed) throw new Error("当前用户不能确认该施工企业外部事实");
   return confirmProjectAffiliatePaymentFact(projectId, factId, body);
 }
 
@@ -706,12 +710,12 @@ async function supplementProjectAffiliateBusinessEvidenceWithCapability(
   if (!matchesRequestedProject) throw new Error("项目已变化，请刷新后重试");
   const matchesRequestedFact = capability.factId === target.fact.id;
   if (!matchesRequestedFact) {
-    throw new Error("挂靠外部事实已变化，请刷新后重试");
+    throw new Error("施工企业外部事实已变化，请刷新后重试");
   }
   const operationAllowed = capability.availableActions.includes(
     "supplement_affiliate_evidence"
   );
-  if (!operationAllowed) throw new Error("当前用户不能为该挂靠外部事实补充依据");
+  if (!operationAllowed) throw new Error("当前用户不能为该施工企业外部事实补充依据");
   const uploaded = await uploadProjectAffiliateBusinessPrivateFile(
     projectId,
     target.businessType,
@@ -754,6 +758,7 @@ function syncPaymentContract() {
   );
   paymentForm.value.counterpartyName = fact?.counterpartyName ?? "";
   paymentForm.value.settlementLedgerId = "";
+  paymentForm.value.paymentRequestId = "";
   paymentForm.value.paymentKind =
     fact?.contractType === "general_direct_payment"
       ? "direct_contract"
@@ -803,6 +808,7 @@ function createPaymentForm() {
   return {
     contractLedgerId: "",
     settlementLedgerId: "",
+    paymentRequestId: "",
     counterpartyName: "",
     paidAt: todayText(),
     amountYuan: "",
@@ -900,7 +906,7 @@ function errorMessage(error: unknown, fallback: string) {
   >
     <header class="affiliate-ledger__header">
       <div>
-        <h2>挂靠业务持续接管</h2>
+        <h2>施工企业业务持续接管</h2>
         <p>外部合同、结算和付款只形成可复核不可变账本，不补造我方审批、用章或资金执行。</p>
       </div>
       <t-space>
@@ -931,7 +937,7 @@ function errorMessage(error: unknown, fallback: string) {
     <t-alert
       theme="warning"
       title="主体与资金边界"
-      message="挂靠企业签约的合同只能由挂靠企业付款；本台账不会创建我方 PaymentRequest、PaymentExecution 或 ApprovalInstance。"
+      message="施工企业签约的合同只能由施工企业付款；本台账不会创建我方 PaymentRequest、PaymentExecution 或 ApprovalInstance。"
     />
     <t-alert
       v-if="notice"
@@ -1251,6 +1257,12 @@ function errorMessage(error: unknown, fallback: string) {
             :disabled="recordMode !== 'original'"
           />
           <t-input
+            v-if="paymentForm.paymentKind === 'normal'"
+            v-model="paymentForm.paymentRequestId"
+            label="已审批付款申请编号"
+            :disabled="recordMode !== 'original'"
+          />
+          <t-input
             v-model="paymentForm.counterpartyName"
             label="付款相对方"
             disabled
@@ -1342,7 +1354,7 @@ function errorMessage(error: unknown, fallback: string) {
 
     <SensitiveActionDialog
       v-model="confirmVisible"
-      title="确认挂靠外部业务事实"
+      title="确认施工企业外部业务事实"
       description="确认后业务字段不可覆盖；系统冻结当前签名版本并写审计，但不会创建我方审批实例。"
       confirm-text="确认并冻结"
       :require-password="true"

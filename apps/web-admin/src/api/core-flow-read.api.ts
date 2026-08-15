@@ -1754,6 +1754,7 @@ export interface ProjectUpstreamFundFactReadModel {
   basisType: ProjectUpstreamFundBasisType;
   deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other" | null;
   upstreamSettlementId: string | null;
+  companyEntityId: string | null;
   affiliateNameSnapshot: string;
   description: string | null;
   evidenceFileId: string | null;
@@ -1774,6 +1775,7 @@ export interface RecordProjectUpstreamFundFactPayload {
   counterpartyName: string;
   deductionCategory?: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   upstreamSettlementId?: string;
+  companyEntityId?: string;
   evidenceFileId?: string;
   idempotencyKey: string;
   entryKind?: "original" | "correction" | "reversal" | "reclassification";
@@ -1872,6 +1874,7 @@ export interface ProjectAffiliatePaymentFactReadModel
   extends ProjectAffiliateFactReadModelBase {
   contractLedgerId: string;
   settlementLedgerId: string | null;
+  paymentRequestId: string | null;
   paidAt: string;
   amountCents: string;
   paymentKind: ProjectAffiliatePaymentKind;
@@ -1924,6 +1927,7 @@ export interface RecordProjectAffiliateSettlementFactPayload {
 export interface RecordProjectAffiliatePaymentFactPayload {
   contractLedgerId: string;
   settlementLedgerId?: string;
+  paymentRequestId?: string;
   counterpartyName: string;
   paidAt: string;
   amountCents: string;

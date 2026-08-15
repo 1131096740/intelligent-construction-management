@@ -12,6 +12,9 @@ describe("OperatingLedgerModule formal source registry", () => {
     );
     expect(OPERATING_SOURCE_TYPES).toEqual([
       "project_upstream_settlement",
+      "project_upstream_fund_fact",
+      "project_affiliate_settlement_fact",
+      "project_affiliate_payment_fact",
       "settlement",
       "payment_execution",
       "project_proxy_payment",

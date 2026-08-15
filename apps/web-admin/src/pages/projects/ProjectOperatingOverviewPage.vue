@@ -295,7 +295,7 @@
             <div class="panel-head">
               <div>
                 <h2>上游资金事实</h2>
-                <p>业主付款不进入我方现金；只有已确认的挂靠拨款增加可用资金。</p>
+                <p>业主付款不进入我方现金；只有已确认的施工企业拨款增加可用资金。</p>
               </div>
               <button
                 type="button"
@@ -312,9 +312,9 @@
               <label>
                 <span>事实类型</span>
                 <select v-model="receiptForm.factType">
-                  <option value="owner_payment_to_affiliate">业主向挂靠企业付款</option>
-                  <option value="affiliate_remittance_to_company">挂靠企业向我方拨款</option>
-                  <option value="affiliate_deduction">挂靠企业扣款</option>
+                  <option value="owner_payment_to_affiliate">业主向施工企业付款</option>
+                  <option value="affiliate_remittance_to_company">施工企业向我方拨款</option>
+                  <option value="affiliate_deduction">施工企业扣款</option>
                   <option value="unreconciled_receipt_difference">待核对到账差额</option>
                 </select>
               </label>
@@ -348,6 +348,10 @@
                   v-model.trim="receiptForm.counterpartyName"
                   required
                 >
+              </label>
+              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
+                <span>我方公司编号</span>
+                <input v-model.trim="receiptForm.companyEntityId">
               </label>
               <label v-if="receiptForm.factType === 'affiliate_deduction'">
                 <span>扣款类型</span>
@@ -763,7 +767,7 @@
       <t-tab-panel
         v-if="selectedProjectId"
         value="affiliate-business"
-        label="挂靠业务接管"
+        label="施工企业业务接管"
       >
         <AffiliateCompanyContractPanel :project-id="selectedProjectId" />
         <AffiliateBusinessLedgerPanel :project-id="selectedProjectId" />
@@ -887,6 +891,7 @@ interface ReceiptFormState {
   occurredAt: string;
   amountYuan: string;
   counterpartyName: string;
+  companyEntityId: string;
   deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   description: string;
   voucherFile: File | null;
@@ -1105,7 +1110,7 @@ const cashItems = computed(() => {
   const cash = overview.value?.cash;
   return [
     { label: "我方实际到账", value: formatCents(cash?.actualReceiptsCents ?? null) },
-    { label: "已确认挂靠拨款", value: formatCents(cash?.affiliateRemittanceCents ?? "0") },
+    { label: "已确认施工企业拨款", value: formatCents(cash?.affiliateRemittanceCents ?? "0") },
     { label: "历史收款口径", value: formatCents(cash?.legacyReceiptsCents ?? "0") },
     { label: "供应商退款", value: formatCents(cash?.supplierRefundsCents ?? null) },
     { label: "可用资金", value: formatCents(cash?.availableFundsCents ?? null) },
@@ -1123,12 +1128,12 @@ const businessItems = computed(() => {
     { label: "生效合同额", value: formatCents(business?.effectiveContractAmountCents ?? "0") },
     { label: "生效结算额", value: formatCents(business?.effectiveSettlementAmountCents ?? "0") },
     { label: "结算可付额", value: formatCents(business?.payableSettlementAmountCents ?? "0") },
-    { label: "业主向挂靠企业付款", value: formatCents(upstream?.ownerPaymentCents ?? "0") },
-    { label: "挂靠扣款", value: formatCents(upstream?.affiliateDeductionCents ?? "0") },
+    { label: "业主向施工企业付款", value: formatCents(upstream?.ownerPaymentCents ?? "0") },
+    { label: "施工企业扣款", value: formatCents(upstream?.affiliateDeductionCents ?? "0") },
     { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? "0") },
     { label: "经营收入", value: formatCents(business?.operatingIncomeCents ?? null) },
     {
-      label: "挂靠企业对下付款",
+      label: "施工企业对下付款",
       value: formatCents(business?.affiliateDownstreamPaymentCents ?? "0")
     },
     { label: "经营成本", value: formatCents(business?.operatingCostCents ?? null) },
@@ -1630,6 +1635,7 @@ async function submitReceipt() {
       occurredAt,
       amountCents,
       counterpartyName,
+      ...(form.companyEntityId ? { companyEntityId: form.companyEntityId } : {}),
       ...(form.factType === "affiliate_deduction"
         ? { deductionCategory: form.deductionCategory }
         : {}),
@@ -1764,6 +1770,7 @@ function createReceiptForm(
     occurredAt: todayText(),
     amountYuan: "",
     counterpartyName: "",
+    companyEntityId: "",
     deductionCategory: "management_fee",
     description: "",
     voucherFile: null

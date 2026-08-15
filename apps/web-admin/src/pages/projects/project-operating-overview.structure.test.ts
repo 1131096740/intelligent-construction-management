@@ -24,7 +24,7 @@ describe("project operating overview structure", () => {
   });
 
   it("retires the legacy one-step proxy payment form in favor of the governed fact chain", () => {
-    expect(source).toContain('label="挂靠业务接管"');
+    expect(source).toContain('label="施工企业业务接管"');
     expect(source).toContain("<AffiliateCompanyContractPanel");
     expect(source).toContain("<AffiliateBusinessLedgerPanel");
     expect(source).not.toContain("recordProjectProxyPayment");

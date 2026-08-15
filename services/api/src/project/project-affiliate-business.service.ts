@@ -5,7 +5,8 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
-  Optional
+  Optional,
+  Inject
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { RoleKey } from "@jiangkong/shared-domain";
@@ -14,6 +15,11 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { snapshotApprovalSignature } from "../approval/approval-signature-snapshot";
 import { PrismaService } from "../database/prisma.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding
@@ -125,6 +131,7 @@ interface AffiliatePaymentFactRow extends AffiliateFactConfirmation {
   ledgerId: string;
   contractLedgerId: string;
   settlementLedgerId: string | null;
+  paymentRequestId: string | null;
   entryKind: string;
   adjustsFactId: string | null;
   effectDirection: string;
@@ -172,7 +179,10 @@ export class ProjectAffiliateBusinessService {
     @Optional()
     private readonly audit: AuditService = new AuditService(),
     @Optional()
-    private readonly auth?: AuthService
+    private readonly auth?: AuthService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async listFacts(projectId: string, actorUserId: string) {
@@ -254,7 +264,7 @@ export class ProjectAffiliateBusinessService {
     const evidenceFileId = optionalTrimmed(input.evidenceFileId);
     const adjustsFactId = optionalTrimmed(input.adjustsFactId);
     const description = optionalTrimmed(input.description);
-    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供挂靠合同登记幂等键");
+    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供施工企业合同登记幂等键");
     const advanceAllowed = input.advanceAllowed === true;
     const advanceLimitCents = advanceAllowed
       ? normalizePositiveMoney(input.advanceLimitCents, "预付款上限必须大于零")
@@ -264,7 +274,7 @@ export class ProjectAffiliateBusinessService {
       : null;
 
     assertBasisEvidence(basisType, evidenceFileId, "外部合同");
-    assertAdjustmentShape(entryKind, adjustsFactId, "挂靠合同");
+    assertAdjustmentShape(entryKind, adjustsFactId, "施工企业合同");
     if (amountNature === "uncapped" && input.amountCents !== undefined) {
       throw new BadRequestException("无固定总价合同不得虚构合同金额");
     }
@@ -301,7 +311,7 @@ export class ProjectAffiliateBusinessService {
           where: { idempotencyKey }
         });
         if (existing) {
-          assertReplay(existing, projectId, actorUserId, requestFingerprint, "挂靠合同");
+          assertReplay(existing, projectId, actorUserId, requestFingerprint, "施工企业合同");
           return toContractReadModel(
             existing,
             await loadActorRoleKeys(tx, actorUserId, projectId)
@@ -311,7 +321,7 @@ export class ProjectAffiliateBusinessService {
         await this.requireActiveProject(tx, projectId);
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roleKeys.includes("contract_staff")) {
-          throw new ForbiddenException("只有合同人员可以录入挂靠企业对下合同事实");
+          throw new ForbiddenException("只有合同人员可以录入施工企业对下合同事实");
         }
         const affiliate = await resolveCurrentProjectAffiliate(tx, projectId);
         const target = adjustsFactId
@@ -335,7 +345,7 @@ export class ProjectAffiliateBusinessService {
             entryKind,
             effectDirection,
             amountCents,
-            "挂靠合同"
+            "施工企业合同"
           );
         }
         const evidence = await validateExclusiveEvidence(
@@ -468,7 +478,7 @@ export class ProjectAffiliateBusinessService {
       const fact = await factDelegate(tx, businessType).findFirst({
         where: { id: factId, projectId }
       });
-      if (!fact) throw new NotFoundException("挂靠外部事实不存在");
+      if (!fact) throw new NotFoundException("施工企业外部事实不存在");
       const factActions = availableActions(
         businessType,
         fact.status as AffiliateFactStatus,
@@ -496,7 +506,7 @@ export class ProjectAffiliateBusinessService {
   ) {
     const contractLedgerId = requiredTrimmed(
       input.contractLedgerId,
-      "请关联已确认挂靠合同"
+      "请关联已确认施工企业合同"
     );
     const entryKind = normalizeEntryKind(input.entryKind ?? "original");
     const effectDirection = normalizeEffectDirection(entryKind, input.effectDirection);
@@ -508,9 +518,9 @@ export class ProjectAffiliateBusinessService {
     const basisType = normalizeBasisType(input.basisType);
     const evidenceFileId = optionalTrimmed(input.evidenceFileId);
     const description = optionalTrimmed(input.description);
-    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供挂靠结算登记幂等键");
+    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供施工企业结算登记幂等键");
     assertBasisEvidence(basisType, evidenceFileId, "外部结算");
-    assertAdjustmentShape(entryKind, adjustsFactId, "挂靠结算");
+    assertAdjustmentShape(entryKind, adjustsFactId, "施工企业结算");
 
     const requestFingerprint = fingerprint({
       projectId,
@@ -534,7 +544,7 @@ export class ProjectAffiliateBusinessService {
           where: { idempotencyKey }
         });
         if (existing) {
-          assertReplay(existing, projectId, actorUserId, requestFingerprint, "挂靠结算");
+          assertReplay(existing, projectId, actorUserId, requestFingerprint, "施工企业结算");
           return toSettlementReadModel(
             existing,
             await loadActorRoleKeys(tx, actorUserId, projectId)
@@ -543,7 +553,7 @@ export class ProjectAffiliateBusinessService {
         await this.requireActiveProject(tx, projectId);
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         if (!roleKeys.includes("budget_staff")) {
-          throw new ForbiddenException("只有项目预算人员可以录入挂靠企业对下结算事实");
+          throw new ForbiddenException("只有项目预算人员可以录入施工企业对下结算事实");
         }
         const contract = await loadActiveContractLedger(tx, projectId, contractLedgerId);
         if (contract.contractType === "general_direct_payment") {
@@ -561,7 +571,7 @@ export class ProjectAffiliateBusinessService {
             target.affiliateBusinessPartyVersionId !==
               contract.affiliateBusinessPartyVersionId
           ) {
-            throw new BadRequestException("挂靠结算更正不得改变合同、相对方或挂靠企业主体");
+            throw new BadRequestException("施工企业结算更正不得改变合同、相对方或施工企业主体");
           }
           await assertAdjustmentCapacity(
             tx.projectAffiliateSettlementFact,
@@ -569,7 +579,7 @@ export class ProjectAffiliateBusinessService {
             entryKind,
             effectDirection,
             amountCents,
-            "挂靠结算"
+            "施工企业结算"
           );
         }
         const evidence = await validateExclusiveEvidence(
@@ -645,9 +655,10 @@ export class ProjectAffiliateBusinessService {
   ) {
     const contractLedgerId = requiredTrimmed(
       input.contractLedgerId,
-      "请关联已确认挂靠合同"
+      "请关联已确认施工企业合同"
     );
     const settlementLedgerId = optionalTrimmed(input.settlementLedgerId);
+    const paymentRequestId = optionalTrimmed(input.paymentRequestId);
     const entryKind = normalizeEntryKind(input.entryKind ?? "original");
     const effectDirection = normalizeEffectDirection(entryKind, input.effectDirection);
     const adjustsFactId = optionalTrimmed(input.adjustsFactId);
@@ -662,14 +673,14 @@ export class ProjectAffiliateBusinessService {
     const basisType = normalizeBasisType(input.basisType);
     const evidenceFileId = optionalTrimmed(input.evidenceFileId);
     const description = optionalTrimmed(input.description);
-    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供挂靠付款登记幂等键");
+    const idempotencyKey = requiredTrimmed(input.idempotencyKey, "请提供施工企业付款登记幂等键");
     assertBasisEvidence(basisType, evidenceFileId, "外部付款");
-    assertAdjustmentShape(entryKind, adjustsFactId, "挂靠付款");
+    assertAdjustmentShape(entryKind, adjustsFactId, "施工企业付款");
     if (entryKind !== "original" && input.externalPaymentReference !== undefined) {
       throw new BadRequestException("付款更正或反向记录沿用原流水，不得生成第二个外部流水号");
     }
     if (paymentKind === "normal" && !settlementLedgerId) {
-      throw new BadRequestException("正常挂靠付款必须关联已确认合同和已确认结算");
+      throw new BadRequestException("正常施工企业付款必须关联已确认合同和已确认结算");
     }
     if ((paymentKind === "advance" || paymentKind === "direct_contract") && settlementLedgerId) {
       throw new BadRequestException("预付款或直接付款不得伪装成结算付款");
@@ -680,6 +691,7 @@ export class ProjectAffiliateBusinessService {
       actorUserId,
       contractLedgerId,
       settlementLedgerId,
+      paymentRequestId,
       entryKind,
       effectDirection,
       adjustsFactId,
@@ -699,13 +711,77 @@ export class ProjectAffiliateBusinessService {
           where: { idempotencyKey }
         });
         if (existing) {
-          assertReplay(existing, projectId, actorUserId, requestFingerprint, "挂靠付款");
+          assertReplay(existing, projectId, actorUserId, requestFingerprint, "施工企业付款");
           return toPaymentReadModel(
             existing,
             await loadActorRoleKeys(tx, actorUserId, projectId)
           );
         }
         await this.requireActiveProject(tx, projectId);
+        const projectClient = (tx as unknown as {
+          project?: {
+            findUnique?: (args: unknown) => Promise<{
+              operatingLedgerEffectiveDate: Date | null;
+            } | null>;
+          };
+        }).project;
+        const projectProfile = projectClient?.findUnique
+          ? await projectClient.findUnique({
+              where: { id: projectId },
+              select: { operatingLedgerEffectiveDate: true }
+            })
+          : null;
+        const isPostEffectiveNormalPayment =
+          paymentKind === "normal" &&
+          !!projectProfile?.operatingLedgerEffectiveDate &&
+          paidAt >= projectProfile.operatingLedgerEffectiveDate;
+        if (isPostEffectiveNormalPayment && !paymentRequestId) {
+          throw new BadRequestException(
+            "经营账生效日后的正常施工企业付款必须关联已审批付款申请"
+          );
+        }
+        if (paymentRequestId) {
+          const paymentRequest = await tx.paymentRequest.findFirst({
+            where: { id: paymentRequestId, projectId },
+            select: {
+              id: true,
+              status: true,
+              paymentSubjectType: true,
+              approvedAmountCents: true,
+              requestedAmountCents: true
+            }
+          });
+          if (
+            !paymentRequest ||
+            !["approved_pending_payment", "partially_paid"].includes(paymentRequest.status) ||
+            paymentRequest.paymentSubjectType !== "affiliate"
+          ) {
+            throw new BadRequestException(
+              "施工企业付款只能关联已审批且付款主体为施工企业的付款申请"
+            );
+          }
+          if (paymentKind !== "normal") {
+            throw new BadRequestException("只有正常施工企业付款可以关联付款申请");
+          }
+          const existingRequestFacts = await tx.projectAffiliatePaymentFact.findMany({
+            where: {
+              projectId,
+              paymentRequestId,
+              status: "confirmed"
+            },
+            select: { amountCents: true, effectDirection: true }
+          });
+          const settledAmount = existingRequestFacts.reduce(
+            (total, fact) =>
+              total + (fact.effectDirection === "decrease" ? -fact.amountCents : fact.amountCents),
+            0n
+          );
+          const approvedAmount =
+            paymentRequest.approvedAmountCents ?? paymentRequest.requestedAmountCents;
+          if (settledAmount + amountCents > approvedAmount) {
+            throw new BadRequestException("施工企业付款超过已审批付款申请剩余金额");
+          }
+        }
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         const recordedByRoleKey = roleKeys.includes("finance_director")
           ? "finance_director"
@@ -713,7 +789,7 @@ export class ProjectAffiliateBusinessService {
             ? "finance_staff"
             : null;
         if (!recordedByRoleKey) {
-          throw new ForbiddenException("只有财务人员或财务主管可以录入挂靠付款事实");
+          throw new ForbiddenException("只有财务人员或财务主管可以录入施工企业付款事实");
         }
         const contract = await loadActiveContractLedger(tx, projectId, contractLedgerId, true);
         assertSameCounterparty(contract.counterpartyName, counterpartyName, "付款");
@@ -728,7 +804,7 @@ export class ProjectAffiliateBusinessService {
             settlement.affiliateBusinessPartyVersionId !==
               contract.affiliateBusinessPartyVersionId)
         ) {
-          throw new BadRequestException("挂靠付款关联的合同、结算、相对方或挂靠企业主体不一致");
+          throw new BadRequestException("施工企业付款关联的合同、结算、相对方或施工企业主体不一致");
         }
         assertPaymentRoute(contract, paymentKind, settlement);
 
@@ -741,11 +817,12 @@ export class ProjectAffiliateBusinessService {
             target.settlementLedgerId !== (settlementLedgerId ?? null) ||
             target.counterpartyName !== counterpartyName ||
             target.paymentKind !== paymentKind ||
+            target.paymentRequestId !== (paymentRequestId ?? null) ||
             target.affiliateAssignmentId !== contract.affiliateAssignmentId ||
             target.affiliateBusinessPartyVersionId !==
               contract.affiliateBusinessPartyVersionId
           ) {
-            throw new BadRequestException("挂靠付款更正不得改变合同、结算、付款类型、相对方或主体");
+            throw new BadRequestException("施工企业付款更正不得改变合同、结算、付款申请、付款类型、相对方或主体");
           }
           await assertAdjustmentCapacity(
             tx.projectAffiliatePaymentFact,
@@ -753,7 +830,7 @@ export class ProjectAffiliateBusinessService {
             entryKind,
             effectDirection,
             amountCents,
-            "挂靠付款"
+            "施工企业付款"
           );
         }
         await assertPaymentCapacity(tx, {
@@ -778,6 +855,7 @@ export class ProjectAffiliateBusinessService {
             projectId,
             contractLedgerId,
             settlementLedgerId,
+            paymentRequestId,
             entryKind,
             adjustsFactId,
             effectDirection,
@@ -820,7 +898,8 @@ export class ProjectAffiliateBusinessService {
             amountCents: amountCents.toString(),
             basisType,
             evidenceFileId,
-            paymentSubjectType: "affiliate"
+            paymentSubjectType: "affiliate",
+            paymentRequestId
           }
         });
         return toPaymentReadModel(created, roleKeys);
@@ -1014,9 +1093,9 @@ export class ProjectAffiliateBusinessService {
 
       await lockFactForConfirmation(tx, businessType, projectId, factId);
       const fact = await delegate.findFirst({ where: { id: factId, projectId } });
-      if (!fact) throw new NotFoundException("待确认挂靠外部事实不存在");
+      if (!fact) throw new NotFoundException("待确认施工企业外部事实不存在");
       if (fact.status !== "pending_confirm") {
-        throw new BadRequestException("当前挂靠外部事实状态不可确认");
+        throw new BadRequestException("当前施工企业外部事实状态不可确认");
       }
       const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
       assertCanConfirm(businessType, fact.basisType, roleKeys);
@@ -1041,11 +1120,25 @@ export class ProjectAffiliateBusinessService {
         }
       });
       if (updated.count !== 1) {
-        throw new ConflictException("挂靠外部事实已被其他操作确认，请刷新后核对");
+        throw new ConflictException("施工企业外部事实已被其他操作确认，请刷新后核对");
       }
       const confirmed = await delegate.findUnique({ where: { id: factId } });
       if (!confirmed) {
-        throw new InternalServerErrorException("挂靠外部事实确认结果未正确保存");
+        throw new InternalServerErrorException("施工企业外部事实确认结果未正确保存");
+      }
+      if (businessType !== "contract") {
+        await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+          tx,
+          {
+            projectId,
+            sourceType:
+              businessType === "settlement"
+                ? "project_affiliate_settlement_fact"
+                : "project_affiliate_payment_fact",
+            sourceBusinessId: confirmed.id
+          },
+          actorUserId
+        );
       }
       await this.audit.record(tx, {
         actorUserId,
@@ -1096,7 +1189,7 @@ export class ProjectAffiliateBusinessService {
     ) {
       return toContractReadModel(existing, []);
     }
-    throw new ConflictException("挂靠合同事实或外部合同编号已登记，请刷新后核对");
+    throw new ConflictException("施工企业合同事实或外部合同编号已登记，请刷新后核对");
   }
 
   private async handleSettlementUniqueReplay(
@@ -1117,7 +1210,7 @@ export class ProjectAffiliateBusinessService {
     ) {
       return toSettlementReadModel(existing, []);
     }
-    throw new ConflictException("挂靠结算事实已登记，请刷新后核对");
+    throw new ConflictException("施工企业结算事实已登记，请刷新后核对");
   }
 
   private async handlePaymentUniqueReplay(
@@ -1191,7 +1284,7 @@ async function lockAndLoadContractTarget(
   const target = await tx.projectAffiliateContractFact.findFirst({
     where: { id: factId, projectId }
   });
-  assertOriginalConfirmedTarget(target, "挂靠合同");
+  assertOriginalConfirmedTarget(target, "施工企业合同");
   return target as AffiliateContractFactRow;
 }
 
@@ -1207,7 +1300,7 @@ async function lockAndLoadSettlementTarget(
   const target = await tx.projectAffiliateSettlementFact.findFirst({
     where: { id: factId, projectId }
   });
-  assertOriginalConfirmedTarget(target, "挂靠结算");
+  assertOriginalConfirmedTarget(target, "施工企业结算");
   return target as AffiliateSettlementFactRow;
 }
 
@@ -1223,7 +1316,7 @@ async function lockAndLoadPaymentTarget(
   const target = await tx.projectAffiliatePaymentFact.findFirst({
     where: { id: factId, projectId }
   });
-  assertOriginalConfirmedTarget(target, "挂靠付款");
+  assertOriginalConfirmedTarget(target, "施工企业付款");
   return target as AffiliatePaymentFactRow;
 }
 
@@ -1259,9 +1352,9 @@ async function loadActiveContractLedger(
     orderBy: [{ createdAt: "asc" }, { id: "asc" }]
   });
   const original = facts.find((fact) => fact.entryKind === "original");
-  if (!original) throw new BadRequestException("关联挂靠合同不存在或尚未确认");
+  if (!original) throw new BadRequestException("关联施工企业合同不存在或尚未确认");
   if (facts.some((fact) => fact.entryKind === "reversal" && fact.adjustsFactId === original.id)) {
-    throw new BadRequestException("关联挂靠合同已反向关闭，不能继续登记业务");
+    throw new BadRequestException("关联施工企业合同已反向关闭，不能继续登记业务");
   }
   const netAmountCents =
     original.amountCents === null
@@ -1277,7 +1370,7 @@ async function loadActiveContractLedger(
           0n
         );
   if (netAmountCents !== null && netAmountCents <= 0n) {
-    throw new BadRequestException("关联挂靠合同有效金额已归零，不能继续登记业务");
+    throw new BadRequestException("关联施工企业合同有效金额已归零，不能继续登记业务");
   }
   return { ...original, netAmountCents };
 }
@@ -1292,13 +1385,13 @@ async function loadActiveSettlementLedger(
     orderBy: [{ createdAt: "asc" }, { id: "asc" }]
   });
   const original = facts.find((fact) => fact.entryKind === "original");
-  if (!original) throw new BadRequestException("关联挂靠结算不存在或尚未确认");
+  if (!original) throw new BadRequestException("关联施工企业结算不存在或尚未确认");
   if (facts.some((fact) => fact.entryKind === "reversal" && fact.adjustsFactId === original.id)) {
-    throw new BadRequestException("关联挂靠结算已反向关闭，不能登记付款");
+    throw new BadRequestException("关联施工企业结算已反向关闭，不能登记付款");
   }
   const netAmountCents = netMoneyFacts(facts);
   if (netAmountCents <= 0n) {
-    throw new BadRequestException("关联挂靠结算有效金额已归零，不能登记付款");
+    throw new BadRequestException("关联施工企业结算有效金额已归零，不能登记付款");
   }
   return { ...original, netAmountCents };
 }
@@ -1329,7 +1422,7 @@ function assertContractAdjustmentTarget(
     target.affiliateBusinessPartyVersionId !==
       input.affiliateBusinessPartyVersionId
   ) {
-    throw new BadRequestException("挂靠合同更正不得改变合同类型、编号、相对方、预付款约定或主体");
+      throw new BadRequestException("施工企业合同更正不得改变合同类型、编号、相对方、预付款约定或主体");
   }
 }
 
@@ -1396,7 +1489,7 @@ function assertPaymentRoute(
   }
   if (SETTLEMENT_REQUIRED_CONTRACT_TYPES.has(contract.contractType as ProjectAffiliateContractType)) {
     if (paymentKind === "normal" && !settlement) {
-      throw new BadRequestException("前五类正常挂靠付款必须关联已确认结算");
+      throw new BadRequestException("前五类正常施工企业付款必须关联已确认结算");
     }
     if (paymentKind === "advance" && !contract.advanceAllowed) {
       throw new BadRequestException("外部合同未冻结预付款约定，不能在结算前登记预付款");
@@ -1450,9 +1543,9 @@ async function assertPaymentCapacity(
         : input.contract.amountNature === "fixed"
           ? input.contract.netAmountCents
           : null;
-  if (next < 0n) throw new BadRequestException("挂靠付款累计更正后金额不能小于零");
+  if (next < 0n) throw new BadRequestException("施工企业付款累计更正后金额不能小于零");
   if (limit !== null && next > limit) {
-    throw new BadRequestException("挂靠付款累计金额超过外部合同或结算冻结的有效上限");
+    throw new BadRequestException("施工企业付款累计金额超过外部合同或结算冻结的有效上限");
   }
 }
 
@@ -1524,7 +1617,7 @@ async function assertFactExists(
             where: { id: factId, projectId },
             select: { id: true }
           });
-  if (!fact) throw new NotFoundException("待补充依据的挂靠外部事实不存在");
+  if (!fact) throw new NotFoundException("待补充依据的施工企业外部事实不存在");
 }
 
 async function loadActorRoleKeys(
@@ -1560,13 +1653,13 @@ function assertCanConfirm(
 ) {
   if (businessType === "contract") {
     if (!roleKeys.includes("contract_director")) {
-      throw new ForbiddenException("只有合同主管可以确认挂靠企业对下合同事实");
+      throw new ForbiddenException("只有合同主管可以确认施工企业对下合同事实");
     }
     return;
   }
   if (businessType === "settlement") {
     if (!roleKeys.includes("budget_staff")) {
-      throw new ForbiddenException("只有项目预算人员可以确认挂靠企业对下结算事实");
+      throw new ForbiddenException("只有项目预算人员可以确认施工企业对下结算事实");
     }
     return;
   }
@@ -1578,8 +1671,8 @@ function assertCanConfirm(
   ) {
     throw new ForbiddenException(
       basisType === "oral"
-        ? "口头通知的挂靠付款必须由财务主管确认"
-        : "只有财务人员或财务主管可以确认书面挂靠付款事实"
+        ? "口头通知的施工企业付款必须由财务主管确认"
+        : "只有财务人员或财务主管可以确认书面施工企业付款事实"
     );
   }
 }
@@ -1597,7 +1690,7 @@ function requireEvidenceRole(
     if (roleKeys.includes("finance_director")) return "finance_director";
     if (roleKeys.includes("finance_staff")) return "finance_staff";
   }
-  throw new ForbiddenException("当前岗位不能为该挂靠外部事实补充依据");
+  throw new ForbiddenException("当前岗位不能为该施工企业外部事实补充依据");
 }
 
 function availableActions(
@@ -1769,7 +1862,7 @@ function assertSameCounterparty(
 ) {
   if (expected !== actual) {
     throw new BadRequestException(
-      `${businessLabel}对象必须与挂靠企业对下合同相对方完全一致`
+      `${businessLabel}对象必须与施工企业对下合同相对方完全一致`
     );
   }
 }
@@ -1779,7 +1872,7 @@ function normalizeContractType(value: unknown): ProjectAffiliateContractType {
     typeof value !== "string" ||
     !(PROJECT_AFFILIATE_CONTRACT_TYPES as readonly string[]).includes(value)
   ) {
-    throw new BadRequestException("挂靠对下合同类型不正确");
+    throw new BadRequestException("施工企业对下合同类型不正确");
   }
   return value as ProjectAffiliateContractType;
 }
@@ -1799,7 +1892,7 @@ function normalizeBasisType(value: unknown): ProjectAffiliateBasisType {
     typeof value !== "string" ||
     !(PROJECT_AFFILIATE_BASIS_TYPES as readonly string[]).includes(value)
   ) {
-    throw new BadRequestException("挂靠外部事实依据类型不正确");
+    throw new BadRequestException("施工企业外部事实依据类型不正确");
   }
   return value as ProjectAffiliateBasisType;
 }
@@ -1809,7 +1902,7 @@ function normalizeEntryKind(value: unknown): ProjectAffiliateEntryKind {
     typeof value !== "string" ||
     !(PROJECT_AFFILIATE_ENTRY_KINDS as readonly string[]).includes(value)
   ) {
-    throw new BadRequestException("挂靠外部事实追加类型不正确");
+    throw new BadRequestException("施工企业外部事实追加类型不正确");
   }
   return value as ProjectAffiliateEntryKind;
 }
@@ -1831,7 +1924,7 @@ function normalizePaymentKind(value: unknown): ProjectAffiliatePaymentKind {
     typeof value !== "string" ||
     !(PROJECT_AFFILIATE_PAYMENT_KINDS as readonly string[]).includes(value)
   ) {
-    throw new BadRequestException("挂靠付款类型不正确");
+    throw new BadRequestException("施工企业付款类型不正确");
   }
   return value as ProjectAffiliatePaymentKind;
 }
@@ -1841,7 +1934,7 @@ function normalizeBusinessType(value: unknown): ProjectAffiliateBusinessFactType
     typeof value !== "string" ||
     !(PROJECT_AFFILIATE_BUSINESS_FACT_TYPES as readonly string[]).includes(value)
   ) {
-    throw new BadRequestException("挂靠外部事实类型不正确");
+    throw new BadRequestException("施工企业外部事实类型不正确");
   }
   return value as ProjectAffiliateBusinessFactType;
 }

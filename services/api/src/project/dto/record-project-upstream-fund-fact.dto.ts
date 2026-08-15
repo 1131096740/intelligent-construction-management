@@ -67,12 +67,16 @@ export class RecordProjectUpstreamFundFactDto {
   counterpartyName!: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsIn(PROJECT_AFFILIATE_DEDUCTION_CATEGORIES, { message: "挂靠扣款类型不正确" })
+  @IsIn(PROJECT_AFFILIATE_DEDUCTION_CATEGORIES, { message: "施工企业扣款类型不正确" })
   deductionCategory?: ProjectAffiliateDeductionCategory;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "关联上游结算编号必须是文字" })
   upstreamSettlementId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "我方公司编号必须是文字" })
+  companyEntityId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "依据文件编号必须是文字" })

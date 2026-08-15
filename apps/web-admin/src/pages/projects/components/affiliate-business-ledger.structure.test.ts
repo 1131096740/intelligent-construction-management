@@ -6,7 +6,7 @@ const page = readFileSync(new URL("../ProjectOperatingOverviewPage.vue", import.
 
 describe("affiliate downstream business ledger structure", () => {
   it("mounts a dedicated contract, settlement and payment takeover tab", () => {
-    expect(page).toContain('label="挂靠业务接管"');
+    expect(page).toContain('label="施工企业业务接管"');
     expect(page).toContain("<AffiliateBusinessLedgerPanel");
     expect(panel).toContain('value="contract"');
     expect(panel).toContain('value="settlement"');

@@ -98,7 +98,7 @@ let componentAlive = true;
 const columns: PrimaryTableCol[] = [
   { colKey: "contractReference", title: "线下合同编号", width: 170 },
   { colKey: "contractName", title: "合同名称", width: 200 },
-  { colKey: "affiliateNameSnapshot", title: "挂靠企业", width: 180 },
+  { colKey: "affiliateNameSnapshot", title: "施工企业", width: 180 },
   { colKey: "companyEntityNameSnapshot", title: "我方主体", width: 180 },
   { colKey: "signedAt", title: "签订日期", width: 120 },
   { colKey: "rightsObligationsSummary", title: "权利义务摘要", width: 300 },
@@ -202,7 +202,7 @@ async function load() {
         error,
         contractsPublished
           ? "我方签约主体读取失败，合同确认仍可继续"
-          : "挂靠企业与我方线下合同读取失败"
+          : "施工企业与我方线下合同读取失败"
       );
     }
   } finally {
@@ -583,7 +583,7 @@ function errorMessage(error: unknown, fallback: string) {
   >
     <header class="affiliate-company-contract__header">
       <div>
-        <h2>挂靠企业与我方线下合同</h2>
+        <h2>施工企业与我方线下合同</h2>
         <p>
           只登记双方已经线下签署的权利义务文件；它不替代业主主合同，也不会生成业主回款或我方对下付款链。
         </p>
@@ -600,7 +600,7 @@ function errorMessage(error: unknown, fallback: string) {
     <t-alert
       theme="warning"
       title="资金与核对边界"
-      message="挂靠企业向我方拨款可以先到账、后核对，不以该合同结算完成为前提；后续关联不得覆盖银行到账事实。"
+      message="施工企业向我方拨款可以先到账、后核对，不以该合同结算完成为前提；后续关联不得覆盖银行到账事实。"
     />
     <t-alert
       v-if="notice"
@@ -647,7 +647,7 @@ function errorMessage(error: unknown, fallback: string) {
 
     <t-drawer
       :visible="recordVisible"
-      header="登记挂靠企业与我方已签线下合同"
+      header="登记施工企业与我方已签线下合同"
       size="min(680px, 100vw)"
       :close-btn="!recordBusy"
       :close-on-esc-keydown="!recordBusy"
@@ -728,7 +728,7 @@ function errorMessage(error: unknown, fallback: string) {
     <SensitiveActionDialog
       v-if="confirmArmed && selectedConfirmActionEnabled('confirm')"
       v-model="confirmVisible"
-      title="确认挂靠企业与我方线下合同"
+      title="确认施工企业与我方线下合同"
       description="确认后合同正文、双方主体快照和文件摘要均不可覆盖或删除；此动作不是我方合同审批。"
       confirm-text="确认并冻结签名"
       :require-password="true"
