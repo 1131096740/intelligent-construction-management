@@ -800,6 +800,7 @@ find "$migration_failure_fixture/backups" -name '*.dump' -type f | grep -q . ||
   fail "deployment did not create a pre-migration backup"
 find "$migration_failure_fixture/backups" -name '*.offsite.json' -type f | grep -q . ||
   fail "deployment did not require a verified offsite pre-migration backup"
+echo "self-test completed deployment fixture: migration-failure" >&2
 
 offsite_failure_fixture="$TEST_ROOT/deploy-offsite-failure"
 make_deploy_fixture "$offsite_failure_fixture"
@@ -813,6 +814,7 @@ fi
 if grep -q ' prisma migrate deploy ' "$FAKE_LOG"; then
   fail "deployment migrated the database before the offsite backup was verified"
 fi
+echo "self-test completed deployment fixture: offsite-failure" >&2
 
 invalid_scope_fixture="$TEST_ROOT/deploy-invalid-scope"
 make_deploy_fixture "$invalid_scope_fixture"
@@ -823,6 +825,7 @@ fi
 if [[ -s "$FAKE_LOG" ]]; then
   fail "deployment performed work before rejecting an unknown deployment scope"
 fi
+echo "self-test completed deployment fixture: invalid-scope" >&2
 
 invalid_candidate_fixture="$TEST_ROOT/deploy-invalid-candidate"
 make_deploy_fixture "$invalid_candidate_fixture"
@@ -834,6 +837,7 @@ fi
 if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment performed work before rejecting the candidate SHA"
 fi
+echo "self-test completed deployment fixture: invalid-candidate" >&2
 
 api_only_fixture="$TEST_ROOT/deploy-api-only"
 make_deploy_fixture "$api_only_fixture"
@@ -860,6 +864,7 @@ grep -Fq 'curl args=-fsS http://127.0.0.1:3000/health/readiness runtime=' "$FAKE
   fail "deployment did not install the pristine draft deletion receipt purge service"
 [[ -f "$api_only_fixture/systemd/jiangkong-pristine-draft-deletion-receipt-purge.timer" ]] ||
   fail "deployment did not install the pristine draft deletion receipt purge timer"
+echo "self-test completed deployment fixture: api-only" >&2
 
 api_only_health_failure_fixture="$TEST_ROOT/deploy-api-only-health-failure"
 make_deploy_fixture "$api_only_health_failure_fixture"
@@ -875,6 +880,7 @@ fi
 if grep -Fq "$api_only_health_failure_fixture/runtime/web-admin" "$FAKE_LOG"; then
   fail "API-only recovery touched the Web runtime"
 fi
+echo "self-test completed deployment fixture: api-only-health-failure" >&2
 
 manual_confirmation_fixture="$TEST_ROOT/deploy-manual-confirmation"
 make_deploy_fixture "$manual_confirmation_fixture"
@@ -894,6 +900,7 @@ run_deploy_fixture "$manual_confirmation_fixture" env \
   fail "manually confirmed deployment did not keep the new Web runtime"
 [[ ! -e "$manual_confirmation_file" ]] ||
   fail "manual confirmation marker was not removed"
+echo "self-test completed deployment fixture: manual-confirmation" >&2
 
 manual_rollback_fixture="$TEST_ROOT/deploy-manual-rollback"
 make_deploy_fixture "$manual_rollback_fixture"
@@ -915,6 +922,7 @@ fi
   fail "manual rollback did not restore the Web runtime"
 [[ ! -e "$manual_rollback_file" ]] ||
   fail "manual rollback marker was not removed"
+echo "self-test completed deployment fixture: manual-rollback" >&2
 
 manual_timeout_fixture="$TEST_ROOT/deploy-manual-timeout"
 make_deploy_fixture "$manual_timeout_fixture"
@@ -932,6 +940,7 @@ fi
   fail "manual confirmation timeout did not restore the API runtime"
 [[ "$(< "$manual_timeout_fixture/runtime/web-admin/dist/release.txt")" == old-web ]] ||
   fail "manual confirmation timeout did not restore the Web runtime"
+echo "self-test completed deployment fixture: manual-timeout" >&2
 
 stale_confirmation_fixture="$TEST_ROOT/deploy-stale-confirmation"
 make_deploy_fixture "$stale_confirmation_fixture"
@@ -948,6 +957,7 @@ fi
 if grep -Eq '^(pnpm|flock|systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment performed work before rejecting a stale confirmation marker"
 fi
+echo "self-test completed deployment fixture: stale-confirmation" >&2
 
 unwritable_dependency_fixture="$TEST_ROOT/deploy-unwritable-dependency-tree"
 make_deploy_fixture "$unwritable_dependency_fixture"
@@ -964,6 +974,7 @@ fi
 if grep -Eq '^(systemctl stop|pg_dump|rsync) ' "$FAKE_LOG"; then
   fail "deployment mutated runtime or database state before rejecting an unwritable dependency tree"
 fi
+echo "self-test completed deployment fixture: unwritable-dependency-tree" >&2
 
 health_failure_fixture="$TEST_ROOT/deploy-health-failure"
 make_deploy_fixture "$health_failure_fixture"
