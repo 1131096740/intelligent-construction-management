@@ -350,8 +350,12 @@
                 >
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
-                <span>我方公司编号</span>
-                <input v-model.trim="receiptForm.companyEntityId">
+                <span>拨款我方公司</span>
+                <t-select
+                  v-model="receiptForm.companyEntityId"
+                  :options="participatingCompanySelectOptions"
+                  placeholder="请选择我方参与公司"
+                />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_deduction'">
                 <span>扣款类型</span>
@@ -846,6 +850,10 @@ import {
   ProjectFinancingQuotaApiError,
   type ProjectFinancingQuotaWorkbenchReadModel
 } from "../../api/project-financing-quota.api";
+import {
+  fetchProjectParticipatingCompanyOptions,
+  type ProjectParticipatingCompanyOption
+} from "../../api/project-operating-profile.api";
 import { useAuthStore } from "../../auth/auth.store";
 import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -952,6 +960,7 @@ const receiptSubmitting = ref(false);
 const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
+const participatingCompanyOptions = ref<ProjectParticipatingCompanyOption[]>([]);
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
 const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(null);
 const upstreamFundConfirmationVisible = ref(false);
@@ -1001,6 +1010,13 @@ const projectSelectOptions = computed(() =>
   projects.value.map((project) => ({
     label: `${project.code} · ${project.name}`,
     value: project.id
+  }))
+);
+
+const participatingCompanySelectOptions = computed(() =>
+  participatingCompanyOptions.value.map((company) => ({
+    label: company.name,
+    value: company.id
   }))
 );
 
@@ -1359,6 +1375,7 @@ async function loadOverview() {
   const projectId = selectedProjectId.value;
   const selectedExpenseId = selectedExpenseRow.value?.id ?? "";
   overview.value = null;
+  participatingCompanyOptions.value = [];
   projectExpenses.value = null;
   financingQuotaWorkbench.value = null;
   financingQuotaError.value = "";
@@ -1376,7 +1393,7 @@ async function loadOverview() {
   loadingOverview.value = true;
   message.value = "";
   try {
-    const [nextOverview, nextExpenses, spotCapability, nextFinancingQuota] = await Promise.all([
+    const [nextOverview, nextExpenses, spotCapability, nextFinancingQuota, nextParticipatingCompanies] = await Promise.all([
       canReadProjectOverview.value
         ? fetchProjectOperatingOverview(projectId)
         : Promise.resolve(null),
@@ -1399,14 +1416,16 @@ async function loadOverview() {
               ? ""
               : error instanceof Error
                 ? error.message
-                : "读取项目垫资额度失败"
-        }))
+          : "读取项目垫资额度失败"
+        })),
+      fetchProjectParticipatingCompanyOptions(projectId).catch(() => [])
     ]);
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
       selectedProjectId.value === projectId
     ) {
       overview.value = nextOverview;
+      participatingCompanyOptions.value = nextParticipatingCompanies;
       projectExpenses.value = nextExpenses;
       financingQuotaWorkbench.value = nextFinancingQuota.workbench;
       financingQuotaError.value = nextFinancingQuota.error;

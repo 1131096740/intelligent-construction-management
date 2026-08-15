@@ -107,7 +107,10 @@ export class OperatingSourceReplayService {
         await adapter.readSourceSnapshot(tx, locator),
         locator
       );
-      const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+      const mapped = await this.resolveMappedSourceInput(
+        tx,
+        mapOperatingSourceSnapshot(adapter, snapshot, locator)
+      );
       return this.operatingLedger.replayFromSourceInTransaction(
         tx,
         mapped.input,
@@ -133,7 +136,10 @@ export class OperatingSourceReplayService {
       await adapter.readSourceSnapshot(tx, locator),
       locator
     );
-    const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+    const mapped = await this.resolveMappedSourceInput(
+      tx,
+      mapOperatingSourceSnapshot(adapter, snapshot, locator)
+    );
     if (mapped.entryKind === "original") {
       return this.operatingLedger.appendConfirmedSourceInTransaction(
         tx,
@@ -213,7 +219,10 @@ export class OperatingSourceReplayService {
     for (const adapter of this.registry.list()) {
       const snapshots = await adapter.readProjectSnapshots(tx, projectId);
       for (const snapshot of snapshots) {
-        const mapped = mapOperatingSourceSnapshot(adapter, snapshot);
+        const mapped = await this.resolveMappedSourceInput(
+          tx,
+          mapOperatingSourceSnapshot(adapter, snapshot)
+        );
         const input = mapped.input;
         if (input.projectId !== projectId) {
           throw new BadRequestException("来源适配器返回了其他项目的冻结快照");
@@ -239,6 +248,44 @@ export class OperatingSourceReplayService {
         sourceKey(right.input.sourceType, right.input.sourceBusinessId)
       )
     );
+  }
+
+  private async resolveMappedSourceInput(
+    tx: OperatingLedgerTransaction,
+    mapped: ReturnType<typeof mapOperatingSourceSnapshot>
+  ): Promise<ReturnType<typeof mapOperatingSourceSnapshot>> {
+    if (
+      mapped.entryKind === "original" ||
+      !POL08_ENTRY_SOURCE_TYPES.has(mapped.input.sourceType)
+    ) {
+      return mapped;
+    }
+    const sourceBusinessId = mapped.input.adjustsFactId?.trim();
+    if (!sourceBusinessId) {
+      throw new BadRequestException("来源更正或冲销缺少原始来源编号");
+    }
+    const operatingFactClient = (tx as unknown as {
+      operatingFact?: typeof tx.operatingFact;
+    }).operatingFact;
+    if (!operatingFactClient) return mapped;
+    const target = await operatingFactClient.findUnique({
+      where: {
+        sourceType_sourceBusinessId: {
+          sourceType: mapped.input.sourceType,
+          sourceBusinessId
+        }
+      },
+      select: { id: true }
+    });
+    if (!target) {
+      throw new BadRequestException(
+        "来源更正或冲销引用的原始来源尚未进入经营事实账"
+      );
+    }
+    return {
+      ...mapped,
+      input: { ...mapped.input, adjustsFactId: target.id }
+    };
   }
 }
 

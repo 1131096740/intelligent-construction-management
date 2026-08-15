@@ -58,6 +58,7 @@ import {
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "./project-operating-source.adapter";
+import { readAffiliateSnapshot } from "../operating-ledger/formal-operating-source.helpers";
 import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import type { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
 import type { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
@@ -1088,7 +1089,6 @@ export class ProjectService {
           }
         }
 
-        const currentAffiliate = await resolveCurrentProjectAffiliate(tx, project.id);
         if (upstreamSettlementId) {
           const settlement = await tx.projectUpstreamSettlement.findFirst({
             where: {
@@ -1104,6 +1104,10 @@ export class ProjectService {
           }
         }
 
+        let adjustmentTarget: {
+          affiliateAssignmentId: string;
+          affiliateBusinessPartyVersionId: string;
+        } | null = null;
         if (adjustsFactId) {
           await tx.$queryRaw(Prisma.sql`
             SELECT "id"
@@ -1118,6 +1122,11 @@ export class ProjectService {
           if (!target) {
             throw new NotFoundException("被调整的上游资金事实不存在");
           }
+          adjustmentTarget = {
+            affiliateAssignmentId: target.affiliateAssignmentId,
+            affiliateBusinessPartyVersionId:
+              target.affiliateBusinessPartyVersionId
+          };
           const existingAdjustments = await tx.projectUpstreamFundFact.findMany({
             where: {
               adjustsFactId,
@@ -1135,6 +1144,14 @@ export class ProjectService {
             { factType, entryKind, effectDirection, amountCents }
           );
         }
+
+        const affiliate = await readAffiliateSnapshot(tx, {
+          projectId: project.id,
+          occurredAt,
+          assignmentId: adjustmentTarget?.affiliateAssignmentId,
+          businessPartyVersionId:
+            adjustmentTarget?.affiliateBusinessPartyVersionId
+        });
 
         const evidence = evidenceFileId
           ? await tx.fileObject.findUnique({
@@ -1180,10 +1197,9 @@ export class ProjectService {
             deductionCategory,
             upstreamSettlementId,
             companyEntityId,
-            affiliateAssignmentId: currentAffiliate.assignmentId,
-            affiliateBusinessPartyVersionId:
-              currentAffiliate.businessPartyVersionId,
-            affiliateNameSnapshot: currentAffiliate.name,
+            affiliateAssignmentId: affiliate.assignmentId,
+            affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
+            affiliateNameSnapshot: affiliate.name,
             description,
             evidenceFileId,
             documentVersion: 1,
@@ -1212,9 +1228,8 @@ export class ProjectService {
             deductionCategory,
             upstreamSettlementId,
             companyEntityId,
-            affiliateAssignmentId: currentAffiliate.assignmentId,
-            affiliateBusinessPartyVersionId:
-              currentAffiliate.businessPartyVersionId,
+            affiliateAssignmentId: affiliate.assignmentId,
+            affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
             evidenceFileId,
             fileContentSha256Snapshot: evidence?.contentSha256 ?? null,
             status

@@ -423,8 +423,33 @@ describe("ProjectAffiliateBusinessService", () => {
           id: "payment-request-1",
           status: "approved_pending_payment",
           paymentSubjectType: "affiliate",
+          contractId: "internal-contract-1",
+          contractVersionId: "internal-contract-version-1",
+          settlementId: "internal-settlement-1",
           approvedAmountCents: 5000n,
           requestedAmountCents: 5000n
+        })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "internal-contract-version-1",
+          contractId: "internal-contract-1",
+          signingSubjectType: "affiliate",
+          affiliateBusinessPartyVersionId: "party-version-1"
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({
+          projectId: "project-1",
+          counterparty: "材料供应商"
+        })
+      },
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "internal-settlement-1",
+          projectId: "project-1",
+          contractVersionId: "internal-contract-version-1",
+          status: "effective"
         })
       },
       projectAffiliateContractFact: {

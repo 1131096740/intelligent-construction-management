@@ -61,16 +61,20 @@ type ConstructionEnterpriseSourceRow = {
   settledAt?: Date;
   paymentKind?: string;
   externalPaymentReference?: string | null;
+  createdAt?: Date;
 };
 
 function sourceEntryKind(value: string): OperatingSourceFactInput["entryKind"] {
   if (value === "reversal") return "reversal";
   if (value === "original") return "original";
-  return "correction";
+  if (value === "correction" || value === "reclassification") return "correction";
+  throw new BadRequestException(`经营来源登记类型不正确：${value}`);
 }
 
 function sourceDirection(value: string): "increase" | "decrease" {
-  return value === "decrease" ? "decrease" : "increase";
+  if (value === "increase") return "increase";
+  if (value === "decrease") return "decrease";
+  throw new BadRequestException(`经营来源影响方向不正确：${value}`);
 }
 
 function absoluteMoney(value: bigint): bigint {
@@ -156,6 +160,7 @@ function sourceSnapshot(
       recordedByUserId: row.recordedByUserId,
       confirmedByUserId: row.confirmedByUserId,
       confirmedAt: row.confirmedAt?.toISOString(),
+      ...(row.createdAt ? { recordedAt: row.createdAt.toISOString() } : {}),
       occurredAt: occurredAt.toISOString(),
       operatingLedgerEffectiveDate: effectiveDate.toISOString(),
       affiliate,
@@ -225,8 +230,8 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
       direction = "inflow";
       const creditor = enterprise;
       subjects = {
-        debtor: { kind: "owner", id: stableNamedSubjectId("owner", counterparty) },
-        creditor
+        actualPayer: { kind: "owner", id: stableNamedSubjectId("owner", counterparty) },
+        payee: creditor
       };
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
@@ -260,7 +265,7 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
           optionalJsonText(source, "companyEntityId") ??
           stableNamedSubjectId("participating_company", counterparty)
       };
-      subjects = { debtor: enterprise, creditor: company };
+      subjects = { actualPayer: enterprise, payee: company };
       impacts.push(
         {
           idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:enterprise-funds`,
@@ -287,7 +292,7 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
       factKind = "construction_enterprise_deduction";
       operatingLevel = "construction_enterprise";
       direction = "outflow";
-      subjects = { debtor: enterprise, creditor: enterprise };
+      subjects = { costBearingCompany: enterprise };
       impacts.push(
         {
           idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
@@ -355,6 +360,10 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
         businessPartyVersionId: row.affiliateBusinessPartyVersionId
       })
     ]);
+    const companyEntityId =
+      row.factType === "affiliate_remittance_to_company"
+        ? await resolveHistoricalCompanyEntityId(tx, row)
+        : row.companyEntityId;
     return sourceSnapshot(
       row,
       this.sourceType,
@@ -365,10 +374,34 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
         factType: row.factType,
         deductionCategory: row.deductionCategory,
         upstreamSettlementId: row.upstreamSettlementId,
-        companyEntityId: row.companyEntityId
+        companyEntityId
       }
     );
   }
+}
+
+async function resolveHistoricalCompanyEntityId(
+  tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+  row: ConstructionEnterpriseSourceRow
+): Promise<string> {
+  if (row.companyEntityId) return row.companyEntityId;
+  const occurredAt = row.occurredAt;
+  if (!occurredAt) throw new BadRequestException("施工企业拨款缺少业务发生时间");
+  const participants = await tx.projectParticipatingCompany.findMany({
+    where: {
+      projectId: row.projectId,
+      companyNameSnapshot: row.counterpartyName,
+      effectiveFrom: { lte: occurredAt },
+      OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }]
+    },
+    select: { companyEntityId: true }
+  });
+  if (participants.length !== 1) {
+    throw new BadRequestException(
+      "历史施工企业拨款缺少可核验的我方参与公司映射，不能虚构公司主体"
+    );
+  }
+  return participants[0]!.companyEntityId;
 }
 
 export class ProjectAffiliateSettlementFactOperatingSourceAdapter
@@ -581,7 +614,11 @@ export class ProjectAffiliatePaymentFactOperatingSourceAdapter
         operatingLevel: "construction_enterprise",
         direction: "outflow",
         amountCents,
-        subjects: { actualPayer, payee },
+        subjects: {
+          approvedPayer: actualPayer,
+          actualPayer,
+          payee
+        },
         impacts,
         basisSnapshot: sourceJson({
           authority: "confirmed_project_affiliate_payment_fact",

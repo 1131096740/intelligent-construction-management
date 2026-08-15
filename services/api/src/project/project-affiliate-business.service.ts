@@ -20,6 +20,7 @@ import {
   OperatingSourceReplayService,
   type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
+import { readAffiliateSnapshot } from "../operating-ledger/formal-operating-source.helpers";
 import {
   acquireFileBusinessBindingTransactionLock,
   hasNonReceiptBusinessFileBinding
@@ -48,7 +49,6 @@ import {
   type ProjectAffiliateBusinessFactType,
   type SupplementProjectAffiliateBusinessEvidenceDto
 } from "./dto/supplement-project-affiliate-business-evidence.dto";
-import { resolveCurrentProjectAffiliate } from "./project-affiliate-subject";
 
 type EffectDirection = "increase" | "decrease";
 type AffiliateFactStatus = "pending_confirm" | "confirmed";
@@ -65,6 +65,7 @@ interface AffiliateFactConfirmation {
   status: string;
   confirmedByUserId: string | null;
   confirmationActionId: string | null;
+  paymentRequestId?: string | null;
 }
 
 interface AffiliateContractFactRow extends AffiliateFactConfirmation {
@@ -323,7 +324,10 @@ export class ProjectAffiliateBusinessService {
         if (!roleKeys.includes("contract_staff")) {
           throw new ForbiddenException("只有合同人员可以录入施工企业对下合同事实");
         }
-        const affiliate = await resolveCurrentProjectAffiliate(tx, projectId);
+        const affiliate = await readAffiliateSnapshot(tx, {
+          projectId,
+          occurredAt: signedAt
+        });
         const target = adjustsFactId
           ? await lockAndLoadContractTarget(tx, projectId, adjustsFactId)
           : null;
@@ -707,6 +711,12 @@ export class ProjectAffiliateBusinessService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        let approvedPaymentRequest: {
+          id: string;
+          contractId: string;
+          contractVersionId: string;
+          settlementId: string | null;
+        } | null = null;
         const existing = await tx.projectAffiliatePaymentFact.findUnique({
           where: { idempotencyKey }
         });
@@ -741,12 +751,16 @@ export class ProjectAffiliateBusinessService {
           );
         }
         if (paymentRequestId) {
+          await lockAffiliatePaymentRequest(tx, projectId, paymentRequestId);
           const paymentRequest = await tx.paymentRequest.findFirst({
             where: { id: paymentRequestId, projectId },
             select: {
               id: true,
               status: true,
               paymentSubjectType: true,
+              contractId: true,
+              contractVersionId: true,
+              settlementId: true,
               approvedAmountCents: true,
               requestedAmountCents: true
             }
@@ -763,24 +777,7 @@ export class ProjectAffiliateBusinessService {
           if (paymentKind !== "normal") {
             throw new BadRequestException("只有正常施工企业付款可以关联付款申请");
           }
-          const existingRequestFacts = await tx.projectAffiliatePaymentFact.findMany({
-            where: {
-              projectId,
-              paymentRequestId,
-              status: "confirmed"
-            },
-            select: { amountCents: true, effectDirection: true }
-          });
-          const settledAmount = existingRequestFacts.reduce(
-            (total, fact) =>
-              total + (fact.effectDirection === "decrease" ? -fact.amountCents : fact.amountCents),
-            0n
-          );
-          const approvedAmount =
-            paymentRequest.approvedAmountCents ?? paymentRequest.requestedAmountCents;
-          if (settledAmount + amountCents > approvedAmount) {
-            throw new BadRequestException("施工企业付款超过已审批付款申请剩余金额");
-          }
+          approvedPaymentRequest = paymentRequest;
         }
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         const recordedByRoleKey = roleKeys.includes("finance_director")
@@ -805,6 +802,21 @@ export class ProjectAffiliateBusinessService {
               contract.affiliateBusinessPartyVersionId)
         ) {
           throw new BadRequestException("施工企业付款关联的合同、结算、相对方或施工企业主体不一致");
+        }
+        if (approvedPaymentRequest) {
+          await assertAffiliatePaymentRequestMatchesDebt(tx, {
+            paymentRequest: approvedPaymentRequest,
+            projectId,
+            contract,
+            settlement,
+            counterpartyName
+          });
+          await assertAffiliatePaymentRequestCapacity(tx, {
+            projectId,
+            paymentRequestId: approvedPaymentRequest.id,
+            additionalAmountCents: amountCents,
+            additionalDirection: effectDirection
+          });
         }
         assertPaymentRoute(contract, paymentKind, settlement);
 
@@ -1126,6 +1138,16 @@ export class ProjectAffiliateBusinessService {
       if (!confirmed) {
         throw new InternalServerErrorException("施工企业外部事实确认结果未正确保存");
       }
+      if (businessType === "payment" && confirmed.paymentRequestId) {
+        await lockAffiliatePaymentRequest(tx, projectId, confirmed.paymentRequestId);
+        await assertAffiliatePaymentRequestCapacity(tx, {
+          projectId,
+          paymentRequestId: confirmed.paymentRequestId,
+          additionalAmountCents: 0n,
+          additionalDirection: "increase"
+        });
+        await syncAffiliatePaymentRequest(tx, projectId, confirmed.paymentRequestId);
+      }
       if (businessType !== "contract") {
         await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
           tx,
@@ -1270,6 +1292,151 @@ async function lockFactForConfirmation(
     SELECT "id" FROM "ProjectAffiliatePaymentFact"
     WHERE "id" = ${factId} AND "projectId" = ${projectId} FOR UPDATE
   `);
+}
+
+async function lockAffiliatePaymentRequest(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  paymentRequestId: string
+) {
+  await tx.$queryRaw(Prisma.sql`
+    SELECT "id"
+    FROM "PaymentRequest"
+    WHERE "id" = ${paymentRequestId} AND "projectId" = ${projectId}
+    FOR UPDATE
+  `);
+}
+
+async function assertAffiliatePaymentRequestMatchesDebt(
+  tx: Prisma.TransactionClient,
+  input: {
+    paymentRequest: {
+      contractId: string;
+      contractVersionId: string;
+      settlementId: string | null;
+    };
+    projectId: string;
+    contract: AffiliateContractFactRow;
+    settlement: AffiliateSettlementFactRow | null;
+    counterpartyName: string;
+  }
+) {
+  const version = await tx.contractVersion.findUnique({
+    where: { id: input.paymentRequest.contractVersionId },
+    select: {
+      id: true,
+      contractId: true,
+      signingSubjectType: true,
+      affiliateBusinessPartyVersionId: true
+    }
+  });
+  const contract = version
+    ? await tx.contract.findUnique({
+        where: { id: version.contractId },
+        select: { projectId: true, counterparty: true }
+      })
+    : null;
+  const requestSettlement = input.paymentRequest.settlementId
+    ? await tx.settlement.findUnique({
+        where: { id: input.paymentRequest.settlementId },
+        select: { id: true, projectId: true, contractVersionId: true, status: true }
+      })
+    : null;
+  if (
+    !version ||
+    !contract ||
+    version.contractId !== input.paymentRequest.contractId ||
+    contract.projectId !== input.projectId ||
+    contract.counterparty !== input.counterpartyName ||
+    version.signingSubjectType !== "affiliate" ||
+    version.affiliateBusinessPartyVersionId !==
+      input.contract.affiliateBusinessPartyVersionId ||
+    !input.paymentRequest.settlementId ||
+    !requestSettlement ||
+    requestSettlement.projectId !== input.projectId ||
+    requestSettlement.contractVersionId !== version.id ||
+    !["effective", "partially_paid", "paid"].includes(requestSettlement.status) ||
+    !input.settlement ||
+    input.settlement.counterpartyName !== input.counterpartyName ||
+    input.settlement.affiliateBusinessPartyVersionId !==
+      input.contract.affiliateBusinessPartyVersionId
+  ) {
+    throw new BadRequestException(
+      "施工企业付款申请必须与当前合同、结算、相对方和施工企业主体一致"
+    );
+  }
+}
+
+async function assertAffiliatePaymentRequestCapacity(
+  tx: Prisma.TransactionClient,
+  input: {
+    projectId: string;
+    paymentRequestId: string;
+    additionalAmountCents: bigint;
+    additionalDirection: EffectDirection;
+  }
+) {
+  const request = await tx.paymentRequest.findFirst({
+    where: { id: input.paymentRequestId, projectId: input.projectId },
+    select: { approvedAmountCents: true, requestedAmountCents: true }
+  });
+  if (!request) {
+    throw new BadRequestException("施工企业付款申请不存在或不属于当前项目");
+  }
+  const facts = await tx.projectAffiliatePaymentFact.findMany({
+    where: {
+      projectId: input.projectId,
+      paymentRequestId: input.paymentRequestId,
+      status: { in: ["pending_confirm", "confirmed"] }
+    },
+    select: { amountCents: true, effectDirection: true }
+  });
+  const current = netMoneyFacts(facts);
+  const delta =
+    input.additionalDirection === "decrease"
+      ? -input.additionalAmountCents
+      : input.additionalAmountCents;
+  const next = current + delta;
+  const approvedAmount = request.approvedAmountCents ?? request.requestedAmountCents;
+  if (next < 0n || next > approvedAmount) {
+    throw new BadRequestException("施工企业付款超过已审批付款申请剩余金额");
+  }
+}
+
+async function syncAffiliatePaymentRequest(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  paymentRequestId: string
+) {
+  await lockAffiliatePaymentRequest(tx, projectId, paymentRequestId);
+  const request = await tx.paymentRequest.findFirst({
+    where: { id: paymentRequestId, projectId },
+    select: { approvedAmountCents: true, requestedAmountCents: true }
+  });
+  if (!request) {
+    throw new BadRequestException("施工企业付款申请不存在或不属于当前项目");
+  }
+  const facts = await tx.projectAffiliatePaymentFact.findMany({
+    where: { projectId, paymentRequestId, status: "confirmed" },
+    select: { amountCents: true, effectDirection: true }
+  });
+  const paidAmountCents = netMoneyFacts(facts);
+  const approvedAmount = request.approvedAmountCents ?? request.requestedAmountCents;
+  if (paidAmountCents < 0n || paidAmountCents > approvedAmount) {
+    throw new BadRequestException("施工企业实际付款结果超过付款申请可核销金额");
+  }
+  await tx.paymentRequest.update({
+    where: { id: paymentRequestId },
+    data: {
+      paidAmountCents,
+      status:
+        paidAmountCents === approvedAmount
+          ? "paid"
+          : paidAmountCents > 0n
+            ? "partially_paid"
+            : "approved_pending_payment"
+    }
+  });
 }
 
 async function lockAndLoadContractTarget(

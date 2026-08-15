@@ -22,8 +22,8 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
 
     expect(input.factKind).toBe("owner_payment");
     expect(input.subjects).toEqual({
-      debtor: { kind: "owner", id: "owner:建设单位" },
-      creditor: { kind: "construction_enterprise", id: "affiliate-version-1" }
+      actualPayer: { kind: "owner", id: "owner:建设单位" },
+      payee: { kind: "construction_enterprise", id: "affiliate-version-1" }
     });
     expect(input.impacts).toEqual([
       expect.objectContaining({
