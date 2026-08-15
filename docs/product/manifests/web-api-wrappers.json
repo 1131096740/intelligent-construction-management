@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 16,
-    "exportedFunctionCount": 459,
-    "transportWrapperCount": 439,
+    "apiModuleCount": 17,
+    "exportedFunctionCount": 467,
+    "transportWrapperCount": 447,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 461,
+    "mainRequestBindingCount": 469,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 461,
-    "productionConsumerCount": 337,
+    "requestEdgeCount": 469,
+    "productionConsumerCount": 345,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 251,
-    "reachableProductionModuleCount": 225
+    "productionModuleCount": 253,
+    "reachableProductionModuleCount": 227
   },
   "wrappers": [
     {
@@ -11035,6 +11035,246 @@
         "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "addProjectParticipatingCompany",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 102,
+          "method": "POST",
+          "path": "/projects/:param/participating-companies",
+          "normalizedPath": "/projects/:param/participating-companies",
+          "normalizedKey": "POST /projects/:param/participating-companies",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "addProjectParticipatingCompany",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "assignProjectConstructionEnterprise",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 102,
+          "method": "POST",
+          "path": "/projects/:param/construction-enterprise",
+          "normalizedPath": "/projects/:param/construction-enterprise",
+          "normalizedKey": "POST /projects/:param/construction-enterprise",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "assignProjectConstructionEnterprise",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "deactivateProjectParticipatingCompany",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 113,
+          "method": "PATCH",
+          "path": "/projects/:param/participating-companies/:param/deactivation",
+          "normalizedPath": "/projects/:param/participating-companies/:param/deactivation",
+          "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "deactivateProjectParticipatingCompany",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectConstructionEnterpriseOptions",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-options",
+          "normalizedPath": "/projects/:param/construction-enterprise-options",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectConstructionEnterpriseOptions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectOperatingProfile",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "GET",
+          "path": "/projects/:param/operating-profile",
+          "normalizedPath": "/projects/:param/operating-profile",
+          "normalizedKey": "GET /projects/:param/operating-profile",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectOperatingProfile",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectParticipatingCompanyOptions",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 97,
+          "method": "GET",
+          "path": "/projects/:param/participating-company-options",
+          "normalizedPath": "/projects/:param/participating-company-options",
+          "normalizedKey": "GET /projects/:param/participating-company-options",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectParticipatingCompanyOptions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "removeProjectParticipatingCompany",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 123,
+          "method": "DELETE",
+          "path": "/projects/:param/participating-companies/:param",
+          "normalizedPath": "/projects/:param/participating-companies/:param",
+          "normalizedKey": "DELETE /projects/:param/participating-companies/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "removeProjectParticipatingCompany",
+              "deleteJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateProjectOperatingProfile",
+      "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 113,
+          "method": "PATCH",
+          "path": "/projects/:param/operating-profile",
+          "normalizedPath": "/projects/:param/operating-profile",
+          "normalizedKey": "PATCH /projects/:param/operating-profile",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateProjectOperatingProfile",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/project-operating-profile.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+      ],
       "unreachableConsumers": []
     },
     {

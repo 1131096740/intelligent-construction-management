@@ -73,8 +73,7 @@ export interface AssignProjectConstructionEnterprisePayload {
   changeReason: string;
 }
 
-async function request<T>(path: string, fallback: string, init?: RequestInit): Promise<T> {
-  const response = await apiFetch(path, init);
+async function parseResponse<T>(response: Response, fallback: string): Promise<T> {
   if (!response.ok) {
     let detail = "";
     try {
@@ -94,30 +93,52 @@ function projectPath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}`;
 }
 
-function jsonInit(method: "POST" | "PATCH", body: unknown): RequestInit {
-  return {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  };
+async function readJson<T>(path: string, fallback: string): Promise<T> {
+  return parseResponse(await apiFetch(path), fallback);
+}
+
+async function postJson<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  return parseResponse(
+    await apiFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }),
+    fallback
+  );
+}
+
+async function patchJson<T>(path: string, body: unknown, fallback: string): Promise<T> {
+  return parseResponse(
+    await apiFetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }),
+    fallback
+  );
+}
+
+async function deleteJson<T>(path: string, fallback: string): Promise<T> {
+  return parseResponse(await apiFetch(path, { method: "DELETE" }), fallback);
 }
 
 export function fetchProjectOperatingProfile(projectId: string) {
-  return request<ProjectOperatingProfileReadModel>(
+  return readJson<ProjectOperatingProfileReadModel>(
     `${projectPath(projectId)}/operating-profile`,
     "加载项目经营档案失败"
   );
 }
 
 export function fetchProjectParticipatingCompanyOptions(projectId: string) {
-  return request<ProjectParticipatingCompanyOption[]>(
+  return readJson<ProjectParticipatingCompanyOption[]>(
     `${projectPath(projectId)}/participating-company-options`,
     "加载项目参与公司候选失败"
   );
 }
 
 export function fetchProjectConstructionEnterpriseOptions(projectId: string) {
-  return request<ProjectConstructionEnterpriseOption[]>(
+  return readJson<ProjectConstructionEnterpriseOption[]>(
     `${projectPath(projectId)}/construction-enterprise-options`,
     "加载施工企业候选失败"
   );
@@ -127,10 +148,10 @@ export function updateProjectOperatingProfile(
   projectId: string,
   body: UpdateProjectOperatingProfilePayload
 ) {
-  return request<ProjectOperatingProfileFields>(
+  return patchJson<ProjectOperatingProfileFields>(
     `${projectPath(projectId)}/operating-profile`,
-    "保存项目经营档案失败",
-    jsonInit("PATCH", body)
+    body,
+    "保存项目经营档案失败"
   );
 }
 
@@ -138,10 +159,10 @@ export function assignProjectConstructionEnterprise(
   projectId: string,
   body: AssignProjectConstructionEnterprisePayload
 ) {
-  return request<unknown>(
+  return postJson<unknown>(
     `${projectPath(projectId)}/construction-enterprise`,
-    "设置项目施工企业失败",
-    jsonInit("POST", body)
+    body,
+    "设置项目施工企业失败"
   );
 }
 
@@ -149,10 +170,10 @@ export function addProjectParticipatingCompany(
   projectId: string,
   body: AddProjectParticipatingCompanyPayload
 ) {
-  return request<ProjectParticipatingCompanyReadModel>(
+  return postJson<ProjectParticipatingCompanyReadModel>(
     `${projectPath(projectId)}/participating-companies`,
-    "新增项目参与公司失败",
-    jsonInit("POST", body)
+    body,
+    "新增项目参与公司失败"
   );
 }
 
@@ -161,17 +182,16 @@ export function deactivateProjectParticipatingCompany(
   participantId: string,
   body: DeactivateProjectParticipatingCompanyPayload
 ) {
-  return request<ProjectParticipatingCompanyReadModel>(
+  return patchJson<ProjectParticipatingCompanyReadModel>(
     `${projectPath(projectId)}/participating-companies/${encodeURIComponent(participantId)}/deactivation`,
-    "停止参与公司新增业务失败",
-    jsonInit("PATCH", body)
+    body,
+    "停止参与公司新增业务失败"
   );
 }
 
 export function removeProjectParticipatingCompany(projectId: string, participantId: string) {
-  return request<{ removed: boolean; participantId: string }>(
+  return deleteJson<{ removed: boolean; participantId: string }>(
     `${projectPath(projectId)}/participating-companies/${encodeURIComponent(participantId)}`,
-    "删除项目参与公司失败",
-    { method: "DELETE" }
+    "删除项目参与公司失败"
   );
 }
