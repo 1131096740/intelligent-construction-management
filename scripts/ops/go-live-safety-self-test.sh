@@ -22,6 +22,7 @@ cleanup() {
   rm -rf "$TEST_ROOT"
 }
 trap cleanup EXIT
+trap 'status=$?; echo "self-test unexpected failure at line $LINENO (exit=$status)" >&2; exit "$status"' ERR
 
 fail() {
   echo "self-test failed: $*" >&2
