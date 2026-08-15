@@ -14,6 +14,8 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
 const EXPECTED_MIGRATION_COUNT = 128;
+const PROJECT_OPERATING_PROFILE_MIGRATION =
+  "20260814010000_project_operating_profile";
 const TERMINAL_MIGRATION =
   "20260814120000_operating_ledger_runtime_write_guard";
 const prismaRoot = path.join(root, "services", "api", "prisma");
@@ -347,7 +349,12 @@ async function prepareProjectOperatingProfileUpgrade(
   await cp(path.join(prismaRoot, "schema.prisma"), path.join(fixturePrismaRoot, "schema.prisma"));
   await cp(path.join(prismaRoot, "migrations"), path.join(fixturePrismaRoot, "migrations"), {
     recursive: true,
-    filter: (source) => path.basename(source) !== TERMINAL_MIGRATION
+    filter: (source) => {
+      const relativePath = path.relative(path.join(prismaRoot, "migrations"), source);
+      if (!relativePath || relativePath === "migration_lock.toml") return true;
+      const [migrationName] = relativePath.split(path.sep);
+      return migrationName < PROJECT_OPERATING_PROFILE_MIGRATION;
+    }
   });
   await run(
     pnpm,
