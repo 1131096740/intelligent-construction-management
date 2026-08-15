@@ -126,10 +126,13 @@ export class OperatingSourceReplayService {
       await adapter.readSourceSnapshot(tx, locator),
       locator
     );
-    const input = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+    const mapped = mapOperatingSourceSnapshot(adapter, snapshot, locator);
+    if (mapped.entryKind !== "original") {
+      throw new BadRequestException("正式业务来源写入只接受原始经营事实");
+    }
     return this.operatingLedger.appendConfirmedSourceInTransaction(
       tx,
-      input,
+      mapped.input,
       actorUserId
     );
   }

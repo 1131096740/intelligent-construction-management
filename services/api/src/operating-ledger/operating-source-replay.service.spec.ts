@@ -189,6 +189,26 @@ describe("OperatingSourceReplayService", () => {
     expect(adapter.readSourceSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a non-original source projection from the business confirmation entry point", async () => {
+    const adapter = createAdapter(
+      sourceSnapshot(),
+      mappedFact("correction", { ...factInput(), adjustsFactId: "original-fact" })
+    );
+    const harness = createHarness({ adapter });
+    harness.tx.project.findUnique.mockResolvedValue({
+      operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+    });
+
+    await expect(
+      harness.service.appendConfirmedSourceIfEnabledInTransaction(
+        harness.tx as never,
+        sourceLocator(),
+        "contract-director"
+      )
+    ).rejects.toThrow("正式业务来源写入只接受原始经营事实");
+    expect(harness.ledger.appendConfirmedSourceInTransaction).not.toHaveBeenCalled();
+  });
+
   it("fails closed when an enabled project is missing the source projection service", async () => {
     const harness = createHarness();
     harness.tx.project.findUnique.mockResolvedValue({
