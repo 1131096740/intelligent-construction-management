@@ -5,6 +5,7 @@ import { ApprovalModule } from "./approval/approval.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { BusinessPartyModule } from "./business-party/business-party.module";
+import { BusinessEntryDefinitionModule } from "./business-entry-definition/business-entry-definition.module";
 import { CompanyEntityModule } from "./company-entity/company-entity.module";
 import { ContractBillModule } from "./contract-bill/contract-bill.module";
 import { ContractDocumentModule } from "./contract-document/contract-document.module";
@@ -44,6 +45,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     ContractTemplateModule,
     ContractTakeoverModule,
     BusinessPartyModule,
+    BusinessEntryDefinitionModule,
     CompanyEntityModule,
     OperatingLedgerModule,
     SettlementModule,

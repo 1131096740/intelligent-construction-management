@@ -28,6 +28,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ApprovalDelegationController: "approval",
   ApprovalFormController: "approval",
   AuthController: "account",
+  BusinessEntryDefinitionController: "project",
   BusinessPartyController: "master_data",
   CompanyEntityController: "master_data",
   ContractBillController: "contract",

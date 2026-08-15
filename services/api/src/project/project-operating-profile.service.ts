@@ -132,63 +132,85 @@ export class ProjectOperatingProfileService {
     actorUserId: string,
     input: UpdateProjectOperatingProfileInput
   ) {
-    return translateOperatingProfileConstraint(this.prisma.$transaction(async (tx) => {
-      await this.assertProjectFinanceManager(tx, actorUserId, projectId);
-      const current = await tx.project.findUnique({
-        where: { id: projectId, isActive: true },
-        select: PROFILE_SELECT
-      });
-      if (!current) {
-        throw new NotFoundException("项目不存在或已停用，请刷新后重试");
-      }
+    return translateOperatingProfileConstraint(
+      this.prisma.$transaction((tx) =>
+        this.updateProfileInTransaction(tx, projectId, actorUserId, input)
+      )
+    );
+  }
 
-      const data: Prisma.ProjectUpdateInput = {};
-      if (input.operatingLedgerEffectiveDate !== undefined) {
-        data.operatingLedgerEffectiveDate = optionalDateOnly(
-          input.operatingLedgerEffectiveDate,
-          "经营账生效日"
-        );
-      }
-      if (input.takeoverCompletedDate !== undefined) {
-        data.takeoverCompletedDate = optionalDateOnly(
-          input.takeoverCompletedDate,
-          "经营接管完成日"
-        );
-      }
-      if (input.takeoverStatus !== undefined) {
-        if (
-          !PROJECT_OPERATING_TAKEOVER_STATUSES.includes(
-            input.takeoverStatus as (typeof PROJECT_OPERATING_TAKEOVER_STATUSES)[number]
-          )
-        ) {
-          throw new BadRequestException("经营接管状态不受支持，请重新选择");
-        }
-        data.takeoverStatus = input.takeoverStatus;
-      }
-      if (!Object.keys(data).length) {
-        throw new BadRequestException("请至少填写一项项目经营档案变更");
-      }
+  async updateProfileInTransaction(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    actorUserId: string,
+    input: UpdateProjectOperatingProfileInput
+  ) {
+    return translateOperatingProfileConstraint(
+      this.updateProfileInTransactionRaw(tx, projectId, actorUserId, input)
+    );
+  }
 
-      const updated = await tx.project.update({
-        where: { id: projectId },
-        data,
-        select: PROFILE_SELECT
-      });
-      await this.audit.record(tx, {
-        actorUserId,
-        action: "project.operating_profile.update",
-        businessType: "project",
-        businessId: projectId,
-        metadata: {
-          operatingLedgerEffectiveDate:
-            updated.operatingLedgerEffectiveDate?.toISOString().slice(0, 10) ?? null,
-          takeoverCompletedDate:
-            updated.takeoverCompletedDate?.toISOString().slice(0, 10) ?? null,
-          takeoverStatus: updated.takeoverStatus
-        }
-      });
-      return toProfileReadModel(updated);
-    }));
+  private async updateProfileInTransactionRaw(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    actorUserId: string,
+    input: UpdateProjectOperatingProfileInput
+  ) {
+    await this.assertProjectFinanceManager(tx, actorUserId, projectId);
+    const current = await tx.project.findUnique({
+      where: { id: projectId, isActive: true },
+      select: PROFILE_SELECT
+    });
+    if (!current) {
+      throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+    }
+
+    const data: Prisma.ProjectUpdateInput = {};
+    if (input.operatingLedgerEffectiveDate !== undefined) {
+      data.operatingLedgerEffectiveDate = optionalDateOnly(
+        input.operatingLedgerEffectiveDate,
+        "经营账生效日"
+      );
+    }
+    if (input.takeoverCompletedDate !== undefined) {
+      data.takeoverCompletedDate = optionalDateOnly(
+        input.takeoverCompletedDate,
+        "经营接管完成日"
+      );
+    }
+    if (input.takeoverStatus !== undefined) {
+      if (
+        !PROJECT_OPERATING_TAKEOVER_STATUSES.includes(
+          input.takeoverStatus as (typeof PROJECT_OPERATING_TAKEOVER_STATUSES)[number]
+        )
+      ) {
+        throw new BadRequestException("经营接管状态不受支持，请重新选择");
+      }
+      data.takeoverStatus = input.takeoverStatus;
+    }
+    if (!Object.keys(data).length) {
+      throw new BadRequestException("请至少填写一项项目经营档案变更");
+    }
+
+    const updated = await tx.project.update({
+      where: { id: projectId },
+      data,
+      select: PROFILE_SELECT
+    });
+    await this.audit.record(tx, {
+      actorUserId,
+      action: "project.operating_profile.update",
+      businessType: "project",
+      businessId: projectId,
+      metadata: {
+        operatingLedgerEffectiveDate:
+          updated.operatingLedgerEffectiveDate?.toISOString().slice(0, 10) ?? null,
+        takeoverCompletedDate:
+          updated.takeoverCompletedDate?.toISOString().slice(0, 10) ?? null,
+        takeoverStatus: updated.takeoverStatus
+      }
+    });
+    return toProfileReadModel(updated);
   }
 
   async addParticipatingCompany(

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
+const { readFileSync } = require("node:fs");
 const { cp, mkdir, mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
@@ -13,12 +14,31 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 131;
+const EXPECTED_MIGRATION_COUNT = 132;
+const prismaRoot = path.join(root, "services", "api", "prisma");
 const PROJECT_OPERATING_PROFILE_MIGRATION =
   "20260814010000_project_operating_profile";
 const TERMINAL_MIGRATION =
-  "20260815170000_pol07_spot_procurement_operating_sources";
-const prismaRoot = path.join(root, "services", "api", "prisma");
+  "20260816100000_pol17_business_entry_submission_snapshots";
+const sourceTerminalMigrationChecksum = createHash("sha256")
+  .update(readFileSync(path.join(
+    prismaRoot,
+    "migrations",
+    TERMINAL_MIGRATION,
+    "migration.sql"
+  )))
+  .digest("hex");
+const manifest = JSON.parse(readFileSync(
+  path.join(prismaRoot, "database-dynamic-gate-manifest.json"),
+  "utf8"
+));
+const TERMINAL_MIGRATION_CHECKSUM = manifest.migrationBaseline?.terminalMigrationChecksum;
+if (
+  manifest.migrationBaseline?.terminalMigration !== TERMINAL_MIGRATION ||
+  sourceTerminalMigrationChecksum !== TERMINAL_MIGRATION_CHECKSUM
+) {
+  throw new Error("remaining runner 的终点迁移 checksum 未与 canonical manifest 和源码对齐");
+}
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 
 const GROUPS = [
@@ -138,6 +158,7 @@ const GROUPS = [
       "src/database/contract-change-baseline-concurrency.spec.ts",
       "src/database/project-upstream-fund-fact-db.spec.ts",
       "src/database/project-operating-profile-db.spec.ts",
+      "src/database/business-entry-definition-postgres.spec.ts",
       "src/database/operating-ledger-concurrency.spec.ts",
       "src/database/operating-source-replay-consistency.spec.ts",
       "src/database/pol05-operating-source-facts.spec.ts",
@@ -162,10 +183,29 @@ const GROUPS = [
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 35,
+    pendingTests: 37,
     requiresOperatingLedgerWriteSecret: true
   }
 ];
+
+function assertManifestMatchesGroups() {
+  const manifestGroup = manifest.coveredGroups?.find(
+    (group) => group.id === "remaining_dynamic_postgresql16"
+  );
+  if (!manifestGroup) fail("remaining runner 未在 canonical manifest 中登记");
+  const runnerFiles = GROUPS.flatMap((group) => group.files).sort();
+  const manifestFiles = manifestGroup.testFiles
+    .map((file) => file.path.replace(/^services\/api\//u, ""))
+    .sort();
+  if (
+    manifestGroup.pendingTests !== GROUPS.reduce((sum, group) => sum + group.pendingTests, 0) ||
+    JSON.stringify(manifestFiles) !== JSON.stringify(runnerFiles)
+  ) {
+    fail("remaining runner 的 GROUPS 与 canonical manifest 不一致");
+  }
+}
+
+assertManifestMatchesGroups();
 
 const ALLOWED_DATABASE_NAMES = new Set(GROUPS.map((group) => group.database));
 
@@ -370,6 +410,42 @@ async function migrate(databaseUrl, environment) {
   );
 }
 
+async function assertTerminalMigrationProof(containerName, database, dockerEnv) {
+  const result = await run(
+    docker,
+    [
+      "exec",
+      containerName,
+      "psql",
+      "-U",
+      "jiangkong",
+      "-d",
+      database,
+      "-X",
+      "-A",
+      "-t",
+      "-F",
+      "|",
+      "-c",
+      `SELECT count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
+        `count(*) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL),` +
+        `max(checksum) FILTER (WHERE migration_name = '${TERMINAL_MIGRATION}' AND finished_at IS NOT NULL AND rolled_back_at IS NULL)` +
+        ` FROM _prisma_migrations;`
+    ],
+    { env: dockerEnv }
+  );
+  const [migrationCount, terminalCount, terminalChecksum] = result.stdout.trim().split("|");
+  if (
+    Number(migrationCount) !== EXPECTED_MIGRATION_COUNT ||
+    Number(terminalCount) !== 1 ||
+    terminalChecksum !== TERMINAL_MIGRATION_CHECKSUM
+  ) {
+    fail(
+      `迁移终点证明不完整：count=${migrationCount} terminal=${terminalCount} checksum=${terminalChecksum}`
+    );
+  }
+}
+
 async function prepareProjectOperatingProfileUpgrade(
   databaseUrl,
   environment,
@@ -514,6 +590,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
         );
       }
       await migrate(databaseUrl, environment);
+      await assertTerminalMigrationProof(containerName, group.database, dockerEnv);
       await run(
         pnpm,
         ["--filter", "@jiangkong/api", "test", "--", "--runInBand", ...group.files],
