@@ -90,6 +90,59 @@ describe("SettlementOperatingSourceAdapter", () => {
       })
     );
   });
+
+  it("uses takeover activation and settlement evidence for the synthetic opening settlement", async () => {
+    const adapter = new SettlementOperatingSourceAdapter();
+    const tx = Object.assign(settlementTx("material_purchase"), {
+      contractTakeover: {
+        findUnique: jest.fn().mockResolvedValue({
+          activatedAt: new Date("2026-08-13T08:00:00.000Z"),
+          activatedByUserId: "finance-director-1",
+          confirmedByUserId: "finance-director-1",
+          takeoverLevel: "A",
+          signedAt: new Date("2026-07-01T00:00:00.000Z")
+        })
+      },
+      contractTakeoverContractFacts: {
+        findUnique: jest.fn().mockResolvedValue({
+          signedAt: new Date("2026-07-01T00:00:00.000Z"),
+          contractFactsSnapshot: { settlementCutoffDate: "2026-07-31" }
+        })
+      },
+      contractTakeoverSettlementEvidence: {
+        findFirst: jest.fn().mockResolvedValue({ id: "takeover-evidence-1" })
+      }
+    });
+    tx.settlement.findFirst.mockResolvedValue({
+      id: "settlement-1",
+      projectId: "project-1",
+      contractId: "contract-1",
+      contractVersionId: "contract-version-1",
+      code: "HT-OPEN-takeover-1",
+      status: "effective",
+      amountCents: 1_000_00n,
+      payableAmountCents: 900_00n,
+      periodEnd: null,
+      calculationVersion: null,
+      governanceVersion: null,
+      sourceType: "historical_takeover",
+      sourceTakeoverId: "takeover-1",
+      updatedAt: new Date("2026-08-13T08:00:00.000Z")
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "settlement-1"
+    });
+
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.sourceSnapshot).toEqual(
+      expect.objectContaining({
+        archiveEvidenceId: "takeover-evidence-1",
+        occurredAt: "2026-07-31T00:00:00.000Z"
+      })
+    );
+  });
 });
 
 function settlementTx(

@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import type { PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
 
 import {
@@ -177,6 +178,8 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       periodEnd: Date | null;
       calculationVersion: number | null;
       governanceVersion: number | null;
+      sourceType?: string;
+      sourceTakeoverId?: string | null;
       updatedAt: Date;
     }
   ): Promise<OperatingSourceSnapshot | null> {
@@ -199,13 +202,19 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         select: { businessPartyVersionId: true, snapshot: true },
         orderBy: { displayOrder: "asc" }
       }),
-      this.confirmation(tx, row.id, row.governanceVersion)
+      this.confirmation(
+        tx,
+        row.id,
+        row.governanceVersion,
+        row.sourceType,
+        row.sourceTakeoverId
+      )
     ]);
     if (!confirmation) return null;
     if (!contract?.contractTypeKey || !version || !counterparty?.businessPartyVersionId) {
       throw new BadRequestException("生效结算缺少合同类型、签约主体或下游相对方快照");
     }
-    const occurredAt = row.periodEnd ?? confirmation.confirmedAt;
+    const occurredAt = row.periodEnd ?? confirmation.occurredAt;
     const [effectiveDate, affiliate] = await Promise.all([
       readOperatingLedgerEffectiveDate(tx, row.projectId),
       readAffiliateSnapshot(tx, {
@@ -250,12 +259,54 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
   private async confirmation(
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     settlementId: string,
-    governanceVersion: number | null
+    governanceVersion: number | null,
+    sourceType?: string,
+    sourceTakeoverId?: string | null
   ): Promise<{
     evidenceId: string;
     confirmedByUserId: string;
     confirmedAt: Date;
+    occurredAt: Date;
   } | null> {
+    if (sourceType === "historical_takeover" && sourceTakeoverId) {
+      const [takeover, facts, evidence] = await Promise.all([
+        tx.contractTakeover.findUnique({
+          where: { id: sourceTakeoverId },
+          select: {
+            activatedAt: true,
+            activatedByUserId: true,
+            confirmedByUserId: true,
+            takeoverLevel: true,
+            signedAt: true
+          }
+        }),
+        tx.contractTakeoverContractFacts.findUnique({
+          where: { takeoverId: sourceTakeoverId },
+          select: { signedAt: true, contractFactsSnapshot: true }
+        }),
+        tx.contractTakeoverSettlementEvidence.findFirst({
+          where: { takeoverId: sourceTakeoverId },
+          select: { id: true }
+        })
+      ]);
+      const confirmedByUserId =
+        takeover?.activatedByUserId ?? takeover?.confirmedByUserId;
+      if (
+        !takeover?.activatedAt ||
+        !confirmedByUserId ||
+        !evidence ||
+        !["A", "B"].includes(takeover.takeoverLevel)
+      ) {
+        return null;
+      }
+      const historicalDate = readHistoricalSettlementDate(facts, takeover.signedAt);
+      return {
+        evidenceId: evidence.id,
+        confirmedByUserId,
+        confirmedAt: takeover.activatedAt,
+        occurredAt: historicalDate
+      };
+    }
     if (governanceVersion === 1) {
       const document = await tx.settlementSignedDocument.findFirst({
         where: {
@@ -272,7 +323,8 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         ? {
             evidenceId: document.id,
             confirmedByUserId: document.confirmedByUserId,
-            confirmedAt: document.confirmedAt
+            confirmedAt: document.confirmedAt,
+            occurredAt: document.confirmedAt
           }
         : null;
     }
@@ -290,10 +342,34 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       ? {
           evidenceId: archive.id,
           confirmedByUserId: archive.confirmedByUserId,
-          confirmedAt: archive.confirmedAt
+          confirmedAt: archive.confirmedAt,
+          occurredAt: archive.confirmedAt
         }
       : null;
   }
+}
+
+function readHistoricalSettlementDate(
+  facts: {
+    signedAt: Date;
+    contractFactsSnapshot: Prisma.JsonValue;
+  } | null,
+  fallback: Date
+): Date {
+  if (
+    facts?.contractFactsSnapshot &&
+    typeof facts.contractFactsSnapshot === "object" &&
+    !Array.isArray(facts.contractFactsSnapshot)
+  ) {
+    const candidate = (facts.contractFactsSnapshot as Record<string, unknown>)[
+      "settlementCutoffDate"
+    ];
+    if (typeof candidate === "string") {
+      const parsed = new Date(candidate);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+  }
+  return facts?.signedAt ?? fallback;
 }
 
 function costCategory(contractTypeKey: string): PrimaryCostCategoryCode {

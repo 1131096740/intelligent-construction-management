@@ -4,7 +4,7 @@ import {
 } from "./operating-ledger.module";
 
 describe("OperatingLedgerModule formal source registry", () => {
-  it("registers the POL-06 and POL-07 sources without treating FinanceRecord as an economic fact", () => {
+  it("registers the POL-06, POL-07 and POL-09 sources without treating FinanceRecord as an economic fact", () => {
     const registry = createOperatingSourceRegistry();
 
     expect(registry.list().map((adapter) => adapter.sourceType).sort()).toEqual(
@@ -21,7 +21,8 @@ describe("OperatingLedgerModule formal source registry", () => {
       "spot_procurement_receipt_review",
       "spot_procurement_payment_execution",
       "spot_procurement_refund",
-      "spot_procurement_invoice_record"
+      "spot_procurement_invoice_record",
+      "contract_takeover_historical_payment"
     ]);
     expect(() => registry.assertComplete()).not.toThrow();
     expect(() => registry.require("finance_record")).toThrow(
