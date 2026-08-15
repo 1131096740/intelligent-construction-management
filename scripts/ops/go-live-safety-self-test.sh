@@ -430,6 +430,7 @@ if ! offsite_retry_file="$(
 fi
 assert_file "$offsite_retry_file.offsite.json"
 [[ "$(< "$offsite_retry_count")" == 3 ]] || fail "transient COS failure was not retried once"
+echo "self-test completed stage: offsite-retry" >&2
 
 SELF_TEST_STAGE=offsite-failure
 offsite_failure_dir="$TEST_ROOT/backup-offsite-failure"
@@ -457,6 +458,7 @@ find "$offsite_failure_dir" -name '*.dump' -type f | grep -q . ||
 find "$offsite_failure_dir" -name '*.dump.sha256' -type f | grep -q . ||
   fail "offsite failure removed the verified local checksum"
 assert_no_files "$offsite_failure_dir" '*.offsite.json'
+echo "self-test completed stage: offsite-failure" >&2
 
 SELF_TEST_STAGE=credential-file-safety
 insecure_env_file="$TEST_ROOT/insecure-backup.env"
@@ -546,6 +548,7 @@ if PATH="$FAKE_BIN:$PATH" \
 fi
 assert_no_files "$backup_failure_dir" '*.dump'
 assert_no_files "$backup_failure_dir" '*.sha256'
+echo "self-test completed stage: credential-file-safety" >&2
 
 SELF_TEST_STAGE=restore-drill-safety
 : > "$FAKE_LOG"
@@ -583,6 +586,7 @@ PATH="$FAKE_BIN:$PATH" \
 grep -q '^pg_restore --list ' "$FAKE_LOG" || fail "restore drill did not validate the archive"
 grep -q 'pg_restore --exit-on-error --dbname ' "$FAKE_LOG" ||
   fail "restore drill did not enable exit-on-error"
+echo "self-test completed stage: restore-drill-safety" >&2
 
 candidate_restore_root="$TEST_ROOT/candidate-restore"
 SELF_TEST_STAGE=candidate-restore-drill
@@ -660,6 +664,7 @@ fi
 if grep -q '^pg_restore --exit-on-error ' "$FAKE_LOG"; then
   fail "candidate restore drill restored data before verifying candidate checkout cleanliness"
 fi
+echo "self-test completed stage: candidate-restore-drill" >&2
 
 rm -f "$candidate_migration_marker"
 if PATH="$FAKE_BIN:$PATH" \
@@ -974,6 +979,7 @@ fi
   fail "Web runtime snapshot was not restored"
 restart_count="$(grep -c '^systemctl restart jiangkong-api$' "$FAKE_LOG")"
 [[ "$restart_count" -ge 2 ]] || fail "recovery did not restart the restored API runtime"
+echo "self-test completed stage: deployment-safety" >&2
 
 "$REAL_NODE" --test "$SCRIPT_DIR/cos-backup-transfer.test.mjs" >/dev/null
 SELF_TEST_STAGE=operations-node-tests
