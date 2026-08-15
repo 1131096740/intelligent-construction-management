@@ -4021,6 +4021,15 @@ describe("SpotProcurementPaymentService", () => {
   it("records a partial company payment by current-project finance staff and preserves supplier-balance facts", async () => {
     const current = executionHarness();
     const input = validExecutionInput();
+    const operatingSources = {
+      appendConfirmedSourceIfEnabledInTransaction: jest
+        .fn()
+        .mockResolvedValue(null)
+    };
+    Object.assign(
+      current.service as unknown as { operatingSources: typeof operatingSources },
+      { operatingSources }
+    );
 
     const result = await current.service.recordExecution(
       "payment-1",
@@ -4095,6 +4104,17 @@ describe("SpotProcurementPaymentService", () => {
         status: "partially_paid"
       }
     });
+    expect(
+      operatingSources.appendConfirmedSourceIfEnabledInTransaction
+    ).toHaveBeenCalledWith(
+      current.tx,
+      {
+        projectId: "project-1",
+        sourceType: "spot_procurement_payment_execution",
+        sourceBusinessId: "execution-1"
+      },
+      "finance-1"
+    );
     expect(
       current.tx.spotProcurementPayment.updateMany
     ).not.toHaveBeenCalledWith(

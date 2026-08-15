@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpException,
+  Inject,
   Injectable,
   NotFoundException
 } from "@nestjs/common";
@@ -16,6 +17,11 @@ import {
 import { createHash } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../database/prisma.service";
+import {
+  missingOperatingSourceReplayService,
+  OperatingSourceReplayService,
+  type OperatingSourceAppendPort
+} from "../operating-ledger/operating-source-replay.service";
 import { FileService } from "../file/file.service";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import {
@@ -24,6 +30,7 @@ import {
 } from "../validation/unicode-whitespace";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
 import { SpotProcurementClosureService } from "../spot-procurement/spot-procurement-closure.service";
+import { SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE } from "../spot-procurement/spot-procurement-operating-source.adapter";
 import type { CreateInvoiceExceptionConfirmationDto } from "./dto/create-invoice-exception-confirmation.dto";
 import type { CreateNoInvoiceConfirmationDto } from "./dto/create-no-invoice-confirmation.dto";
 import type {
@@ -234,7 +241,10 @@ export class InvoiceLedgerService {
     private readonly audit: AuditService,
     private readonly files: FileService,
     private readonly pilot: SpotProcurementPilotService,
-    private readonly closure: SpotProcurementClosureService
+    private readonly closure: SpotProcurementClosureService,
+    @Inject(OperatingSourceReplayService)
+    private readonly operatingSources: OperatingSourceAppendPort =
+      missingOperatingSourceReplayService()
   ) {}
 
   async createProcurementInvoice(
@@ -292,6 +302,15 @@ export class InvoiceLedgerService {
             preparedLines
           );
           created = true;
+          await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+            tx,
+            {
+              projectId: context.procurement.projectId,
+              sourceType: SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE,
+              sourceBusinessId: invoice.id
+            },
+            actorUserId
+          );
           await this.audit.record(tx, {
             actorUserId,
             action: "spot_procurement.invoice.create",

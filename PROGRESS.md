@@ -68,6 +68,8 @@
 
 - [x] POL-06 第 2 次 CI 收口修补：上述候选的 CI #31873836131 又发现 65 项 remaining PostgreSQL 16 动态分片中，一条故意绕过服务的未接入影响主体直写，已被 POL-06 新增的“正式经营影响必须通过已授权的经营账服务登记”守卫更早拒绝；该失败关闭语义未放宽，仅更新测试断言为实际且更严格的守卫消息。能力矩阵检查还要求把已刷新页面动作清单的 SHA-256 回写至 JSON/Markdown 生成文件。动态门只读校验、全量 `pnpm test`（shared-domain 165、Web 1953、API 6133 passed；98 skipped）、`pnpm typecheck`、`pnpm lint`、`pnpm inspect:release-manifests`、页面动作与能力矩阵 ready 检查、`git diff --check` 均通过；未执行动态门、迁移或数据库写入。此修补推送后才重新触发 CI；未 merge、未关闭 Issue。
 
+- [~] POL-07（Issue #100）已从 fresh fetch 锁定的 `origin/main@6d9d923e94ba7c76f9928a0f4142538f4611b171` 在独立 worktree 完成本地实现：收货复核只确认一次材料 `confirmed_cost`（零金额收货不产生经济分录）；新版实际付款只形成我方公司项目资金减少，旧版轻量付款在没有公司主体时准确归属施工企业项目资金，均不重复成本；整笔供应商退款以关联原付款和收货复核的资金流入冲减原资金影响，不重记成本，且同样区分新版公司与旧版施工企业资金主体；结构化 `InvoiceRecord` 仅形成可追溯的 `invoice_reference` 依据分录，不自动产生收入、成本或付款，并由服务和数据库共同强制 `notice` 方向。四类来源均在各自正式业务事务中同事务追加，并进入封闭经营来源注册表；第 131 条迁移扩展 impact kind 白名单并约束发票依据方向，动态门清单、9 个 runner、说明和静态契约均同步为 M131。独立 Spec 复审为 P0/P1/P2=0，Standards 为 P0/P1=0；后者记录一项重放逐行关联读取的 P2 性能建议，因无性能阈值且批量重构会扩大本票，未在本候选实施。定向回归 12 个套件为 10 passed / 2 个既有环境型套件 skipped、293 passed；API/shared-domain typecheck 与 lint、Prisma validate、动态门 manifest validate 和静态 13/13、`git diff --check` 已通过。动态 PostgreSQL 16 runner 要求干净且已提交的精确候选 SHA；本 worktree 仍为未提交实现，故尚未运行，不能将静态检查称为数据库迁移或全动态门收据。未 commit、push、创建 PR、写入/关闭 Issue、执行迁移、访问生产或写入生产/COS。
+
 ### P0：已删除草稿生命周期
 
 #### Contract Architecture V3 父票 #53：文档验收收口

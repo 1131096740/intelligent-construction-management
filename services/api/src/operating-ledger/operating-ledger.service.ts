@@ -1057,8 +1057,13 @@ function validateImpactInput(impact: OperatingImpactInput) {
   if (impact.amountCents < 0n || (impact.impactKind !== "evidence_gap_notice" && impact.amountCents === 0n)) {
     throw new BadRequestException("影响分录金额必须使用不小于零的整数分");
   }
-  if (impact.impactKind === "evidence_gap_notice" && impact.direction !== "notice") {
-    throw new BadRequestException("C级缺口提示必须使用notice方向");
+  if (
+    ["evidence_gap_notice", "invoice_reference"].includes(
+      impact.impactKind
+    ) &&
+    impact.direction !== "notice"
+  ) {
+    throw new BadRequestException("资料依据提示必须使用notice方向");
   }
   if (
     ["confirmed_cost", "estimated_clearing_expense"].includes(impact.impactKind) &&

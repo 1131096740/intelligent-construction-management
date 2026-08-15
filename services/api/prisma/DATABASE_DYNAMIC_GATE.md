@@ -3,8 +3,8 @@
 本入口把当前 89 条受 `RUN_*` 控制的数据库测试纳入一次性本机 PostgreSQL 16 runner。清单以
 `database-dynamic-gate-manifest.json` 为机器真相；可编排不等于已经通过，必须以执行收据为准。
 
-当前迁移基线是 130 个目录，终点为
-`20260815150000_pol06_expense_employee_subjects`。
+当前迁移基线是 131 个目录，终点为
+`20260815170000_pol07_spot_procurement_operating_sources`。
 
 ## 只读检查
 
@@ -29,7 +29,7 @@ node --test services/api/prisma/run-database-dynamic-gate-local.test.cjs
 - 进程没有继承 `DATABASE_URL` 或任何 `*_DATABASE_URL`；
 - Docker context 解析为本机 Unix socket 或 Windows named pipe；
 - 本机已经缓存 `postgres:16`，入口不会拉取镜像；
-- 源码仍精确包含 130 个迁移目录及当前终点迁移。
+- 源码仍精确包含 131 个迁移目录及当前终点迁移。
 
 执行格式如下，`<CURRENT_40_CHAR_SHA>` 必须手工替换为已核验候选：
 

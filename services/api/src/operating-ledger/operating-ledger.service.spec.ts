@@ -174,6 +174,41 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("keeps invoice references as non-economic notice impacts", async () => {
+    const service = new OperatingLedgerService(
+      createPrismaMock({}) as never
+    );
+
+    await expect(
+      service.appendFromSource(
+        {
+          ...baseInput(),
+          factKind: "invoice",
+          direction: "neutral",
+          subjects: {
+            payee: {
+              kind: "downstream_counterparty",
+              id: "counterparty-version-1"
+            }
+          },
+          impacts: [
+            {
+              ...baseInput().impacts[0]!,
+              impactKind: "invoice_reference",
+              direction: "increase",
+              subjectRole: "payee",
+              subject: {
+                kind: "downstream_counterparty",
+                id: "counterparty-version-1"
+              }
+            }
+          ]
+        },
+        "actor-1"
+      )
+    ).rejects.toThrow("资料依据提示必须使用notice方向");
+  });
+
   it("accepts an employee payee for POL-06 employee reimbursement", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
