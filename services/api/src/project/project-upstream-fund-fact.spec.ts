@@ -89,7 +89,13 @@ describe("ProjectService upstream fund facts", () => {
           affiliateNameSnapshot: "挂靠建设集团",
           affiliateCreditCodeSnapshot: "91310000AFFILIATE",
           effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
-        }])
+        }]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "挂靠建设集团",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
       },
       fileObject: {
         findUnique: jest.fn().mockResolvedValue({
@@ -181,7 +187,13 @@ describe("ProjectService upstream fund facts", () => {
           affiliateNameSnapshot: "挂靠建设集团",
           affiliateCreditCodeSnapshot: "91310000AFFILIATE",
           effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
-        }])
+        }]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "挂靠建设集团",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
       },
       fileObject: { findUnique: jest.fn() },
       ...roleTables("finance_director"),
@@ -488,7 +500,13 @@ describe("ProjectService upstream fund facts", () => {
           affiliateNameSnapshot: "挂靠建设集团",
           affiliateCreditCodeSnapshot: "91310000AFFILIATE",
           effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
-        }])
+        }]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "挂靠建设集团",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
       },
       ...roleTables("finance_staff"),
       projectUpstreamFundFact: {
@@ -543,7 +561,13 @@ describe("ProjectService upstream fund facts", () => {
           affiliateNameSnapshot: "挂靠建设集团",
           affiliateCreditCodeSnapshot: "91310000AFFILIATE",
           effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
-        }])
+        }]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "挂靠建设集团",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
       },
       ...roleTables("finance_director"),
       projectUpstreamFundFact: {

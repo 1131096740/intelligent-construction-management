@@ -252,7 +252,13 @@ describe("ProjectAffiliateBusinessService", () => {
             affiliateCreditCodeSnapshot: "91310000AFFILIATE",
             effectiveFrom: new Date("2026-07-01T00:00:00.000Z")
           }
-        ])
+        ]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "挂靠建设集团",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
       },
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },
       projectMember: {
