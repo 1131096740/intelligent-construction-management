@@ -266,6 +266,9 @@ FAKE
 cat > "$FAKE_BIN/sleep" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${FAKE_NODE_TRACE:-false}" == true ]]; then
+  echo "fake sleep invoked" >&2
+fi
 if [[ -n "${FAKE_DEPLOY_CONFIRMATION_FILE:-}" ]] &&
   [[ ! -e "$FAKE_DEPLOY_CONFIRMATION_FILE" ]]; then
   printf '%s %s\n' \
@@ -299,6 +302,9 @@ if [[ -n "${FAKE_NODE_COUNT_FILE:-}" ]]; then
     count="$(( $(< "$FAKE_NODE_COUNT_FILE") + 1 ))"
   fi
   printf '%s\n' "$count" > "$FAKE_NODE_COUNT_FILE"
+fi
+if [[ "${FAKE_NODE_TRACE:-false}" == true ]]; then
+  echo "fake node upload attempt $count" >&2
 fi
 if [[ "${FAKE_NODE_FAIL_ON:-0}" == "$count" ]] ||
   { [[ "${FAKE_NODE_FAIL_FROM:-0}" != 0 ]] && (( count >= FAKE_NODE_FAIL_FROM )); }; then
@@ -395,6 +401,7 @@ if ! offsite_retry_file="$(
   PATH="$FAKE_BIN:$PATH" \
     FAKE_LOG="$FAKE_LOG" \
     FAKE_NODE_COUNT_FILE="$offsite_retry_count" \
+    FAKE_NODE_TRACE=true \
     FAKE_NODE_FAIL_ON=1 \
     DATABASE_URL="postgresql://local/jiangkong" \
     BACKUP_DIR="$offsite_retry_dir" \
