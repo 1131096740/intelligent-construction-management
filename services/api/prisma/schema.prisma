@@ -21,6 +21,7 @@ model User {
   signatureFileId              String?
   handwrittenSignatureVersions HandwrittenSignatureVersion[]
   handwrittenSignatureHandoffs HandwrittenSignatureHandoff[]
+  businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
   createdAt                    DateTime                      @default(now())
   updatedAt                    DateTime                      @updatedAt
 
@@ -145,6 +146,7 @@ model Project {
   takeoverCompletedDate        DateTime? @db.Date
   takeoverStatus               String    @default("preparing")
   constructionEnterpriseLockedAt DateTime?
+  businessEntrySubmissionSnapshots BusinessEntrySubmissionSnapshot[]
   isActive                     Boolean   @default(true)
   createdAt                    DateTime  @default(now())
   updatedAt                    DateTime  @updatedAt
@@ -3521,4 +3523,26 @@ model ContractDocumentDifference {
   @@unique([comparisonId, differenceKey])
   @@index([comparisonId, sortOrder])
   @@index([comparisonId, disposition])
+}
+
+// 统一业务入口提交后保存不可变的字段定义和值快照，确保后续定义变更不改写历史含义。
+model BusinessEntrySubmissionSnapshot {
+  id                 String   @id @default(uuid())
+  projectId          String
+  sceneKey           String
+  entityType         String
+  entityId           String
+  revision           Int
+  definitionVersion  Int
+  definitionSnapshot Json
+  valuesSnapshot     Json
+  frozenAt           DateTime
+  frozenByUserId     String
+  createdAt          DateTime @default(now())
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  frozenByUser  User    @relation(fields: [frozenByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, sceneKey, entityType, entityId, revision], map: "BusinessEntrySubmissionSnapshot_target_revision_key")
+  @@index([projectId, sceneKey, frozenAt])
 }
