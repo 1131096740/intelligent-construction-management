@@ -176,6 +176,65 @@ describe("ProjectService upstream fund facts", () => {
     });
   });
 
+  it("inherits the upstream settlement link when reversing an owner payment", async () => {
+    let created: Record<string, unknown> | null = null;
+    const tx = {
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      projectAffiliateAssignment: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({
+          id: "assignment-1",
+          businessPartyVersionId: "party-version-1",
+          affiliateNameSnapshot: "挂靠建设集团",
+          affiliateCreditCodeSnapshot: "91310000AFFILIATE"
+        })
+      },
+      ...roleTables("finance_staff"),
+      projectUpstreamFundFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(fundFact({
+          id: "owner-payment-1",
+          factType: "owner_payment_to_affiliate",
+          counterpartyName: "建设单位",
+          status: "confirmed",
+          upstreamSettlementId: "upstream-settlement-1"
+        })),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockImplementation(async ({ data }) => {
+          created = data;
+          return fundFact({ ...data, id: "owner-payment-reversal-1" });
+        })
+      },
+      projectUpstreamSettlement: {
+        findFirst: jest.fn().mockResolvedValue({ id: "upstream-settlement-1" })
+      },
+      auditLog: { create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "owner-payment-1" }])
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    };
+    const service = new ProjectService(prisma as never);
+
+    await service.recordUpstreamFundFact("project-1", "finance-1", {
+      factType: "owner_payment_to_affiliate",
+      basisType: "oral",
+      occurredAt: "2026-07-29T00:00:00.000Z",
+      amountCents: "10000",
+      counterpartyName: "建设单位",
+      entryKind: "reversal",
+      effectDirection: "decrease",
+      adjustsFactId: "owner-payment-1",
+      idempotencyKey: "owner-payment-reversal-idempotency"
+    });
+
+    expect(created).toEqual(expect.objectContaining({
+      upstreamSettlementId: "upstream-settlement-1",
+      adjustsFactId: "owner-payment-1",
+      entryKind: "reversal"
+    }));
+  });
+
   it("records an oral unresolved difference without inventing a file, cash, or cost fact", async () => {
     const tx = {
       project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
@@ -530,11 +589,16 @@ describe("ProjectService upstream fund facts", () => {
       },
       projectAffiliateSettlementFact: {
         findFirst: jest.fn().mockResolvedValue({
-          amountCents: 12000n,
+          id: "settlement-fact-1",
+          ledgerId: "settlement-ledger-1",
+          counterpartyName: "我方公司",
           affiliateCompanyContractId: "company-contract-1",
           affiliateAssignmentId: "assignment-1",
           affiliateBusinessPartyVersionId: "party-version-1"
-        })
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 12000n }
+        ])
       },
       invoiceRecord: {
         findFirst: jest.fn().mockResolvedValue({
@@ -670,12 +734,24 @@ describe("ProjectService upstream fund facts", () => {
         id: "remittance-1",
         factType: "affiliate_remittance_to_company",
         amountCents: 60000n,
-        status: "confirmed"
+        status: "confirmed",
+        affiliateSettlementFactId: "settlement-fact-1"
+      }),
+      fundFact({
+        id: "remittance-correction",
+        factType: "affiliate_remittance_to_company",
+        entryKind: "correction",
+        adjustsFactId: "remittance-1",
+        effectDirection: "decrease",
+        amountCents: 20000n,
+        status: "confirmed",
+        affiliateSettlementFactId: "settlement-fact-1"
       }),
       fundFact({
         id: "remittance-pending",
         factType: "affiliate_remittance_to_company",
-        amountCents: 50000n
+        amountCents: 50000n,
+        affiliateSettlementFactId: "settlement-fact-1"
       }),
       fundFact({
         id: "deduction-1",
@@ -705,6 +781,20 @@ describe("ProjectService upstream fund facts", () => {
       financeRecord: { findMany: jest.fn().mockResolvedValue([]) },
       projectReceipt: { findMany: jest.fn().mockResolvedValue([]) },
       projectUpstreamFundFact: { findMany: jest.fn().mockResolvedValue(facts) },
+      projectAffiliateSettlementFact: {
+        findMany: jest.fn().mockImplementation(({ where }: {
+          where: { id?: { in: string[] }; ledgerId?: { in: string[] } };
+        }) =>
+          where.id
+            ? [{ id: "settlement-fact-1", ledgerId: "settlement-ledger-1" }]
+            : [{
+                id: "settlement-fact-1",
+                ledgerId: "settlement-ledger-1",
+                effectDirection: "increase",
+                amountCents: 120000n
+              }]
+        )
+      },
       spotProcurement: { findMany: jest.fn().mockResolvedValue([]) },
       spotProcurementRefund: { findMany: jest.fn().mockResolvedValue([]) },
       projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
@@ -720,16 +810,33 @@ describe("ProjectService upstream fund facts", () => {
     const overview = await service.getOperatingFundsOverview("project-1");
 
     expect(overview.cash).toMatchObject({
-      actualReceiptsCents: "60000",
-      affiliateRemittanceCents: "60000",
-      availableFundsCents: "60000"
+      actualReceiptsCents: "40000",
+      affiliateRemittanceCents: "40000",
+      availableFundsCents: "40000"
     });
     expect(overview.upstreamFunds).toMatchObject({
       ownerPaymentCents: "100000",
-      affiliateRemittanceCents: "60000",
+      affiliateRemittanceCents: "40000",
       affiliateDeductionCents: "10000",
       unreconciledReceiptDifferenceCents: "5000"
     });
+    expect(overview.upstreamFunds.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "remittance-1",
+          payableAmountCents: "120000",
+          actualPaymentAmountCents: "40000",
+          companyUnpaidAmountCents: "80000",
+          companyDifferenceAmountCents: "-80000"
+        }),
+        expect.objectContaining({
+          id: "remittance-pending",
+          payableAmountCents: "120000",
+          actualPaymentAmountCents: "40000",
+          companyUnpaidAmountCents: "80000"
+        })
+      ])
+    );
     expect(overview.business).toMatchObject({
       operatingIncomeCents: "100000",
       operatingCostCents: "10000",

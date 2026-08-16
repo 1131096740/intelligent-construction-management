@@ -764,12 +764,51 @@ export class ProjectService {
             id: { in: remittanceSettlementFactIds },
             status: "confirmed"
           },
-          select: { id: true, amountCents: true }
+          select: { id: true, ledgerId: true }
         })
       : [];
-    const remittancePayableBySettlementId = new Map(
-      remittanceSettlementFacts.map((fact) => [fact.id, fact.amountCents])
+    const remittanceSettlementLedgerIds = Array.from(
+      new Set(remittanceSettlementFacts.map((fact) => fact.ledgerId))
     );
+    const remittanceSettlementLedgerFacts = remittanceSettlementLedgerIds.length
+      ? await this.prisma.projectAffiliateSettlementFact.findMany({
+          where: {
+            projectId,
+            ledgerId: { in: remittanceSettlementLedgerIds },
+            status: "confirmed"
+          },
+          select: { id: true, ledgerId: true, effectDirection: true, amountCents: true }
+        })
+      : [];
+    const remittancePayableByLedgerId = new Map<string, bigint>();
+    for (const fact of remittanceSettlementLedgerFacts) {
+      const current = remittancePayableByLedgerId.get(fact.ledgerId) ?? 0n;
+      remittancePayableByLedgerId.set(
+        fact.ledgerId,
+        current + affiliateSettlementFactSignedAmount(fact)
+      );
+    }
+    const remittancePayableBySettlementId = new Map(
+      remittanceSettlementFacts.map((fact) => [
+        fact.id,
+        remittancePayableByLedgerId.get(fact.ledgerId) ?? 0n
+      ])
+    );
+    const remittancePaidBySettlementId = new Map<string, bigint>();
+    for (const fact of upstreamFundFacts) {
+      if (
+        fact.factType !== "affiliate_remittance_to_company" ||
+        fact.status !== "confirmed" ||
+        !fact.affiliateSettlementFactId
+      ) {
+        continue;
+      }
+      const current = remittancePaidBySettlementId.get(fact.affiliateSettlementFactId) ?? 0n;
+      remittancePaidBySettlementId.set(
+        fact.affiliateSettlementFactId,
+        current + upstreamFundFactSignedAmount(fact)
+      );
+    }
     const contractIds = contracts.map((contract) => contract.id);
     const paymentIds = payments.map((payment) => payment.id);
     const expenseRequestIds = projectExpenseRequests.map((request) => request.id);
@@ -977,6 +1016,9 @@ export class ProjectService {
           toUpstreamFundFactReadModel(fact, {
             payableAmountCents: fact.affiliateSettlementFactId
               ? remittancePayableBySettlementId.get(fact.affiliateSettlementFactId) ?? null
+              : null,
+            actualPaymentAmountCents: fact.affiliateSettlementFactId
+              ? remittancePaidBySettlementId.get(fact.affiliateSettlementFactId) ?? 0n
               : null
           })
         )
@@ -1127,24 +1169,10 @@ export class ProjectService {
           throw new ForbiddenException("只有项目财务人员或财务主管可以登记上游资金事实");
         }
 
-        if (upstreamSettlementId) {
-          const settlement = await tx.projectUpstreamSettlement.findFirst({
-            where: {
-              id: upstreamSettlementId,
-              projectId,
-              status: "confirmed",
-              voidedAt: null
-            },
-            select: { id: true }
-          });
-          if (!settlement) {
-            throw new BadRequestException("关联上游结算不存在、未确认或不属于当前项目");
-          }
-        }
-
         let adjustmentTarget: {
           affiliateAssignmentId: string;
           affiliateBusinessPartyVersionId: string;
+          upstreamSettlementId: string | null;
           companyEntityId: string | null;
           affiliateCompanyContractId: string | null;
           affiliateSettlementFactId: string | null;
@@ -1167,6 +1195,7 @@ export class ProjectService {
           adjustmentTarget = {
             affiliateAssignmentId: target.affiliateAssignmentId,
             affiliateBusinessPartyVersionId: target.affiliateBusinessPartyVersionId,
+            upstreamSettlementId: target.upstreamSettlementId,
             companyEntityId: target.companyEntityId,
             affiliateCompanyContractId: target.affiliateCompanyContractId,
             affiliateSettlementFactId: target.affiliateSettlementFactId,
@@ -1188,6 +1217,26 @@ export class ProjectService {
             existingAdjustments,
             { factType, entryKind, effectDirection, amountCents }
           );
+        }
+
+        const resolvedUpstreamSettlementId =
+          upstreamSettlementId ?? adjustmentTarget?.upstreamSettlementId ?? undefined;
+        if (resolvedUpstreamSettlementId && factType !== "owner_payment_to_affiliate") {
+          throw new BadRequestException("上游结算只能关联业主向施工企业付款事实");
+        }
+        if (resolvedUpstreamSettlementId) {
+          const settlement = await tx.projectUpstreamSettlement.findFirst({
+            where: {
+              id: resolvedUpstreamSettlementId,
+              projectId,
+              status: "confirmed",
+              voidedAt: null
+            },
+            select: { id: true }
+          });
+          if (!settlement) {
+            throw new BadRequestException("关联上游结算不存在、未确认或不属于当前项目");
+          }
         }
 
         const affiliate = await readAffiliateSnapshot(tx, {
@@ -1311,7 +1360,7 @@ export class ProjectService {
             counterpartyName,
             basisType,
             deductionCategory,
-            upstreamSettlementId,
+            upstreamSettlementId: resolvedUpstreamSettlementId,
             companyEntityId: remittanceLineage.companyEntityId,
             affiliateCompanyContractId: remittanceLineage.affiliateCompanyContractId,
             affiliateSettlementFactId: remittanceLineage.affiliateSettlementFactId,
@@ -1345,7 +1394,7 @@ export class ProjectService {
             amountCents: moneyCentsToApi(amountCents),
             basisType,
             deductionCategory,
-            upstreamSettlementId,
+            upstreamSettlementId: resolvedUpstreamSettlementId,
             companyEntityId: remittanceLineage.companyEntityId,
             affiliateCompanyContractId: remittanceLineage.affiliateCompanyContractId,
             affiliateSettlementFactId: remittanceLineage.affiliateSettlementFactId,
@@ -3868,7 +3917,7 @@ async function validateRemittanceLineage(
     };
   }
 ) {
-  const [companyContract, settlementFact, invoice] = await Promise.all([
+  const [companyContract, settlementFacts, invoice] = await Promise.all([
     tx.projectAffiliateCompanyContract.findFirst({
       where: {
         id: input.affiliateCompanyContractId,
@@ -3882,19 +3931,39 @@ async function validateRemittanceLineage(
         affiliateBusinessPartyVersionId: true
       }
     }),
-    tx.projectAffiliateSettlementFact.findFirst({
-      where: {
-        id: input.affiliateSettlementFactId,
-        projectId: input.projectId,
-        status: "confirmed"
-      },
-      select: {
-        amountCents: true,
-        affiliateCompanyContractId: true,
-        affiliateAssignmentId: true,
-        affiliateBusinessPartyVersionId: true
-      }
-    }),
+    (async () => {
+      const fact = await tx.projectAffiliateSettlementFact.findFirst({
+        where: {
+          id: input.affiliateSettlementFactId,
+          projectId: input.projectId,
+          status: "confirmed"
+        },
+        select: {
+          id: true,
+          ledgerId: true,
+          counterpartyName: true,
+          affiliateCompanyContractId: true,
+          affiliateAssignmentId: true,
+          affiliateBusinessPartyVersionId: true
+        }
+      });
+      if (!fact) return null;
+      const ledgerFacts = await tx.projectAffiliateSettlementFact.findMany({
+        where: {
+          projectId: input.projectId,
+          ledgerId: fact.ledgerId,
+          status: "confirmed"
+        },
+        select: { effectDirection: true, amountCents: true }
+      });
+      return {
+        ...fact,
+        netAmountCents: ledgerFacts.reduce(
+          (total, ledgerFact) => total + affiliateSettlementFactSignedAmount(ledgerFact),
+          0n
+        )
+      };
+    })(),
     tx.invoiceRecord.findFirst({
       where: {
         id: input.invoiceRecordId,
@@ -3919,12 +3988,13 @@ async function validateRemittanceLineage(
     throw new BadRequestException("施工企业向我方公司拨款的我方合同链路不匹配");
   }
   if (
-    !settlementFact ||
-    settlementFact.affiliateCompanyContractId !== input.affiliateCompanyContractId ||
-    settlementFact.affiliateAssignmentId !== input.affiliate.assignmentId ||
-    settlementFact.affiliateBusinessPartyVersionId !==
+    !settlementFacts ||
+    settlementFacts.affiliateCompanyContractId !== input.affiliateCompanyContractId ||
+    settlementFacts.affiliateAssignmentId !== input.affiliate.assignmentId ||
+    settlementFacts.affiliateBusinessPartyVersionId !==
       input.affiliate.businessPartyVersionId ||
-    settlementFact.amountCents <= 0n
+    settlementFacts.counterpartyName !== input.counterpartyName ||
+    settlementFacts.netAmountCents <= 0n
   ) {
     throw new BadRequestException("施工企业向我方公司拨款必须关联已确认且有效的施工企业结算");
   }
@@ -3935,7 +4005,7 @@ async function validateRemittanceLineage(
   ) {
     throw new BadRequestException("施工企业向我方公司拨款必须关联我方开具给施工企业的有效发票");
   }
-  return { payableAmountCents: settlementFact.amountCents };
+  return { payableAmountCents: settlementFacts.netAmountCents };
 }
 
 function isProjectOptionPosition(positionKey: RoleKey | undefined): boolean {
@@ -4765,14 +4835,23 @@ function upstreamFundFactNetAmount(
 ) {
   return facts
     .filter((fact) => fact.factType === factType && fact.status === "confirmed")
-    .reduce(
-      (total, fact) =>
-        total +
-        (fact.effectDirection === "decrease"
-          ? -dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")
-          : dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")),
-      0n
-    );
+    .reduce((total, fact) => total + upstreamFundFactSignedAmount(fact), 0n);
+}
+
+function upstreamFundFactSignedAmount(fact: {
+  effectDirection: string;
+  amountCents: bigint;
+}) {
+  const amountCents = dbMoneyToBigInt(fact.amountCents, "上游资金事实金额");
+  return fact.effectDirection === "decrease" ? -amountCents : amountCents;
+}
+
+function affiliateSettlementFactSignedAmount(fact: {
+  effectDirection: string;
+  amountCents: bigint;
+}) {
+  const amountCents = dbMoneyToBigInt(fact.amountCents, "施工企业结算金额");
+  return fact.effectDirection === "decrease" ? -amountCents : amountCents;
 }
 
 function upstreamFundUnreconciledDifference(
@@ -4845,19 +4924,23 @@ function toUpstreamFundFactReadModel(
     confirmationSignatureSha256: string | null;
     createdAt: Date;
   },
-  derived?: { payableAmountCents: bigint | null }
+  derived?: {
+    payableAmountCents: bigint | null;
+    actualPaymentAmountCents?: bigint | null;
+  }
 ) {
-  const signedAmountCents =
-    fact.effectDirection === "decrease"
-      ? -dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")
-      : dbMoneyToBigInt(fact.amountCents, "上游资金事实金额");
+  const signedAmountCents = upstreamFundFactSignedAmount(fact);
   const cashEffectCents =
     fact.status === "confirmed" &&
     fact.factType === "affiliate_remittance_to_company"
       ? signedAmountCents
       : 0n;
   const payableAmountCents = derived?.payableAmountCents ?? null;
-  const actualPaymentAmountCents = payableAmountCents === null ? null : signedAmountCents;
+  const actualPaymentAmountCents =
+    payableAmountCents === null
+      ? null
+      : derived?.actualPaymentAmountCents ??
+        (fact.status === "confirmed" ? signedAmountCents : 0n);
   const companyUnpaidAmountCents =
     payableAmountCents === null || actualPaymentAmountCents === null
       ? null
