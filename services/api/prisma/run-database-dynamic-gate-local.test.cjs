@@ -25,7 +25,7 @@ const runnerPath = path.join(
   "run-database-dynamic-gate-local.cjs"
 );
 
-test("manifest derives all 91 pending tests as executable local coverage", () => {
+test("manifest derives all 94 pending tests as executable local coverage", () => {
   const manifest = loadManifest();
   const result = validateManifest(manifest);
 
@@ -33,9 +33,9 @@ test("manifest derives all 91 pending tests as executable local coverage", () =>
     pendingFiles: 38,
     fullyPendingSuites: 28,
     partiallyPendingSuites: 10,
-    pendingTests: 91,
+    pendingTests: 94,
     coveredFiles: 38,
-    coveredTests: 91,
+    coveredTests: 94,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: 136,
@@ -52,7 +52,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=25，派生值=91/u
+    /inventory\.coveredTests=25，派生值=94/u
   );
 });
 
