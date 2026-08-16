@@ -662,7 +662,7 @@ export class ProjectAffiliateBusinessService {
       "请关联已确认施工企业合同"
     );
     const settlementLedgerId = optionalTrimmed(input.settlementLedgerId);
-    const paymentRequestId = optionalTrimmed(input.paymentRequestId);
+    const paymentRequestReference = optionalTrimmed(input.paymentRequestId);
     const entryKind = normalizeEntryKind(input.entryKind ?? "original");
     const effectDirection = normalizeEffectDirection(entryKind, input.effectDirection);
     const adjustsFactId = optionalTrimmed(input.adjustsFactId);
@@ -695,7 +695,7 @@ export class ProjectAffiliateBusinessService {
       actorUserId,
       contractLedgerId,
       settlementLedgerId,
-      paymentRequestId,
+      paymentRequestId: paymentRequestReference,
       entryKind,
       effectDirection,
       adjustsFactId,
@@ -717,6 +717,7 @@ export class ProjectAffiliateBusinessService {
           contractVersionId: string;
           settlementId: string | null;
         } | null = null;
+        let resolvedPaymentRequestId: string | null = null;
         const existing = await tx.projectAffiliatePaymentFact.findUnique({
           where: { idempotencyKey }
         });
@@ -741,22 +742,25 @@ export class ProjectAffiliateBusinessService {
               select: { operatingLedgerEffectiveDate: true }
             })
           : null;
-        const isPostEffectiveNormalPayment =
-          paymentKind === "normal" &&
+        const isPostEffectivePayment =
           !!projectProfile?.operatingLedgerEffectiveDate &&
           paidAt >= projectProfile.operatingLedgerEffectiveDate;
-        if (isPostEffectiveNormalPayment && !paymentRequestId) {
+        if (isPostEffectivePayment && !paymentRequestReference) {
           throw new BadRequestException(
-            "经营账生效日后的正常施工企业付款必须关联已审批付款申请"
+            "经营账生效日后的施工企业付款必须关联已审批付款申请"
           );
         }
-        if (paymentRequestId) {
-          await lockAffiliatePaymentRequest(tx, projectId, paymentRequestId);
+        if (paymentRequestReference) {
+          await lockAffiliatePaymentRequest(tx, projectId, paymentRequestReference);
           const paymentRequest = await tx.paymentRequest.findFirst({
-            where: { id: paymentRequestId, projectId },
+            where: {
+              projectId,
+              OR: [{ id: paymentRequestReference }, { code: paymentRequestReference }]
+            },
             select: {
               id: true,
               status: true,
+              sourceType: true,
               paymentSubjectType: true,
               contractId: true,
               contractVersionId: true,
@@ -767,17 +771,28 @@ export class ProjectAffiliateBusinessService {
           });
           if (
             !paymentRequest ||
-            !["approved_pending_payment", "partially_paid"].includes(paymentRequest.status) ||
+            ![
+              "approved_pending_payment",
+              "partially_paid",
+              ...(entryKind === "original" ? [] : ["paid"])
+            ].includes(paymentRequest.status) ||
             paymentRequest.paymentSubjectType !== "affiliate"
           ) {
             throw new BadRequestException(
               "施工企业付款只能关联已审批且付款主体为施工企业的付款申请"
             );
           }
-          if (paymentKind !== "normal") {
-            throw new BadRequestException("只有正常施工企业付款可以关联付款申请");
+          const expectedPaymentSourceType =
+            paymentKind === "normal"
+              ? "settlement"
+              : paymentKind === "advance"
+                ? "contract_advance"
+                : "contract_due";
+          if (paymentRequest.sourceType !== expectedPaymentSourceType) {
+            throw new BadRequestException("施工企业付款类型与付款申请来源不一致");
           }
           approvedPaymentRequest = paymentRequest;
+          resolvedPaymentRequestId = paymentRequest.id;
         }
         const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
         const recordedByRoleKey = roleKeys.includes("finance_director")
@@ -829,7 +844,7 @@ export class ProjectAffiliateBusinessService {
             target.settlementLedgerId !== (settlementLedgerId ?? null) ||
             target.counterpartyName !== counterpartyName ||
             target.paymentKind !== paymentKind ||
-            target.paymentRequestId !== (paymentRequestId ?? null) ||
+            target.paymentRequestId !== resolvedPaymentRequestId ||
             target.affiliateAssignmentId !== contract.affiliateAssignmentId ||
             target.affiliateBusinessPartyVersionId !==
               contract.affiliateBusinessPartyVersionId
@@ -867,7 +882,7 @@ export class ProjectAffiliateBusinessService {
             projectId,
             contractLedgerId,
             settlementLedgerId,
-            paymentRequestId,
+            paymentRequestId: resolvedPaymentRequestId,
             entryKind,
             adjustsFactId,
             effectDirection,
@@ -911,7 +926,7 @@ export class ProjectAffiliateBusinessService {
             basisType,
             evidenceFileId,
             paymentSubjectType: "affiliate",
-            paymentRequestId
+            paymentRequestId: resolvedPaymentRequestId
           }
         });
         return toPaymentReadModel(created, roleKeys);
@@ -1302,7 +1317,8 @@ async function lockAffiliatePaymentRequest(
   await tx.$queryRaw(Prisma.sql`
     SELECT "id"
     FROM "PaymentRequest"
-    WHERE "id" = ${paymentRequestId} AND "projectId" = ${projectId}
+    WHERE "projectId" = ${projectId}
+      AND ("id" = ${paymentRequestId} OR "code" = ${paymentRequestId})
     FOR UPDATE
   `);
 }

@@ -53,6 +53,9 @@ type ConstructionEnterpriseSourceRow = {
   deductionCategory?: string | null;
   upstreamSettlementId?: string | null;
   companyEntityId?: string | null;
+  affiliateCompanyContractId?: string | null;
+  affiliateSettlementFactId?: string | null;
+  invoiceRecordId?: string | null;
   ledgerId?: string;
   contractLedgerId?: string;
   settlementLedgerId?: string | null;
@@ -68,13 +71,13 @@ function sourceEntryKind(value: string): OperatingSourceFactInput["entryKind"] {
   if (value === "reversal") return "reversal";
   if (value === "original") return "original";
   if (value === "correction" || value === "reclassification") return "correction";
-  throw new BadRequestException(`经营来源登记类型不正确：${value}`);
+  throw new BadRequestException("经营来源登记类型不正确，请刷新后重试");
 }
 
 function sourceDirection(value: string): "increase" | "decrease" {
   if (value === "increase") return "increase";
   if (value === "decrease") return "decrease";
-  throw new BadRequestException(`经营来源影响方向不正确：${value}`);
+  throw new BadRequestException("经营来源影响方向不正确，请刷新后重试");
 }
 
 function absoluteMoney(value: bigint): bigint {
@@ -224,6 +227,7 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
     let operatingLevel: AppendOperatingFactInput["operatingLevel"];
     let direction: AppendOperatingFactInput["direction"];
     let subjects: AppendOperatingFactInput["subjects"];
+    let remittancePayableAmountCents: bigint | null = null;
     if (factType === "owner_payment_to_affiliate") {
       factKind = "owner_payment";
       operatingLevel = "project";
@@ -265,6 +269,15 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
           optionalJsonText(source, "companyEntityId") ??
           stableNamedSubjectId("participating_company", counterparty)
       };
+      const payableAmountCents = requiredJsonMoney(
+        source,
+        "payableAmountCents",
+        "施工企业向我方公司拨款"
+      );
+      if (payableAmountCents <= 0n) {
+        throw new BadRequestException("施工企业向我方公司拨款的应付金额必须大于 0");
+      }
+      remittancePayableAmountCents = payableAmountCents;
       subjects = { actualPayer: enterprise, payee: company };
       impacts.push(
         {
@@ -303,17 +316,6 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
           subjectRole: "debtor",
           subject: enterprise,
           description: "施工企业最终扣费减少施工企业项目资金"
-        },
-        {
-          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:cost`,
-          sourceImpactKey: "confirmed_cost",
-          impactKind: "confirmed_cost",
-          amountCents,
-          direction: effectDirection,
-          subjectRole: "cost_bearing_company",
-          subject: enterprise,
-          costCategoryCode: "construction_enterprise_deduction",
-          description: "施工企业最终扣费进入项目成本"
         }
       );
     } else {
@@ -333,7 +335,34 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
         basisSnapshot: sourceJson({
           authority: "confirmed_project_upstream_fund_fact",
           factType,
-          deductionCategory: optionalJsonText(source, "deductionCategory")
+          deductionCategory: optionalJsonText(source, "deductionCategory"),
+          ...(factType === "affiliate_remittance_to_company"
+            ? {
+                affiliateCompanyContractId: requiredJsonText(
+                  source,
+                  "affiliateCompanyContractId",
+                  "施工企业向我方公司拨款"
+                ),
+                affiliateSettlementFactId: requiredJsonText(
+                  source,
+                  "affiliateSettlementFactId",
+                  "施工企业向我方公司拨款"
+                ),
+                invoiceRecordId: requiredJsonText(
+                  source,
+                  "invoiceRecordId",
+                  "施工企业向我方公司拨款"
+                ),
+                payableAmountCents: remittancePayableAmountCents!.toString(),
+                actualPaymentAmountCents: amountCents.toString(),
+                companyUnpaidAmountCents: (
+                  remittancePayableAmountCents! - amountCents
+                ).toString(),
+                companyDifferenceAmountCents: (
+                  amountCents - remittancePayableAmountCents!
+                ).toString()
+              }
+            : {})
         })
       },
       "上游资金"
@@ -351,15 +380,35 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
     if (!row.occurredAt) {
       throw new BadRequestException("上游资金缺少业务发生时间");
     }
-    const [effectiveDate, affiliate] = await Promise.all([
+    const [effectiveDate, affiliate, remittanceSettlement] = await Promise.all([
       readOperatingLedgerEffectiveDate(tx, row.projectId),
       readAffiliateSnapshot(tx, {
         projectId: row.projectId,
         occurredAt: row.occurredAt,
         assignmentId: row.affiliateAssignmentId,
         businessPartyVersionId: row.affiliateBusinessPartyVersionId
-      })
+      }),
+      row.factType === "affiliate_remittance_to_company" &&
+        row.affiliateSettlementFactId
+        ? tx.projectAffiliateSettlementFact.findFirst({
+            where: {
+              id: row.affiliateSettlementFactId,
+              projectId: row.projectId,
+              status: "confirmed"
+            },
+            select: { amountCents: true }
+          })
+        : Promise.resolve(null)
     ]);
+    if (
+      row.factType === "affiliate_remittance_to_company" &&
+      (!row.affiliateCompanyContractId ||
+        !row.affiliateSettlementFactId ||
+        !row.invoiceRecordId ||
+        !remittanceSettlement)
+    ) {
+      throw new BadRequestException("施工企业向我方公司拨款缺少完整业务链路");
+    }
     const companyEntityId =
       row.factType === "affiliate_remittance_to_company"
         ? await resolveHistoricalCompanyEntityId(tx, row)
@@ -374,7 +423,13 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
         factType: row.factType,
         deductionCategory: row.deductionCategory,
         upstreamSettlementId: row.upstreamSettlementId,
-        companyEntityId
+        companyEntityId,
+        affiliateCompanyContractId: row.affiliateCompanyContractId,
+        affiliateSettlementFactId: row.affiliateSettlementFactId,
+        invoiceRecordId: row.invoiceRecordId,
+        ...(remittanceSettlement
+          ? { payableAmountCents: remittanceSettlement.amountCents.toString() }
+          : {})
       }
     );
   }

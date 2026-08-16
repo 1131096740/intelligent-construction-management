@@ -368,7 +368,7 @@ async function submitRecord() {
         ...(form.settlementLedgerId
           ? { settlementLedgerId: form.settlementLedgerId }
           : {}),
-        ...(form.paymentRequestId && form.paymentKind === "normal"
+        ...(form.paymentRequestId
           ? { paymentRequestId: form.paymentRequestId }
           : {}),
         counterpartyName: required(form.counterpartyName, "付款相对方"),
@@ -938,7 +938,7 @@ function errorMessage(error: unknown, fallback: string) {
     <t-alert
       theme="warning"
       title="主体与资金边界"
-      message="施工企业签约的合同只能由施工企业付款；本台账不会创建我方 PaymentRequest、PaymentExecution 或 ApprovalInstance。"
+      message="施工企业签约的合同只能由施工企业付款；本台账不会创建我方付款申请、实付记录或审批实例。"
     />
     <t-alert
       v-if="notice"
@@ -1258,9 +1258,9 @@ function errorMessage(error: unknown, fallback: string) {
             :disabled="recordMode !== 'original'"
           />
           <t-input
-            v-if="paymentForm.paymentKind === 'normal'"
             v-model="paymentForm.paymentRequestId"
-            label="已审批付款申请编号"
+            label="已审批付款申请业务单号"
+            placeholder="请输入付款申请业务单号"
             :disabled="recordMode !== 'original'"
           />
           <t-input

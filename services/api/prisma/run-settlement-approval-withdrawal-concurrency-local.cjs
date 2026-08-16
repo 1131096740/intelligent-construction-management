@@ -23,7 +23,7 @@ const {
   assertVerificationScope
 } = require("./settlement-approval-withdrawal-concurrency-fixtures.cjs");
 
-const EXPECTED_MIGRATION_COUNT = 134;
+const EXPECTED_MIGRATION_COUNT = 135;
 const TERMINAL_MIGRATION =
   "20260816110000_pol10_operating_takeover";
 const TERMINAL_MIGRATION_CHECKSUM =

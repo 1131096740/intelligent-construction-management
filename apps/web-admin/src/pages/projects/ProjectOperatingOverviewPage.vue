@@ -357,6 +357,30 @@
                   placeholder="请选择我方参与公司"
                 />
               </label>
+              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
+                <span>施工企业—我方合同档案编号</span>
+                <input
+                  v-model.trim="receiptForm.affiliateCompanyContractId"
+                  placeholder="请输入已确认合同档案编号"
+                  required
+                >
+              </label>
+              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
+                <span>施工企业结算档案编号</span>
+                <input
+                  v-model.trim="receiptForm.affiliateSettlementFactId"
+                  placeholder="请输入已确认结算档案编号"
+                  required
+                >
+              </label>
+              <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
+                <span>我方开票档案编号</span>
+                <input
+                  v-model.trim="receiptForm.invoiceRecordId"
+                  placeholder="请输入有效发票档案编号"
+                  required
+                >
+              </label>
               <label v-if="receiptForm.factType === 'affiliate_deduction'">
                 <span>扣款类型</span>
                 <select v-model="receiptForm.deductionCategory">
@@ -382,6 +406,12 @@
                 <input v-model.trim="receiptForm.description">
               </label>
             </form>
+            <t-alert
+              v-if="participatingCompanyError"
+              theme="error"
+              title="我方参与公司读取失败"
+              :message="participatingCompanyError"
+            />
             <div
               v-if="receiptMessage"
               class="receipt-message"
@@ -901,6 +931,9 @@ interface ReceiptFormState {
   amountYuan: string;
   counterpartyName: string;
   companyEntityId: string;
+  affiliateCompanyContractId: string;
+  affiliateSettlementFactId: string;
+  invoiceRecordId: string;
   deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   description: string;
   voucherFile: File | null;
@@ -962,6 +995,7 @@ const receiptMessage = ref("");
 const receiptMessageTone = ref<"success" | "danger">("success");
 const receiptForm = ref<ReceiptFormState>(createReceiptForm());
 const participatingCompanyOptions = ref<ProjectParticipatingCompanyOption[]>([]);
+const participatingCompanyError = ref("");
 const receiptVoucherInput = ref<HTMLInputElement | null>(null);
 const selectedUpstreamFundFact = ref<ProjectUpstreamFundFactReadModel | null>(null);
 const upstreamFundConfirmationVisible = ref(false);
@@ -1382,6 +1416,7 @@ async function loadOverview() {
   financingQuotaError.value = "";
   spotProcurementEnabled.value = false;
   receiptMessage.value = "";
+  participatingCompanyError.value = "";
   expenseMessage.value = "";
   expenseActionMessage.value = "";
   if (!projectId) {
@@ -1417,14 +1452,20 @@ async function loadOverview() {
               ? ""
               : formatUnknownApiError(error, "读取项目垫资额度失败")
         })),
-      fetchProjectParticipatingCompanyOptions(projectId).catch(() => [])
+      fetchProjectParticipatingCompanyOptions(projectId)
+        .then((options) => ({ options, error: "" }))
+        .catch((error: unknown) => ({
+          options: [],
+          error: formatUnknownApiError(error, "读取我方参与公司失败")
+        }))
     ]);
     if (
       overviewRequestOwner.isCurrent(requestOwner) &&
       selectedProjectId.value === projectId
     ) {
       overview.value = nextOverview;
-      participatingCompanyOptions.value = nextParticipatingCompanies;
+      participatingCompanyOptions.value = nextParticipatingCompanies.options;
+      participatingCompanyError.value = nextParticipatingCompanies.error;
       projectExpenses.value = nextExpenses;
       financingQuotaWorkbench.value = nextFinancingQuota.workbench;
       financingQuotaError.value = nextFinancingQuota.error;
@@ -1654,6 +1695,19 @@ async function submitReceipt() {
       amountCents,
       counterpartyName,
       ...(form.companyEntityId ? { companyEntityId: form.companyEntityId } : {}),
+      ...(form.factType === "affiliate_remittance_to_company"
+        ? {
+            affiliateCompanyContractId: requiredText(
+              form.affiliateCompanyContractId,
+              "施工企业—我方合同档案编号"
+            ),
+            affiliateSettlementFactId: requiredText(
+              form.affiliateSettlementFactId,
+              "施工企业结算档案编号"
+            ),
+            invoiceRecordId: requiredText(form.invoiceRecordId, "我方开票档案编号")
+          }
+        : {}),
       ...(form.factType === "affiliate_deduction"
         ? { deductionCategory: form.deductionCategory }
         : {}),
@@ -1789,6 +1843,9 @@ function createReceiptForm(
     amountYuan: "",
     counterpartyName: "",
     companyEntityId: "",
+    affiliateCompanyContractId: "",
+    affiliateSettlementFactId: "",
+    invoiceRecordId: "",
     deductionCategory: "management_fee",
     description: "",
     voucherFile: null

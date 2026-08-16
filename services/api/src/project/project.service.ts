@@ -153,6 +153,13 @@ const PROXY_PAYMENT_TYPE_LABELS: Record<ProjectProxyPaymentType, string> = {
   other: "其他"
 };
 const EFFECTIVE_SETTLEMENT_STATUSES = new Set(["effective", "partially_paid", "paid"]);
+type RemittanceLineage = {
+  companyEntityId: string | undefined;
+  affiliateCompanyContractId: string | undefined;
+  affiliateSettlementFactId: string | undefined;
+  invoiceRecordId: string | undefined;
+};
+
 interface SettlementExceptionQuotaApprovalNode {
   name: string;
   mode: "any";
@@ -990,6 +997,13 @@ export class ProjectService {
     );
     const upstreamSettlementId = optionalTrimmed(input.upstreamSettlementId);
     const companyEntityId = optionalTrimmed(input.companyEntityId);
+    const affiliateCompanyContractId = optionalTrimmed(
+      input.affiliateCompanyContractId
+    );
+    const affiliateSettlementFactId = optionalTrimmed(
+      input.affiliateSettlementFactId
+    );
+    const invoiceRecordId = optionalTrimmed(input.invoiceRecordId);
     const evidenceFileId = optionalTrimmed(input.evidenceFileId);
     const adjustsFactId = optionalTrimmed(input.adjustsFactId);
     const effectDirection = normalizeUpstreamFundEffectDirection(
@@ -1015,6 +1029,27 @@ export class ProjectService {
     ) {
       throw new BadRequestException("待核对到账差额只能追加重分类事实，不能直接覆盖");
     }
+    if (companyEntityId && factType !== "affiliate_remittance_to_company") {
+      throw new BadRequestException("我方公司主体只能用于施工企业向我方拨款事实");
+    }
+    if (
+      factType !== "affiliate_remittance_to_company" &&
+      (affiliateCompanyContractId || affiliateSettlementFactId || invoiceRecordId)
+    ) {
+      throw new BadRequestException("合同、结算和发票链路只能用于施工企业向我方拨款事实");
+    }
+    if (
+      factType === "affiliate_remittance_to_company" &&
+      entryKind === "original" &&
+      (!companyEntityId ||
+        !affiliateCompanyContractId ||
+        !affiliateSettlementFactId ||
+        !invoiceRecordId)
+    ) {
+      throw new BadRequestException(
+        "施工企业向我方公司拨款必须关联我方合同、已确认结算和有效发票"
+      );
+    }
 
     const requestFingerprint = upstreamFundRequestFingerprint({
       projectId,
@@ -1030,6 +1065,9 @@ export class ProjectService {
       deductionCategory,
       upstreamSettlementId,
       companyEntityId,
+      affiliateCompanyContractId,
+      affiliateSettlementFactId,
+      invoiceRecordId,
       evidenceFileId,
       description
     });
@@ -1052,7 +1090,7 @@ export class ProjectService {
 
         const project = await tx.project.findFirst({
           where: { id: projectId, isActive: true },
-          select: { id: true, operatingLedgerEffectiveDate: true }
+          select: { id: true }
         });
         if (!project) {
           throw new NotFoundException("项目不存在或已停用，请刷新后重试");
@@ -1065,28 +1103,6 @@ export class ProjectService {
             : null;
         if (!recordedByRoleKey) {
           throw new ForbiddenException("只有项目财务人员或财务主管可以登记上游资金事实");
-        }
-
-        if (
-          factType === "affiliate_remittance_to_company" &&
-          project.operatingLedgerEffectiveDate &&
-          !companyEntityId
-        ) {
-          throw new BadRequestException("施工企业向我方公司拨款必须明确具体我方公司");
-        }
-        if (companyEntityId) {
-          const participant = await tx.projectParticipatingCompany.findFirst({
-            where: {
-              projectId,
-              companyEntityId,
-              effectiveFrom: { lte: occurredAt },
-              OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }]
-            },
-            select: { companyEntityId: true }
-          });
-          if (!participant) {
-            throw new BadRequestException("上游资金指定的我方公司在事实日未参与当前项目");
-          }
         }
 
         if (upstreamSettlementId) {
@@ -1107,6 +1123,10 @@ export class ProjectService {
         let adjustmentTarget: {
           affiliateAssignmentId: string;
           affiliateBusinessPartyVersionId: string;
+          companyEntityId: string | null;
+          affiliateCompanyContractId: string | null;
+          affiliateSettlementFactId: string | null;
+          invoiceRecordId: string | null;
         } | null = null;
         if (adjustsFactId) {
           await tx.$queryRaw(Prisma.sql`
@@ -1124,8 +1144,11 @@ export class ProjectService {
           }
           adjustmentTarget = {
             affiliateAssignmentId: target.affiliateAssignmentId,
-            affiliateBusinessPartyVersionId:
-              target.affiliateBusinessPartyVersionId
+            affiliateBusinessPartyVersionId: target.affiliateBusinessPartyVersionId,
+            companyEntityId: target.companyEntityId,
+            affiliateCompanyContractId: target.affiliateCompanyContractId,
+            affiliateSettlementFactId: target.affiliateSettlementFactId,
+            invoiceRecordId: target.invoiceRecordId
           };
           const existingAdjustments = await tx.projectUpstreamFundFact.findMany({
             where: {
@@ -1152,6 +1175,77 @@ export class ProjectService {
           businessPartyVersionId:
             adjustmentTarget?.affiliateBusinessPartyVersionId
         });
+
+        const remittanceLineage: RemittanceLineage = {
+          companyEntityId:
+            companyEntityId ?? adjustmentTarget?.companyEntityId ?? undefined,
+          affiliateCompanyContractId:
+            affiliateCompanyContractId ??
+            adjustmentTarget?.affiliateCompanyContractId ??
+            undefined,
+          affiliateSettlementFactId:
+            affiliateSettlementFactId ??
+            adjustmentTarget?.affiliateSettlementFactId ??
+            undefined,
+          invoiceRecordId:
+            invoiceRecordId ?? adjustmentTarget?.invoiceRecordId ?? undefined
+        };
+        if (factType === "affiliate_remittance_to_company") {
+          if (
+            !remittanceLineage.companyEntityId ||
+            !remittanceLineage.affiliateCompanyContractId ||
+            !remittanceLineage.affiliateSettlementFactId ||
+            !remittanceLineage.invoiceRecordId
+          ) {
+            throw new BadRequestException(
+              "施工企业向我方公司拨款必须保留完整合同、结算和发票链路"
+            );
+          }
+          if (adjustmentTarget) {
+            const targetLineage = {
+              companyEntityId: adjustmentTarget.companyEntityId,
+              affiliateCompanyContractId: adjustmentTarget.affiliateCompanyContractId,
+              affiliateSettlementFactId: adjustmentTarget.affiliateSettlementFactId,
+              invoiceRecordId: adjustmentTarget.invoiceRecordId
+            };
+            if (
+              (companyEntityId && companyEntityId !== targetLineage.companyEntityId) ||
+              (affiliateCompanyContractId &&
+                affiliateCompanyContractId !== targetLineage.affiliateCompanyContractId) ||
+              (affiliateSettlementFactId &&
+                affiliateSettlementFactId !== targetLineage.affiliateSettlementFactId) ||
+              (invoiceRecordId && invoiceRecordId !== targetLineage.invoiceRecordId)
+            ) {
+              throw new BadRequestException("拨款更正不得改变合同、结算、发票或我方公司主体");
+            }
+          }
+          await validateRemittanceLineage(tx, {
+            projectId,
+            counterpartyName,
+            affiliate,
+            companyEntityId: remittanceLineage.companyEntityId!,
+            affiliateCompanyContractId: remittanceLineage.affiliateCompanyContractId!,
+            affiliateSettlementFactId: remittanceLineage.affiliateSettlementFactId!,
+            invoiceRecordId: remittanceLineage.invoiceRecordId!
+          });
+        }
+        if (remittanceLineage.companyEntityId) {
+          await tx.$queryRaw(Prisma.sql`
+            SELECT "id" FROM "Project" WHERE "id" = ${projectId} FOR UPDATE
+          `);
+          const participant = await tx.projectParticipatingCompany.findFirst({
+            where: {
+              projectId,
+              companyEntityId: remittanceLineage.companyEntityId,
+              effectiveFrom: { lte: occurredAt },
+              OR: [{ endedAt: null }, { endedAt: { gt: occurredAt } }]
+            },
+            select: { companyEntityId: true }
+          });
+          if (!participant) {
+            throw new BadRequestException("上游资金指定的我方公司在事实日未参与当前项目");
+          }
+        }
 
         const evidence = evidenceFileId
           ? await tx.fileObject.findUnique({
@@ -1196,7 +1290,10 @@ export class ProjectService {
             basisType,
             deductionCategory,
             upstreamSettlementId,
-            companyEntityId,
+            companyEntityId: remittanceLineage.companyEntityId,
+            affiliateCompanyContractId: remittanceLineage.affiliateCompanyContractId,
+            affiliateSettlementFactId: remittanceLineage.affiliateSettlementFactId,
+            invoiceRecordId: remittanceLineage.invoiceRecordId,
             affiliateAssignmentId: affiliate.assignmentId,
             affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
             affiliateNameSnapshot: affiliate.name,
@@ -1227,7 +1324,10 @@ export class ProjectService {
             basisType,
             deductionCategory,
             upstreamSettlementId,
-            companyEntityId,
+            companyEntityId: remittanceLineage.companyEntityId,
+            affiliateCompanyContractId: remittanceLineage.affiliateCompanyContractId,
+            affiliateSettlementFactId: remittanceLineage.affiliateSettlementFactId,
+            invoiceRecordId: remittanceLineage.invoiceRecordId,
             affiliateAssignmentId: affiliate.assignmentId,
             affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
             evidenceFileId,
@@ -3730,6 +3830,90 @@ export class ProjectService {
   }
 }
 
+async function validateRemittanceLineage(
+  tx: Prisma.TransactionClient,
+  input: {
+    projectId: string;
+    companyEntityId: string;
+    affiliateCompanyContractId: string;
+    affiliateSettlementFactId: string;
+    invoiceRecordId: string;
+    counterpartyName: string;
+    affiliate: {
+      assignmentId: string;
+      businessPartyVersionId: string;
+      name: string;
+    };
+  }
+) {
+  const [companyContract, settlementFact, invoice] = await Promise.all([
+    tx.projectAffiliateCompanyContract.findFirst({
+      where: {
+        id: input.affiliateCompanyContractId,
+        projectId: input.projectId,
+        status: "confirmed"
+      },
+      select: {
+        companyEntityId: true,
+        companyEntityNameSnapshot: true,
+        affiliateAssignmentId: true,
+        affiliateBusinessPartyVersionId: true
+      }
+    }),
+    tx.projectAffiliateSettlementFact.findFirst({
+      where: {
+        id: input.affiliateSettlementFactId,
+        projectId: input.projectId,
+        status: "confirmed"
+      },
+      select: {
+        amountCents: true,
+        affiliateAssignmentId: true,
+        affiliateBusinessPartyVersionId: true
+      }
+    }),
+    tx.invoiceRecord.findFirst({
+      where: {
+        id: input.invoiceRecordId,
+        projectId: input.projectId,
+        status: "active",
+        invalidatedAt: null
+      },
+      select: {
+        sellerName: true,
+        buyerName: true
+      }
+    })
+  ]);
+  if (
+    !companyContract ||
+    companyContract.companyEntityId !== input.companyEntityId ||
+    companyContract.affiliateAssignmentId !== input.affiliate.assignmentId ||
+    companyContract.affiliateBusinessPartyVersionId !==
+      input.affiliate.businessPartyVersionId ||
+    companyContract.companyEntityNameSnapshot !== input.counterpartyName
+  ) {
+    throw new BadRequestException("施工企业向我方公司拨款的我方合同链路不匹配");
+  }
+  if (
+    !settlementFact ||
+    settlementFact.affiliateAssignmentId !== input.affiliate.assignmentId ||
+    settlementFact.affiliateBusinessPartyVersionId !==
+      input.affiliate.businessPartyVersionId ||
+    settlementFact.amountCents <= 0n
+  ) {
+    throw new BadRequestException("施工企业向我方公司拨款必须关联已确认且有效的施工企业结算");
+  }
+  if (
+    !invoice ||
+    invoice.sellerName !== companyContract.companyEntityNameSnapshot ||
+    invoice.buyerName !== input.affiliate.name
+  ) {
+    throw new BadRequestException("施工企业向我方公司拨款必须关联我方开具给施工企业的有效发票");
+  }
+  return { payableAmountCents: settlementFact.amountCents };
+}
+
 function isProjectOptionPosition(positionKey: RoleKey | undefined): boolean {
   return !!positionKey && PROJECT_OPTION_POSITIONS.has(positionKey);
 }
@@ -4614,6 +4798,9 @@ function toUpstreamFundFactReadModel(fact: {
   deductionCategory: string | null;
   upstreamSettlementId: string | null;
   companyEntityId?: string | null;
+  affiliateCompanyContractId?: string | null;
+  affiliateSettlementFactId?: string | null;
+  invoiceRecordId?: string | null;
   affiliateAssignmentId: string;
   affiliateBusinessPartyVersionId: string;
   affiliateNameSnapshot: string;
@@ -4661,6 +4848,9 @@ function toUpstreamFundFactReadModel(fact: {
     deductionCategory: fact.deductionCategory,
     upstreamSettlementId: fact.upstreamSettlementId,
     companyEntityId: fact.companyEntityId ?? null,
+    affiliateCompanyContractId: fact.affiliateCompanyContractId ?? null,
+    affiliateSettlementFactId: fact.affiliateSettlementFactId ?? null,
+    invoiceRecordId: fact.invoiceRecordId ?? null,
     affiliateAssignmentId: fact.affiliateAssignmentId,
     affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId,
     affiliateNameSnapshot: fact.affiliateNameSnapshot,

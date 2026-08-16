@@ -38,7 +38,7 @@ test("manifest derives all 91 pending tests as executable local coverage", () =>
     coveredTests: 91,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 134,
+    migrationCount: 135,
     terminalMigration:
       "20260816110000_pol10_operating_takeover",
     terminalMigrationChecksum:

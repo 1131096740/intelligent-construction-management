@@ -331,7 +331,9 @@ describe("ProjectAffiliateBusinessService", () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("rejects a post-effective normal payment without an approved payment request", async () => {
+  it.each(["normal", "advance", "direct_contract"] as const)(
+    "rejects a post-effective %s payment without an approved payment request",
+    async (paymentKind) => {
     const tx = {
       project: {
         findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
@@ -350,20 +352,23 @@ describe("ProjectAffiliateBusinessService", () => {
     };
     const service = new ProjectAffiliateBusinessService(prisma as never);
 
-    await expect(
-      service.recordPaymentFact("project-1", "finance-1", {
+      await expect(
+        service.recordPaymentFact("project-1", "finance-1", {
         contractLedgerId: "contract-ledger-1",
-        settlementLedgerId: "settlement-ledger-1",
+        ...(paymentKind === "normal"
+          ? { settlementLedgerId: "settlement-ledger-1" }
+          : {}),
         counterpartyName: "材料供应商",
         paidAt: "2026-08-02",
         amountCents: "5000",
-        paymentKind: "normal",
+        paymentKind,
         externalPaymentReference: "BANK-20260802-001",
         basisType: "oral",
         idempotencyKey: "a87e7a4f-57c7-4c75-8a75-702d02b5d90a"
-      })
-    ).rejects.toThrow("经营账生效日后的正常施工企业付款必须关联已审批付款申请");
-  });
+        })
+      ).rejects.toThrow("经营账生效日后的施工企业付款必须关联已审批付款申请");
+    }
+  );
 
   it("records an external settlement without creating company approval work", async () => {
     const created = settlementFact({
@@ -428,6 +433,7 @@ describe("ProjectAffiliateBusinessService", () => {
         findFirst: jest.fn().mockResolvedValue({
           id: "payment-request-1",
           status: "approved_pending_payment",
+          sourceType: "settlement",
           paymentSubjectType: "affiliate",
           contractId: "internal-contract-1",
           contractVersionId: "internal-contract-version-1",

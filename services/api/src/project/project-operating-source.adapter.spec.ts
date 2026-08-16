@@ -36,6 +36,76 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     expect(input.impacts.some((impact) => impact.impactKind.startsWith("company_") || impact.impactKind === "company_project_funds_increase")).toBe(false);
   });
 
+  it("maps a company remittance with immutable contract, settlement, invoice, and payable lineage", async () => {
+    const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(
+      remittanceFundTx() as never,
+      {
+        projectId: "project-1",
+        sourceType: adapter.sourceType,
+        sourceBusinessId: "fund-fact-remittance-1"
+      }
+    );
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.factKind).toBe("fund_movement");
+    expect(input.operatingLevel).toBe("participating_company");
+    expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
+    expect(input.basisSnapshot).toEqual(
+      expect.objectContaining({
+        affiliateCompanyContractId: "company-contract-1",
+        affiliateSettlementFactId: "settlement-fact-1",
+        invoiceRecordId: "invoice-1",
+        payableAmountCents: "12000",
+        actualPaymentAmountCents: "10000",
+        companyUnpaidAmountCents: "2000",
+        companyDifferenceAmountCents: "-2000"
+      })
+    );
+  });
+
+  it("keeps construction-enterprise deductions out of final cost impacts", async () => {
+    const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
+    const tx = upstreamFundTx();
+    tx.projectUpstreamFundFact.findFirst.mockResolvedValue({
+      id: "fund-fact-1",
+      projectId: "project-1",
+      factType: "affiliate_deduction",
+      entryKind: "original",
+      adjustsFactId: null,
+      effectDirection: "increase",
+      occurredAt: new Date("2026-08-12T00:00:00.000Z"),
+      amountCents: 10000n,
+      counterpartyName: "施工企业甲",
+      basisType: "written",
+      deductionCategory: "management_fee",
+      upstreamSettlementId: null,
+      companyEntityId: null,
+      affiliateAssignmentId: "affiliate-assignment-1",
+      affiliateBusinessPartyVersionId: "affiliate-version-1",
+      affiliateNameSnapshot: "施工企业甲",
+      description: "施工企业扣款",
+      evidenceFileId: "file-1",
+      documentVersion: 1,
+      recordedByUserId: "finance-1",
+      confirmedByUserId: "finance-director-1",
+      confirmedAt: new Date("2026-08-12T01:00:00.000Z")
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "fund-fact-1"
+    });
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input.factKind).toBe("construction_enterprise_deduction");
+    expect(input.impacts).toEqual([
+      expect.objectContaining({ impactKind: "construction_enterprise_funds_decrease" })
+    ]);
+    expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
+  });
+
   it("maps construction-enterprise settlement and payment as cost then payable/funds settlement", async () => {
     const settlementAdapter = new ProjectAffiliateSettlementFactOperatingSourceAdapter();
     const settlementSnapshot = await settlementAdapter.readSourceSnapshot(
@@ -347,6 +417,56 @@ function upstreamFundTx() {
         confirmedByUserId: "finance-director-1",
         confirmedAt: new Date("2026-08-12T01:00:00.000Z")
       })
+    },
+    projectAffiliateAssignment: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "affiliate-assignment-1",
+        businessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        affiliateCreditCodeSnapshot: "91310000000000000X"
+      })
+    }
+  };
+}
+
+function remittanceFundTx() {
+  return {
+    project: {
+      findUnique: jest.fn().mockResolvedValue({
+        operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+      })
+    },
+    projectUpstreamFundFact: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "fund-fact-remittance-1",
+        projectId: "project-1",
+        factType: "affiliate_remittance_to_company",
+        entryKind: "original",
+        adjustsFactId: null,
+        effectDirection: "increase",
+        occurredAt: new Date("2026-08-12T00:00:00.000Z"),
+        amountCents: 10000n,
+        counterpartyName: "我方公司",
+        basisType: "written",
+        deductionCategory: null,
+        upstreamSettlementId: null,
+        companyEntityId: "company-1",
+        affiliateCompanyContractId: "company-contract-1",
+        affiliateSettlementFactId: "settlement-fact-1",
+        invoiceRecordId: "invoice-1",
+        affiliateAssignmentId: "affiliate-assignment-1",
+        affiliateBusinessPartyVersionId: "affiliate-version-1",
+        affiliateNameSnapshot: "施工企业甲",
+        description: "施工企业向我方拨款",
+        evidenceFileId: "file-1",
+        documentVersion: 1,
+        recordedByUserId: "finance-1",
+        confirmedByUserId: "finance-director-1",
+        confirmedAt: new Date("2026-08-12T01:00:00.000Z")
+      })
+    },
+    projectAffiliateSettlementFact: {
+      findFirst: jest.fn().mockResolvedValue({ amountCents: 12000n })
     },
     projectAffiliateAssignment: {
       findFirst: jest.fn().mockResolvedValue({

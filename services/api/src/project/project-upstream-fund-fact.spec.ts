@@ -520,6 +520,31 @@ describe("ProjectService upstream fund facts", () => {
           return stored;
         })
       },
+      projectAffiliateCompanyContract: {
+        findFirst: jest.fn().mockResolvedValue({
+          companyEntityId: "company-1",
+          companyEntityNameSnapshot: "我方公司",
+          affiliateAssignmentId: "assignment-1",
+          affiliateBusinessPartyVersionId: "party-version-1"
+        })
+      },
+      projectAffiliateSettlementFact: {
+        findFirst: jest.fn().mockResolvedValue({
+          amountCents: 12000n,
+          affiliateAssignmentId: "assignment-1",
+          affiliateBusinessPartyVersionId: "party-version-1"
+        })
+      },
+      invoiceRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          sellerName: "我方公司",
+          buyerName: "挂靠建设集团"
+        })
+      },
+      projectParticipatingCompany: {
+        findFirst: jest.fn().mockResolvedValue({ companyEntityId: "company-1" })
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1" }]),
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -531,7 +556,11 @@ describe("ProjectService upstream fund facts", () => {
       basisType: "oral" as const,
       occurredAt: "2026-07-29T00:00:00.000Z",
       amountCents: "10000",
-      counterpartyName: "挂靠建设集团",
+      counterpartyName: "我方公司",
+      companyEntityId: "company-1",
+      affiliateCompanyContractId: "company-contract-1",
+      affiliateSettlementFactId: "settlement-fact-1",
+      invoiceRecordId: "invoice-1",
       idempotencyKey: "5a516b76-2822-4f52-a4ca-963d48221637"
     };
 
@@ -540,6 +569,10 @@ describe("ProjectService upstream fund facts", () => {
 
     expect(replay).toEqual(first);
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.projectParticipatingCompany.findFirst.mock.invocationCallOrder[0]
+    );
     await expect(
       service.recordUpstreamFundFact("project-1", "finance-1", {
         ...input,

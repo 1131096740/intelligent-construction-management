@@ -1755,6 +1755,9 @@ export interface ProjectUpstreamFundFactReadModel {
   deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other" | null;
   upstreamSettlementId: string | null;
   companyEntityId: string | null;
+  affiliateCompanyContractId: string | null;
+  affiliateSettlementFactId: string | null;
+  invoiceRecordId: string | null;
   affiliateNameSnapshot: string;
   description: string | null;
   evidenceFileId: string | null;
@@ -1776,6 +1779,9 @@ export interface RecordProjectUpstreamFundFactPayload {
   deductionCategory?: "management_fee" | "tax" | "deposit" | "insurance" | "other";
   upstreamSettlementId?: string;
   companyEntityId?: string;
+  affiliateCompanyContractId?: string;
+  affiliateSettlementFactId?: string;
+  invoiceRecordId?: string;
   evidenceFileId?: string;
   idempotencyKey: string;
   entryKind?: "original" | "correction" | "reversal" | "reclassification";

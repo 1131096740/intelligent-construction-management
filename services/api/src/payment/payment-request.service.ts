@@ -173,6 +173,20 @@ function optionalTrimmedText(value: string | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+function paymentSubjectForSigningSubject(
+  requestedSubject: string | undefined,
+  signingSubjectType: string | undefined
+): "our_company" | "affiliate" {
+  const expectedSubject = signingSubjectType === "affiliate" ? "affiliate" : "our_company";
+  if (signingSubjectType !== undefined && !["affiliate", "our_company"].includes(signingSubjectType)) {
+    throw new BadRequestException("合同签约主体不正确，不能发起付款申请");
+  }
+  if (requestedSubject !== undefined && requestedSubject !== expectedSubject) {
+    throw new BadRequestException("付款主体必须与合同签约主体一致");
+  }
+  return expectedSubject;
+}
+
 const PAYMENT_APPROVAL_NODES = [
   {
     name: "综合部主管",
@@ -543,6 +557,14 @@ export class PaymentRequestService {
       if (!SETTLEMENT_PAYMENT_CONTRACT_TYPES.has(settlementContract.contractTypeKey ?? "")) {
         throw new BadRequestException("该合同类型应从合同已冻结的付款阶段发起付款");
       }
+      const settlementContractVersion = await tx.contractVersion.findUnique({
+        where: { id: settlement.contractVersionId },
+        select: { signingSubjectType: true }
+      });
+      const paymentSubjectType = paymentSubjectForSigningSubject(
+        normalizedInput.paymentSubjectType,
+        settlementContractVersion?.signingSubjectType
+      );
       await this.assertHistoricalTakeoverPaymentReady(tx, {
         contractId: settlement.contractId,
         contractVersionId: settlement.contractVersionId,
@@ -587,7 +609,7 @@ export class PaymentRequestService {
           projectId: settlement.projectId,
           settlementId: settlement.id,
           sourceType: "settlement",
-          paymentSubjectType: normalizedInput.paymentSubjectType ?? "our_company",
+          paymentSubjectType,
           contractId: settlement.contractId,
           contractVersionId: settlement.contractVersionId,
           paymentTermsVersionId: settlement.paymentTermsVersionId,
@@ -643,7 +665,8 @@ export class PaymentRequestService {
         amountLimitType: true,
         effectiveAt: true,
         settlementMode: true,
-        settlementModeConfirmedAt: true
+        settlementModeConfirmedAt: true,
+        signingSubjectType: true
       }
     });
     if (!contractVersion) {
@@ -652,6 +675,10 @@ export class PaymentRequestService {
     if (contractVersion.status !== "effective") {
       throw new Error("当前合同尚未归档生效，不能发起付款申请");
     }
+    const paymentSubjectType = paymentSubjectForSigningSubject(
+      input.paymentSubjectType,
+      contractVersion.signingSubjectType
+    );
     const contract = await tx.contract.findUnique({
       where: { id: contractVersion.contractId },
       select: { projectId: true, contractTypeKey: true }
@@ -746,7 +773,7 @@ export class PaymentRequestService {
         projectId: contract.projectId,
         settlementId: null,
         sourceType: "contract_due",
-        paymentSubjectType: input.paymentSubjectType ?? "our_company",
+        paymentSubjectType,
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,
@@ -954,7 +981,8 @@ export class PaymentRequestService {
         contractId: true,
         status: true,
         amountCents: true,
-        effectiveAt: true
+        effectiveAt: true,
+        signingSubjectType: true
       }
     });
     if (!contractVersion) {
@@ -966,6 +994,10 @@ export class PaymentRequestService {
     if (!contractVersion.effectiveAt) {
       throw new Error("合同生效日期缺失，不能发起预付款申请");
     }
+    const paymentSubjectType = paymentSubjectForSigningSubject(
+      input.paymentSubjectType,
+      contractVersion.signingSubjectType
+    );
     await this.assertHistoricalTakeoverPaymentReady(tx, {
       contractId: contractVersion.contractId,
       contractVersionId: contractVersion.id,
@@ -1057,7 +1089,7 @@ export class PaymentRequestService {
         projectId: contract.projectId,
         settlementId: null,
         sourceType: "contract_advance",
-        paymentSubjectType: input.paymentSubjectType ?? "our_company",
+        paymentSubjectType,
         contractId: contractVersion.contractId,
         contractVersionId: contractVersion.id,
         paymentTermsVersionId: paymentTermsVersion.id,

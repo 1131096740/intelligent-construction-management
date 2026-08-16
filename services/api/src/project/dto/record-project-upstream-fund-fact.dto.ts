@@ -79,6 +79,18 @@ export class RecordProjectUpstreamFundFactDto {
   companyEntityId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "施工企业与我方合同档案编号必须是文字" })
+  affiliateCompanyContractId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "施工企业结算档案编号必须是文字" })
+  affiliateSettlementFactId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "发票档案编号必须是文字" })
+  invoiceRecordId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "依据文件编号必须是文字" })
   evidenceFileId?: string;
 

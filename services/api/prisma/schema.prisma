@@ -2591,6 +2591,9 @@ model ProjectUpstreamFundFact {
   deductionCategory               String?
   upstreamSettlementId            String?
   companyEntityId                 String?
+  affiliateCompanyContractId      String?
+  affiliateSettlementFactId       String?
+  invoiceRecordId                 String?
   affiliateAssignmentId           String
   affiliateBusinessPartyVersionId String
   affiliateNameSnapshot           String
@@ -2616,6 +2619,9 @@ model ProjectUpstreamFundFact {
   @@index([adjustsFactId])
   @@index([upstreamSettlementId])
   @@index([companyEntityId])
+  @@index([affiliateCompanyContractId])
+  @@index([affiliateSettlementFactId])
+  @@index([invoiceRecordId])
   @@index([evidenceFileId])
 }
 

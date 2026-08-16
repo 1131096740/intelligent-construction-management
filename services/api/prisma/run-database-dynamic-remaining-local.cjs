@@ -14,7 +14,7 @@ const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const IMAGE = "postgres:16";
 const CONFIRMATION = "LOCAL_PG16_DYNAMIC_GATE";
-const EXPECTED_MIGRATION_COUNT = 134;
+const EXPECTED_MIGRATION_COUNT = 135;
 const prismaRoot = path.join(root, "services", "api", "prisma");
 const PROJECT_OPERATING_PROFILE_MIGRATION =
   "20260814010000_project_operating_profile";

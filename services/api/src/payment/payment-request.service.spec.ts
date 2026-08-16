@@ -171,6 +171,9 @@ describe("PaymentRequestService", () => {
         contract: {
           findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "equipment_rental" })
         },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
+        },
         $queryRaw: jest.fn().mockResolvedValue([{ id: "project-1", isActive: true }]),
         projectReceipt: {
           findMany: jest.fn().mockResolvedValue(
@@ -559,6 +562,51 @@ describe("PaymentRequestService", () => {
         paidAmountCents: 0n
       }
     });
+  });
+
+  it("rejects a payment subject that differs from the contract signing subject at creation", async () => {
+    const cashPool = projectCashPoolTables();
+    const tx = {
+      ...cashPool.tables,
+      settlement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "settlement-1",
+          projectId: "project-1",
+          contractId: "contract-1",
+          contractVersionId: "contract-version-1",
+          paymentTermsVersionId: "terms-version-1",
+          status: "effective",
+          payableAmountCents: 100_000n,
+          paidAmountCents: 0n
+        })
+      },
+      contract: {
+        findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "affiliate" })
+      },
+      paymentRequest: {
+        findMany: jest.fn(),
+        create: jest.fn()
+      },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "contract-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-1" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+
+    await expect(
+      paymentService.create({
+        settlementId: "settlement-1",
+        paymentSubjectType: "our_company",
+        code: "FK-SUBJECT-MISMATCH-001",
+        requestedAmountCents: "50000"
+      })
+    ).rejects.toThrow("付款主体必须与合同签约主体一致");
+    expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
   it.each(["generic_contract", "machinery_rental", null, "unknown_contract_type"])(
@@ -2832,6 +2880,9 @@ describe("PaymentRequestService", () => {
       contract: {
         findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
       },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
+      },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({
           id: "settlement-1",
@@ -3207,6 +3258,9 @@ describe("PaymentRequestService", () => {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "settlement-1" }]),
       contract: {
         findUnique: jest.fn().mockResolvedValue({ contractTypeKey: "material_purchase" })
+      },
+      contractVersion: {
+        findUnique: jest.fn().mockResolvedValue({ signingSubjectType: "our_company" })
       },
       settlement: {
         findUnique: jest.fn().mockResolvedValue({

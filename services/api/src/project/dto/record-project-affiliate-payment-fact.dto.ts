@@ -38,7 +38,7 @@ export class RecordProjectAffiliatePaymentFactDto {
   settlementLedgerId?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
-  @IsString({ message: "已审批付款申请编号必须是文字" })
+  @IsString({ message: "已审批付款申请业务单号必须是文字" })
   paymentRequestId?: string;
 
   @IsRequiredText({
