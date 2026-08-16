@@ -32,6 +32,10 @@ import {
   CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
   ContractTakeoverHistoricalPaymentOperatingSourceAdapter
 } from "../contract-takeover/contract-takeover-operating-source.adapter";
+import {
+  OPERATING_TAKEOVER_SOURCE_TYPE,
+  OperatingTakeoverSourceAdapter
+} from "../operating-takeover/operating-takeover-source.adapter";
 import { SettlementOperatingSourceAdapter } from "../settlement/settlement-operating-source.adapter";
 import { OperatingLedgerService } from "./operating-ledger.service";
 import { OperatingSourceAdapterRegistry } from "./operating-source-adapter";
@@ -49,7 +53,8 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE,
   SPOT_PROCUREMENT_REFUND_SOURCE_TYPE,
   SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE,
-  CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE
+  CONTRACT_TAKEOVER_HISTORICAL_PAYMENT_SOURCE_TYPE,
+  OPERATING_TAKEOVER_SOURCE_TYPE
 ] as const);
 
 export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry {
@@ -66,7 +71,8 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
       new SpotProcurementPaymentExecutionOperatingSourceAdapter(),
       new SpotProcurementRefundOperatingSourceAdapter(),
       new SpotProcurementInvoiceOperatingSourceAdapter(),
-      new ContractTakeoverHistoricalPaymentOperatingSourceAdapter()
+      new ContractTakeoverHistoricalPaymentOperatingSourceAdapter(),
+      new OperatingTakeoverSourceAdapter()
     ],
     OPERATING_SOURCE_TYPES
   );

@@ -311,6 +311,30 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
     evidenceChecklist: [],
     evidenceFiles: [],
     corrections: [],
+    contractSide: {
+      revision: 1,
+      financeBasisRevision: 1,
+      signedAt: "2026-01-01T00:00:00.000Z",
+      historicalSettledCents: "60000000",
+      zeroSettlementDeclared: false,
+      performanceStatus: "performing",
+      settlementEvidenceSummary: "历史结算台账",
+      settlementEvidenceFileIds: [],
+      paymentTerms: { originalText: "按月结算付款", stages: [] },
+      contractFacts: {
+        contractNo: "HT-TAKEOVER-001",
+        contractName: "E2E 历史材料合同",
+        contractTypeKey: "generic_contract",
+        counterparty: "历史供应商",
+        originalAmountCents: "100000000",
+        settlementCutoffDate: "2026-06-30"
+      },
+      confirmedRevision: null,
+      confirmedByUserName: null,
+      confirmedAt: null,
+      updatedAt: "2026-07-03T10:00:00.000Z"
+    },
+    financeSide: null,
     appliedCorrections: [],
     postConfirmationVerification: {
       statusLabel: "未到核验",
@@ -420,11 +444,10 @@ test("opens the workbench shell and historical takeover entry", async ({ page })
   await expect(confirmationSummary.getByText("¥600,000.00")).toBeVisible();
   await expect(confirmationSummary.getByText("确认后会形成系统期初事实")).toBeVisible();
 
-  await page.locator(".ledger-panel").getByText("确认接管", { exact: true }).click();
-  const confirmDialog = page.locator(".t-dialog").filter({ hasText: "确认历史合同接管" });
+  await page.locator(".detail-panel").getByText("确认合同侧", { exact: true }).click();
+  const confirmDialog = page.locator(".t-dialog").filter({ hasText: "确认合同侧当前修订" });
   await expect(confirmDialog).toBeVisible();
-  await expect(confirmDialog.getByText("后续结算、付款申请、实付和审计")).toBeVisible();
-  await expect(confirmDialog.getByText("历史预付款已付/已扣回")).toBeVisible();
+  await expect(confirmDialog.getByText("合同主管将确认当前合同事实、历史结算、履约状态、付款条款和结算依据")).toBeVisible();
 });
 
 test("core detail pages expose flow summaries, actions, files, and timelines", async ({ page }) => {

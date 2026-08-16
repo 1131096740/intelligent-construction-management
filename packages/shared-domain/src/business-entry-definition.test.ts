@@ -208,6 +208,34 @@ describe("business entry definition registry", () => {
     );
   });
 
+  it("accepts decimal strings for money fields used by browser and spreadsheet entry", () => {
+    const registry = createBusinessEntryDefinitionRegistry([{
+      ...profileDefinition,
+      key: "money_entry",
+      fields: [{
+        ...profileDefinition.fields[0],
+        key: "amountYuan",
+        label: "金额",
+        type: "money",
+        required: true,
+        precision: 2
+      }]
+    }]);
+
+    expect(registry.validateDraft({
+      sceneKey: "money_entry",
+      definitionVersion: 1,
+      target: { entityType: "project", entityId: "project-1" },
+      values: { amountYuan: "100.05" }
+    }, ["finance_staff"]).valid).toBe(true);
+    expect(registry.validateDraft({
+      sceneKey: "money_entry",
+      definitionVersion: 1,
+      target: { entityType: "project", entityId: "project-1" },
+      values: { amountYuan: "100.005" }
+    }, ["finance_staff"]).errors).toContainEqual(expect.objectContaining({ code: "invalid_format" }));
+  });
+
   it("fails closed for an unknown scene, unknown field, and stale definition", () => {
     const registry = createBusinessEntryDefinitionRegistry([profileDefinition]);
 

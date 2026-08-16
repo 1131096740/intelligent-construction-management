@@ -12,10 +12,10 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_spot_procurement_concurrency_verify";
-const EXPECTED_MIGRATION_COUNT = 132;
+const EXPECTED_MIGRATION_COUNT = 133;
 const root = path.resolve(__dirname, "../../..");
 const TERMINAL_MIGRATION =
-  "20260816100000_pol17_business_entry_submission_snapshots";
+  "20260816110000_pol10_operating_takeover";
 const TERMINAL_MIGRATION_CHECKSUM = createHash("sha256")
   .update(readFileSync(path.join(
     root,

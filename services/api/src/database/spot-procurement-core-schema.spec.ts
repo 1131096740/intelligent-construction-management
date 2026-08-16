@@ -428,7 +428,9 @@ const POST_INVOICE_EVIDENCE_FILE_BINDINGS = new Set([
   "ContractTakeoverHistoricalPaymentVoucher.fileId",
   "ContractTakeoverExcessEvidence.fileId",
   "ProjectFinancingQuota.terminationSignatureFileId",
-  "ProjectUpstreamSettlement.confirmationSignatureFileId"
+  "ProjectUpstreamSettlement.confirmationSignatureFileId",
+  "OperatingTakeoverBatch.sourceFileId",
+  "OperatingTakeoverAttachmentLink.fileId"
 ]);
 
 const existedAtInvoiceEvidenceGuard = (table: string, column: string) =>
