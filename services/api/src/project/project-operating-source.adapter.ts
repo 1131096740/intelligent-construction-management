@@ -93,6 +93,15 @@ function absoluteMoney(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
 
+function signedSettlementAmount(fact: {
+  effectDirection: string;
+  amountCents: bigint;
+}): bigint {
+  return fact.effectDirection === "decrease"
+    ? -fact.amountCents
+    : fact.amountCents;
+}
+
 function sourceCore(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
@@ -405,16 +414,31 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
               projectId: row.projectId,
               status: "confirmed"
             },
-            select: { amountCents: true }
+            select: { ledgerId: true }
           })
         : Promise.resolve(null)
     ]);
+    const remittanceSettlementFacts = remittanceSettlement
+      ? await tx.projectAffiliateSettlementFact.findMany({
+          where: {
+            projectId: row.projectId,
+            ledgerId: remittanceSettlement.ledgerId,
+            status: "confirmed"
+          },
+          select: { effectDirection: true, amountCents: true }
+        })
+      : [];
+    const remittancePayableAmountCents = remittanceSettlementFacts.reduce(
+      (total, fact) => total + signedSettlementAmount(fact),
+      0n
+    );
     if (
       row.factType === "affiliate_remittance_to_company" &&
       (!row.affiliateCompanyContractId ||
         !row.affiliateSettlementFactId ||
         !row.invoiceRecordId ||
-        !remittanceSettlement)
+        !remittanceSettlement ||
+        remittancePayableAmountCents <= 0n)
     ) {
       throw new BadRequestException("施工企业向我方公司拨款缺少完整业务链路");
     }
@@ -437,7 +461,7 @@ export class ProjectUpstreamFundFactOperatingSourceAdapter
         affiliateSettlementFactId: row.affiliateSettlementFactId,
         invoiceRecordId: row.invoiceRecordId,
         ...(remittanceSettlement
-          ? { payableAmountCents: remittanceSettlement.amountCents.toString() }
+          ? { payableAmountCents: remittancePayableAmountCents.toString() }
           : {})
       }
     );

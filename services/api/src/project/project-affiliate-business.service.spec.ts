@@ -426,6 +426,56 @@ describe("ProjectAffiliateBusinessService", () => {
     expect(tx.approvalInstance.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a settlement correction below existing construction-enterprise payments", async () => {
+    const target = settlementFact({ amountCents: 100000n });
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: target.id }]),
+      project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }) },
+      ...roleTables("budget_staff"),
+      projectAffiliateContractFact: {
+        findMany: jest.fn().mockResolvedValue([contractFact()])
+      },
+      projectAffiliateSettlementFact: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(target),
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 100000n }
+        ]),
+        create: jest.fn()
+      },
+      projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([
+          { effectDirection: "increase", amountCents: 80000n }
+        ])
+      },
+      projectUpstreamFundFact: {
+        findMany: jest.fn().mockResolvedValue([])
+      }
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+        callback(tx)
+      )
+    };
+    const service = new ProjectAffiliateBusinessService(prisma as never);
+
+    await expect(
+      service.recordSettlementFact("project-1", "budget-1", {
+        contractLedgerId: "contract-ledger-1",
+        counterpartyName: "材料供应商",
+        settledAt: "2026-07-28",
+        periodLabel: "2026-07",
+        amountCents: "30000",
+        entryKind: "correction",
+        effectDirection: "decrease",
+        adjustsFactId: target.id,
+        basisType: "oral",
+        idempotencyKey: "settlement-correction-below-payment"
+      })
+    ).rejects.toThrow("施工企业结算有效金额不能低于已登记付款金额");
+    expect(tx.projectAffiliateSettlementFact.create).not.toHaveBeenCalled();
+  });
+
   it("records a normal affiliate payment only against a confirmed matching settlement", async () => {
     const created = paymentFact();
     const tx = {

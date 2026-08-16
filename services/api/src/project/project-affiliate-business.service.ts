@@ -626,6 +626,14 @@ export class ProjectAffiliateBusinessService {
             amountCents,
             "施工企业结算"
           );
+          await assertSettlementAdjustmentCapacity(tx, {
+            projectId,
+            settlementLedgerId: target.ledgerId,
+            settlementFactId: target.id,
+            entryKind,
+            effectDirection,
+            amountCents
+          });
         }
         const evidence = await validateExclusiveEvidence(
           tx,
@@ -849,7 +857,7 @@ export class ProjectAffiliateBusinessService {
         const contract = await loadActiveContractLedger(tx, projectId, contractLedgerId, true);
         assertSameCounterparty(contract.counterpartyName, counterpartyName, "付款");
         const settlement = settlementLedgerId
-          ? await loadActiveSettlementLedger(tx, projectId, settlementLedgerId)
+          ? await loadActiveSettlementLedger(tx, projectId, settlementLedgerId, true)
           : null;
         if (
           settlement &&
@@ -1176,6 +1184,19 @@ export class ProjectAffiliateBusinessService {
       if (!fact) throw new NotFoundException("待确认施工企业外部事实不存在");
       if (fact.status !== "pending_confirm") {
         throw new BadRequestException("当前施工企业外部事实状态不可确认");
+      }
+      if (businessType === "settlement") {
+        const settlementFact = fact as unknown as AffiliateSettlementFactRow;
+        await lockSettlementLedger(tx, projectId, settlementFact.ledgerId);
+        await assertSettlementEffectiveAmountCoversExistingPayments(
+          tx,
+          projectId,
+          settlementFact.ledgerId,
+          undefined,
+          settlementFact.entryKind === "original"
+            ? settlementFact.id
+            : settlementFact.adjustsFactId ?? undefined
+        );
       }
       const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
       assertCanConfirm(businessType, fact.basisType, roleKeys);
@@ -1628,8 +1649,12 @@ async function loadActiveContractLedger(
 async function loadActiveSettlementLedger(
   tx: Prisma.TransactionClient,
   projectId: string,
-  ledgerId: string
+  ledgerId: string,
+  lock = false
 ) {
+  if (lock) {
+    await lockSettlementLedger(tx, projectId, ledgerId);
+  }
   const facts = await tx.projectAffiliateSettlementFact.findMany({
     where: { projectId, ledgerId, status: "confirmed" },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }]
@@ -1644,6 +1669,107 @@ async function loadActiveSettlementLedger(
     throw new BadRequestException("关联施工企业结算有效金额已归零，不能登记付款");
   }
   return { ...original, netAmountCents };
+}
+
+async function lockSettlementLedger(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  ledgerId: string
+) {
+  await tx.$queryRaw(Prisma.sql`
+    SELECT "id"
+    FROM "ProjectAffiliateSettlementFact"
+    WHERE "projectId" = ${projectId}
+      AND "ledgerId" = ${ledgerId}
+      AND "entryKind" = 'original'
+    FOR UPDATE
+  `);
+}
+
+async function assertSettlementAdjustmentCapacity(
+  tx: Prisma.TransactionClient,
+  input: {
+    projectId: string;
+    settlementLedgerId: string;
+    settlementFactId: string;
+    entryKind: ProjectAffiliateEntryKind;
+    effectDirection: EffectDirection;
+    amountCents: bigint;
+  }
+) {
+  const facts = await tx.projectAffiliateSettlementFact.findMany({
+    where: {
+      projectId: input.projectId,
+      ledgerId: input.settlementLedgerId,
+      status: { in: ["pending_confirm", "confirmed"] }
+    },
+    select: { effectDirection: true, amountCents: true }
+  });
+  const current = netMoneyFacts(facts);
+  const next =
+    input.entryKind === "reversal"
+      ? 0n
+      : current +
+        (input.effectDirection === "decrease"
+          ? -input.amountCents
+          : input.amountCents);
+  await assertSettlementEffectiveAmountCoversExistingPayments(
+    tx,
+    input.projectId,
+    input.settlementLedgerId,
+    next,
+    input.settlementFactId
+  );
+}
+
+async function assertSettlementEffectiveAmountCoversExistingPayments(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  settlementLedgerId: string,
+  proposedNetAmountCents?: bigint,
+  settlementFactId?: string
+) {
+  const effectiveAmountCents =
+    proposedNetAmountCents ??
+    netMoneyFacts(
+      await tx.projectAffiliateSettlementFact.findMany({
+        where: {
+          projectId,
+          ledgerId: settlementLedgerId,
+          status: { in: ["pending_confirm", "confirmed"] }
+        },
+        select: { effectDirection: true, amountCents: true }
+      })
+    );
+  const paymentAmountCents = netMoneyFacts(
+    await tx.projectAffiliatePaymentFact.findMany({
+      where: {
+        projectId,
+        settlementLedgerId,
+        status: { in: ["pending_confirm", "confirmed"] }
+      },
+      select: { effectDirection: true, amountCents: true }
+    })
+  );
+  if (effectiveAmountCents < paymentAmountCents) {
+    throw new BadRequestException("施工企业结算有效金额不能低于已登记付款金额");
+  }
+  const remittanceAmountCents = settlementFactId
+    ? netMoneyFacts(
+        await tx.projectUpstreamFundFact.findMany({
+          where: {
+            projectId,
+            factType: "affiliate_remittance_to_company",
+            affiliateSettlementFactId: settlementFactId,
+            status: { in: ["pending_confirm", "confirmed"] }
+          },
+          select: { effectDirection: true, amountCents: true }
+        })
+      )
+    : 0n;
+  if (effectiveAmountCents < remittanceAmountCents) {
+    throw new BadRequestException("施工企业结算有效金额不能低于已登记拨款金额");
+  }
 }
 
 function assertContractAdjustmentTarget(

@@ -1217,6 +1217,12 @@ export class ProjectService {
             existingAdjustments,
             { factType, entryKind, effectDirection, amountCents }
           );
+          if (
+            upstreamSettlementId !== undefined &&
+            upstreamSettlementId !== target.upstreamSettlementId
+          ) {
+            throw new BadRequestException("业主付款更正不得改变原上游结算关联");
+          }
         }
 
         const resolvedUpstreamSettlementId =

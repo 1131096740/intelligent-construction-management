@@ -150,10 +150,10 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
         affiliateCompanyContractId: "company-contract-1",
         affiliateSettlementFactId: "settlement-fact-1",
         invoiceRecordId: "invoice-1",
-        payableAmountCents: "12000",
+        payableAmountCents: "10000",
         actualPaymentAmountCents: "10000",
-        companyUnpaidAmountCents: "2000",
-        companyDifferenceAmountCents: "-2000"
+        companyUnpaidAmountCents: "0",
+        companyDifferenceAmountCents: "0"
       })
     );
   });
@@ -594,7 +594,13 @@ function remittanceFundTx() {
       })
     },
     projectAffiliateSettlementFact: {
-      findFirst: jest.fn().mockResolvedValue({ amountCents: 12000n })
+      findFirst: jest.fn().mockResolvedValue({
+        ledgerId: "settlement-ledger-1"
+      }),
+      findMany: jest.fn().mockResolvedValue([
+        { effectDirection: "increase", amountCents: 12000n },
+        { effectDirection: "decrease", amountCents: 2000n }
+      ])
     },
     projectAffiliateAssignment: {
       findFirst: jest.fn().mockResolvedValue({

@@ -233,6 +233,19 @@ describe("ProjectService upstream fund facts", () => {
       adjustsFactId: "owner-payment-1",
       entryKind: "reversal"
     }));
+
+    await expect(service.recordUpstreamFundFact("project-1", "finance-1", {
+      factType: "owner_payment_to_affiliate",
+      basisType: "oral",
+      occurredAt: "2026-07-29T00:00:00.000Z",
+      amountCents: "10000",
+      counterpartyName: "建设单位",
+      entryKind: "correction",
+      effectDirection: "decrease",
+      adjustsFactId: "owner-payment-1",
+      upstreamSettlementId: "other-upstream-settlement-1",
+      idempotencyKey: "owner-payment-different-lineage-idempotency"
+    })).rejects.toThrow("业主付款更正不得改变原上游结算关联");
   });
 
   it("records an oral unresolved difference without inventing a file, cash, or cost fact", async () => {
