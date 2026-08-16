@@ -1,4 +1,13 @@
+import type { ColumnRegular } from "@revolist/vue3-datagrid";
+
 export type JgBusinessGridRow = Record<string, string>;
+
+export const JG_BUSINESS_SEARCH_SELECT_EDITOR = "jg-business-search-select";
+
+export interface JgBusinessGridColumn extends ColumnRegular {
+  businessSelectOptions?: ReadonlyArray<{ label: string; value: string }>;
+  businessSelectMultiple?: boolean;
+}
 
 export interface JgBusinessGridCellEdit {
   rowIndex: number;

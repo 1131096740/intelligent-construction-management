@@ -1,18 +1,25 @@
 <script setup lang="ts">
-import type { ColumnRegular } from "@revolist/vue3-datagrid";
 import type {
   BusinessEntryDraftPayload,
-  BusinessEntryFieldDefinition,
   BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
+  assertBusinessEntryBulkRowCount,
   businessEntryDraftFromForm,
+  formatBusinessEntryEditableValue,
+  normalizeBusinessEntryValues,
+  visibleBusinessEntryFields,
+  visibleBusinessEntryValues,
   type BusinessEntryCellError
 } from "../lib/business-entry-adapters";
 import JgBusinessGrid from "./JgBusinessGrid.vue";
 import BusinessEntryMobileCards from "./BusinessEntryMobileCards.vue";
-import type { JgBusinessGridRow } from "./jg-business-grid.config";
+import {
+  JG_BUSINESS_SEARCH_SELECT_EDITOR,
+  type JgBusinessGridColumn,
+  type JgBusinessGridRow
+} from "./jg-business-grid.config";
 
 const props = withDefaults(defineProps<{
   definition: BusinessEntrySceneDefinition;
@@ -26,7 +33,12 @@ const props = withDefaults(defineProps<{
   optionsByField: () => ({})
 });
 const emit = defineEmits<{ "update:modelValue": [value: BusinessEntryDraftPayload[]] }>();
-const isMobile = ref(false);
+const mobileMedia = "(max-width: 767px)";
+const isMobile = ref(
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia(mobileMedia).matches
+);
 let mobileQuery: MediaQueryList | null = null;
 const errorLookup = computed(() => new Map(
   props.errors.map((error) => [`${error.rowIndex}:${error.fieldKey}`, error])
@@ -34,47 +46,69 @@ const errorLookup = computed(() => new Map(
 const hasStaleDraft = computed(() => props.modelValue.some(
   (draft) => draft.definitionVersion !== props.definition.version
 ));
+const fieldByKey = computed(() => new Map(
+  props.definition.fields.map((field) => [field.key, field])
+));
+const visibleFieldKeySets = computed(() => props.modelValue.map((draft) => new Set(
+  visibleBusinessEntryFields(props.definition, draft.values).map((field) => field.key)
+)));
+const visibleFieldKeys = computed(() => new Set(
+  visibleFieldKeySets.value.flatMap((fieldKeys) => [...fieldKeys])
+));
+const visibleFields = computed(() => props.definition.fields.filter(
+  (field) => !field.visibleWhen || visibleFieldKeys.value.has(field.key)
+));
 
-function editableText(field: BusinessEntryFieldDefinition, value: unknown) {
-  if (value === undefined || value === null) return "";
-  if (field.type === "boolean") return value === true || value === "true" ? "是" : "否";
-  if (field.type === "single_select") {
-    return field.options?.find((option) => option.value === value)?.label ?? String(value);
-  }
-  if (field.type === "multi_select") {
-    const values = Array.isArray(value) ? value : [value];
-    return values.map((item) =>
-      field.options?.find((option) => option.value === item)?.label ?? String(item)
-    ).join("、");
-  }
-  return String(value);
-}
-
-const rows = computed<JgBusinessGridRow[]>(() => props.modelValue.map((draft) =>
-  Object.fromEntries(props.definition.fields.map((field) => [
+const rows = computed<JgBusinessGridRow[]>(() => props.modelValue.map((draft, rowIndex) =>
+  Object.fromEntries(visibleFields.value.map((field) => [
     field.key,
-    editableText(field, draft.values[field.key])
+    visibleFieldKeySets.value[rowIndex]?.has(field.key)
+      ? formatBusinessEntryEditableValue(
+          field,
+          draft.values[field.key],
+          props.optionsByField[field.key]
+        )
+      : ""
   ]))
 ));
-const columns = computed<ColumnRegular[]>(() => props.definition.fields.map((field) => ({
-  prop: field.key,
-  name: field.required ? `${field.display.gridColumn} *` : field.display.gridColumn,
-  size: Math.max(120, Math.min(260, field.display.gridColumn.length * 18 + 48)),
-  readonly: props.readonly || hasStaleDraft.value || Boolean(field.readOnly),
-  cellProperties: ({ rowIndex }: { rowIndex: number }) => {
-    const error = errorLookup.value.get(`${rowIndex}:${field.key}`);
-    return error ? {
-      className: "business-entry-grid__cell--error",
-      "aria-invalid": "true",
-      "data-cell-error": `${rowIndex}:${field.key}`,
-      title: error.message
-    } : undefined;
-  }
-})));
+const columns = computed<JgBusinessGridColumn[]>(() => visibleFields.value.map((field) => {
+  const usesBusinessSelect = [
+    "company",
+    "counterparty",
+    "contract",
+    "settlement",
+    "single_select",
+    "multi_select"
+  ].includes(field.type);
+  const selectOptions = usesBusinessSelect
+    ? [...(props.optionsByField[field.key] ?? field.options ?? [])]
+    : [];
+  return {
+    prop: field.key,
+    name: field.required ? `${field.display.gridColumn} *` : field.display.gridColumn,
+    size: Math.max(120, Math.min(260, field.display.gridColumn.length * 18 + 48)),
+    readonly: ({ rowIndex }) => props.readonly || hasStaleDraft.value || Boolean(field.readOnly) ||
+      !visibleFieldKeySets.value[rowIndex]?.has(field.key),
+    ...(usesBusinessSelect ? {
+      editor: JG_BUSINESS_SEARCH_SELECT_EDITOR,
+      businessSelectOptions: selectOptions,
+      businessSelectMultiple: field.type === "multi_select"
+    } : {}),
+    cellProperties: ({ rowIndex }: { rowIndex: number }) => {
+      const error = errorLookup.value.get(`${rowIndex}:${field.key}`);
+      return error ? {
+        className: "business-entry-grid__cell--error",
+        "aria-invalid": "true",
+        "data-cell-error": `${rowIndex}:${field.key}`,
+        title: error.message
+      } : undefined;
+    }
+  };
+}));
 
 onMounted(() => {
   if (typeof window.matchMedia !== "function") return;
-  mobileQuery = window.matchMedia("(max-width: 767px)");
+  mobileQuery = window.matchMedia(mobileMedia);
   isMobile.value = mobileQuery.matches;
   mobileQuery.addEventListener("change", updateMobileMode);
 });
@@ -86,14 +120,38 @@ function updateMobileMode(event: MediaQueryListEvent) {
 
 function updateRows(nextRows: JgBusinessGridRow[]) {
   if (hasStaleDraft.value) return;
+  assertBusinessEntryBulkRowCount(props.definition, nextRows.length);
   emit("update:modelValue", nextRows.flatMap((row, index) => {
     const current = props.modelValue[index];
     if (!current?.target) return [];
+    const rawValues = Object.fromEntries(Object.entries(row).map(([key, value]) => {
+      const field = fieldByKey.value.get(key);
+      const currentValue = current.values[key];
+      if (
+        field &&
+        Object.prototype.hasOwnProperty.call(current.values, key) &&
+        formatBusinessEntryEditableValue(
+          field,
+          currentValue,
+          props.optionsByField[key]
+        ) === value
+      ) {
+        return [key, currentValue];
+      }
+      return [key, value];
+    }));
+    const normalizedValues = normalizeBusinessEntryValues(
+      props.definition,
+      rawValues,
+      props.optionsByField
+    );
+    const visibleValues = visibleBusinessEntryValues(props.definition, normalizedValues);
     return [businessEntryDraftFromForm(
       props.definition,
       current.target,
-      row,
-      current.expectedRevision
+      visibleValues,
+      current.expectedRevision,
+      props.optionsByField
     )];
   }));
 }
@@ -121,7 +179,7 @@ function updateRows(nextRows: JgBusinessGridRow[]) {
       :definition="definition"
       :model-value="modelValue"
       :errors="errors"
-      :readonly="readonly"
+      :readonly="readonly || hasStaleDraft"
       :options-by-field="optionsByField"
       @update:model-value="emit('update:modelValue', $event)"
     />

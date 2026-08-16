@@ -1,6 +1,7 @@
 import type {
   BusinessEntryDraftPayload,
   BusinessEntryFieldDefinition,
+  BusinessEntryOption,
   BusinessEntrySceneDefinition,
   BusinessEntrySubmissionTarget,
   BusinessEntryValidationResult
@@ -21,16 +22,52 @@ export interface BusinessEntryImportPlan {
   drafts: BusinessEntryDraftPayload[];
 }
 
-function optionValue(field: BusinessEntryFieldDefinition, value: unknown) {
+export function assertBusinessEntryBulkRowCount(
+  definition: BusinessEntrySceneDefinition,
+  rowCount: number,
+  fields: readonly BusinessEntryFieldDefinition[] = definition.fields.filter(
+    (field) => !field.readOnly
+  )
+) {
+  if (rowCount <= 1) return;
+  if (fields.some((field) => !field.bulk.enabled)) {
+    throw new Error("当前业务字段只能逐条录入");
+  }
+  const maximumRows = Math.min(...fields.map(
+    (field) => field.bulk.maxRows ?? Number.POSITIVE_INFINITY
+  ));
+  if (Number.isFinite(maximumRows) && rowCount > maximumRows) {
+    throw new Error(`批量录入最多允许 ${maximumRows} 条业务数据`);
+  }
+}
+
+type BusinessEntryOptionsByField = Readonly<Record<string, readonly BusinessEntryOption[]>>;
+
+function fieldOptions(
+  field: BusinessEntryFieldDefinition,
+  options?: readonly BusinessEntryOption[]
+) {
+  return options ?? field.options ?? [];
+}
+
+function optionValue(
+  field: BusinessEntryFieldDefinition,
+  value: unknown,
+  options?: readonly BusinessEntryOption[]
+) {
   if (typeof value !== "string") return value;
   const normalized = value.trim();
-  const option = field.options?.find(
+  const option = fieldOptions(field, options).find(
     (candidate) => candidate.value === normalized || candidate.label === normalized
   );
   return option?.value ?? normalized;
 }
 
-function normalizeFieldValue(field: BusinessEntryFieldDefinition, value: unknown): unknown {
+function normalizeFieldValue(
+  field: BusinessEntryFieldDefinition,
+  value: unknown,
+  options?: readonly BusinessEntryOption[]
+): unknown {
   if (value === undefined || value === null) return value;
   if (field.type === "boolean") {
     if (value === true || value === false) return value;
@@ -39,19 +76,28 @@ function normalizeFieldValue(field: BusinessEntryFieldDefinition, value: unknown
     if (normalized === "否" || normalized === "false") return false;
     return normalized;
   }
-  if (field.type === "single_select") return optionValue(field, value);
+  if (["company", "counterparty", "contract", "settlement", "single_select"]
+    .includes(field.type)) return optionValue(field, value, options);
   if (field.type === "multi_select") {
     const values = Array.isArray(value)
       ? value
       : String(value).split(/[、，,;；]/u);
     return values
-      .map((item) => optionValue(field, item))
+      .map((item) => optionValue(field, item, options))
       .filter((item) => item !== "");
   }
   if (field.type === "date" && value instanceof Date) {
-    return value.toISOString().slice(0, 10);
+    const year = String(value.getFullYear()).padStart(4, "0");
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   }
-  if (field.type === "money" || field.type === "number" || field.type === "date") {
+  if (field.type === "number") {
+    const normalized = typeof value === "string" ? value.trim() : String(value);
+    const parsed = Number(normalized);
+    return normalized && Number.isFinite(parsed) ? parsed : normalized;
+  }
+  if (field.type === "money" || field.type === "date") {
     return typeof value === "string" ? value.trim() : String(value);
   }
   return value;
@@ -59,36 +105,90 @@ function normalizeFieldValue(field: BusinessEntryFieldDefinition, value: unknown
 
 export function normalizeBusinessEntryValues(
   definition: BusinessEntrySceneDefinition,
-  rawValues: Readonly<Record<string, unknown>>
+  rawValues: Readonly<Record<string, unknown>>,
+  optionsByField: BusinessEntryOptionsByField = {}
 ): Record<string, unknown> {
   const fields = new Map(definition.fields.map((field) => [field.key, field]));
   return Object.fromEntries(Object.entries(rawValues).map(([key, value]) => {
     const field = fields.get(key);
-    return [key, field ? normalizeFieldValue(field, value) : value];
+    return [key, field
+      ? normalizeFieldValue(field, value, optionsByField[key])
+      : value];
   }));
+}
+
+function visibilityConditionMatches(
+  field: BusinessEntryFieldDefinition,
+  values: Readonly<Record<string, unknown>>
+) {
+  const condition = field.visibleWhen;
+  if (!condition) return true;
+  const actual = values[condition.fieldKey];
+  if (condition.operator === "eq") return actual === condition.value;
+  if (condition.operator === "neq") return actual !== condition.value;
+  const expected = Array.isArray(condition.value) ? condition.value : [condition.value];
+  const included = expected.some((item) => item === actual);
+  return condition.operator === "in" ? included : !included;
+}
+
+export function visibleBusinessEntryFields(
+  definition: BusinessEntrySceneDefinition,
+  values: Readonly<Record<string, unknown>>
+) {
+  return definition.fields.filter((field) => visibilityConditionMatches(field, values));
+}
+
+export function visibleBusinessEntryValues(
+  definition: BusinessEntrySceneDefinition,
+  values: Readonly<Record<string, unknown>>
+) {
+  const knownFieldKeys = new Set(definition.fields.map((field) => field.key));
+  let filteredValues = { ...values };
+  for (let iteration = 0; iteration <= definition.fields.length; iteration += 1) {
+    const visibleFieldKeys = new Set(
+      visibleBusinessEntryFields(definition, filteredValues).map((field) => field.key)
+    );
+    const nextValues = Object.fromEntries(Object.entries(filteredValues).filter(
+      ([key]) => !knownFieldKeys.has(key) || visibleFieldKeys.has(key)
+    ));
+    if (Object.keys(nextValues).length === Object.keys(filteredValues).length) {
+      return nextValues;
+    }
+    filteredValues = nextValues;
+  }
+  return filteredValues;
 }
 
 export function businessEntryDraftFromForm(
   definition: BusinessEntrySceneDefinition,
   target: BusinessEntrySubmissionTarget,
   values: Readonly<Record<string, unknown>>,
-  expectedRevision?: number
+  expectedRevision?: number,
+  optionsByField: BusinessEntryOptionsByField = {}
 ): BusinessEntryDraftPayload {
   return {
     sceneKey: definition.key,
     definitionVersion: definition.version,
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
     target: { ...target },
-    values: normalizeBusinessEntryValues(definition, values)
+    values: normalizeBusinessEntryValues(definition, values, optionsByField)
   };
 }
 
 export function businessEntryDraftsFromGrid(
   definition: BusinessEntrySceneDefinition,
   target: BusinessEntrySubmissionTarget,
-  rows: readonly Readonly<Record<string, unknown>>[]
+  rows: readonly Readonly<Record<string, unknown>>[],
+  optionsByField: BusinessEntryOptionsByField = {}
 ): BusinessEntryDraftPayload[] {
-  return rows.map((row) => businessEntryDraftFromForm(definition, target, row));
+  assertBusinessEntryBulkRowCount(definition, rows.length);
+  return rows.map((row) => businessEntryDraftFromForm(
+    definition,
+    target,
+    row,
+    undefined,
+    optionsByField
+  ));
 }
 
 export function businessEntryDraftsFromPaste(
@@ -104,7 +204,9 @@ export function businessEntryDraftsFromPaste(
     .split("\n")
     .filter((line, index, all) => line.length > 0 || index < all.length - 1);
 
-  return lines.filter((line) => line.trim()).map((line) => {
+  const populatedLines = lines.filter((line) => line.trim());
+  assertBusinessEntryBulkRowCount(definition, populatedLines.length, fields);
+  return populatedLines.map((line) => {
     const cells = line.split("\t");
     if (cells.length > fields.length) {
       throw new Error(`粘贴内容有 ${cells.length} 列，当前场景最多允许 ${fields.length} 列`);
@@ -211,5 +313,28 @@ export function formatBusinessEntryReadonlyValue(
     ).join("、");
   }
   if (field.type === "money") return `${String(value)} 元`;
+  return String(value);
+}
+
+export function formatBusinessEntryEditableValue(
+  field: BusinessEntryFieldDefinition,
+  value: unknown,
+  options?: readonly BusinessEntryOption[]
+): string {
+  if (value === undefined || value === null || value === "") return "";
+  if (field.type === "boolean") return value === true || value === "true" ? "是" : "否";
+  if (["company", "counterparty", "contract", "settlement", "single_select"]
+    .includes(field.type)) {
+    return fieldOptions(field, options).find((option) => option.value === value)?.label ?? (
+      field.type === "single_select" ? "未识别的业务选项" : "未识别的业务对象"
+    );
+  }
+  if (field.type === "multi_select") {
+    const values = Array.isArray(value) ? value : [value];
+    return values.map((item) =>
+      fieldOptions(field, options).find((option) => option.value === item)?.label ??
+        "未识别的业务选项"
+    ).join("、");
+  }
   return String(value);
 }

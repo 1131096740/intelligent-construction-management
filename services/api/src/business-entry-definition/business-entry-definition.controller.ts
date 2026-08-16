@@ -78,7 +78,7 @@ export class BusinessEntryDefinitionController {
           entityId: body.targetEntityId
         }
       },
-      file.buffer
+      file
     );
   }
 

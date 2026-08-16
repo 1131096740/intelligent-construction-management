@@ -4,7 +4,11 @@ import type {
   BusinessEntryDraftPayload,
   BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
-import { normalizeBusinessEntryValues } from "../lib/business-entry-adapters";
+import {
+  normalizeBusinessEntryValues,
+  visibleBusinessEntryFields,
+  visibleBusinessEntryValues
+} from "../lib/business-entry-adapters";
 import BusinessEntryFieldControl from "./BusinessEntryFieldControl.vue";
 
 const props = withDefaults(defineProps<{
@@ -23,12 +27,19 @@ const emit = defineEmits<{ "update:modelValue": [value: BusinessEntryDraftPayloa
 const errorMap = computed(() => new Map(
   props.errors.flatMap((error) => error.fieldKey ? [[error.fieldKey, error.message] as const] : [])
 ));
+const visibleFields = computed(() => visibleBusinessEntryFields(
+  props.definition,
+  props.modelValue.values
+));
 
 function updateField(key: string, value: unknown) {
-  const values = normalizeBusinessEntryValues(props.definition, {
+  const values = visibleBusinessEntryValues(props.definition, normalizeBusinessEntryValues(
+    props.definition,
+    {
     ...props.modelValue.values,
     [key]: value
-  });
+    }
+  ));
   emit("update:modelValue", { ...props.modelValue, values });
 }
 </script>
@@ -39,7 +50,7 @@ function updateField(key: string, value: unknown) {
     :aria-label="`${definition.name}单条业务表单`"
   >
     <BusinessEntryFieldControl
-      v-for="field in definition.fields"
+      v-for="field in visibleFields"
       :key="field.key"
       :field="field"
       :model-value="modelValue.values[field.key]"

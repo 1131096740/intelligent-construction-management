@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import type {
   BusinessEntryDraftPayload,
   BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
-import { normalizeBusinessEntryValues, type BusinessEntryCellError } from "../lib/business-entry-adapters";
+import {
+  normalizeBusinessEntryValues,
+  visibleBusinessEntryFields,
+  visibleBusinessEntryValues,
+  type BusinessEntryCellError
+} from "../lib/business-entry-adapters";
 import BusinessEntryFieldControl from "./BusinessEntryFieldControl.vue";
 
 const props = withDefaults(defineProps<{
@@ -19,10 +23,12 @@ const props = withDefaults(defineProps<{
   optionsByField: () => ({})
 });
 const emit = defineEmits<{ "update:modelValue": [value: BusinessEntryDraftPayload[]] }>();
-const orderedFields = computed(() => [...props.definition.fields].sort(
-  (left, right) => left.display.mobilePriority - right.display.mobilePriority ||
-    (left.order ?? 0) - (right.order ?? 0)
-));
+function orderedVisibleFields(values: Readonly<Record<string, unknown>>) {
+  return [...visibleBusinessEntryFields(props.definition, values)].sort(
+    (left, right) => left.display.mobilePriority - right.display.mobilePriority ||
+      (left.order ?? 0) - (right.order ?? 0)
+  );
+}
 
 function errorFor(rowIndex: number, fieldKey: string) {
   return props.errors.find(
@@ -34,10 +40,13 @@ function updateField(rowIndex: number, fieldKey: string, value: unknown) {
   emit("update:modelValue", props.modelValue.map((draft, index) => index === rowIndex
     ? {
         ...draft,
-        values: normalizeBusinessEntryValues(props.definition, {
-          ...draft.values,
-          [fieldKey]: value
-        })
+        values: visibleBusinessEntryValues(
+          props.definition,
+          normalizeBusinessEntryValues(props.definition, {
+            ...draft.values,
+            [fieldKey]: value
+          })
+        )
       }
     : draft));
 }
@@ -56,7 +65,7 @@ function updateField(rowIndex: number, fieldKey: string, value: unknown) {
     >
       <div class="business-entry-mobile-cards__fields">
         <BusinessEntryFieldControl
-          v-for="field in orderedFields"
+          v-for="field in orderedVisibleFields(draft.values)"
           :key="field.key"
           :field="field"
           :model-value="draft.values[field.key]"
