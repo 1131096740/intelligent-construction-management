@@ -7,13 +7,13 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 18,
-    "exportedFunctionCount": 479,
-    "transportWrapperCount": 459,
+    "apiModuleCount": 19,
+    "exportedFunctionCount": 484,
+    "transportWrapperCount": 464,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 481,
+    "mainRequestBindingCount": 486,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 481,
+    "requestEdgeCount": 486,
     "productionConsumerCount": 357,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
@@ -22,10 +22,147 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 255,
-    "reachableProductionModuleCount": 229
+    "productionModuleCount": 264,
+    "reachableProductionModuleCount": 230
   },
   "wrappers": [
+    {
+      "name": "downloadBusinessEntryExcelTemplate",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 112,
+          "method": "GET",
+          "path": "/business-entry-definitions/:param/excel-template?:param",
+          "normalizedPath": "/business-entry-definitions/:param/excel-template",
+          "normalizedKey": "GET /business-entry-definitions/:param/excel-template",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadBusinessEntryExcelTemplate"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchBusinessEntryDefinition",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 79,
+          "method": "GET",
+          "path": "/business-entry-definitions/:param?:param",
+          "normalizedPath": "/business-entry-definitions/:param",
+          "normalizedKey": "GET /business-entry-definitions/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchBusinessEntryDefinition"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "freezeBusinessEntrySnapshot",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 65,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/freeze?:param",
+          "normalizedPath": "/business-entry-definitions/:param/freeze",
+          "normalizedKey": "POST /business-entry-definitions/:param/freeze",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "freezeBusinessEntrySnapshot",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "previewBusinessEntryExcel",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 130,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/excel-preview?:param",
+          "normalizedPath": "/business-entry-definitions/:param/excel-preview",
+          "normalizedKey": "POST /business-entry-definitions/:param/excel-preview",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "previewBusinessEntryExcel"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "validateBusinessEntryDraft",
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 65,
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/validate?:param",
+          "normalizedPath": "/business-entry-definitions/:param/validate",
+          "normalizedKey": "POST /business-entry-definitions/:param/validate",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "validateBusinessEntryDraft",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/business-entry.api.test.ts"
+      ],
+      "productionConsumers": [],
+      "unreachableConsumers": []
+    },
     {
       "name": "createCompanyEntity",
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
@@ -14388,6 +14525,36 @@
     }
   ],
   "retiredWrappers": [
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "downloadBusinessEntryExcelTemplate",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "fetchBusinessEntryDefinition",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "freezeBusinessEntrySnapshot",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "previewBusinessEntryExcel",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "wrapper": "validateBusinessEntryDraft",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111."
+    },
     {
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "wrapper": "createCompanyEntity",

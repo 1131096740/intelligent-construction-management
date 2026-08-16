@@ -172,4 +172,47 @@ describe("BusinessEntryDefinitionService", () => {
       "takeoverStatus"
     ]);
   });
+
+  it("resolves import fields and validates an Excel batch with one authoritative role lookup", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([definition]);
+    const visibility = {
+      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
+    };
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      visibility,
+      { save: jest.fn() },
+      projectPrisma()
+    );
+
+    await expect(service.getSceneDefinitionForOperation(
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      "import"
+    )).resolves.toMatchObject({ key: "project_operating_profile", version: 3 });
+
+    const results = await service.validateDraftBatch(
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      [
+        {
+          definitionVersion: 3,
+          target: { entityType: "project", entityId: "project-1" },
+          values: { takeoverStatus: "operating_with_takeover" },
+          operation: "import"
+        },
+        {
+          definitionVersion: 3,
+          target: { entityType: "project", entityId: "project-1" },
+          values: { takeoverStatus: "not_registered" },
+          operation: "import"
+        }
+      ]
+    );
+
+    expect(results.map((result) => result.valid)).toEqual([true, false]);
+    expect(visibility.effectiveRoleKeys).toHaveBeenCalledTimes(2);
+  });
 });

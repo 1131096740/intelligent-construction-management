@@ -1,22 +1,104 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  BUSINESS_ENTRY_OPERATIONS,
+  type BusinessEntryOperation
+} from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
+import type { MemoryUploadedFile } from "../file/uploaded-file";
+import {
+  BUSINESS_ENTRY_XLSX_MIME,
+  BusinessEntryExcelService
+} from "./business-entry-excel.service";
 import { BusinessEntryDefinitionService } from "./business-entry-definition.service";
 import { BusinessEntryDraftRequestDto } from "./dto/business-entry-draft-request.dto";
+import { BusinessEntryExcelPreviewDto } from "./dto/business-entry-excel-preview.dto";
 
 @Controller("business-entry-definitions")
 export class BusinessEntryDefinitionController {
-  constructor(private readonly definitions: BusinessEntryDefinitionService) {}
+  constructor(
+    private readonly definitions: BusinessEntryDefinitionService,
+    private readonly excel: BusinessEntryExcelService
+  ) {}
+
+  @Get(":sceneKey/excel-template")
+  @RequireProjectRole("project.operating_profile.manage")
+  async downloadExcelTemplate(
+    @Param("sceneKey") sceneKey: string,
+    @Query("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
+  ) {
+    const result = await this.excel.exportTemplate(sceneKey, projectId, user.id);
+    response.set({
+      "Content-Type": BUSINESS_ENTRY_XLSX_MIME,
+      "Content-Length": String(result.buffer.length),
+      "Content-Disposition": [
+        "attachment",
+        `filename="${result.fileName.replace(/[^\x20-\x7E]+/g, "_").replace(/"/g, "'")}"`,
+        `filename*=UTF-8''${encodeURIComponent(result.fileName)}`
+      ].join("; ")
+    });
+    return new StreamableFile(result.buffer);
+  }
+
+  @Post(":sceneKey/excel-preview")
+  @RequireProjectRole("project.operating_profile.manage")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  previewExcel(
+    @Param("sceneKey") sceneKey: string,
+    @Query("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: BusinessEntryExcelPreviewDto,
+    @UploadedFile() file: MemoryUploadedFile | undefined
+  ) {
+    if (!file) throw new BadRequestException("请选择业务 Excel 文件");
+    return this.excel.preview(
+      sceneKey,
+      projectId,
+      user.id,
+      {
+        definitionVersion: body.definitionVersion,
+        target: {
+          entityType: body.targetEntityType,
+          entityId: body.targetEntityId
+        }
+      },
+      file
+    );
+  }
 
   @Get(":sceneKey")
   @RequireProjectRole("project.operating_profile.manage")
   getSceneDefinition(
     @Param("sceneKey") sceneKey: string,
     @Query("projectId") projectId: string,
+    @Query("operation") operation: string | undefined,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.definitions.getSceneDefinition(sceneKey, projectId, user.id);
+    if (operation && !BUSINESS_ENTRY_OPERATIONS.includes(operation as BusinessEntryOperation)) {
+      throw new BadRequestException("业务字段用途不受支持");
+    }
+    return this.definitions.getSceneDefinitionForOperation(
+      sceneKey,
+      projectId,
+      user.id,
+      (operation as BusinessEntryOperation | undefined) ?? "view"
+    );
   }
 
   @Post(":sceneKey/validate")

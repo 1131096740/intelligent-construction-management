@@ -57,9 +57,18 @@ export class BusinessEntryDefinitionService {
     projectId: string,
     actorUserId: string
   ): Promise<BusinessEntrySceneDefinition> {
+    return this.getSceneDefinitionForOperation(sceneKey, projectId, actorUserId, "view");
+  }
+
+  async getSceneDefinitionForOperation(
+    sceneKey: string,
+    projectId: string,
+    actorUserId: string,
+    operation: BusinessEntryOperation
+  ): Promise<BusinessEntrySceneDefinition> {
     const roleKeys = await this.loadRoleKeys(projectId, actorUserId);
     try {
-      return this.registry.getSceneDefinitionForRoles(sceneKey, roleKeys, "view");
+      return this.registry.getSceneDefinitionForRoles(sceneKey, roleKeys, operation);
     } catch (error) {
       this.rethrowDefinitionError(error);
     }
@@ -88,6 +97,18 @@ export class BusinessEntryDefinitionService {
       roleKeys,
       input.operation ?? "edit"
     );
+  }
+
+  async validateDraftBatch(
+    sceneKey: string,
+    projectId: string,
+    actorUserId: string,
+    inputs: readonly BusinessEntryDraftRequest[]
+  ): Promise<BusinessEntryValidationResult[]> {
+    const roleKeys = await this.loadRoleKeys(projectId, actorUserId);
+    return Promise.all(inputs.map((input) =>
+      this.validateDraftWithRoles(sceneKey, projectId, roleKeys, input)
+    ));
   }
 
   async freezeSubmissionSnapshot(
