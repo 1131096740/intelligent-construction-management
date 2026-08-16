@@ -18,6 +18,7 @@ import {
   type OperatingSubjectKind,
   type OperatingSubjectRole,
   type OperatingTakeoverProfession,
+  type RoleKey,
   type PrimaryCostCategoryCode
 } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
@@ -38,6 +39,7 @@ import {
   fingerprint,
   formatAmountCents,
   isHistoricalPostEffectiveOwnPayment,
+  jsonValue,
   normalizeTakeoverRow,
   OPERATING_TAKEOVER_SOURCE_TYPE,
   parseDateOnly,
@@ -138,8 +140,10 @@ export class OperatingTakeoverService {
   }
 
   async sceneList(projectId: string, actorUserId: string) {
-    await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
-    return OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({
+    const roles = await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
+    return OPERATING_TAKEOVER_SCENE_DEFINITIONS.filter((definition) =>
+      definition.permissions?.view?.some((role) => roles.includes(role))
+    ).map((definition) => ({
         key: definition.key,
         name: definition.name,
         description: definition.description,
@@ -291,7 +295,7 @@ export class OperatingTakeoverService {
   }
 
   async detail(projectId: string, batchId: string, actorUserId: string) {
-    await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
+    const roles = await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
     const batch = await this.prisma.operatingTakeoverBatch.findFirst({
       where: { id: batchId, projectId },
       include: {
@@ -314,7 +318,7 @@ export class OperatingTakeoverService {
         periodLabel: row.periodLabel,
         amountCents: row.amountCents?.toString() ?? null,
         amountYuan: row.amountCents === null ? null : formatAmountCents(row.amountCents),
-        values: row.valuesSnapshot,
+        values: this.visibleTakeoverValues(row.sceneKey, row.valuesSnapshot, roles),
         evidenceLevel: row.evidenceLevel,
         reviewStatus: row.reviewStatus,
         duplicateStatus: row.duplicateStatus,
@@ -429,6 +433,7 @@ export class OperatingTakeoverService {
       if (issues.length || batch.rows.some((row) => row.duplicateStatus === "confirmed" || (row.duplicateStatus === "suspected" && !row.reviewConclusion))) throw new BadRequestException("存在未解决的阻断问题或重复说明，不能激活");
       const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { operatingLedgerEffectiveDate: true, takeoverStatus: true } });
       if (!project) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+      await this.assertNoActivatedFactDuplicate(tx, projectId, batch.rows);
       const formalRows = batch.rows.filter((row) => row.evidenceLevel !== "C");
       if (formalRows.length && !project.operatingLedgerEffectiveDate) throw new BadRequestException("项目尚未设置经营账生效日期，不能激活正式历史事实");
       const generatedFactIds: string[] = [];
@@ -494,7 +499,7 @@ export class OperatingTakeoverService {
         issues.push({ code: "invalid_value", severity: "error", message: error instanceof Error ? error.message : "接管行字段无效" });
       }
       let definitionVersion: number | null = definition.version;
-      const validation = await this.definitions.validateDraft(definition.key, projectId, actorUserId, { target: { entityType: "operating_takeover_row", entityId: projectId }, values: input.values, operation: "import" });
+      const validation = await this.definitions.validateDraft(definition.key, projectId, actorUserId, { target: { entityType: "operating_takeover_row", entityId: projectId }, definitionVersion: definition.version, values: input.values, operation: "import" });
       definitionVersion = validation.definitionVersion;
       if (!validation.valid) for (const error of validation.errors) issues.push({ code: error.code, severity: "error", fieldKey: error.fieldKey, message: error.message });
       for (const issue of semanticIssues(definition.key, input.values)) issues.push(issue);
@@ -557,6 +562,7 @@ export class OperatingTakeoverService {
       throw new BadRequestException("员工还款冲销必须填写原还款记录编号");
     }
     let returnImpactKind: "estimated_clearing_expense" | "confirmed_cost" | undefined;
+    let returnFundsImpactKind: "construction_enterprise_funds_release" | "construction_enterprise_funds_increase" | undefined;
     if (row.sceneKey === "construction_enterprise_deduction" && deductionType === "return") {
       const target = await tx.operatingFact.findUnique({
         where: { id: adjustsFactId },
@@ -567,9 +573,12 @@ export class OperatingTakeoverService {
         throw new BadRequestException("施工企业扣费退回必须引用同项目的原扣费事实");
       }
       returnImpactKind = targetImpact.impactKind as "estimated_clearing_expense" | "confirmed_cost";
+      returnFundsImpactKind = target.impacts.some((impact) => impact.impactKind === "construction_enterprise_funds_freeze")
+        ? "construction_enterprise_funds_release"
+        : "construction_enterprise_funds_increase";
     }
     const subjects = await this.subjects(tx, projectId, row.occurredAt, assignment, row.sceneKey, values);
-    const impacts = this.impacts(row.sceneKey, amountCents, values, subjects, returnImpactKind);
+    const impacts = this.impacts(row.sceneKey, amountCents, values, subjects, returnImpactKind, returnFundsImpactKind);
     if (!OPERATING_FACT_KINDS.includes(factKind) || !impacts.length) throw new BadRequestException("历史接管行未能生成合法经营事实");
     const confirmation = batch.confirmations?.find((item) => item.profession === "finance") ?? batch.confirmations?.[0];
     const confirmedAt = confirmation?.confirmedAt ?? new Date();
@@ -655,7 +664,8 @@ export class OperatingTakeoverService {
       const text = textValue(name);
       if (!text) throw new BadRequestException("历史接管行缺少交易主体");
       const row = await tx.businessParty.findFirst({ where: { name: text, status: "active" } });
-      return { kind, id: row?.id ?? `${kind}:${text}` };
+      if (!row) throw new BadRequestException(`历史接管行未找到有效交易主体：${text}`);
+      return { kind, id: row.id };
     };
     const employee = (name: unknown): OperatingSubjectReference => {
       const text = textValue(name);
@@ -687,19 +697,22 @@ export class OperatingTakeoverService {
     }
   }
 
-  private impacts(sceneKey: string, amountCents: bigint, values: Record<string, unknown>, subjects: OperatingFactSubjects, returnImpactKind?: "estimated_clearing_expense" | "confirmed_cost"): OperatingImpactInput[] {
+  private impacts(sceneKey: string, amountCents: bigint, values: Record<string, unknown>, subjects: OperatingFactSubjects, returnImpactKind?: "estimated_clearing_expense" | "confirmed_cost", returnFundsImpactKind: "construction_enterprise_funds_release" | "construction_enterprise_funds_increase" = "construction_enterprise_funds_increase"): OperatingImpactInput[] {
     const impact = (key: string, impactKind: OperatingImpactKind, direction: "increase" | "decrease" | "notice", subjectRole?: OperatingSubjectRole, subject?: OperatingSubjectReference): OperatingImpactInput => ({ idempotencyKey: `${key}:${amountCents.toString()}`, sourceImpactKey: key, impactKind, direction, amountCents, subjectRole, subject, costCategoryCode: textValue(values.costCategoryCode) as PrimaryCostCategoryCode | undefined, description: textValue(values.sourceDescription), impactSnapshot: { sceneKey } });
     switch (sceneKey) {
       case "owner_settlement": return [impact("income", "confirmed_income", "increase", "creditor", subjects.creditor), impact("receivable", "receivable_increase", "increase", "debtor", subjects.debtor)];
       case "owner_payment": return [impact("receivable", "receivable_decrease", "decrease", "actual_payer", subjects.actualPayer), impact("funds", "construction_enterprise_funds_increase", "increase", "payee", subjects.payee)];
-      case "construction_enterprise_company_payment": return [impact("funds", "company_project_funds_increase", "increase", "payee", subjects.payee)];
+      case "construction_enterprise_company_payment": return [impact("affiliate_funds", "construction_enterprise_funds_decrease", "decrease", "actual_payer", subjects.actualPayer), impact("company_funds", "company_project_funds_increase", "increase", "payee", subjects.payee)];
       case "construction_enterprise_downstream_payment": return [impact("payable", "payable_decrease", "decrease", "payee", subjects.payee), impact("funds", "construction_enterprise_funds_decrease", "decrease", "actual_payer", subjects.actualPayer)];
       case "construction_enterprise_deduction": {
         const deductionType = textValue(values.deductionType);
-        if (deductionType === "temporary_hold") return [impact("deduction", "estimated_clearing_expense", "increase", "cost_bearing_company", subjects.costBearingCompany)];
-        if (deductionType === "final_deduction") return [impact("deduction", "confirmed_cost", "increase", "cost_bearing_company", subjects.costBearingCompany)];
-        if (deductionType === "return") return [impact("deduction", returnImpactKind ?? "estimated_clearing_expense", "decrease", "cost_bearing_company", subjects.costBearingCompany)];
-        if (deductionType === "adjustment") return [impact("deduction", "confirmed_cost", textValue(values.adjustmentDirection) === "decrease" ? "decrease" : "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "temporary_hold") return [impact("deduction", "estimated_clearing_expense", "increase", "cost_bearing_company", subjects.costBearingCompany), impact("funds", "construction_enterprise_funds_freeze", "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "final_deduction") return [impact("deduction", "confirmed_cost", "increase", "cost_bearing_company", subjects.costBearingCompany), impact("funds", "construction_enterprise_funds_decrease", "decrease", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "return") return [impact("deduction", returnImpactKind ?? "estimated_clearing_expense", "decrease", "cost_bearing_company", subjects.costBearingCompany), impact("funds", returnFundsImpactKind, returnFundsImpactKind === "construction_enterprise_funds_release" ? "decrease" : "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "adjustment") {
+          const direction = textValue(values.adjustmentDirection) === "decrease" ? "decrease" : "increase";
+          return [impact("deduction", "confirmed_cost", direction, "cost_bearing_company", subjects.costBearingCompany), impact("funds", direction === "decrease" ? "construction_enterprise_funds_increase" : "construction_enterprise_funds_decrease", direction === "decrease" ? "increase" : "decrease", "cost_bearing_company", subjects.costBearingCompany)];
+        }
         throw new BadRequestException("施工企业扣费类型不支持历史经营账投影");
       }
       case "employee_advance": {
@@ -723,6 +736,48 @@ export class OperatingTakeoverService {
   private inputRows(input: PrecheckOperatingTakeoverDto): TakeoverRowInput[] {
     if (!Array.isArray(input.rows) || input.rows.length > 500) throw new BadRequestException("单次历史接管最多 500 行");
     return input.rows.map((row) => ({ sceneKey: input.sceneKey ?? row.sceneKey, values: row.values }));
+  }
+
+  private visibleTakeoverValues(sceneKey: string, snapshot: Prisma.JsonValue, roles: readonly RoleKey[]) {
+    const definition = sceneDefinition(sceneKey);
+    const values = jsonValue(snapshot);
+    if (!definition) return {};
+    const visibleFields = new Set(definition.fields
+      .filter((field) => field.permissions?.view?.some((role) => roles.includes(role)))
+      .map((field) => field.key));
+    return Object.fromEntries(Object.entries(values).filter(([key]) => visibleFields.has(key)));
+  }
+
+  private async assertNoActivatedFactDuplicate(tx: DbTransaction, projectId: string, rows: TakeoverFactRow[]) {
+    const lockedProject = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "isActive" = true FOR UPDATE`);
+    if (!lockedProject.length) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
+    const facts = await tx.operatingFact.findMany({
+      where: { projectId, status: "confirmed", entryKind: "original" },
+      select: { id: true, factKind: true, sourceBusinessCode: true, occurredAt: true, amountCents: true, sourceSnapshot: true }
+    });
+    for (const row of rows) {
+      if (row.evidenceLevel === "C") continue;
+      const values = jsonValue(row.valuesSnapshot);
+      const entryType = textValue(values.entryType);
+      const deductionType = textValue(values.deductionType);
+      if (entryType === "reversal" || deductionType === "return" || deductionType === "adjustment") continue;
+      const definition = sceneDefinition(row.sceneKey);
+      const businessRef = textValue(values.businessRef);
+      if (!definition || !businessRef || !row.occurredAt || row.amountCents === null) continue;
+      const duplicate = facts.find((fact) => {
+        if (fact.occurredAt.toISOString().slice(0, 10) !== row.occurredAt!.toISOString().slice(0, 10) || fact.amountCents !== row.amountCents) return false;
+        const snapshot = jsonValue(fact.sourceSnapshot);
+        const snapshotValues = jsonValue(snapshot.values);
+        const sameTakeoverIdentity = textValue(snapshot.sceneKey) === row.sceneKey && textValue(snapshotValues.businessRef) === businessRef;
+        const formalIdentifiers = [
+          fact.sourceBusinessCode,
+          ...["code", "businessCode", "paymentRequestCode", "contractCode", "rowKey", "paymentId", "settlementId"].map((key) => textValue(snapshot[key]))
+        ];
+        const formalIdentity = fact.factKind === definition.defaultFactKind && formalIdentifiers.includes(businessRef);
+        return sameTakeoverIdentity || formalIdentity;
+      });
+      if (duplicate) throw new ConflictException(`历史接管行 ${row.rowNo} 与已确认经营事实重复，不能激活`);
+    }
   }
 
   private async existingRows(projectId: string, excludeRowId?: string) {

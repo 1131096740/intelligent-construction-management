@@ -297,10 +297,15 @@ function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown)
     return null;
   }
   if (field.type === "number" || field.type === "money") {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
+    const numericValue = typeof value === "number"
+      ? value
+      : field.type === "money" && typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim())
+        ? Number(value)
+        : Number.NaN;
+    if (!Number.isFinite(numericValue)) {
       return invalid("invalid_type", `${field.label}必须填写有效数字`);
     }
-    return matchesPrecision(value, field.precision)
+    return matchesPrecision(numericValue, field.precision)
       ? null
       : invalid("invalid_format", `${field.label}最多保留${field.precision}位小数`);
   }

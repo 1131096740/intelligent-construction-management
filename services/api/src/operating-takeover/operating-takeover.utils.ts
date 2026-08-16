@@ -149,6 +149,9 @@ export function isHistoricalPostEffectiveOwnPayment(
   if (["owner_settlement", "owner_payment", "construction_enterprise_company_payment", "construction_enterprise_downstream_payment", "construction_enterprise_deduction"].includes(sceneKey)) {
     return false;
   }
+  if (["historical_expense", "employee_advance", "project_wage", "fund_movement"].includes(sceneKey)) {
+    return true;
+  }
   return !isBlank(values.actualPayerName);
 }
 

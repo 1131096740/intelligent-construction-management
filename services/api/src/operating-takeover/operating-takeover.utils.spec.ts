@@ -27,6 +27,12 @@ describe("operating takeover pure rules", () => {
       effectiveDate,
       { actualPayerName: "施工企业" }
     )).toBe(false);
+    expect(isHistoricalPostEffectiveOwnPayment(
+      "employee_advance",
+      new Date("2026-08-17T00:00:00.000Z"),
+      effectiveDate,
+      {}
+    )).toBe(true);
   });
 
   it("keeps fingerprints stable when object key order changes", () => {

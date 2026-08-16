@@ -30,4 +30,19 @@ describe("operating takeover scene catalog", () => {
     expect(expense?.requiredProfessions).toEqual(["finance"]);
     expect(downstreamPayment?.requiredProfessions).toEqual(["contract", "finance"]);
   });
+
+  it("limits scenes to their responsible professions and keeps entry amounts writable", () => {
+    const expense = OPERATING_TAKEOVER_SCENE_DEFINITIONS.find((scene) => scene.key === "historical_expense");
+    const settlement = OPERATING_TAKEOVER_SCENE_DEFINITIONS.find((scene) => scene.key === "owner_settlement");
+    const amount = expense?.fields.find((field) => field.key === "amountYuan");
+
+    expect(expense?.permissions?.view).toEqual(["finance_staff", "finance_director"]);
+    expect(settlement?.permissions?.view).toEqual([
+      "contract_staff",
+      "contract_director",
+      "finance_staff",
+      "finance_director"
+    ]);
+    expect(amount?.permissions?.sensitive).toBeUndefined();
+  });
 });

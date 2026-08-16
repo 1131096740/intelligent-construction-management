@@ -51,7 +51,10 @@ const entryRoles = [
   "finance_staff",
   "finance_director"
 ] as const satisfies readonly RoleKey[];
-const reviewRoles = ["contract_director", "finance_director"] as const satisfies readonly RoleKey[];
+const professionRoles: Readonly<Record<OperatingTakeoverProfession, readonly RoleKey[]>> = {
+  contract: ["contract_staff", "contract_director"],
+  finance: ["finance_staff", "finance_director"]
+};
 
 const options = <const T extends readonly { value: string; label: string }[]>(items: T) => items;
 const selectOptions = options([
@@ -240,6 +243,7 @@ const SCENE_METADATA: Readonly<Record<OperatingTakeoverSceneKey, {
 function sceneDefinition(key: OperatingTakeoverSceneKey): OperatingTakeoverSceneDefinition {
   const metadata = SCENE_METADATA[key];
   const required = new Set(metadata.requiredFields ?? []);
+  const sceneRoles = [...new Set(metadata.requiredProfessions.flatMap((profession) => professionRoles[profession]))];
   return {
     key,
     entityType: "operating_takeover_row",
@@ -253,7 +257,10 @@ function sceneDefinition(key: OperatingTakeoverSceneKey): OperatingTakeoverScene
       required: definition.required || required.has(definition.key),
       permissions: {
         ...definition.permissions,
-        sensitive: definition.key === "amountYuan" ? reviewRoles : undefined
+        view: sceneRoles,
+        edit: sceneRoles,
+        import: sceneRoles,
+        export: sceneRoles
       }
     })),
     rules: [
@@ -265,7 +272,7 @@ function sceneDefinition(key: OperatingTakeoverSceneKey): OperatingTakeoverScene
         message: "C级资料只能列入历史缺口，不能形成正式经营事实"
       }
     ],
-    permissions: { view: entryRoles, edit: entryRoles, import: entryRoles, export: entryRoles }
+    permissions: { view: sceneRoles, edit: sceneRoles, import: sceneRoles, export: sceneRoles }
   };
 }
 
