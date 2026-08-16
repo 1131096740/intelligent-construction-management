@@ -1,5 +1,6 @@
 import {
   createBusinessEntryDefinitionRegistry,
+  OPERATING_TAKEOVER_SCENE_DEFINITIONS,
   PROJECT_OPERATING_TAKEOVER_STATUS_LABELS,
   PROJECT_OPERATING_TAKEOVER_STATUSES,
   type BusinessEntrySceneDefinition
@@ -100,7 +101,8 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
         message: "经营接管完成日不能早于经营账生效日"
       }
     ]
-  }
+  },
+  ...OPERATING_TAKEOVER_SCENE_DEFINITIONS
 ];
 
 export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionRegistry(

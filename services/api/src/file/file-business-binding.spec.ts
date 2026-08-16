@@ -25,7 +25,7 @@ describe("non-receipt file binding registry", () => {
       ({ table, columns }) =>
         columns.map((column) => `${table}.${column}`)
     );
-    expect(registered).toHaveLength(76);
+    expect(registered).toHaveLength(78);
     expect([...registered].sort()).toEqual(
       schemaBindings.sort()
     );

@@ -152,9 +152,12 @@ export class BusinessEntryDefinitionService {
     ) {
       throw new BadRequestException("提交必须绑定正式业务对象");
     }
-    // POL-17 currently registers only the project operating-profile scene; other
-    // polymorphic targets require their own domain adapter and FK before registration.
-    if (target.entityType !== "project" || target.entityId !== projectId) {
+    if (
+      !(
+        (target.entityType === "project" || target.entityType === "operating_takeover_row") &&
+        target.entityId === projectId
+      )
+    ) {
       throw new BadRequestException("提交对象不属于当前项目");
     }
   }

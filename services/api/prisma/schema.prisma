@@ -280,6 +280,137 @@ model OperatingImpactEntry {
   @@index([factId])
 }
 
+// 通用历史经营接管与合同接管分离；批次只保存草稿、复核和激活坐标，正式事实仍写入 OperatingFact。
+model OperatingTakeoverBatch {
+  id                    String   @id @default(uuid())
+  projectId             String
+  batchNo               String
+  sourceFileId          String?
+  sourceFileName        String?
+  sceneKeys             Json
+  status                String   @default("draft")
+  revision              Int      @default(1)
+  importFingerprint     String
+  totalRows             Int      @default(0)
+  readyRows             Int      @default(0)
+  blockedRows           Int      @default(0)
+  warningRows           Int      @default(0)
+  createdByUserId       String
+  activatedAt           DateTime?
+  activatedByUserId     String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  rows                  OperatingTakeoverRow[]
+  issues                OperatingTakeoverIssue[]
+  attachmentGroups      OperatingTakeoverAttachmentGroup[]
+  confirmations         OperatingTakeoverConfirmation[]
+  activation            OperatingTakeoverActivation?
+
+  @@unique([projectId, batchNo])
+  @@unique([projectId, importFingerprint])
+  @@index([projectId, status])
+  @@index([projectId, createdAt])
+}
+
+model OperatingTakeoverRow {
+  id                String   @id @default(uuid())
+  batchId           String
+  rowNo             Int
+  sceneKey          String
+  definitionVersion Int
+  businessRef       String?
+  occurredAt        DateTime? @db.Date
+  periodLabel       String?
+  amountCents       BigInt?
+  valuesSnapshot    Json
+  evidenceLevel     String
+  reviewStatus      String   @default("pending")
+  duplicateStatus   String   @default("none")
+  duplicateNote     String?
+  reviewConclusion  String?
+  revision          Int      @default(1)
+  generatedFactId   String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  batch             OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  issues            OperatingTakeoverIssue[]
+  attachmentGroups  OperatingTakeoverAttachmentGroup[]
+
+  @@unique([batchId, rowNo])
+  @@index([batchId, reviewStatus])
+  @@index([batchId, duplicateStatus])
+  @@index([sceneKey])
+}
+
+model OperatingTakeoverIssue {
+  id             String   @id @default(uuid())
+  batchId        String
+  rowId          String?
+  code           String
+  severity       String
+  fieldKey       String?
+  message        String
+  suggestion     String?
+  status         String   @default("open")
+  createdAt      DateTime @default(now())
+  batch          OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  row            OperatingTakeoverRow? @relation(fields: [rowId], references: [id], onDelete: Restrict)
+
+  @@index([batchId, severity, status])
+  @@index([rowId, status])
+}
+
+model OperatingTakeoverAttachmentGroup {
+  id          String   @id @default(uuid())
+  batchId     String
+  rowId       String?
+  purpose     String
+  createdByUserId String
+  createdAt   DateTime @default(now())
+  batch       OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  row         OperatingTakeoverRow? @relation(fields: [rowId], references: [id], onDelete: Restrict)
+  links       OperatingTakeoverAttachmentLink[]
+
+  @@index([batchId, rowId])
+}
+
+model OperatingTakeoverAttachmentLink {
+  id        String   @id @default(uuid())
+  groupId   String
+  fileId    String
+  createdAt DateTime @default(now())
+  group     OperatingTakeoverAttachmentGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, fileId])
+  @@index([fileId])
+}
+
+model OperatingTakeoverConfirmation {
+  idempotencyKey String   @id
+  batchId        String
+  profession     String
+  revision       Int
+  confirmedByUserId String
+  snapshot       Json
+  confirmedAt    DateTime @default(now())
+  batch           OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, profession, revision])
+  @@index([batchId, profession, confirmedAt])
+}
+
+model OperatingTakeoverActivation {
+  idempotencyKey String   @id
+  batchId        String   @unique
+  revision       Int
+  status         String
+  generatedFactIds Json
+  gapRowIds      Json
+  activatedByUserId String
+  activatedAt    DateTime @default(now())
+  batch          OperatingTakeoverBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+}
+
 model ProjectMember {
   id          String   @id @default(uuid())
   projectId   String

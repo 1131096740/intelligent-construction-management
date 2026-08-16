@@ -25,6 +25,7 @@ import { InvoiceLedgerModule } from "./invoice-ledger/invoice-ledger.module";
 import { MeModule } from "./me/me.module";
 import { OrganizationModule } from "./organization/organization.module";
 import { OperatingLedgerModule } from "./operating-ledger/operating-ledger.module";
+import { OperatingTakeoverModule } from "./operating-takeover/operating-takeover.module";
 import { PaymentModule } from "./payment/payment.module";
 import { PdfModule } from "./pdf/pdf.module";
 import { ProjectExpenseModule } from "./project-expense/project-expense.module";
@@ -48,6 +49,7 @@ import { SpotProcurementModule } from "./spot-procurement/spot-procurement.modul
     BusinessEntryDefinitionModule,
     CompanyEntityModule,
     OperatingLedgerModule,
+    OperatingTakeoverModule,
     SettlementModule,
     PaymentModule,
     ProjectExpenseModule,
