@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "56c7eddb42dd2a77e62fe5712808ffde08b9c86e677aca5afdeb4ad8c5590a33",
+      "sha256": "1eca9823b8990818b563424c13be6a3c56f8d8c70c11e967336dd7cf629e3e19",
       "status": "ready",
       "summary": {
         "apiModuleCount": 18,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "3c493dd8254c3bbf4818e36420caceef8b329db804488e5bed482825adc4b42c",
+      "sha256": "bffe1e16c209babea0827608784448917e3f74dddcb1d0e604b17f00a2d0927c",
       "status": "ready",
       "summary": {
         "registeredActionCount": 250,
@@ -21674,7 +21674,7 @@
           "capability": {
             "kind": "available_action_string",
             "source": "capability.availableActions",
-            "key": "manage",
+            "key": "create",
             "serverDerived": true,
             "dominatesTrigger": true
           },

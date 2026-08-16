@@ -129,6 +129,7 @@ export class OperatingTakeoverService {
       },
       availableActions: [
         canPerform("operating_takeover.manage", roles) ? "manage" : null,
+        roles.includes("contract_director") ? "create" : null,
         canPerform("operating_takeover.confirm", roles) ? "confirm" : null,
         canPerform("operating_takeover.activate", roles) ? "activate" : null,
         canPerform("operating_takeover.file.upload", roles) ? "file_upload" : null

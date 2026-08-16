@@ -766,7 +766,7 @@ async function createOperatingTakeoverBatchWithCapability(
   const capability = await fetchOperatingTakeoverCapability(projectId);
   const matchesRequestedProject = capability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
-  const operationAllowed = capability.actions.create === true;
+  const operationAllowed = capability.availableActions.includes("create");
   if (!operationAllowed) throw new Error("当前用户不能生成历史经营接管批次");
   return createOperatingTakeoverBatch(projectId, body);
 }

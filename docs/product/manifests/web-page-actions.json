@@ -7631,7 +7631,7 @@
         "event": "call",
         "handler": "activateOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 771,
+        "sourceLine": 787,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7696,7 +7696,7 @@
         "event": "call",
         "handler": "addOperatingTakeoverAttachmentGroupWithCapability",
         "kind": "background_call",
-        "sourceLine": 807,
+        "sourceLine": 823,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7761,7 +7761,7 @@
         "event": "call",
         "handler": "confirmOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 758,
+        "sourceLine": 774,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7826,14 +7826,14 @@
         "event": "call",
         "handler": "createOperatingTakeoverBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 746,
+        "sourceLine": 762,
         "sourceColumn": 0
       },
       "semantic": "business_write",
       "capability": {
         "kind": "available_action_string",
         "source": "capability.availableActions",
-        "key": "manage",
+        "key": "create",
         "serverDerived": true,
         "dominatesTrigger": true
       },
@@ -7891,7 +7891,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 721,
+        "sourceLine": 737,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7956,7 +7956,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverXlsxWithCapability",
         "kind": "background_call",
-        "sourceLine": 733,
+        "sourceLine": 749,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8021,7 +8021,7 @@
         "event": "call",
         "handler": "updateOperatingTakeoverRowWithCapability",
         "kind": "background_call",
-        "sourceLine": 793,
+        "sourceLine": 809,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8086,7 +8086,7 @@
         "event": "call",
         "handler": "uploadOperatingTakeoverFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 784,
+        "sourceLine": 800,
         "sourceColumn": 0
       },
       "semantic": "business_write",

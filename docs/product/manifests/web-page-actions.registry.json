@@ -4229,7 +4229,7 @@
       "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
       "trigger": { "element": "module", "event": "call", "handler": "createOperatingTakeoverBatchWithCapability" },
       "semantic": "business_write",
-      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "manage" },
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create" },
       "wrappers": [
         { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "createOperatingTakeoverBatch" }
       ]
