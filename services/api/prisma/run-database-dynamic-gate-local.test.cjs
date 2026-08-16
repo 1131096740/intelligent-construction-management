@@ -38,11 +38,11 @@ test("manifest derives all 91 pending tests as executable local coverage", () =>
     coveredTests: 91,
     remainingFiles: 0,
     remainingTests: 0,
-    migrationCount: 135,
+    migrationCount: 136,
     terminalMigration:
-      "20260816110000_pol10_operating_takeover",
+      "20260816120000_pol08_contract_lineage_operating_sources",
     terminalMigrationChecksum:
-      "595c5adfb45af5475588f5ca263364c946d70d021c1626911c9ccf3419ab1314"
+      "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0"
   });
 });
 

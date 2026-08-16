@@ -14,7 +14,7 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_settlement_draft_lifecycle_concurrency";
-const EXPECTED_MIGRATION_COUNT = 135;
+const EXPECTED_MIGRATION_COUNT = 136;
 const root = path.resolve(__dirname, "../../..");
 const migrationsRoot = path.join(__dirname, "migrations");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";

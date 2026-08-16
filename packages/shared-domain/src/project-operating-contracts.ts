@@ -8,6 +8,7 @@ function freezeCatalog<const T extends readonly Readonly<Record<string, unknown>
 export const OPERATING_FACT_KINDS = Object.freeze([
   "owner_settlement",
   "owner_payment",
+  "downstream_contract",
   "downstream_settlement",
   "downstream_payment",
   "expense",
@@ -25,6 +26,7 @@ export type OperatingFactKind = (typeof OPERATING_FACT_KINDS)[number];
 export const OPERATING_FACT_KIND_LABELS = Object.freeze({
   owner_settlement: "业主结算",
   owner_payment: "业主付款",
+  downstream_contract: "下游合同",
   downstream_settlement: "下游结算",
   downstream_payment: "下游付款",
   expense: "项目费用",
@@ -40,6 +42,7 @@ export const OPERATING_FACT_KIND_LABELS = Object.freeze({
 export const OPERATING_IMPACT_KINDS = Object.freeze([
   "confirmed_income",
   "confirmed_cost",
+  "contract_commitment_reference",
   "estimated_clearing_expense",
   "receivable_increase",
   "receivable_decrease",
@@ -69,6 +72,7 @@ export type OperatingImpactKind = (typeof OPERATING_IMPACT_KINDS)[number];
 export const OPERATING_IMPACT_KIND_LABELS = Object.freeze({
   confirmed_income: "已确认收入",
   confirmed_cost: "已确认成本",
+  contract_commitment_reference: "合同承诺引用",
   estimated_clearing_expense: "预计待清算费用",
   receivable_increase: "应收增加",
   receivable_decrease: "应收减少",

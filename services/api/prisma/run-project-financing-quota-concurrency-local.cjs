@@ -51,11 +51,11 @@ const REQUEST_MIGRATION =
   "20260802010000_project_financing_quota_request_idempotency";
 const REQUEST_MIGRATION_CHECKSUM =
   "d3d0d07a6cc9a49da1cca1478822a873fad7c7324b9d189e2a55a4d3f57bfe61";
-const EXPECTED_MIGRATION_COUNT = 135;
+const EXPECTED_MIGRATION_COUNT = 136;
 const CURRENT_TERMINAL_MIGRATION =
-  "20260816110000_pol10_operating_takeover";
+  "20260816120000_pol08_contract_lineage_operating_sources";
 const CURRENT_TERMINAL_MIGRATION_CHECKSUM =
-  "595c5adfb45af5475588f5ca263364c946d70d021c1626911c9ccf3419ab1314";
+  "1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0";
 const TERMINAL_MIGRATION =
   "20260802020000_project_financing_quota_termination_idempotency";
 const TERMINAL_MIGRATION_CHECKSUM =

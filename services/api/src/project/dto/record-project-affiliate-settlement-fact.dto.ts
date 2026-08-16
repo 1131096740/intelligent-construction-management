@@ -25,6 +25,10 @@ export class RecordProjectAffiliateSettlementFactDto {
   })
   contractLedgerId!: string;
 
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "施工企业—我方合同档案编号必须是文字" })
+  affiliateCompanyContractId?: string;
+
   @IsRequiredText({
     requiredMessage: "结算相对方不能为空",
     typeMessage: "结算相对方必须是文字",

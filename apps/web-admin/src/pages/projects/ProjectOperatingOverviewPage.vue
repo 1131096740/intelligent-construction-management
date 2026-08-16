@@ -359,27 +359,34 @@
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
                 <span>施工企业—我方合同档案编号</span>
-                <input
-                  v-model.trim="receiptForm.affiliateCompanyContractId"
+                <t-input
+                  v-model="receiptForm.affiliateCompanyContractId"
                   placeholder="请输入已确认合同档案编号"
-                  required
-                >
+                  :required="true"
+                />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
                 <span>施工企业结算档案编号</span>
-                <input
-                  v-model.trim="receiptForm.affiliateSettlementFactId"
+                <t-input
+                  v-model="receiptForm.affiliateSettlementFactId"
                   placeholder="请输入已确认结算档案编号"
-                  required
-                >
+                  :required="true"
+                />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_remittance_to_company'">
                 <span>我方开票档案编号</span>
-                <input
-                  v-model.trim="receiptForm.invoiceRecordId"
+                <t-input
+                  v-model="receiptForm.invoiceRecordId"
                   placeholder="请输入有效发票档案编号"
-                  required
-                >
+                  :required="true"
+                />
+              </label>
+              <label v-if="receiptForm.factType === 'owner_payment_to_affiliate'">
+                <span>业主结算档案编号（选填）</span>
+                <t-input
+                  v-model="receiptForm.upstreamSettlementId"
+                  placeholder="有对应业主结算时填写"
+                />
               </label>
               <label v-if="receiptForm.factType === 'affiliate_deduction'">
                 <span>扣款类型</span>
@@ -428,6 +435,9 @@
                     <th>日期</th>
                     <th>金额</th>
                     <th>我方现金影响</th>
+                    <th>结算应付</th>
+                    <th>未付金额</th>
+                    <th>差额</th>
                     <th>状态</th>
                     <th>操作</th>
                   </tr>
@@ -442,6 +452,9 @@
                     <td>{{ formatDate(fact.occurredAt) }}</td>
                     <td>{{ formatCents(fact.signedAmountCents) }}</td>
                     <td>{{ formatCents(fact.cashEffectCents) }}</td>
+                    <td>{{ fact.payableAmountCents === null ? "—" : formatCents(fact.payableAmountCents) }}</td>
+                    <td>{{ fact.companyUnpaidAmountCents === null ? "—" : formatCents(fact.companyUnpaidAmountCents) }}</td>
+                    <td>{{ fact.companyDifferenceAmountCents === null ? "—" : formatCents(fact.companyDifferenceAmountCents) }}</td>
                     <td>{{ upstreamFundStatusLabel(fact.status) }}</td>
                     <td>
                       <button
@@ -457,7 +470,7 @@
                     </td>
                   </tr>
                   <tr v-if="upstreamFundRows.length === 0">
-                    <td colspan="7">
+                    <td colspan="10">
                       暂无上游资金事实
                     </td>
                   </tr>
@@ -930,6 +943,7 @@ interface ReceiptFormState {
   occurredAt: string;
   amountYuan: string;
   counterpartyName: string;
+  upstreamSettlementId: string;
   companyEntityId: string;
   affiliateCompanyContractId: string;
   affiliateSettlementFactId: string;
@@ -1694,6 +1708,9 @@ async function submitReceipt() {
       occurredAt,
       amountCents,
       counterpartyName,
+      ...(form.factType === "owner_payment_to_affiliate" && form.upstreamSettlementId.trim()
+        ? { upstreamSettlementId: form.upstreamSettlementId.trim() }
+        : {}),
       ...(form.companyEntityId ? { companyEntityId: form.companyEntityId } : {}),
       ...(form.factType === "affiliate_remittance_to_company"
         ? {
@@ -1842,6 +1859,7 @@ function createReceiptForm(
     occurredAt: todayText(),
     amountYuan: "",
     counterpartyName: "",
+    upstreamSettlementId: "",
     companyEntityId: "",
     affiliateCompanyContractId: "",
     affiliateSettlementFactId: "",

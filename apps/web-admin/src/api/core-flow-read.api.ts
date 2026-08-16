@@ -1758,6 +1758,10 @@ export interface ProjectUpstreamFundFactReadModel {
   affiliateCompanyContractId: string | null;
   affiliateSettlementFactId: string | null;
   invoiceRecordId: string | null;
+  payableAmountCents: string | null;
+  actualPaymentAmountCents: string | null;
+  companyUnpaidAmountCents: string | null;
+  companyDifferenceAmountCents: string | null;
   affiliateNameSnapshot: string;
   description: string | null;
   evidenceFileId: string | null;
@@ -1866,6 +1870,7 @@ export interface ProjectAffiliateContractFactReadModel
 export interface ProjectAffiliateSettlementFactReadModel
   extends ProjectAffiliateFactReadModelBase {
   contractLedgerId: string;
+  affiliateCompanyContractId: string | null;
   settledAt: string;
   periodLabel: string;
   amountCents: string;
@@ -1917,6 +1922,7 @@ export interface RecordProjectAffiliateContractFactPayload {
 
 export interface RecordProjectAffiliateSettlementFactPayload {
   contractLedgerId: string;
+  affiliateCompanyContractId?: string;
   counterpartyName: string;
   settledAt: string;
   periodLabel: string;

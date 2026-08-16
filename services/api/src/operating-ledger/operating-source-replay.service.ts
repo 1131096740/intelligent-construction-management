@@ -18,6 +18,7 @@ import {
 const EMPLOYEE_PROJECT_LOAN_ENTRY_SOURCE_TYPE = "employee_project_loan_entry";
 const POL08_ENTRY_SOURCE_TYPES = new Set([
   "project_upstream_fund_fact",
+  "project_affiliate_contract_fact",
   "project_affiliate_settlement_fact",
   "project_affiliate_payment_fact"
 ]);

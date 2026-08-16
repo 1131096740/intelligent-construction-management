@@ -390,6 +390,13 @@ describe("ProjectAffiliateBusinessService", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(created)
       },
+      projectAffiliateCompanyContract: {
+        findFirst: jest.fn().mockResolvedValue({
+          affiliateAssignmentId: "assignment-1",
+          affiliateBusinessPartyVersionId: "party-version-1",
+          companyEntityNameSnapshot: "材料供应商"
+        })
+      },
       fileObject: { findUnique: jest.fn() },
       approvalInstance: { create: jest.fn() },
       auditLog: { create: jest.fn() }
@@ -404,6 +411,7 @@ describe("ProjectAffiliateBusinessService", () => {
     await expect(
       service.recordSettlementFact("project-1", "budget-1", {
         contractLedgerId: "contract-ledger-1",
+        affiliateCompanyContractId: "company-contract-1",
         counterpartyName: "材料供应商",
         settledAt: "2026-07-28",
         periodLabel: "2026-07",
@@ -571,6 +579,95 @@ describe("ProjectAffiliateBusinessService", () => {
       availableActions: ["confirm", "supplement_evidence"]
     });
   });
+
+  it.each(["advance", "direct_contract"] as const)(
+    "accepts a post-effective %s payment with its matching contract payment request",
+    async (paymentKind) => {
+      const contract =
+        paymentKind === "advance"
+          ? contractFact({ advanceAllowed: true, advanceLimitCents: 20000n })
+          : contractFact({ contractType: "general_direct_payment" });
+      const created = paymentFact({
+        settlementLedgerId: null,
+        paymentRequestId: "payment-request-1",
+        paymentKind,
+        paidAt: new Date("2026-08-02T00:00:00.000Z")
+      });
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-request-1" }]),
+        project: {
+          findFirst: jest.fn().mockResolvedValue({ id: "project-1" }),
+          findUnique: jest.fn().mockResolvedValue({
+            operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+          })
+        },
+        ...roleTables("finance_staff"),
+        paymentRequest: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: "payment-request-1",
+            status: "approved_pending_payment",
+            sourceType: paymentKind === "advance" ? "contract_advance" : "contract_due",
+            paymentSubjectType: "affiliate",
+            contractId: "internal-contract-1",
+            contractVersionId: "internal-contract-version-1",
+            settlementId: null,
+            approvedAmountCents: 5000n,
+            requestedAmountCents: 5000n
+          })
+        },
+        contractVersion: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "internal-contract-version-1",
+            contractId: "internal-contract-1",
+            signingSubjectType: "affiliate",
+            affiliateBusinessPartyVersionId: "party-version-1"
+          })
+        },
+        contract: {
+          findUnique: jest.fn().mockResolvedValue({
+            projectId: "project-1",
+            counterparty: "材料供应商"
+          })
+        },
+        projectAffiliateContractFact: {
+          findMany: jest.fn().mockResolvedValue([contract])
+        },
+        projectAffiliateSettlementFact: {
+          findMany: jest.fn()
+        },
+        projectAffiliatePaymentFact: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn().mockResolvedValue(created)
+        },
+        fileObject: { findUnique: jest.fn() },
+        auditLog: { create: jest.fn() }
+      };
+      const prisma = {
+        $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) =>
+          callback(tx)
+        )
+      };
+      const service = new ProjectAffiliateBusinessService(prisma as never);
+
+      await expect(
+        service.recordPaymentFact("project-1", "finance-1", {
+          contractLedgerId: "contract-ledger-1",
+          counterpartyName: "材料供应商",
+          paidAt: "2026-08-02",
+          amountCents: "5000",
+          paymentKind,
+          externalPaymentReference: `BANK-${paymentKind}-001`,
+          paymentRequestId: "payment-request-1",
+          basisType: "oral",
+          idempotencyKey:
+            paymentKind === "advance"
+              ? "46e34999-5cc7-4a18-b010-46ed35fc37d7"
+              : "56e34999-5cc7-4a18-b010-46ed35fc37d7"
+        })
+      ).resolves.toMatchObject({ paymentKind, settlementLedgerId: null });
+    }
+  );
 
   it("rejects a payment whose counterparty differs from the contract and settlement subject", async () => {
     const tx = {

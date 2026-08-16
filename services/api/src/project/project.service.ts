@@ -754,6 +754,22 @@ export class ProjectService {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }]
       })
     ]);
+    const remittanceSettlementFactIds = upstreamFundFacts
+      .map((fact) => fact.affiliateSettlementFactId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const remittanceSettlementFacts = remittanceSettlementFactIds.length
+      ? await this.prisma.projectAffiliateSettlementFact.findMany({
+          where: {
+            projectId,
+            id: { in: remittanceSettlementFactIds },
+            status: "confirmed"
+          },
+          select: { id: true, amountCents: true }
+        })
+      : [];
+    const remittancePayableBySettlementId = new Map(
+      remittanceSettlementFacts.map((fact) => [fact.id, fact.amountCents])
+    );
     const contractIds = contracts.map((contract) => contract.id);
     const paymentIds = payments.map((payment) => payment.id);
     const expenseRequestIds = projectExpenseRequests.map((request) => request.id);
@@ -957,7 +973,13 @@ export class ProjectService {
           projectMoneyToApi(unreconciledReceiptDifferenceCents),
         writtenCount: upstreamFundFacts.filter((fact) => fact.basisType === "written").length,
         oralCount: upstreamFundFacts.filter((fact) => fact.basisType === "oral").length,
-        rows: upstreamFundFacts.map(toUpstreamFundFactReadModel)
+        rows: upstreamFundFacts.map((fact) =>
+          toUpstreamFundFactReadModel(fact, {
+            payableAmountCents: fact.affiliateSettlementFactId
+              ? remittancePayableBySettlementId.get(fact.affiliateSettlementFactId) ?? null
+              : null
+          })
+        )
       },
       counts: {
         contracts: contracts.length,
@@ -3868,6 +3890,7 @@ async function validateRemittanceLineage(
       },
       select: {
         amountCents: true,
+        affiliateCompanyContractId: true,
         affiliateAssignmentId: true,
         affiliateBusinessPartyVersionId: true
       }
@@ -3897,6 +3920,7 @@ async function validateRemittanceLineage(
   }
   if (
     !settlementFact ||
+    settlementFact.affiliateCompanyContractId !== input.affiliateCompanyContractId ||
     settlementFact.affiliateAssignmentId !== input.affiliate.assignmentId ||
     settlementFact.affiliateBusinessPartyVersionId !==
       input.affiliate.businessPartyVersionId ||
@@ -4784,42 +4808,45 @@ function upstreamFundUnreconciledDifference(
   return pending > reclassified ? pending - reclassified : 0n;
 }
 
-function toUpstreamFundFactReadModel(fact: {
-  id: string;
-  projectId: string;
-  factType: string;
-  entryKind: string;
-  adjustsFactId: string | null;
-  effectDirection: string;
-  occurredAt: Date;
-  amountCents: bigint;
-  counterpartyName: string;
-  basisType: string;
-  deductionCategory: string | null;
-  upstreamSettlementId: string | null;
-  companyEntityId?: string | null;
-  affiliateCompanyContractId?: string | null;
-  affiliateSettlementFactId?: string | null;
-  invoiceRecordId?: string | null;
-  affiliateAssignmentId: string;
-  affiliateBusinessPartyVersionId: string;
-  affiliateNameSnapshot: string;
-  description: string | null;
-  evidenceFileId: string | null;
-  documentVersion: number;
-  fileContentSha256Snapshot: string | null;
-  idempotencyKey: string;
-  recordedByUserId: string;
-  recordedByRoleKey: string;
-  status: string;
-  confirmedByUserId: string | null;
-  confirmedAt: Date | null;
-  confirmationActionId: string | null;
-  confirmationSignatureVersionId: string | null;
-  confirmationSignatureFileId: string | null;
-  confirmationSignatureSha256: string | null;
-  createdAt: Date;
-}) {
+function toUpstreamFundFactReadModel(
+  fact: {
+    id: string;
+    projectId: string;
+    factType: string;
+    entryKind: string;
+    adjustsFactId: string | null;
+    effectDirection: string;
+    occurredAt: Date;
+    amountCents: bigint;
+    counterpartyName: string;
+    basisType: string;
+    deductionCategory: string | null;
+    upstreamSettlementId: string | null;
+    companyEntityId?: string | null;
+    affiliateCompanyContractId?: string | null;
+    affiliateSettlementFactId?: string | null;
+    invoiceRecordId?: string | null;
+    affiliateAssignmentId: string;
+    affiliateBusinessPartyVersionId: string;
+    affiliateNameSnapshot: string;
+    description: string | null;
+    evidenceFileId: string | null;
+    documentVersion: number;
+    fileContentSha256Snapshot: string | null;
+    idempotencyKey: string;
+    recordedByUserId: string;
+    recordedByRoleKey: string;
+    status: string;
+    confirmedByUserId: string | null;
+    confirmedAt: Date | null;
+    confirmationActionId: string | null;
+    confirmationSignatureVersionId: string | null;
+    confirmationSignatureFileId: string | null;
+    confirmationSignatureSha256: string | null;
+    createdAt: Date;
+  },
+  derived?: { payableAmountCents: bigint | null }
+) {
   const signedAmountCents =
     fact.effectDirection === "decrease"
       ? -dbMoneyToBigInt(fact.amountCents, "上游资金事实金额")
@@ -4829,6 +4856,16 @@ function toUpstreamFundFactReadModel(fact: {
     fact.factType === "affiliate_remittance_to_company"
       ? signedAmountCents
       : 0n;
+  const payableAmountCents = derived?.payableAmountCents ?? null;
+  const actualPaymentAmountCents = payableAmountCents === null ? null : signedAmountCents;
+  const companyUnpaidAmountCents =
+    payableAmountCents === null || actualPaymentAmountCents === null
+      ? null
+      : payableAmountCents - actualPaymentAmountCents;
+  const companyDifferenceAmountCents =
+    payableAmountCents === null || actualPaymentAmountCents === null
+      ? null
+      : actualPaymentAmountCents - payableAmountCents;
   return {
     id: fact.id,
     projectId: fact.projectId,
@@ -4851,6 +4888,20 @@ function toUpstreamFundFactReadModel(fact: {
     affiliateCompanyContractId: fact.affiliateCompanyContractId ?? null,
     affiliateSettlementFactId: fact.affiliateSettlementFactId ?? null,
     invoiceRecordId: fact.invoiceRecordId ?? null,
+    payableAmountCents:
+      payableAmountCents === null ? null : moneyCentsToApi(payableAmountCents),
+    actualPaymentAmountCents:
+      actualPaymentAmountCents === null
+        ? null
+        : moneyCentsToApi(actualPaymentAmountCents),
+    companyUnpaidAmountCents:
+      companyUnpaidAmountCents === null
+        ? null
+        : moneyCentsToApi(companyUnpaidAmountCents),
+    companyDifferenceAmountCents:
+      companyDifferenceAmountCents === null
+        ? null
+        : moneyCentsToApi(companyDifferenceAmountCents),
     affiliateAssignmentId: fact.affiliateAssignmentId,
     affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId,
     affiliateNameSnapshot: fact.affiliateNameSnapshot,

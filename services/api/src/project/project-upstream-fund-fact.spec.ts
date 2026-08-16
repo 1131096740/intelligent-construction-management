@@ -531,6 +531,7 @@ describe("ProjectService upstream fund facts", () => {
       projectAffiliateSettlementFact: {
         findFirst: jest.fn().mockResolvedValue({
           amountCents: 12000n,
+          affiliateCompanyContractId: "company-contract-1",
           affiliateAssignmentId: "assignment-1",
           affiliateBusinessPartyVersionId: "party-version-1"
         })
@@ -579,6 +580,21 @@ describe("ProjectService upstream fund facts", () => {
         amountCents: "10001"
       })
     ).rejects.toThrow("上游资金登记幂等键已用于不同请求");
+    expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
+
+    tx.projectUpstreamFundFact.findUnique.mockResolvedValueOnce(null);
+    tx.projectAffiliateSettlementFact.findFirst.mockResolvedValueOnce({
+      amountCents: 12000n,
+      affiliateCompanyContractId: "another-company-contract",
+      affiliateAssignmentId: "assignment-1",
+      affiliateBusinessPartyVersionId: "party-version-1"
+    });
+    await expect(
+      service.recordUpstreamFundFact("project-1", "finance-1", {
+        ...input,
+        idempotencyKey: "9f2bca11-3fa4-45a0-b176-4945bd9a8f4c"
+      })
+    ).rejects.toThrow("施工企业向我方公司拨款必须关联已确认且有效的施工企业结算");
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
   });
 

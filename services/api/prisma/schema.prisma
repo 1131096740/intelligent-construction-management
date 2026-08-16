@@ -2674,6 +2674,7 @@ model ProjectAffiliateSettlementFact {
   ledgerId                        String
   projectId                       String
   contractLedgerId                String
+  affiliateCompanyContractId      String?
   entryKind                       String    @default("original")
   adjustsFactId                   String?
   effectDirection                 String    @default("increase")
@@ -2705,6 +2706,7 @@ model ProjectAffiliateSettlementFact {
 
   @@index([projectId, ledgerId, status])
   @@index([contractLedgerId])
+  @@index([affiliateCompanyContractId])
   @@index([adjustsFactId])
   @@index([evidenceFileId])
 }

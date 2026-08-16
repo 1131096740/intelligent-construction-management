@@ -193,6 +193,7 @@ const PROFIT_DISTRIBUTION_IMPACT_KIND_SET = new Set([
 const REQUIRED_FACT_SUBJECT_ROLES: Record<string, Array<keyof OperatingFactSubjects>> = {
   owner_settlement: ["debtor", "creditor"],
   owner_payment: ["actualPayer", "payee"],
+  downstream_contract: ["debtor", "creditor"],
   downstream_settlement: ["debtor", "creditor"],
   downstream_payment: ["actualPayer", "payee"],
   expense: ["costBearingCompany"],
@@ -1031,7 +1032,11 @@ function validateFactInput(input: AppendOperatingFactInput) {
   if (!new Set(["inflow", "outflow", "neutral"]).has(input.direction)) {
     throw new BadRequestException("经营事实方向不正确");
   }
-  if (input.amountCents < 0n || (input.factKind !== "historical_gap" && input.amountCents === 0n)) {
+  if (
+    input.amountCents < 0n ||
+    (!["historical_gap", "downstream_contract"].includes(input.factKind) &&
+      input.amountCents === 0n)
+  ) {
     throw new BadRequestException("经营事实金额必须使用不小于零的整数分");
   }
   if (!input.sourceSnapshot || typeof input.sourceSnapshot !== "object" || Array.isArray(input.sourceSnapshot)) {
@@ -1064,7 +1069,12 @@ function validateImpactInput(impact: OperatingImpactInput) {
   if (!new Set(["increase", "decrease", "notice"]).has(impact.direction)) {
     throw new BadRequestException("影响分录方向不正确");
   }
-  if (impact.amountCents < 0n || (impact.impactKind !== "evidence_gap_notice" && impact.amountCents === 0n)) {
+  if (
+    impact.amountCents < 0n ||
+    (!["evidence_gap_notice", "contract_commitment_reference"].includes(
+      impact.impactKind
+    ) && impact.amountCents === 0n)
+  ) {
     throw new BadRequestException("影响分录金额必须使用不小于零的整数分");
   }
   if (
@@ -1074,6 +1084,12 @@ function validateImpactInput(impact: OperatingImpactInput) {
     impact.direction !== "notice"
   ) {
     throw new BadRequestException("资料依据提示必须使用notice方向");
+  }
+  if (
+    impact.impactKind === "contract_commitment_reference" &&
+    impact.direction !== "notice"
+  ) {
+    throw new BadRequestException("合同承诺引用必须使用notice方向");
   }
   if (
     ["confirmed_cost", "estimated_clearing_expense"].includes(impact.impactKind) &&

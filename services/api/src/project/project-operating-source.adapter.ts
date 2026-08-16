@@ -26,6 +26,8 @@ export const PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE =
   "project_upstream_settlement";
 export const PROJECT_PROXY_PAYMENT_SOURCE_TYPE = "project_proxy_payment";
 export const PROJECT_UPSTREAM_FUND_SOURCE_TYPE = "project_upstream_fund_fact";
+export const PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE =
+  "project_affiliate_contract_fact";
 export const PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE =
   "project_affiliate_settlement_fact";
 export const PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE =
@@ -65,6 +67,13 @@ type ConstructionEnterpriseSourceRow = {
   paymentKind?: string;
   externalPaymentReference?: string | null;
   createdAt?: Date;
+};
+
+type ConstructionEnterpriseSnapshotRow = Omit<
+  ConstructionEnterpriseSourceRow,
+  "amountCents"
+> & {
+  amountCents: bigint | null;
 };
 
 function sourceEntryKind(value: string): OperatingSourceFactInput["entryKind"] {
@@ -135,7 +144,7 @@ function sourceCore(
 }
 
 function sourceSnapshot(
-  row: ConstructionEnterpriseSourceRow,
+  row: ConstructionEnterpriseSnapshotRow,
   sourceType: string,
   sourceBusinessCode: string,
   effectiveDate: Date,
@@ -156,7 +165,7 @@ function sourceSnapshot(
       entryKind: row.entryKind,
       adjustsFactId: row.adjustsFactId,
       effectDirection: row.effectDirection,
-      amountCents: row.amountCents.toString(),
+      amountCents: row.amountCents?.toString() ?? null,
       counterpartyName: row.counterpartyName,
       description: row.description,
       evidenceFileId: row.evidenceFileId,
@@ -459,6 +468,148 @@ async function resolveHistoricalCompanyEntityId(
   return participants[0]!.companyEntityId;
 }
 
+export class ProjectAffiliateContractFactOperatingSourceAdapter
+  implements OperatingSourceAdapter
+{
+  readonly sourceType = PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE;
+
+  async readProjectSnapshots(
+    tx: Parameters<OperatingSourceAdapter["readProjectSnapshots"]>[0],
+    projectId: string
+  ): Promise<readonly OperatingSourceSnapshot[]> {
+    const rows = await tx.projectAffiliateContractFact.findMany({
+      where: {
+        projectId,
+        status: "confirmed",
+        confirmedByUserId: { not: null },
+        confirmedAt: { not: null }
+      },
+      orderBy: [{ signedAt: "asc" }, { id: "asc" }]
+    });
+    return Promise.all(rows.map((row) => this.snapshot(tx, row)));
+  }
+
+  async readSourceSnapshot(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    locator: OperatingSourceLocator
+  ): Promise<OperatingSourceSnapshot | null> {
+    const row = await tx.projectAffiliateContractFact.findFirst({
+      where: {
+        id: locator.sourceBusinessId,
+        projectId: locator.projectId,
+        status: "confirmed",
+        confirmedByUserId: { not: null },
+        confirmedAt: { not: null }
+      }
+    });
+    return row ? this.snapshot(tx, row) : null;
+  }
+
+  toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
+    const source = requiredJsonRecord(snapshot.sourceSnapshot, "施工企业合同正式来源");
+    const affiliate = frozenAffiliateFromJson(source, "施工企业合同");
+    const amountCents = optionalJsonText(source, "amountCents")
+      ? BigInt(requiredJsonText(source, "amountCents", "施工企业合同"))
+      : 0n;
+    if (amountCents < 0n) {
+      throw new BadRequestException("施工企业合同金额不能为负数");
+    }
+    const creditor = {
+      kind: "downstream_counterparty" as const,
+      id: stableNamedSubjectId(
+        "downstream",
+        requiredJsonText(source, "counterpartyName", "施工企业合同")
+      )
+    };
+    const debtor = {
+      kind: "construction_enterprise" as const,
+      id: affiliate.businessPartyVersionId
+    };
+    const input = sourceCore(
+      snapshot,
+      source,
+      affiliate,
+      {
+        factKind: "downstream_contract",
+        operatingLevel: "project",
+        direction: "neutral",
+        amountCents,
+        subjects: { debtor, creditor },
+        impacts: [
+          {
+            idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:commitment`,
+            sourceImpactKey: "contract_commitment_reference",
+            impactKind: "contract_commitment_reference",
+            amountCents: 0n,
+            direction: "notice",
+            subjectRole: "creditor",
+            subject: creditor,
+            description: "施工企业下游合同正式承诺引用，不直接形成成本或结算应付"
+          }
+        ],
+        basisSnapshot: sourceJson({
+          authority: "confirmed_project_affiliate_contract_fact",
+          contractType: requiredJsonText(source, "contractType", "施工企业合同"),
+          externalContractReference: requiredJsonText(
+            source,
+            "externalContractReference",
+            "施工企业合同"
+          ),
+          amountNature: requiredJsonText(source, "amountNature", "施工企业合同"),
+          advanceAllowed: source.advanceAllowed === true,
+          advanceLimitCents: optionalJsonText(source, "advanceLimitCents")
+        })
+      },
+      "施工企业合同"
+    );
+    return { entryKind: sourceEntryKind(requiredJsonText(source, "entryKind", "施工企业合同")), input };
+  }
+
+  private async snapshot(
+    tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
+    row: ConstructionEnterpriseSnapshotRow & {
+      contractType: string;
+      externalContractReference: string;
+      signedAt: Date;
+      amountNature: string;
+      amountCents: bigint | null;
+      advanceAllowed: boolean;
+      advanceLimitCents: bigint | null;
+      advanceTermsSummary: string | null;
+    }
+  ): Promise<OperatingSourceSnapshot> {
+    if (!row.confirmedByUserId || !row.confirmedAt) {
+      throw new BadRequestException("施工企业合同缺少正式确认人或确认时间");
+    }
+    const [effectiveDate, affiliate] = await Promise.all([
+      readOperatingLedgerEffectiveDate(tx, row.projectId),
+      readAffiliateSnapshot(tx, {
+        projectId: row.projectId,
+        occurredAt: row.signedAt,
+        assignmentId: row.affiliateAssignmentId,
+        businessPartyVersionId: row.affiliateBusinessPartyVersionId
+      })
+    ]);
+    return sourceSnapshot(
+      { ...row, occurredAt: row.signedAt },
+      this.sourceType,
+      `施工企业合同/${row.ledgerId ?? row.id}`,
+      effectiveDate,
+      affiliate,
+      {
+        signedAt: row.signedAt.toISOString(),
+        contractType: row.contractType,
+        externalContractReference: row.externalContractReference,
+        amountNature: row.amountNature,
+        amountCents: row.amountCents?.toString() ?? null,
+        advanceAllowed: row.advanceAllowed,
+        advanceLimitCents: row.advanceLimitCents?.toString() ?? null,
+        advanceTermsSummary: row.advanceTermsSummary
+      }
+    );
+  }
+}
+
 export class ProjectAffiliateSettlementFactOperatingSourceAdapter
   implements OperatingSourceAdapter
 {
@@ -638,18 +789,24 @@ export class ProjectAffiliatePaymentFactOperatingSourceAdapter
       id: stableNamedSubjectId("downstream", requiredJsonText(source, "counterpartyName", "施工企业付款"))
     };
     const impacts: AppendOperatingFactInput["impacts"] = [];
-    if (optionalJsonText(source, "settlementLedgerId")) {
-      impacts.push({
-        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
-        sourceImpactKey: "payable_decrease",
-        impactKind: "payable_decrease",
-        amountCents,
-        direction: effectDirection === "increase" ? "decrease" : "increase",
-        subjectRole: "payee",
-        subject: payee,
-        description: "施工企业实际付款清偿下游应付"
-      });
+    const payableSourceId =
+      optionalJsonText(source, "settlementLedgerId") ??
+      optionalJsonText(source, "contractLedgerId");
+    if (!payableSourceId) {
+      throw new BadRequestException("施工企业付款缺少合同或结算应付来源");
     }
+    impacts.push({
+      idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
+      sourceImpactKey: `payable_decrease:${payableSourceId}`,
+      impactKind: "payable_decrease",
+      amountCents,
+      direction: effectDirection === "increase" ? "decrease" : "increase",
+      subjectRole: "payee",
+      subject: payee,
+      description: optionalJsonText(source, "settlementLedgerId")
+        ? "施工企业实际付款清偿下游结算应付"
+        : "施工企业实际付款清偿合同付款义务"
+    });
     impacts.push({
       idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
       sourceImpactKey: "construction_enterprise_funds_decrease",

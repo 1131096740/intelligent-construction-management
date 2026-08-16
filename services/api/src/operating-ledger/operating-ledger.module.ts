@@ -15,6 +15,8 @@ import {
 import {
   ProjectAffiliatePaymentFactOperatingSourceAdapter,
   PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
+  ProjectAffiliateContractFactOperatingSourceAdapter,
+  PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
   ProjectAffiliateSettlementFactOperatingSourceAdapter,
   PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
   ProjectProxyPaymentOperatingSourceAdapter,
@@ -50,6 +52,7 @@ import { OperatingSourceReplayService } from "./operating-source-replay.service"
 export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+  PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
   "settlement",
@@ -71,6 +74,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
     [
       new ProjectUpstreamSettlementOperatingSourceAdapter(),
       new ProjectUpstreamFundFactOperatingSourceAdapter(),
+      new ProjectAffiliateContractFactOperatingSourceAdapter(),
       new ProjectAffiliateSettlementFactOperatingSourceAdapter(),
       new ProjectAffiliatePaymentFactOperatingSourceAdapter(),
       new SettlementOperatingSourceAdapter(),

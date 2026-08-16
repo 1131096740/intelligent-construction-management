@@ -103,6 +103,7 @@ interface AffiliateContractFactRow extends AffiliateFactConfirmation {
 interface AffiliateSettlementFactRow extends AffiliateFactConfirmation {
   ledgerId: string;
   contractLedgerId: string;
+  affiliateCompanyContractId: string | null;
   entryKind: string;
   adjustsFactId: string | null;
   effectDirection: string;
@@ -512,6 +513,9 @@ export class ProjectAffiliateBusinessService {
       input.contractLedgerId,
       "请关联已确认施工企业合同"
     );
+    const affiliateCompanyContractId = optionalTrimmed(
+      input.affiliateCompanyContractId
+    );
     const entryKind = normalizeEntryKind(input.entryKind ?? "original");
     const effectDirection = normalizeEffectDirection(entryKind, input.effectDirection);
     const adjustsFactId = optionalTrimmed(input.adjustsFactId);
@@ -530,6 +534,7 @@ export class ProjectAffiliateBusinessService {
       projectId,
       actorUserId,
       contractLedgerId,
+      affiliateCompanyContractId,
       entryKind,
       effectDirection,
       adjustsFactId,
@@ -567,6 +572,42 @@ export class ProjectAffiliateBusinessService {
         const target = adjustsFactId
           ? await lockAndLoadSettlementTarget(tx, projectId, adjustsFactId)
           : null;
+        const resolvedAffiliateCompanyContractId =
+          affiliateCompanyContractId ?? target?.affiliateCompanyContractId ?? null;
+        if (
+          affiliateCompanyContractId &&
+          target?.affiliateCompanyContractId &&
+          affiliateCompanyContractId !== target.affiliateCompanyContractId
+        ) {
+          throw new BadRequestException("施工企业结算更正不得改变施工企业—我方合同关联");
+        }
+        if (resolvedAffiliateCompanyContractId) {
+          const companyContract = await tx.projectAffiliateCompanyContract.findFirst({
+            where: {
+              id: resolvedAffiliateCompanyContractId,
+              projectId,
+              status: "confirmed",
+              confirmedByUserId: { not: null },
+              confirmedAt: { not: null }
+            },
+            select: {
+              affiliateAssignmentId: true,
+              affiliateBusinessPartyVersionId: true,
+              companyEntityNameSnapshot: true
+            }
+          });
+          if (
+            !companyContract ||
+            companyContract.affiliateAssignmentId !== contract.affiliateAssignmentId ||
+            companyContract.affiliateBusinessPartyVersionId !==
+              contract.affiliateBusinessPartyVersionId ||
+            companyContract.companyEntityNameSnapshot !== counterpartyName
+          ) {
+            throw new BadRequestException(
+              "施工企业结算关联的我方合同不存在、未确认、主体不一致或相对方不一致"
+            );
+          }
+        }
         if (target) {
           if (
             target.contractLedgerId !== contractLedgerId ||
@@ -599,6 +640,7 @@ export class ProjectAffiliateBusinessService {
             ledgerId: target?.ledgerId ?? id,
             projectId,
             contractLedgerId,
+            affiliateCompanyContractId: resolvedAffiliateCompanyContractId,
             entryKind,
             adjustsFactId,
             effectDirection,
@@ -713,6 +755,7 @@ export class ProjectAffiliateBusinessService {
       return await this.prisma.$transaction(async (tx) => {
         let approvedPaymentRequest: {
           id: string;
+          sourceType: string;
           contractId: string;
           contractVersionId: string;
           settlementId: string | null;
@@ -1118,6 +1161,16 @@ export class ProjectAffiliateBusinessService {
         return readModelByType(businessType, replay, roles);
       }
 
+      const pendingFact =
+        businessType === "payment"
+          ? await delegate.findFirst({
+              where: { id: factId, projectId },
+              select: { paymentRequestId: true }
+            })
+          : null;
+      if (pendingFact?.paymentRequestId) {
+        await lockAffiliatePaymentRequest(tx, projectId, pendingFact.paymentRequestId);
+      }
       await lockFactForConfirmation(tx, businessType, projectId, factId);
       const fact = await delegate.findFirst({ where: { id: factId, projectId } });
       if (!fact) throw new NotFoundException("待确认施工企业外部事实不存在");
@@ -1154,7 +1207,6 @@ export class ProjectAffiliateBusinessService {
         throw new InternalServerErrorException("施工企业外部事实确认结果未正确保存");
       }
       if (businessType === "payment" && confirmed.paymentRequestId) {
-        await lockAffiliatePaymentRequest(tx, projectId, confirmed.paymentRequestId);
         await assertAffiliatePaymentRequestCapacity(tx, {
           projectId,
           paymentRequestId: confirmed.paymentRequestId,
@@ -1163,20 +1215,20 @@ export class ProjectAffiliateBusinessService {
         });
         await syncAffiliatePaymentRequest(tx, projectId, confirmed.paymentRequestId);
       }
-      if (businessType !== "contract") {
-        await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
-          tx,
-          {
-            projectId,
-            sourceType:
-              businessType === "settlement"
+      await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+        tx,
+        {
+          projectId,
+          sourceType:
+            businessType === "contract"
+              ? "project_affiliate_contract_fact"
+              : businessType === "settlement"
                 ? "project_affiliate_settlement_fact"
                 : "project_affiliate_payment_fact",
-            sourceBusinessId: confirmed.id
-          },
-          actorUserId
-        );
-      }
+          sourceBusinessId: confirmed.id
+        },
+        actorUserId
+      );
       await this.audit.record(tx, {
         actorUserId,
         action: `project.affiliate_${businessType}_fact.confirm`,
@@ -1327,6 +1379,7 @@ async function assertAffiliatePaymentRequestMatchesDebt(
   tx: Prisma.TransactionClient,
   input: {
     paymentRequest: {
+      sourceType: string;
       contractId: string;
       contractVersionId: string;
       settlementId: string | null;
@@ -1358,6 +1411,9 @@ async function assertAffiliatePaymentRequestMatchesDebt(
         select: { id: true, projectId: true, contractVersionId: true, status: true }
       })
     : null;
+  const contractRequest = ["contract_advance", "contract_due"].includes(
+    input.paymentRequest.sourceType
+  );
   if (
     !version ||
     !contract ||
@@ -1366,7 +1422,20 @@ async function assertAffiliatePaymentRequestMatchesDebt(
     contract.counterparty !== input.counterpartyName ||
     version.signingSubjectType !== "affiliate" ||
     version.affiliateBusinessPartyVersionId !==
-      input.contract.affiliateBusinessPartyVersionId ||
+      input.contract.affiliateBusinessPartyVersionId
+  ) {
+    throw new BadRequestException(
+      "施工企业付款申请必须与当前合同、结算、相对方和施工企业主体一致"
+    );
+  }
+  if (contractRequest) {
+    if (input.paymentRequest.settlementId || input.settlement) {
+      throw new BadRequestException("合同预付款或直接付款申请不得关联施工企业结算");
+    }
+    return;
+  }
+  if (
+    input.paymentRequest.sourceType !== "settlement" ||
     !input.paymentRequest.settlementId ||
     !requestSettlement ||
     requestSettlement.projectId !== input.projectId ||
@@ -1377,9 +1446,7 @@ async function assertAffiliatePaymentRequestMatchesDebt(
     input.settlement.affiliateBusinessPartyVersionId !==
       input.contract.affiliateBusinessPartyVersionId
   ) {
-    throw new BadRequestException(
-      "施工企业付款申请必须与当前合同、结算、相对方和施工企业主体一致"
-    );
+    throw new BadRequestException("施工企业正常付款申请必须关联有效施工企业结算");
   }
 }
 

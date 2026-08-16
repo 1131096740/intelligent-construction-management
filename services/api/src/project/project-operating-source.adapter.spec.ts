@@ -1,4 +1,5 @@
 import {
+  ProjectAffiliateContractFactOperatingSourceAdapter,
   ProjectAffiliatePaymentFactOperatingSourceAdapter,
   ProjectAffiliateSettlementFactOperatingSourceAdapter,
   ProjectUpstreamFundFactOperatingSourceAdapter,
@@ -7,6 +8,73 @@ import {
 } from "./project-operating-source.adapter";
 
 describe("POL-08 construction-enterprise operating source adapters", () => {
+  it("projects confirmed construction-enterprise contracts without turning them into cost or payable", async () => {
+    const adapter = new ProjectAffiliateContractFactOperatingSourceAdapter();
+    const tx = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          operatingLedgerEffectiveDate: new Date("2026-08-01T00:00:00.000Z")
+        })
+      },
+      projectAffiliateAssignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "affiliate-assignment-1",
+          businessPartyVersionId: "affiliate-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          affiliateCreditCodeSnapshot: "91310000000000000X"
+        })
+      },
+      projectAffiliateContractFact: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "contract-fact-1",
+          ledgerId: "contract-ledger-1",
+          projectId: "project-1",
+          entryKind: "original",
+          adjustsFactId: null,
+          effectDirection: "increase",
+          contractType: "labor_subcontract",
+          externalContractReference: "SUB-001",
+          counterpartyName: "供应商乙",
+          signedAt: new Date("2026-08-12T00:00:00.000Z"),
+          amountNature: "fixed",
+          amountCents: 2_000_00n,
+          advanceAllowed: false,
+          advanceLimitCents: null,
+          advanceTermsSummary: null,
+          affiliateAssignmentId: "affiliate-assignment-1",
+          affiliateBusinessPartyVersionId: "affiliate-version-1",
+          affiliateNameSnapshot: "施工企业甲",
+          description: "下游合同",
+          evidenceFileId: "file-1",
+          documentVersion: 1,
+          recordedByUserId: "contract-1",
+          confirmedByUserId: "contract-director-1",
+          confirmedAt: new Date("2026-08-13T01:00:00.000Z"),
+          createdAt: new Date("2026-08-12T01:00:00.000Z")
+        })
+      }
+    };
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "contract-fact-1"
+    });
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.factKind).toBe("downstream_contract");
+    expect(input.amountCents).toBe(2_000_00n);
+    expect(input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "contract_commitment_reference",
+        amountCents: 0n,
+        direction: "notice"
+      })
+    ]);
+    expect(input.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
+    expect(input.impacts.some((impact) => impact.impactKind === "payable_increase")).toBe(false);
+  });
+
   it("maps an owner payment to construction-enterprise funds without income or company cash", async () => {
     const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
     const snapshot = await adapter.readSourceSnapshot(
@@ -34,6 +102,31 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     ]);
     expect(input.impacts.some((impact) => impact.impactKind === "confirmed_income")).toBe(false);
     expect(input.impacts.some((impact) => impact.impactKind.startsWith("company_") || impact.impactKind === "company_project_funds_increase")).toBe(false);
+  });
+
+  it("uses an explicitly linked owner settlement to reduce the receivable", async () => {
+    const adapter = new ProjectUpstreamFundFactOperatingSourceAdapter();
+    const tx = upstreamFundTx();
+    tx.projectUpstreamFundFact.findFirst.mockResolvedValue({
+      ...(await tx.projectUpstreamFundFact.findFirst()),
+      upstreamSettlementId: "upstream-settlement-1"
+    });
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "fund-fact-1"
+    });
+
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+
+    expect(input.impacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          impactKind: "receivable_decrease",
+          amountCents: 1_000_00n
+        })
+      ])
+    );
   });
 
   it("maps a company remittance with immutable contract, settlement, invoice, and payable lineage", async () => {
@@ -143,6 +236,41 @@ describe("POL-08 construction-enterprise operating source adapters", () => {
     ]);
     expect(payment.impacts.some((impact) => impact.impactKind === "confirmed_cost")).toBe(false);
   });
+
+  it.each(["advance", "direct_contract"])(
+    "maps %s payment to the contract payable when no settlement is present",
+    async (paymentKind) => {
+      const adapter = new ProjectAffiliatePaymentFactOperatingSourceAdapter();
+      const snapshot = await adapter.readSourceSnapshot(
+        affiliateFactTx() as never,
+        {
+          projectId: "project-1",
+          sourceType: adapter.sourceType,
+          sourceBusinessId: "payment-fact-1"
+        }
+      );
+      const contractPaymentSnapshot = {
+        ...snapshot!,
+        sourceSnapshot: {
+          ...snapshot!.sourceSnapshot,
+          settlementLedgerId: null,
+          paymentKind
+        }
+      };
+
+      const payment = adapter.toOperatingFactInput(contractPaymentSnapshot).input;
+
+      expect(payment.impacts).toEqual([
+        expect.objectContaining({
+          impactKind: "payable_decrease",
+          sourceImpactKey: "payable_decrease:contract-ledger-1"
+        }),
+        expect.objectContaining({
+          impactKind: "construction_enterprise_funds_decrease"
+        })
+      ]);
+    }
+  );
 });
 
 describe("ProjectUpstreamSettlementOperatingSourceAdapter", () => {

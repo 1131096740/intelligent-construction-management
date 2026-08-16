@@ -227,6 +227,7 @@ function openAdjustment(target: ConfirmTarget, mode: "correction" | "reversal") 
     const fact = target.fact;
     settlementForm.value = {
       contractLedgerId: fact.contractLedgerId,
+      affiliateCompanyContractId: fact.affiliateCompanyContractId ?? "",
       counterpartyName: fact.counterpartyName,
       settledAt: dateText(fact.settledAt),
       periodLabel: fact.periodLabel,
@@ -337,6 +338,9 @@ async function submitRecord() {
         : undefined;
       await recordProjectAffiliateSettlementFactWithCapability(props.projectId, {
         contractLedgerId: required(form.contractLedgerId, "关联施工企业合同"),
+        ...(form.affiliateCompanyContractId.trim()
+          ? { affiliateCompanyContractId: form.affiliateCompanyContractId.trim() }
+          : {}),
         counterpartyName: required(form.counterpartyName, "结算相对方"),
         settledAt: required(form.settledAt, "外部结算日期"),
         periodLabel: required(form.periodLabel, "结算期间"),
@@ -794,6 +798,7 @@ function createContractForm() {
 function createSettlementForm() {
   return {
     contractLedgerId: "",
+    affiliateCompanyContractId: "",
     counterpartyName: "",
     settledAt: todayText(),
     periodLabel: "",
@@ -1215,6 +1220,12 @@ function errorMessage(error: unknown, fallback: string) {
             :options="settlementContractOptions"
             :disabled="recordMode !== 'original'"
             @change="syncSettlementContract"
+          />
+          <t-input
+            v-model="settlementForm.affiliateCompanyContractId"
+            label="拨款链路的施工企业—我方合同档案编号（选填）"
+            placeholder="仅在该结算用于拨款链路时填写"
+            :disabled="recordMode !== 'original'"
           />
           <t-input
             v-model="settlementForm.counterpartyName"
