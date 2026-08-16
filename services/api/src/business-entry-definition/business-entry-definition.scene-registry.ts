@@ -5,6 +5,10 @@ import {
   PROJECT_OPERATING_TAKEOVER_STATUSES,
   type BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
+import {
+  createBusinessEntrySceneAccessRegistry,
+  type BusinessEntrySceneAccessPolicy
+} from "./business-entry-scene-access";
 
 const projectFinanceRoles = ["finance_staff", "finance_director"] as const;
 
@@ -107,4 +111,31 @@ export const BUSINESS_ENTRY_SCENE_DEFINITIONS: readonly BusinessEntrySceneDefini
 
 export const BUSINESS_ENTRY_DEFINITION_REGISTRY = createBusinessEntryDefinitionRegistry(
   BUSINESS_ENTRY_SCENE_DEFINITIONS
+);
+
+export const BUSINESS_ENTRY_SCENE_ACCESS_POLICIES: readonly BusinessEntrySceneAccessPolicy[] =
+  Object.freeze([
+    {
+      sceneKey: "project_operating_profile",
+      target: { scope: "project", entityType: "project" },
+      permission: {
+        kind: "business_action",
+        action: "project.operating_profile.manage",
+        roleScope: "project"
+      }
+    },
+    ...OPERATING_TAKEOVER_SCENE_DEFINITIONS.map((definition) => ({
+      sceneKey: definition.key,
+      target: { scope: "project" as const, entityType: definition.entityType },
+      permission: {
+        kind: "business_action" as const,
+        action: "operating_takeover.manage" as const,
+        roleScope: "effective" as const
+      }
+    }))
+  ]);
+
+export const BUSINESS_ENTRY_ACCESS_REGISTRY = createBusinessEntrySceneAccessRegistry(
+  BUSINESS_ENTRY_SCENE_DEFINITIONS,
+  BUSINESS_ENTRY_SCENE_ACCESS_POLICIES
 );

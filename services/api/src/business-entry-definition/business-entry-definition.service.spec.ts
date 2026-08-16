@@ -1,10 +1,24 @@
-import { BadRequestException } from "@nestjs/common";
 import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException
+} from "@nestjs/common";
+import * as ExcelJS from "exceljs";
+import {
+  COMPANY_ENTITY_MAINTAINER_ROLES,
   createBusinessEntryDefinitionRegistry,
   type BusinessEntrySceneDefinition
 } from "@jiangkong/shared-domain";
+import { createBusinessEntrySceneAccessRegistry } from "./business-entry-scene-access";
 import { BusinessEntryDefinitionService } from "./business-entry-definition.service";
-import { BUSINESS_ENTRY_DEFINITION_REGISTRY as registeredDefinitions } from "./business-entry-definition.scene-registry";
+import {
+  BUSINESS_ENTRY_ACCESS_REGISTRY as registeredAccess,
+  BUSINESS_ENTRY_DEFINITION_REGISTRY as registeredDefinitions
+} from "./business-entry-definition.scene-registry";
+import {
+  BUSINESS_ENTRY_XLSX_MIME,
+  BusinessEntryExcelService
+} from "./business-entry-excel.service";
 
 const definition: BusinessEntrySceneDefinition = {
   key: "project_operating_profile",
@@ -38,26 +52,91 @@ const definition: BusinessEntrySceneDefinition = {
   rules: []
 };
 
+const companyDefinition: BusinessEntrySceneDefinition = {
+  ...definition,
+  key: "company_profile",
+  entityType: "company_entity",
+  name: "我方公司资料",
+  description: "维护我方公司受控基础资料。",
+  version: 1,
+  fields: definition.fields.map((field) => ({
+    ...field,
+    key: "name",
+    label: "公司名称",
+    description: "我方公司的正式中文名称。",
+    example: "上海示例建设有限公司",
+    type: "text",
+    options: undefined,
+    permissions: {
+      view: COMPANY_ENTITY_MAINTAINER_ROLES,
+      edit: COMPANY_ENTITY_MAINTAINER_ROLES,
+      import: COMPANY_ENTITY_MAINTAINER_ROLES,
+      export: COMPANY_ENTITY_MAINTAINER_ROLES
+    }
+  }))
+};
+
+function accessRegistry(
+  definitions: readonly BusinessEntrySceneDefinition[],
+  resolveGlobalTarget = jest.fn().mockResolvedValue(true)
+) {
+  return createBusinessEntrySceneAccessRegistry(definitions, definitions.map((item) =>
+    item.key === "company_profile"
+      ? {
+          sceneKey: item.key,
+          target: {
+            scope: "global",
+            entityType: "company_entity",
+            resolve: resolveGlobalTarget
+          },
+          permission: {
+            kind: "role_keys",
+            roleKeys: COMPANY_ENTITY_MAINTAINER_ROLES,
+            roleScope: "global"
+          }
+        }
+      : {
+          sceneKey: item.key,
+          target: { scope: "project", entityType: "project" },
+          permission: {
+            kind: "business_action",
+            action: "project.operating_profile.manage",
+            roleScope: "project"
+          }
+        }
+  ) as never);
+}
+
 function projectPrisma() {
   return {
     project: {
       findUnique: jest.fn().mockResolvedValue({ id: "project-1" })
-    }
-  } as never;
+    },
+    userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+    position: { findMany: jest.fn().mockResolvedValue([]) }
+  };
+}
+
+function projectVisibility(roleKeys: readonly string[]) {
+  return {
+    effectiveRoleScopes: jest.fn().mockResolvedValue({
+      globalRoleKeys: [],
+      projectRoleKeys: roleKeys
+    })
+  };
 }
 
 describe("BusinessEntryDefinitionService", () => {
   it("uses server-resolved project roles for validation and freezes the accepted version", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
-    const visibility = {
-      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
-    };
+    const visibility = projectVisibility(["finance_staff"]);
     const snapshots = { save: jest.fn().mockImplementation(async (_projectId, _userId, snapshot) => snapshot) };
     const service = new BusinessEntryDefinitionService(
       registry,
+      accessRegistry([definition]),
       visibility,
       snapshots,
-      projectPrisma()
+      projectPrisma() as never
     );
 
     const result = await service.validateDraft(
@@ -72,7 +151,7 @@ describe("BusinessEntryDefinitionService", () => {
     );
 
     expect(result.valid).toBe(true);
-    expect(visibility.effectiveRoleKeys).toHaveBeenCalledWith("user-1", "project-1");
+    expect(visibility.effectiveRoleScopes).toHaveBeenCalledWith("user-1", "project-1");
 
     const snapshot = await service.freezeSubmissionSnapshot(
       "project_operating_profile",
@@ -98,14 +177,13 @@ describe("BusinessEntryDefinitionService", () => {
 
   it("does not trust caller-supplied roles and maps invalid drafts to a bad request", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
-    const visibility = {
-      effectiveRoleKeys: jest.fn().mockResolvedValue(["project_manager"])
-    };
+    const visibility = projectVisibility(["project_manager"]);
     const service = new BusinessEntryDefinitionService(
       registry,
+      accessRegistry([definition]),
       visibility,
       { save: jest.fn() },
-      projectPrisma()
+      projectPrisma() as never
     );
 
     await expect(
@@ -121,45 +199,138 @@ describe("BusinessEntryDefinitionService", () => {
         } as never,
         "2026-08-16T10:00:00.000Z"
       )
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ForbiddenException);
   });
 
-  it("rejects a formal target outside the authorized project scope", async () => {
+  it("rejects wrong-domain and cross-project targets before validation or freeze", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
-    const visibility = {
-      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
-    };
+    const visibility = projectVisibility(["finance_staff"]);
+    const snapshots = { save: jest.fn() };
     const service = new BusinessEntryDefinitionService(
       registry,
+      accessRegistry([definition]),
       visibility,
-      { save: jest.fn() },
-      projectPrisma()
+      snapshots,
+      projectPrisma() as never
     );
 
+    const wrongDomainInput = {
+      definitionVersion: 3,
+      target: { entityType: "company_entity", entityId: "project-1" },
+      values: { takeoverStatus: "operating_with_takeover" }
+    };
+    const crossProjectInput = {
+      definitionVersion: 3,
+      target: { entityType: "project", entityId: "project-2" },
+      values: { takeoverStatus: "operating_with_takeover" }
+    };
+
     await expect(
-      service.validateDraft("project_operating_profile", "project-1", "user-1", {
-        definitionVersion: 3,
-        target: { entityType: "project", entityId: "project-2" },
-        values: { takeoverStatus: "operating_with_takeover" }
-      })
+      service.validateDraft("project_operating_profile", "project-1", "user-1", wrongDomainInput)
     ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.freezeSubmissionSnapshot(
+        "project_operating_profile",
+        "project-1",
+        "user-1",
+        wrongDomainInput
+      )
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.validateDraft("project_operating_profile", "project-1", "user-1", crossProjectInput)
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.freezeSubmissionSnapshot(
+        "project_operating_profile",
+        "project-1",
+        "user-1",
+        crossProjectInput
+      )
+    ).rejects.toThrow(BadRequestException);
+    expect(snapshots.save).not.toHaveBeenCalled();
   });
 
   it("does not expose a definition to a project role without any visible fields", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
-    const visibility = {
-      effectiveRoleKeys: jest.fn().mockResolvedValue(["project_manager"])
-    };
+    const visibility = projectVisibility(["project_manager"]);
     const service = new BusinessEntryDefinitionService(
       registry,
+      accessRegistry([definition]),
       visibility,
       { save: jest.fn() },
-      projectPrisma()
+      projectPrisma() as never
     );
 
     await expect(
       service.getSceneDefinition("project_operating_profile", "project-1", "user-1")
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it("preserves project-only role semantics for the operating profile scene", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([definition]);
+    const visibility = {
+      effectiveRoleScopes: jest.fn().mockResolvedValue({
+        globalRoleKeys: ["finance_staff"],
+        projectRoleKeys: []
+      })
+    };
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([definition]),
+      visibility,
+      { save: jest.fn() },
+      projectPrisma() as never
+    );
+
+    await expect(service.getSceneDefinition(
+      "project_operating_profile",
+      "project-1",
+      "user-1"
+    )).rejects.toThrow(ForbiddenException);
+  });
+
+  it("rejects a global-only contract staff role for project operating takeover", async () => {
+    const service = new BusinessEntryDefinitionService(
+      registeredDefinitions,
+      registeredAccess,
+      {
+        effectiveRoleScopes: jest.fn().mockResolvedValue({
+          globalRoleKeys: ["contract_staff"],
+          projectRoleKeys: []
+        })
+      },
+      { save: jest.fn() },
+      projectPrisma() as never
+    );
+
+    await expect(service.getSceneDefinitionForOperation(
+      "owner_settlement",
+      "project-1",
+      "user-1",
+      "import"
+    )).rejects.toThrow(ForbiddenException);
+  });
+
+  it("allows project contract staff and canonical global contract director for takeover", async () => {
+    for (const scopes of [
+      { globalRoleKeys: [], projectRoleKeys: ["contract_staff"] },
+      { globalRoleKeys: ["contract_director"], projectRoleKeys: [] }
+    ]) {
+      const service = new BusinessEntryDefinitionService(
+        registeredDefinitions,
+        registeredAccess,
+        { effectiveRoleScopes: jest.fn().mockResolvedValue(scopes) },
+        { save: jest.fn() },
+        projectPrisma() as never
+      );
+
+      await expect(service.getSceneDefinitionForOperation(
+        "owner_settlement",
+        "project-1",
+        "user-1",
+        "import"
+      )).resolves.toMatchObject({ key: "owner_settlement" });
+    }
   });
 
   it("serves only the code-registered project operating profile scene", () => {
@@ -175,14 +346,13 @@ describe("BusinessEntryDefinitionService", () => {
 
   it("resolves import fields and validates an Excel batch with one authoritative role lookup", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
-    const visibility = {
-      effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"])
-    };
+    const visibility = projectVisibility(["finance_staff"]);
     const service = new BusinessEntryDefinitionService(
       registry,
+      accessRegistry([definition]),
       visibility,
       { save: jest.fn() },
-      projectPrisma()
+      projectPrisma() as never
     );
 
     await expect(service.getSceneDefinitionForOperation(
@@ -213,6 +383,226 @@ describe("BusinessEntryDefinitionService", () => {
     );
 
     expect(results.map((result) => result.valid)).toEqual([true, false]);
-    expect(visibility.effectiveRoleKeys).toHaveBeenCalledTimes(2);
+    expect(visibility.effectiveRoleScopes).toHaveBeenCalledTimes(2);
+  });
+
+  it("authorizes a registered global scene from global positions across definition, validation and freeze", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([definition, companyDefinition]);
+    const visibility = { effectiveRoleScopes: jest.fn() };
+    const snapshots = { save: jest.fn() };
+    const prisma = {
+      project: { findUnique: jest.fn() },
+      userPosition: {
+        findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+      },
+      position: {
+        findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }])
+      }
+    };
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([definition, companyDefinition]),
+      visibility,
+      snapshots,
+      prisma as never
+    );
+    const input = {
+      definitionVersion: 1,
+      target: { entityType: "company_entity", entityId: "company-1" },
+      values: { name: "上海示例建设有限公司" }
+    };
+
+    await expect(service.getSceneDefinitionForOperation(
+      "company_profile",
+      undefined,
+      "user-1",
+      "import"
+    )).resolves.toMatchObject({ key: "company_profile" });
+    await expect(service.validateDraft(
+      "company_profile",
+      undefined,
+      "user-1",
+      input
+    )).resolves.toMatchObject({ valid: true });
+    await expect(service.freezeSubmissionSnapshot(
+      "company_profile",
+      undefined,
+      "user-1",
+      input,
+      "2026-08-16T10:00:00.000Z"
+    )).resolves.toMatchObject({
+      sceneKey: "company_profile",
+      target: { entityType: "company_entity", entityId: "company-1" }
+    });
+
+    expect(prisma.project.findUnique).not.toHaveBeenCalled();
+    expect(prisma.userPosition.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", projectId: null },
+      select: { positionId: true }
+    });
+    expect(visibility.effectiveRoleScopes).not.toHaveBeenCalled();
+    expect(snapshots.save).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when a global target resolver rejects a missing or foreign same-type id", async () => {
+    const resolveGlobalTarget = jest.fn().mockResolvedValue(false);
+    const service = new BusinessEntryDefinitionService(
+      createBusinessEntryDefinitionRegistry([companyDefinition]),
+      accessRegistry([companyDefinition], resolveGlobalTarget),
+      { effectiveRoleScopes: jest.fn() },
+      { save: jest.fn() },
+      {
+        project: { findUnique: jest.fn() },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+        },
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+      } as never
+    );
+    const input = {
+      definitionVersion: 1,
+      target: { entityType: "company_entity", entityId: "company-missing" },
+      values: { name: "不存在的公司" }
+    };
+
+    await expect(service.validateDraft(
+      "company_profile",
+      undefined,
+      "user-1",
+      input
+    )).rejects.toThrow(BadRequestException);
+    await expect(service.freezeSubmissionSnapshot(
+      "company_profile",
+      undefined,
+      "user-1",
+      input
+    )).rejects.toThrow(BadRequestException);
+    expect(resolveGlobalTarget).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes an empty Excel batch through the target contract", async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet("我方公司资料").addRow(["经营接管状态"]);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
+    const validateDraftBatch = jest.fn().mockImplementation(async (
+      _sceneKey: string,
+      _projectId: string | undefined,
+      _actorUserId: string,
+      inputs: readonly unknown[]
+    ) => {
+      if (inputs.length === 0) return [];
+      throw new BadRequestException("提交对象不存在或不属于当前业务范围");
+    });
+    const excel = new BusinessEntryExcelService({
+      getSceneDefinitionForOperation: jest.fn().mockResolvedValue(companyDefinition),
+      validateDraftBatch
+    } as never);
+
+    await expect(excel.preview(
+      "company_profile",
+      undefined,
+      "user-1",
+      {
+        definitionVersion: 1,
+        target: { entityType: "company_entity", entityId: "company-missing" }
+      },
+      {
+        originalname: "我方公司资料.xlsx",
+        mimetype: BUSINESS_ENTRY_XLSX_MIME,
+        size: buffer.length,
+        buffer
+      }
+    )).rejects.toThrow(BadRequestException);
+    expect(validateDraftBatch).toHaveBeenCalledWith(
+      "company_profile",
+      undefined,
+      "user-1",
+      [expect.objectContaining({
+        target: { entityType: "company_entity", entityId: "company-missing" },
+        values: {},
+        operation: "import"
+      })]
+    );
+  });
+
+  it("fails closed for a global role without the registered domain permission", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([companyDefinition]);
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([companyDefinition]),
+      { effectiveRoleScopes: jest.fn() },
+      { save: jest.fn() },
+      {
+        project: { findUnique: jest.fn() },
+        userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "finance" }]) },
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "finance_staff" }]) }
+      } as never
+    );
+
+    await expect(service.getSceneDefinition(
+      "company_profile",
+      undefined,
+      "user-1"
+    )).rejects.toThrow(ForbiddenException);
+  });
+
+  it("rejects project context and cross-domain targets for a global scene", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([companyDefinition]);
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([companyDefinition]),
+      { effectiveRoleScopes: jest.fn() },
+      { save: jest.fn() },
+      {
+        project: { findUnique: jest.fn() },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+        },
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+      } as never
+    );
+    const input = {
+      definitionVersion: 1,
+      target: { entityType: "project", entityId: "company-1" },
+      values: { name: "上海示例建设有限公司" }
+    };
+
+    await expect(service.validateDraft(
+      "company_profile",
+      "project-1",
+      "user-1",
+      { ...input, target: { entityType: "company_entity", entityId: "company-1" } }
+    )).rejects.toThrow(BadRequestException);
+    await expect(service.validateDraft(
+      "company_profile",
+      undefined,
+      "user-1",
+      input
+    )).rejects.toThrow(BadRequestException);
+    await expect(service.validateDraftWithRoles(
+      "company_profile",
+      "project-1",
+      ["contract_staff"],
+      { ...input, target: { entityType: "company_entity", entityId: "company-1" } }
+    )).rejects.toThrow(BadRequestException);
+  });
+
+  it("fails closed before role lookup for an unknown scene", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([definition]);
+    const visibility = { effectiveRoleScopes: jest.fn() };
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([definition]),
+      visibility,
+      { save: jest.fn() },
+      projectPrisma() as never
+    );
+
+    await expect(service.getSceneDefinition(
+      "not_registered",
+      "project-1",
+      "user-1"
+    )).rejects.toThrow(NotFoundException);
+    expect(visibility.effectiveRoleScopes).not.toHaveBeenCalled();
   });
 });
