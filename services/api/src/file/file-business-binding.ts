@@ -112,6 +112,8 @@ export const NON_RECEIPT_FILE_BINDINGS = [
     table: "ProjectAffiliateCompanyContract",
     columns: ["fileId", "confirmationSignatureFileId"]
   },
+  { table: "OperatingTakeoverBatch", columns: ["sourceFileId"] },
+  { table: "OperatingTakeoverAttachmentLink", columns: ["fileId"] },
   {
     table: "ProjectSettlementExceptionQuota",
     columns: ["attachmentFileId"]

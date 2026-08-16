@@ -54,6 +54,10 @@ export const BUSINESS_ACTIONS = [
   "project.financing_quota.approve",
   "project.financing_quota.terminate",
   "project.operating_profile.manage",
+  "operating_takeover.manage",
+  "operating_takeover.confirm",
+  "operating_takeover.activate",
+  "operating_takeover.file.upload",
   "payment.create",
   "payment.approve",
   "payment.execution",
@@ -222,6 +226,20 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   ],
   "project.financing_quota.terminate": ["finance_director"],
   "project.operating_profile.manage": ["finance_staff", "finance_director"],
+  "operating_takeover.manage": [
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  ],
+  "operating_takeover.confirm": ["contract_director", "finance_director"],
+  "operating_takeover.activate": ["contract_director", "finance_director"],
+  "operating_takeover.file.upload": [
+    "contract_staff",
+    "contract_director",
+    "finance_staff",
+    "finance_director"
+  ],
   "payment.create": ["contract_staff", "contract_director", "project_manager"],
   "payment.approve": [
     "comprehensive_director",

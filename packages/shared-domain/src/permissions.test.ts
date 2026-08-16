@@ -10,6 +10,13 @@ import {
 } from "./permissions";
 
 describe("permission policy table", () => {
+  it("limits operating takeover work to contract and finance roles", () => {
+    expect(canPerform("operating_takeover.manage", ["contract_staff"])).toBe(true);
+    expect(canPerform("operating_takeover.confirm", ["contract_staff"])).toBe(false);
+    expect(canPerform("operating_takeover.confirm", ["contract_director"])).toBe(true);
+    expect(canPerform("operating_takeover.activate", ["finance_director"])).toBe(true);
+    expect(canPerform("operating_takeover.manage", ["super_admin"])).toBe(false);
+  });
   it("reserves project operating profile maintenance for project finance roles", () => {
     expect(canPerform("project.operating_profile.manage", ["finance_staff"])).toBe(true);
     expect(canPerform("project.operating_profile.manage", ["finance_director"])).toBe(true);

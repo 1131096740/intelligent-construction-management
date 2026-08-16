@@ -49,6 +49,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   InvoiceLedgerController: "finance",
   MeController: "account",
   OrganizationController: "organization",
+  OperatingTakeoverController: "project",
   PaymentController: "payment",
   ProjectController: "project",
   ProjectExpenseController: "expense",

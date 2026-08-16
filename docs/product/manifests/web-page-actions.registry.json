@@ -4197,6 +4197,102 @@
       "wrappers": [
         { "apiFile": "apps/web-admin/src/api/project-operating-profile.api.ts", "name": "removeProjectParticipatingCompany" }
       ]
+    },
+    {
+      "id": "operating-takeover.precheck",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "precheckOperatingTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "manage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "precheckOperatingTakeover" }
+      ]
+    },
+    {
+      "id": "operating-takeover.precheck-excel",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "precheckOperatingTakeoverXlsxWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "manage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "precheckOperatingTakeoverXlsx" }
+      ]
+    },
+    {
+      "id": "operating-takeover.create-batch",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "createOperatingTakeoverBatchWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "create" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "createOperatingTakeoverBatch" }
+      ]
+    },
+    {
+      "id": "operating-takeover.update-row",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "updateOperatingTakeoverRowWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "manage" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "updateOperatingTakeoverRow" }
+      ]
+    },
+    {
+      "id": "operating-takeover.upload-source-file",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "uploadOperatingTakeoverFileWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "file_upload" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "uploadOperatingTakeoverSourceFile" }
+      ]
+    },
+    {
+      "id": "operating-takeover.attach-files",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "addOperatingTakeoverAttachmentGroupWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "file_upload" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "addOperatingTakeoverAttachmentGroup" }
+      ]
+    },
+    {
+      "id": "operating-takeover.confirm",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "confirmOperatingTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "confirm" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "confirmOperatingTakeover" }
+      ]
+    },
+    {
+      "id": "operating-takeover.activate",
+      "usage": "background",
+      "routePaths": ["/历史经营接管"],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": { "element": "module", "event": "call", "handler": "activateOperatingTakeoverWithCapability" },
+      "semantic": "business_write",
+      "capability": { "kind": "available_action_string", "source": "capability.availableActions", "key": "activate" },
+      "wrappers": [
+        { "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts", "name": "activateOperatingTakeover" }
+      ]
     }
   ]
 }

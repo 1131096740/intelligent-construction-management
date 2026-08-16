@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 17,
-    "exportedFunctionCount": 467,
-    "transportWrapperCount": 447,
+    "apiModuleCount": 18,
+    "exportedFunctionCount": 479,
+    "transportWrapperCount": 459,
     "pureExportCount": 20,
-    "mainRequestBindingCount": 469,
+    "mainRequestBindingCount": 481,
     "ticketFollowupCount": 3,
-    "requestEdgeCount": 469,
-    "productionConsumerCount": 345,
+    "requestEdgeCount": 481,
+    "productionConsumerCount": 357,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 253,
-    "reachableProductionModuleCount": 227
+    "productionModuleCount": 255,
+    "reachableProductionModuleCount": 229
   },
   "wrappers": [
     {
@@ -6588,6 +6588,7 @@
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
       ],
@@ -10254,6 +10255,357 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/funds/FundsWorkbenchPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "activateOperatingTakeover",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/activation",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/activation",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/activation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "activateOperatingTakeover",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "addOperatingTakeoverAttachmentGroup",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "addOperatingTakeoverAttachmentGroup",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "confirmOperatingTakeover",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/confirmations",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/confirmations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmOperatingTakeover",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "createOperatingTakeoverBatch",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedPath": "/projects/:param/operating-takeovers",
+          "normalizedKey": "POST /projects/:param/operating-takeovers",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createOperatingTakeoverBatch",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadOperatingTakeoverTemplate",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 178,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/workbook-template",
+          "normalizedPath": "/projects/:param/operating-takeovers/workbook-template",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/workbook-template",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadOperatingTakeoverTemplate"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOperatingTakeoverBatches",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 92,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedPath": "/projects/:param/operating-takeovers",
+          "normalizedKey": "GET /projects/:param/operating-takeovers",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOperatingTakeoverBatches",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOperatingTakeoverCapability",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 92,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/capability",
+          "normalizedPath": "/projects/:param/operating-takeovers/capability",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOperatingTakeoverCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchOperatingTakeoverDetail",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 92,
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/:param",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchOperatingTakeoverDetail",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "precheckOperatingTakeover",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 98,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck",
+          "normalizedPath": "/projects/:param/operating-takeovers/precheck",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "precheckOperatingTakeover",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "precheckOperatingTakeoverXlsx",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 118,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck-xlsx",
+          "normalizedPath": "/projects/:param/operating-takeovers/precheck-xlsx",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck-xlsx",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "precheckOperatingTakeoverXlsx",
+              "postFormData"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "updateOperatingTakeoverRow",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 108,
+          "method": "PATCH",
+          "path": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedPath": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "updateOperatingTakeoverRow",
+              "patchJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "uploadOperatingTakeoverSourceFile",
+      "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 118,
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/files",
+          "normalizedPath": "/projects/:param/operating-takeovers/files",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "uploadOperatingTakeoverSourceFile",
+              "postFormData"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/operating-takeover.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
       ],
       "unreachableConsumers": []
     },

@@ -273,6 +273,11 @@ function matchesPrecision(value: number, precision: number): boolean {
   return Number.isSafeInteger(Math.round(scaled)) && Math.abs(scaled - Math.round(scaled)) < 1e-9;
 }
 
+function matchesNumericStringPrecision(value: string, precision: number): boolean {
+  const match = /^\d+(?:\.(\d+))?$/.exec(value.trim());
+  return match !== null && (match[1]?.length ?? 0) <= precision;
+}
+
 function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown): BusinessEntryValidationError | null {
   const invalid = (
     code: "invalid_type" | "invalid_option" | "invalid_format",
@@ -297,6 +302,15 @@ function validateFieldValue(field: BusinessEntryFieldDefinition, value: unknown)
     return null;
   }
   if (field.type === "number" || field.type === "money") {
+    if (field.type === "money" && typeof value === "string") {
+      const trimmed = value.trim();
+      const numeric = /^\d+(?:\.\d+)?$/.test(trimmed);
+      if (matchesNumericStringPrecision(trimmed, field.precision)) return null;
+      return invalid(
+        numeric ? "invalid_format" : "invalid_type",
+        numeric ? `${field.label}最多保留${field.precision}位小数` : `${field.label}必须填写有效数字`
+      );
+    }
     if (typeof value !== "number" || !Number.isFinite(value)) {
       return invalid("invalid_type", `${field.label}必须填写有效数字`);
     }
