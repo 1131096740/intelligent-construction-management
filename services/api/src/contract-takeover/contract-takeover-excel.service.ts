@@ -40,8 +40,7 @@ const MAIN_HEADERS = [
   "合同名称",
   "相对方",
   "合同类型",
-  "签约主体编号",
-  "签约主体名称",
+  "签约主体",
   "合同金额(元)",
   "签订日期",
   "接管等级",
@@ -56,9 +55,7 @@ const MAIN_HEADERS = [
 
 const PRICING_HEADERS = [
   "合同编号",
-  "清单标识",
   "清单名称",
-  "项目标识",
   "项目编号",
   "名称",
   "规格型号",
@@ -69,6 +66,40 @@ const PRICING_HEADERS = [
   "是否暂定",
   "结算依据"
 ] as const;
+
+const CONTRACT_TYPE_VALUES = {
+  "材料采购合同": "material_purchase",
+  "工程机械设备租赁合同": "equipment_rental",
+  "劳务分包合同": "labor_subcontract",
+  "专业分包合同": "professional_subcontract",
+  通用合同: "generic_contract"
+} as const;
+
+const TAKEOVER_LEVEL_VALUES = { A级: "A", B级: "B", C级: "C" } as const;
+
+const LIFECYCLE_STATUS_VALUES = {
+  已签未开工: "signed_not_started",
+  履约中: "in_progress",
+  暂停履约: "suspended",
+  已完工: "completed",
+  已终止: "terminated",
+  存在争议: "disputed"
+} as const;
+
+const INVOICE_TYPE_VALUES = {
+  增值税普通发票: "vat_general",
+  普通发票: "vat_general",
+  增值税专用发票: "vat_special",
+  专用发票: "vat_special"
+} as const;
+
+const TAX_MODE_VALUES = { 单一税率: "single_rate", 特殊多税率: "multiple_rate" } as const;
+
+const TAX_FACT_SOURCE_VALUES = {
+  合同文件明确: "contract_document",
+  依据补充资料确认: "supplement_evidence",
+  经业务与财务复核确认: "business_finance_confirmation"
+} as const;
 
 export interface ContractTakeoverExcelIssue {
   sheet: string;
@@ -139,7 +170,7 @@ export class ContractTakeoverExcelService {
       companyEntityName: takeover.companyEntityName ?? "—",
       amount: this.money(takeover.amountCents),
       signedAt: this.date(takeover.signedAt),
-      takeoverLevel: takeover.takeoverLevel,
+      takeoverLevel: takeoverLevelLabel(takeover.takeoverLevel),
       lifecycleStatus: lifecycleStatusLabel(takeover.lifecycleStatus),
       takeoverStatus: takeoverStatusLabel(takeover.takeoverStatus),
       invoiceType: takeover.invoiceType
@@ -230,7 +261,7 @@ export class ContractTakeoverExcelService {
       { label: "我方签约主体", value: takeover.companyEntityName ?? "—" },
       { label: "合同金额", value: this.money(takeover.amountCents) },
       { label: "签订日期", value: this.date(takeover.signedAt) },
-      { label: "接管等级", value: takeover.takeoverLevel },
+      { label: "接管等级", value: takeoverLevelLabel(takeover.takeoverLevel) },
       { label: "履约状态", value: lifecycleStatusLabel(takeover.lifecycleStatus) },
       { label: "接管状态", value: takeoverStatusLabel(takeover.takeoverStatus) },
       {
@@ -339,7 +370,7 @@ export class ContractTakeoverExcelService {
     const revisions = workbook.addWorksheet("税务修订");
     revisions.columns = [
       { header: "记录类型", key: "recordType", width: 14 },
-      { header: "修订号", key: "revisionNo", width: 10 },
+      { header: "资料记录", key: "recordLabel", width: 14 },
       { header: "修订性质", key: "kind", width: 12 },
       { header: "状态", key: "status", width: 18 },
       { header: "发票类型", key: "invoiceType", width: 20 },
@@ -356,7 +387,7 @@ export class ContractTakeoverExcelService {
     ];
     revisions.addRow({
       recordType: "当前事实",
-      revisionNo: taxFacts.current.revision,
+      recordLabel: "当前资料",
       kind: "—",
       status: taxFactStatusLabel(taxFacts.current.status),
       invoiceType: taxFacts.current.invoiceType
@@ -380,7 +411,7 @@ export class ContractTakeoverExcelService {
     revisions.addRows(
       taxFacts.revisions.map((revision) => ({
         recordType: "修订记录",
-        revisionNo: revision.revisionNo,
+        recordLabel: "历史资料",
         kind: revision.kind === "correction" ? "更正" : "补录",
         status: revisionStatusLabel(revision.status),
         invoiceType: revision.invoiceType
@@ -414,7 +445,7 @@ export class ContractTakeoverExcelService {
         const currentRow = currentTaxRowById.get(rowFact.contractBillRowId);
         const beforeRow = beforeRowById.get(rowFact.contractBillRowId);
         return {
-          revisionNo: revision.revisionNo,
+          recordLabel: "历史资料",
           revisionKind: revision.kind === "correction" ? "更正" : "补录",
           revisionStatus: revisionStatusLabel(revision.status),
           billName: currentRow?.billName ?? "合同清单",
@@ -434,7 +465,7 @@ export class ContractTakeoverExcelService {
     });
     const revisionDetails = workbook.addWorksheet("税务修订明细");
     revisionDetails.columns = [
-      { header: "修订号", key: "revisionNo", width: 10 },
+      { header: "资料记录", key: "recordLabel", width: 14 },
       { header: "修订性质", key: "revisionKind", width: 12 },
       { header: "状态", key: "revisionStatus", width: 18 },
       { header: "清单", key: "billName", width: 22 },
@@ -465,7 +496,7 @@ export class ContractTakeoverExcelService {
         status: file.purposeLabel,
         operator: file.uploadedByName,
         occurredAt: this.date(file.uploadedAt),
-        description: `文件类型：${file.mimeType}；大小：${file.sizeBytes} 字节`
+          description: "接管资料已保存，可按权限查看原文件"
       })),
       ...takeover.corrections.map((correction) => ({
         recordType: "更正记录",
@@ -508,7 +539,7 @@ export class ContractTakeoverExcelService {
     const parsed = await this.parseWorkbook(buffer);
     const fileSha256 = createHash("sha256").update(buffer).digest("hex");
     const importFingerprint = fingerprint(parsed.rows);
-    const precheck = parsed.rows.length
+    const precheck = parsed.rows.length > 0 && parsed.errors.length === 0
       ? await this.takeovers.precheckImport(projectId, { rows: parsed.rows })
       : {
           projectId,
@@ -665,6 +696,8 @@ export class ContractTakeoverExcelService {
     }
     this.assertNoFormulas(main);
     this.assertNoFormulas(pricing);
+    this.assertNoExtraColumns(main, MAIN_HEADERS.length);
+    this.assertNoExtraColumns(pricing, PRICING_HEADERS.length);
     this.assertHeaders(main, MAIN_HEADERS);
     this.assertHeaders(pricing, PRICING_HEADERS);
 
@@ -675,7 +708,7 @@ export class ContractTakeoverExcelService {
       if (rowNumber === 1 || isEmptyRow(row.values as CellValue[])) return;
       const values = rowValues(row.values as CellValue[], MAIN_HEADERS.length);
       const code = text(values[0]);
-      const amountText = text(values[6]);
+      const amountText = text(values[5]);
       let amountCents = amountText;
       try {
         amountCents = yuanTextToCents(amountText, "合同金额").toString();
@@ -684,26 +717,25 @@ export class ContractTakeoverExcelService {
           sheet: MAIN_SHEET,
           row: rowNumber,
           column: "合同金额(元)",
-          message: error instanceof Error ? error.message : "合同金额格式不正确"
+          message: "合同金额格式不正确"
         });
       }
       rows.push({
         code,
         name: text(values[1]),
         counterparty: text(values[2]),
-        contractTypeKey: text(values[3]),
-        companyEntityId: text(values[4]),
-        companyEntityName: text(values[5]),
+        contractTypeKey: businessEnumValue(text(values[3]), CONTRACT_TYPE_VALUES, "合同类型", errors, MAIN_SHEET, rowNumber),
+        companyEntityName: text(values[4]),
         amountCents,
-        signedAt: dateText(values[7]),
-        takeoverLevel: text(values[8]),
-        lifecycleStatus: text(values[9]),
-        paymentTermsOriginalText: text(values[10]),
-        invoiceType: invoiceTypeValue(values[11]),
-        taxMode: taxModeValue(values[12]),
-        defaultTaxRatePercent: text(values[13]),
-        taxFactSource: taxFactSourceValue(values[14]),
-        taxFactExplanation: text(values[15]),
+        signedAt: dateText(values[6]),
+        takeoverLevel: businessEnumValue(text(values[7]), TAKEOVER_LEVEL_VALUES, "接管等级", errors, MAIN_SHEET, rowNumber),
+        lifecycleStatus: businessEnumValue(text(values[8]), LIFECYCLE_STATUS_VALUES, "履约状态", errors, MAIN_SHEET, rowNumber),
+        paymentTermsOriginalText: text(values[9]),
+        invoiceType: businessEnumValue(text(values[10]), INVOICE_TYPE_VALUES, "发票类型", errors, MAIN_SHEET, rowNumber),
+        taxMode: businessEnumValue(text(values[11]), TAX_MODE_VALUES, "计税模式", errors, MAIN_SHEET, rowNumber),
+        defaultTaxRatePercent: text(values[12]),
+        taxFactSource: businessEnumValue(text(values[13]), TAX_FACT_SOURCE_VALUES, "税务事实来源", errors, MAIN_SHEET, rowNumber),
+        taxFactExplanation: text(values[14]),
         pricingItems: pricingByCode.get(code) ?? []
       });
     });
@@ -727,8 +759,8 @@ export class ContractTakeoverExcelService {
       if (rowNumber === 1 || isEmptyRow(row.values as CellValue[])) return;
       const values = rowValues(row.values as CellValue[], PRICING_HEADERS.length);
       const code = text(values[0]);
-      const quantity = text(values[8]);
-      const unitPrice = text(values[9]);
+      const quantity = text(values[6]);
+      const unitPrice = text(values[7]);
       for (const [value, column] of [
         [quantity, "预计数量"],
         [unitPrice, "含税单价(元)"]
@@ -743,18 +775,18 @@ export class ContractTakeoverExcelService {
         }
       }
       const item = {
-        billKey: text(values[1]),
-        billName: text(values[2]),
-        rowKey: text(values[3]),
-        itemCode: text(values[4]),
-        itemName: text(values[5]),
-        specification: text(values[6]),
-        unit: text(values[7]),
+        billKey: `${code}-清单-${rowNumber - 1}`,
+        billName: text(values[1]),
+        rowKey: `项目-${rowNumber - 1}`,
+        itemCode: text(values[2]),
+        itemName: text(values[3]),
+        specification: text(values[4]),
+        unit: text(values[5]),
         estimatedQuantity: quantity || undefined,
         taxInclusiveUnitPrice: unitPrice || undefined,
-        taxRatePercentOverride: text(values[10]) || undefined,
-        isProvisional: booleanValue(values[11]),
-        settlementBasis: text(values[12])
+        taxRatePercentOverride: text(values[8]) || undefined,
+        isProvisional: booleanValue(values[9], errors, PRICING_SHEET, rowNumber),
+        settlementBasis: text(values[10])
       };
       result.set(code, [...(result.get(code) ?? []), item]);
     });
@@ -781,6 +813,18 @@ export class ContractTakeoverExcelService {
         }
       })
     );
+  }
+
+  private assertNoExtraColumns(sheet: Worksheet, expectedColumnCount: number) {
+    let hasExtraValue = false;
+    sheet.eachRow((row) =>
+      row.eachCell((cell, columnNumber) => {
+        if (columnNumber > expectedColumnCount && text(cell.value as CellValue)) hasExtraValue = true;
+      })
+    );
+    if (hasExtraValue) {
+      throw new BadRequestException("接管模板不得新增系统字段或隐藏列，请重新下载模板");
+    }
   }
 
   private assertSafeXlsxArchive(buffer: Buffer) {
@@ -856,35 +900,46 @@ function dateText(value: CellValue): string {
   return text(value);
 }
 
-function booleanValue(value: CellValue): boolean {
-  return ["是", "true", "1", "yes"].includes(text(value).toLowerCase());
-}
-
-function invoiceTypeValue(value: CellValue): string | undefined {
-  const raw = text(value);
-  if (!raw) return undefined;
-  if (["增值税普通发票", "普通发票", "vat_general"].includes(raw)) return "vat_general";
-  if (["增值税专用发票", "专用发票", "vat_special"].includes(raw)) return "vat_special";
-  return raw;
-}
-
-function taxModeValue(value: CellValue): string | undefined {
-  const raw = text(value);
-  if (!raw) return undefined;
-  if (["单一税率", "single_rate"].includes(raw)) return "single_rate";
-  if (["特殊多税率", "multiple_rate"].includes(raw)) return "multiple_rate";
-  return raw;
-}
-
-function taxFactSourceValue(value: CellValue): string | undefined {
-  const raw = text(value);
-  if (!raw) return undefined;
-  if (["合同文件明确", "contract_document"].includes(raw)) return "contract_document";
-  if (["依据补充资料确认", "supplement_evidence"].includes(raw)) return "supplement_evidence";
-  if (["经业务与财务复核确认", "business_finance_confirmation"].includes(raw)) {
-    return "business_finance_confirmation";
+function booleanValue(
+  value: CellValue,
+  errors?: ContractTakeoverExcelIssue[],
+  sheet?: string,
+  row?: number
+): boolean {
+  const normalized = text(value);
+  if (!normalized || normalized === "否") return false;
+  if (normalized === "是") return true;
+  if (errors && sheet && row !== undefined) {
+    errors.push({
+      sheet,
+      row,
+      column: "是否暂定",
+      message: "是否暂定必须填写“是”或“否”"
+    });
   }
-  return raw;
+  return false;
+}
+
+function businessEnumValue<T extends Record<string, string>>(
+  value: string,
+  values: T,
+  fieldName = "业务字段",
+  errors?: ContractTakeoverExcelIssue[],
+  sheet?: string,
+  row?: number
+): string | undefined {
+  if (!value) return undefined;
+  const mapped = values[value];
+  if (mapped) return mapped;
+  if (errors && sheet && row !== undefined) {
+    errors.push({ sheet, row, column: fieldName, message: `${fieldName}必须填写中文业务名称` });
+    return undefined;
+  }
+  throw new Error(`${fieldName}必须填写中文业务名称`);
+}
+
+function takeoverLevelLabel(value: string) {
+  return { A: "A级", B: "B级", C: "C级" }[value] ?? "接管等级待确认";
 }
 
 function lifecycleStatusLabel(value: string) {
@@ -953,7 +1008,7 @@ function pricingFactStatusLabel(value: string) {
     confirmed: "已确认",
     provisional: "暂定"
   };
-  return labels[value] ?? value;
+  return labels[value] ?? "价格状态待确认";
 }
 
 function revisionStatusLabel(value: string) {

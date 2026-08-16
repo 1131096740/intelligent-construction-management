@@ -273,6 +273,7 @@ import {
   type SettlementRecoveryEntryType,
   type SettlementRecoveryReadModel
 } from "../../../api/settlement-recovery.api";
+import { formatUnknownApiError } from "../../../api/error-message";
 import { centsTextToYuanText } from "../../../lib/money";
 
 const props = withDefaults(defineProps<{ settlementId: string; canRecord?: boolean }>(), { canRecord: false });
@@ -324,7 +325,7 @@ async function load() {
   loading.value = true;
   error.value = "";
   try { ledger.value = await fetchSettlementRecovery(settlementId); }
-  catch (cause) { error.value = cause instanceof Error ? cause.message : "读取结算回收台账失败"; }
+  catch (cause) { error.value = formatUnknownApiError(cause, "读取结算回收台账失败"); }
   finally { loading.value = false; }
 }
 function openRecord() { dialogError.value = ""; recordVisible.value = true; }
@@ -394,7 +395,7 @@ async function submitRecord() {
       confirmationPassword: required(recordForm.confirmationPassword, "当前登录密码")
     });
     recordVisible.value = false; resetRecord(); await load();
-  } catch (cause) { dialogError.value = cause instanceof Error ? cause.message : "登记结算回收失败"; }
+  } catch (cause) { dialogError.value = formatUnknownApiError(cause, "登记结算回收失败"); }
   finally { submitting.value = false; }
 }
 
@@ -413,7 +414,7 @@ async function submitReverse() {
       }
     );
     reverseVisible.value = false; resetReverse(); await load();
-  } catch (cause) { dialogError.value = cause instanceof Error ? cause.message : "登记反向更正失败"; }
+  } catch (cause) { dialogError.value = formatUnknownApiError(cause, "登记反向更正失败"); }
   finally { submitting.value = false; }
 }
 

@@ -117,7 +117,7 @@
           <t-input
             v-model="fileDownloadFilters.keyword"
             size="small"
-            placeholder="业务对象/IP/追溯编号"
+            placeholder="业务对象/IP/审计说明"
           />
         </label>
         <t-button
@@ -147,7 +147,7 @@
           <template #action="{ row }">
             <t-tag
               size="small"
-              :theme="row.actionKey === 'file.download' ? 'warning' : 'primary'"
+              :theme="row.actionKind === 'download' ? 'warning' : 'primary'"
               variant="light"
             >
               {{ row.action }}
@@ -191,7 +191,7 @@
         <template #operation="{ row }">
           <t-link
             theme="primary"
-            @click="showNotice(`审计记录 ${row.id} 的追溯信息：${row.trace}`)"
+            @click="showNotice(row.trace)"
           >
             详情
           </t-link>
@@ -204,6 +204,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { fetchAuditLogs, fetchFileDownloadAudits } from "../../api/core-flow-read.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import type {
   AuditLogRow,
   AuditTone,
@@ -267,7 +268,7 @@ async function loadAuditLogs() {
     summary.value = result.summary;
     message.value = "";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "读取审计日志失败";
+    message.value = formatUnknownApiError(error, "读取审计日志失败");
   } finally {
     loading.value = false;
   }
@@ -281,7 +282,7 @@ async function loadFileDownloadAudits() {
     fileDownloadSummary.value = result.summary;
     message.value = "";
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "读取文件下载审计失败";
+    message.value = formatUnknownApiError(error, "读取文件下载审计失败");
   } finally {
     fileDownloadLoading.value = false;
   }

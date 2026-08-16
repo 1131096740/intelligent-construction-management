@@ -83,6 +83,7 @@
 <script setup lang="ts">
 import type { PrimaryTableCol } from "tdesign-vue-next";
 import { computed, ref, watch } from "vue";
+import { formatUnknownApiError } from "../../../api/error-message";
 import {
   attachSettlementDraftLineFile,
   fetchSettlementProjectCapability,
@@ -103,7 +104,7 @@ const columns: PrimaryTableCol<SettlementLineAttachmentReadModel>[] = [
   { colKey: "purpose", title: "用途", minWidth: 160, ellipsis: true }, { colKey: "status", title: "状态", width: 92 }, { colKey: "operation", title: "操作", width: 80, fixed: "right" }
 ];
 watch(() => [props.projectId, props.draftId], () => void load(), { immediate: true });
-async function load() { if (!props.projectId || !props.draftId) return; loading.value = true; try { attachments.value = await listSettlementDraftLineAttachments(props.projectId, props.draftId); } catch (error) { setMessage(error instanceof Error ? error.message : "读取结算明细附件失败", "error"); } finally { loading.value = false; } }
+async function load() { if (!props.projectId || !props.draftId) return; loading.value = true; try { attachments.value = await listSettlementDraftLineAttachments(props.projectId, props.draftId); } catch (error) { setMessage(formatUnknownApiError(error, "读取结算明细附件失败"), "error"); } finally { loading.value = false; } }
 function selectFile(event: Event) { const file = (event.target as HTMLInputElement).files?.[0]; if (file) void uploadAndAttach(file); if (fileInput.value) fileInput.value.value = ""; }
 
 async function attachSettlementLineFileWithCapability(file: File) {
@@ -153,9 +154,9 @@ async function uploadAndAttach(file: File) {
     purpose.value = "";
     emit("updated", result.revision);
     await load();
-    setMessage("附件已关联；请按新修订号重新生成冻结结算单。", "success");
+    setMessage("附件已关联；请重新生成冻结结算单。", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "附件关联失败", "error");
+    setMessage(formatUnknownApiError(error, "附件关联失败"), "error");
   } finally {
     uploading.value = false;
   }
@@ -167,9 +168,9 @@ async function invalidate(attachmentId: string) {
     const result = await invalidateSettlementLineAttachmentWithCapability(attachmentId);
     emit("updated", result.revision);
     await load();
-    setMessage("附件已作废；请按新修订号重新生成冻结结算单。", "success");
+    setMessage("附件已作废；请重新生成冻结结算单。", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "作废附件失败", "error");
+    setMessage(formatUnknownApiError(error, "作废附件失败"), "error");
   }
 }
 function setMessage(next: string, tone: "success" | "error" | "info") { message.value = next; messageTone.value = tone; }

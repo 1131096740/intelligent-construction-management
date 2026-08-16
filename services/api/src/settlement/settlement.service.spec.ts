@@ -5078,7 +5078,7 @@ describe("SettlementService", () => {
     await workbook.xlsx.load(result.buffer as unknown as ExcelJS.Buffer);
 
     expect(result.fileName).toBe("JS-2026-019-结算单-草稿.xlsx");
-    expect(workbook.getWorksheet("结算单")?.getCell("A2").value).toBe("草稿 DRAFT");
+    expect(workbook.getWorksheet("结算单")?.getCell("A2").value).toBe("草稿");
     expect(workbook.getWorksheet("结算单")?.pageSetup.orientation).toBe("landscape");
     expect(workbook.getWorksheet("结算单")?.getRow(10).values).toEqual([
       undefined,

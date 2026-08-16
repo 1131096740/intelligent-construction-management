@@ -11,6 +11,30 @@ const FILE_DOWNLOAD_AUDIT_ACTION_LABELS = {
   "settlement.approval_pdf.download": "结算审批单下载"
 } as const;
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  ...FILE_DOWNLOAD_AUDIT_ACTION_LABELS,
+  "auth.login": "登录",
+  "auth.logout": "退出登录",
+  "permission.change": "权限变更",
+  "password.change": "密码变更",
+  "delegation.create": "创建委托",
+  "delegation.revoke": "撤销委托"
+};
+
+const AUDIT_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  approval_instance: "审批事项",
+  contract: "合同",
+  contract_takeover: "历史合同接管",
+  contract_takeover_ledger: "历史合同接管台账",
+  contract_version: "合同版本",
+  file: "文件",
+  file_object: "文件",
+  payment: "付款",
+  settlement: "结算",
+  settlement_import: "结算导入",
+  settlement_draft: "结算草稿"
+};
+
 export interface RecordAuditLogInput {
   actorUserId?: string | null;
   action: string;
@@ -54,11 +78,11 @@ export class AuditService {
       return {
         id: log.id,
         occurredAt: log.createdAt.toISOString(),
-        actor: actor?.name ?? log.actorUserId ?? "系统",
-        action: log.action,
+        actor: actor?.name ?? "系统",
+        action: this.actionLabel(log.action),
         actionTone: this.actionTone(log.action),
-        businessType: log.businessType ?? "-",
-        businessTarget: log.businessId ?? "-",
+        businessType: this.businessTypeLabel(log.businessType),
+        businessTarget: log.businessId ? "相关业务" : "—",
         ipAddress: log.ipAddress ?? "-",
         resultRisk: this.resultRisk(log.action),
         riskTone: this.riskTone(log.action),
@@ -70,10 +94,10 @@ export class AuditService {
       rows,
       summary: {
         total: rows.length,
-        login: rows.filter((row) => row.action.startsWith("auth.")).length,
-        approval: rows.filter((row) => row.action.includes(".approval.")).length,
-        file: rows.filter((row) => /file|archive|pdf|voucher|download/.test(row.action)).length,
-        security: rows.filter((row) => /permission|delegation|password|void|reject/.test(row.action)).length
+        login: logs.filter((log) => log.action.startsWith("auth.")).length,
+        approval: logs.filter((log) => log.action.includes(".approval.")).length,
+        file: logs.filter((log) => /file|archive|pdf|voucher|download/.test(log.action)).length,
+        security: logs.filter((log) => /permission|delegation|password|void|reject/.test(log.action)).length
       }
     };
   }
@@ -110,17 +134,15 @@ export class AuditService {
       return {
         id: log.id,
         occurredAt: log.createdAt.toISOString(),
-        actor: actor?.name ?? log.actorUserId ?? "系统",
+        actor: actor?.name ?? "系统",
         action: this.fileDownloadActionLabel(log.action),
-        actionKey: log.action,
-        fileId: log.businessId ?? "-",
-        fileName: file?.originalName ?? metadataFileName ?? log.businessId ?? "-",
-        businessType: log.businessType ?? "file_object",
-        businessTarget: log.businessId ?? "-",
+        actionKind: this.fileDownloadActionKind(log.action),
+        fileName: file?.originalName ?? metadataFileName ?? "受控文件",
+        businessType: this.businessTypeLabel(log.businessType),
+        businessTarget: log.businessId ? "相关业务" : "—",
         downloadReason,
         ipAddress: log.ipAddress ?? "-",
-        traceId: log.id,
-        sensitive: "未返回短链/token/COS地址"
+        auditNote: "已按权限记录，未返回文件链接或访问凭证"
       };
     });
 
@@ -128,8 +150,8 @@ export class AuditService {
       rows,
       summary: {
         total: rows.length,
-        ticket: rows.filter((row) => row.actionKey === "file.download.ticket").length,
-        downloaded: rows.filter((row) => row.actionKey === "file.download").length,
+        ticket: logs.filter((log) => log.action === "file.download.ticket").length,
+        downloaded: logs.filter((log) => log.action === "file.download").length,
         missingReason: rows.filter((row) => row.downloadReason === "未记录原因").length
       }
     };
@@ -146,6 +168,30 @@ export class AuditService {
       FILE_DOWNLOAD_AUDIT_ACTION_LABELS[action as keyof typeof FILE_DOWNLOAD_AUDIT_ACTION_LABELS] ??
       "敏感文件下载"
     );
+  }
+
+  private fileDownloadActionKind(action: string) {
+    if (action === "file.download.ticket") return "ticket";
+    if (action === "file.download") return "download";
+    return "other";
+  }
+
+  private actionLabel(action: string) {
+    if (AUDIT_ACTION_LABELS[action]) return AUDIT_ACTION_LABELS[action];
+    if (action.startsWith("auth.")) return "身份操作";
+    if (action.includes(".approval.")) return "审批操作";
+    if (/file|archive|pdf|voucher|download/.test(action)) return "文件与归档操作";
+    if (/permission|password|delegation/.test(action)) return "权限与安全操作";
+    return "业务操作";
+  }
+
+  private businessTypeLabel(value: string | null) {
+    if (!value) return "业务事项";
+    if (AUDIT_BUSINESS_TYPE_LABELS[value]) return AUDIT_BUSINESS_TYPE_LABELS[value];
+    if (value.startsWith("contract")) return "合同业务";
+    if (value.startsWith("settlement")) return "结算业务";
+    if (value.startsWith("payment")) return "付款业务";
+    return "业务事项";
   }
 
   private actionTone(action: string) {
@@ -165,13 +211,7 @@ export class AuditService {
   }
 
   private trace(log: { businessType: string | null; businessId: string | null; metadata: unknown }) {
-    if (log.businessType && log.businessId) {
-      return `${log.businessType}:${log.businessId}`;
-    }
-    if (log.metadata) {
-      return JSON.stringify(sanitizeMetadataForTrace(log.metadata)).slice(0, 80);
-    }
-    return "-";
+    return log.businessType || log.businessId || log.metadata ? "审计详情已留存" : "—";
   }
 }
 
@@ -185,19 +225,4 @@ function jsonObject(value: unknown): Record<string, unknown> {
 function stringFromMetadata(metadata: Record<string, unknown>, key: string): string | undefined {
   const value = metadata[key];
   return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function sanitizeMetadataForTrace(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  const safe: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (/password|token|secret|downloadUrl|cosUrl|url/i.test(key)) {
-      safe[key] = "[redacted]";
-    } else {
-      safe[key] = item;
-    }
-  }
-  return safe;
 }

@@ -72,7 +72,7 @@
         :disabled="!isReady"
         @click="realign"
       >
-        按冻结版重新对齐
+        按冻结结算单重新对齐
       </t-button>
     </div>
 
@@ -126,6 +126,7 @@
 <script setup lang="ts">
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { formatUnknownApiError } from "../../../api/error-message";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
@@ -218,7 +219,7 @@ async function loadDocuments() {
     } catch (error) {
       if (generation !== documentLoadGeneration) return;
       views[key].loading = false;
-      views[key].error = error instanceof Error ? error.message : "PDF 预览暂不可用，请重新申请查看。";
+      views[key].error = formatUnknownApiError(error, "PDF 预览暂不可用，请重新申请查看。");
     }
   }));
   if (generation !== documentLoadGeneration) return;

@@ -1,8 +1,10 @@
 import * as ExcelJS from "exceljs";
+import { inflateSync } from "node:zlib";
 import { PDFDocument as PdfLibDocument } from "pdf-lib";
 import {
   renderSettlementArchivePdf,
   renderSettlementDraftExcel,
+  settlementStatusLabel,
   settlementDocumentRows,
   settlementPdfPagePlan,
   settlementSignatureRoleSlots,
@@ -73,19 +75,33 @@ const baseInput: SettlementDocumentInput = {
 };
 
 describe("settlement document renderer", () => {
-  it("renders a draft Excel settlement sheet as A4 landscape with repeated headers and draft watermark", async () => {
+  it.each([
+    ["approved_pending_archive", "已批待归档"],
+    ["archive_pending", "待归档确认"],
+    ["pending_archive_confirm", "待归档确认"],
+    ["partially_paid", "部分已付款"],
+    ["paid", "已付款"]
+  ])("maps settlement status %s to Chinese business text", (status, label) => {
+    expect(settlementStatusLabel(status)).toBe(label);
+  });
+
+  it("renders a Chinese draft Excel settlement sheet without technical status or revision text", async () => {
     const buffer = await renderSettlementDraftExcel(baseInput);
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    expectNoTechnicalExportText(JSON.stringify(workbook.model));
 
     const sheet = workbook.getWorksheet("结算单");
     expect(sheet).toBeDefined();
     expect(sheet?.pageSetup.orientation).toBe("landscape");
     expect(sheet?.pageSetup.paperSize).toBe(9);
     expect(sheet?.pageSetup.printTitlesRow).toBe("1:9");
-    expect(sheet?.headerFooter.oddHeader).toContain("草稿 DRAFT");
+    expect(sheet?.headerFooter.oddHeader).toContain("草稿");
+    expect(sheet?.headerFooter.oddHeader).not.toContain("DRAFT");
     expect(sheet?.getCell("A1").value).toBe("工程结算单");
-    expect(sheet?.getCell("A2").value).toBe("草稿 DRAFT");
+    expect(sheet?.getCell("A2").value).toBe("草稿");
+    expect(sheet?.getRow(6).getCell(2).value).toBe("审批中");
+    expect(sheet?.getRow(7).getCell(9).value).toBe("已核对");
     expect(sheet?.getRow(9).values).toEqual([
       undefined,
       "序号",
@@ -154,6 +170,24 @@ describe("settlement document renderer", () => {
     ]);
   });
 
+  it("blocks technical or unknown tax enums before generating settlement artifacts", async () => {
+    const input = {
+      ...baseInput,
+      invoiceType: "vat_special",
+      taxMode: "single_rate"
+    };
+    await expect(renderSettlementDraftExcel({
+      ...input,
+      invoiceType: "invoice_type_internal",
+      taxMode: "tax_mode_internal"
+    })).rejects.toThrow("结算单税务事实不完整，不能生成业务制品");
+    await expect(renderSettlementArchivePdf({
+      ...input,
+      invoiceType: "invoice_type_internal",
+      taxMode: "tax_mode_internal"
+    })).rejects.toThrow("结算单税务事实不完整，不能生成业务制品");
+  });
+
   it("renders a formal settlement PDF with explicit A4 landscape MediaBox, CropBox and zero rotation", async () => {
     const buffer = await renderSettlementArchivePdf(baseInput);
     const pdf = await PdfLibDocument.load(buffer);
@@ -163,22 +197,25 @@ describe("settlement document renderer", () => {
     const cropBox = page.getCropBox();
 
     expect(buffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    expectNoTechnicalExportText(pdfContentStreams(pdf));
     expect(pdf.getPageCount()).toBe(1);
     expect(width).toBeGreaterThan(height);
     expect(Math.round(width)).toBe(842);
     expect(Math.round(height)).toBe(595);
     expect(mediaBox).toEqual(cropBox);
     expect(page.getRotation().angle).toBe(0);
+    expect(pdfContentStreams(pdf)).not.toContain("DRAFT");
+    expect(pdfContentStreams(pdf)).not.toContain("revision");
   });
 
-  it("plans the exact repeated 12-column header, revision and material/mechanical signature row", () => {
+  it("plans the exact repeated 12-column header and material/mechanical signature row", () => {
     const [page] = settlementPdfPagePlan(baseInput);
 
     expect(page).toMatchObject({
       pageNumber: 1,
       pageCount: 1,
       settlementCode: "JS-2026-019",
-      revisionLabel: "R4",
+      revisionLabel: "结算单",
       pageMarker: "第 1/1 页"
     });
     expect(page?.tableHeaders).toEqual([
@@ -259,3 +296,40 @@ describe("settlement document renderer", () => {
     expect(settlementSignatureBoardPageIndexes(2, 3, 5)).toEqual([2, 3, 4]);
   });
 });
+
+function expectNoTechnicalExportText(text: string) {
+  for (const forbidden of [
+    "DRAFT",
+    "冻结版",
+    "修订版",
+    "文件版本",
+    "R4",
+    "文件 revision",
+    "revisionNo",
+    "后台金额(分)",
+    "__系统清单项标识"
+  ]) {
+    expect(text).not.toContain(forbidden);
+  }
+}
+
+function pdfContentStreams(pdf: PdfLibDocument) {
+  return pdf.context
+    .enumerateIndirectObjects()
+    .flatMap(([, object]) => {
+      const stream = object as { getContents?: () => Uint8Array };
+      if (!stream.getContents) return [];
+
+      const encoded = Buffer.from(stream.getContents());
+      let decoded: Buffer;
+      try {
+        decoded = inflateSync(encoded);
+      } catch {
+        decoded = encoded;
+      }
+
+      const text = decoded.toString("latin1");
+      return text.includes("/DeviceRGB cs") && (text.includes(" TJ") || text.includes(" Tj")) ? [text] : [];
+    })
+    .join("\n");
+}

@@ -375,6 +375,20 @@ export function yuanTextToCents(value: string, fieldName: string): bigint {
   return BigInt(yuan) * 100n + BigInt(cents.padEnd(2, "0") || "0");
 }
 
+export function signedYuanTextToCents(value: string, fieldName: string): bigint {
+  if (typeof value !== "string" || !/^-?(0|[1-9]\d*)(?:\.\d{1,2})?$/u.test(value)) {
+    throw new Error(`${fieldName}必须填写金额，最多两位小数`);
+  }
+  const negative = value.startsWith("-");
+  const absolute = negative ? value.slice(1) : value;
+  const cents = yuanTextToCents(absolute, fieldName);
+  const result = negative ? -cents : cents;
+  if (!isWithinPostgresBigIntRange(result)) {
+    throw new Error(`${fieldName}超出系统可保存范围`);
+  }
+  return result;
+}
+
 export function formatMoneyCentsAsYuan(value: bigint): string {
   const negative = value < 0n;
   const absolute = negative ? -value : value;

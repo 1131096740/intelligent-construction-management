@@ -3567,9 +3567,10 @@ export class SettlementService {
       (currentTaxFactsStillMatch ? contractVersion?.taxMode ?? null : null) ??
       (lineTaxRates.length > 1
         ? "multiple_rate"
-        : lineTaxRates.length === 1
-          ? "single_rate"
-          : null);
+          : lineTaxRates.length === 1
+            ? "single_rate"
+            : null);
+    assertSettlementDocumentTaxFacts(invoiceType, taxMode);
     const defaultTaxRatePercent =
       decimalSnapshotText(frozenTaxRevision?.defaultTaxRatePercent) ??
       (currentTaxFactsStillMatch
@@ -4087,6 +4088,15 @@ function settlementInvoiceTypeLabel(value: string | null): string {
   return value === "vat_general" || value === "vat_special"
     ? contractInvoiceTypeLabel(value as ContractInvoiceType)
     : "—";
+}
+
+function assertSettlementDocumentTaxFacts(invoiceType: string | null, taxMode: string | null) {
+  if (invoiceType !== null && invoiceType !== "vat_general" && invoiceType !== "vat_special") {
+    throw new BadRequestException("结算单税务事实不完整，不能生成业务制品");
+  }
+  if (taxMode !== null && taxMode !== "single_rate" && taxMode !== "multiple_rate") {
+    throw new BadRequestException("结算单税务事实不完整，不能生成业务制品");
+  }
 }
 
 function settlementTaxModeLabel(value: string | null): string {

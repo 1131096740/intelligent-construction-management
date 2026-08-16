@@ -25,6 +25,7 @@
     "preinspect:contract-mutation-authority": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:contract-mutation-authority": "node scripts/inspect-contract-mutation-authority-manifest.mjs --check",
     "inspect:whole-site-capability-matrix": "node scripts/inspect-whole-site-capability-matrix.mjs --check",
+    "check:business-language": "node scripts/check-business-language.mjs",
     "preinspect:whole-site-capability-matrix:ready": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api build",
     "inspect:whole-site-capability-matrix:ready": "node scripts/inspect-whole-site-capability-matrix.mjs --check --require-ready",
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",

@@ -1600,19 +1600,13 @@ export interface FileDownloadAuditListReadModel {
     occurredAt: string;
     actor: string;
     action: string;
-    actionKey:
-      | "file.download.ticket"
-      | "file.download"
-      | "approval.form.download"
-      | "settlement.approval_pdf.download";
-    fileId: string;
+    actionKind: "ticket" | "download" | "other";
     fileName: string;
     businessType: string;
     businessTarget: string;
     downloadReason: string;
     ipAddress: string;
-    traceId: string;
-    sensitive: string;
+    auditNote: string;
   }>;
   summary: {
     total: number;

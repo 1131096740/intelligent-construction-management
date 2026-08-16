@@ -54,7 +54,7 @@ describe("audit log page configuration", () => {
     ]);
   });
 
-  it("shows file download audit columns with reason and sanitized trace fields", () => {
+  it("shows file download audit columns with reason and safe audit notes", () => {
     expect(fileDownloadAuditColumns.map((column) => column.title)).toEqual([
       "发生时间",
       "操作人",
@@ -63,8 +63,7 @@ describe("audit log page configuration", () => {
       "下载原因",
       "业务对象",
       "IP地址",
-      "追溯编号",
-      "脱敏说明"
+      "审计说明"
     ]);
   });
 
@@ -87,7 +86,7 @@ describe("audit log page configuration", () => {
       downloadRow({
         id: "audit-3",
         action: "审批单下载",
-        actionKey: "approval.form.download",
+        actionKind: "other",
         fileName: "合同审批单.pdf",
         downloadReason: "领导复核",
         businessTarget: "approval-1"
@@ -106,7 +105,7 @@ describe("audit log page configuration", () => {
     expect(
       filterFileDownloadAuditRows(rows, {
         ...emptyFileDownloadAuditFilters(),
-        keyword: "approval.form.download"
+        keyword: "审批单下载"
       }).map((row) => row.id)
     ).toEqual(["audit-3"]);
   });
@@ -118,15 +117,13 @@ function downloadRow(overrides: Partial<FileDownloadAuditRow>): FileDownloadAudi
     occurredAt: "2026-07-08T08:00:00.000Z",
     actor: "操作人",
     action: "实际下载",
-    actionKey: "file.download",
-    fileId: "file-row",
+    actionKind: "download",
     fileName: "文件.pdf",
     businessType: "file_object",
     businessTarget: "file-row",
     downloadReason: "业务复核",
     ipAddress: "127.0.0.1",
-    traceId: "audit-row",
-    sensitive: "未返回短链/token/COS地址",
+    auditNote: "已按权限记录，未返回文件链接或访问凭证",
     ...overrides
   };
 }

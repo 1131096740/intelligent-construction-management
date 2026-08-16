@@ -6,20 +6,20 @@
     <div class="panel-heading">
       <div>
         <strong id="counterparty-signed-pdf-title">冻结结算单与乙方签章原件</strong>
-        <span>冻结版和扫描件均绑定当前草稿修订号；修改结算事实后必须重新生成、签章和上传。</span>
+        <span>冻结结算单和扫描件均绑定当前已保存的结算事实；修改后必须重新生成、签章和上传。</span>
       </div>
       <t-tag
         :theme="linked ? 'success' : 'default'"
         variant="light"
       >
-        {{ linked ? "当前修订版已关联" : "待完成" }}
+        {{ linked ? "当前文件已关联" : "待完成" }}
       </t-tag>
     </div>
 
     <div class="document-actions">
       <div class="document-fact">
-        <span>当前冻结版</span>
-        <strong v-if="frozenDocument">R{{ frozenDocument.sourceRevision }} · {{ frozenDocument.pageCount }} 页</strong>
+        <span>当前冻结结算单</span>
+        <strong v-if="frozenDocument">{{ frozenDocument.pageCount }} 页</strong>
         <strong v-else>尚未生成</strong>
       </div>
       <t-button
@@ -28,7 +28,7 @@
         :disabled="disabled || generateBusy"
         @click="$emit('generate')"
       >
-        {{ frozenDocument ? "重新生成当前修订版" : "生成当前修订版" }}
+        {{ frozenDocument ? "重新生成冻结结算单" : "生成冻结结算单" }}
       </t-button>
       <t-button
         variant="outline"
@@ -41,7 +41,7 @@
 
     <div class="signing-instructions">
       <strong>线下签章要求</strong>
-      <span>打印完整冻结版，由乙方在要求位置签字并填写日期、逐页盖章；超过一页时加盖骑缝章，再扫描为一份 PDF。系统校验 PDF 可读性和原字节摘要，不做 OCR 或逐页正文比对。</span>
+      <span>打印完整冻结结算单，由乙方在要求位置签字并填写日期、逐页盖章；超过一页时加盖骑缝章，再扫描为一份 PDF。系统校验 PDF 可读性和原字节摘要，不做 OCR 或逐页正文比对。</span>
     </div>
 
     <div class="upload-row">
@@ -101,7 +101,7 @@
     />
 
     <div class="panel-footer">
-      <span>{{ linked ? "系统已校验并关联当前修订版原件。" : linkHint }}</span>
+      <span>{{ linked ? "系统已校验并关联当前结算单原件。" : linkHint }}</span>
       <t-button
         variant="outline"
         :disabled="disabled || !frozenDocument || !stagedFileId"
@@ -201,7 +201,7 @@ const linkedInspectionMessage = computed(() => {
   const differences = inspection.hasDifferences
     ? `已记录版式差异：${inspection.differences.map((item) => pdfDifferenceLabel[item]).join("、")}。`
     : "版式核验未发现差异。";
-  return `PDF 核验快照：冻结版 ${inspection.frozenPageCount} 页，乙方原件 ${inspection.originalPageCount} 页；${differences}`;
+  return `PDF 核验快照：冻结结算单 ${inspection.frozenPageCount} 页，乙方原件 ${inspection.originalPageCount} 页；${differences}`;
 });
 const declarationComplete = computed(() =>
   declaration.pageOrderMatchesFrozenDocument &&
@@ -218,10 +218,10 @@ const canLink = computed(() =>
   )
 );
 const linkHint = computed(() => {
-  if (!props.frozenDocument) return "请先生成当前修订版冻结结算单。";
+  if (!props.frozenDocument) return "请先生成冻结结算单。";
   if (!props.stagedFileId) return "请上传乙方完整签章扫描件。";
   if (!declarationComplete.value) return "请逐项完成签章声明。";
-  return "可以执行一次核对通过并关联当前草稿修订版。";
+  return "可以执行一次核对通过并关联当前结算单原件。";
 });
 
 watch(requiresCrossPageSeal, (required) => {
