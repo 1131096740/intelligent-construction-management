@@ -17,7 +17,6 @@ import {
   type BusinessEntryOperation
 } from "@jiangkong/shared-domain";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
-import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import type { MemoryUploadedFile } from "../file/uploaded-file";
 import {
@@ -36,10 +35,9 @@ export class BusinessEntryDefinitionController {
   ) {}
 
   @Get(":sceneKey/excel-template")
-  @RequireProjectRole("project.operating_profile.manage")
   async downloadExcelTemplate(
     @Param("sceneKey") sceneKey: string,
-    @Query("projectId") projectId: string,
+    @Query("projectId") projectId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: { set: (headers: Record<string, string>) => void }
   ) {
@@ -57,11 +55,10 @@ export class BusinessEntryDefinitionController {
   }
 
   @Post(":sceneKey/excel-preview")
-  @RequireProjectRole("project.operating_profile.manage")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
   previewExcel(
     @Param("sceneKey") sceneKey: string,
-    @Query("projectId") projectId: string,
+    @Query("projectId") projectId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: BusinessEntryExcelPreviewDto,
     @UploadedFile() file: MemoryUploadedFile | undefined
@@ -83,10 +80,9 @@ export class BusinessEntryDefinitionController {
   }
 
   @Get(":sceneKey")
-  @RequireProjectRole("project.operating_profile.manage")
   getSceneDefinition(
     @Param("sceneKey") sceneKey: string,
-    @Query("projectId") projectId: string,
+    @Query("projectId") projectId: string | undefined,
     @Query("operation") operation: string | undefined,
     @CurrentUser() user: AuthenticatedUser
   ) {
@@ -102,10 +98,9 @@ export class BusinessEntryDefinitionController {
   }
 
   @Post(":sceneKey/validate")
-  @RequireProjectRole("project.operating_profile.manage")
   validateDraft(
     @Param("sceneKey") sceneKey: string,
-    @Query("projectId") projectId: string,
+    @Query("projectId") projectId: string | undefined,
     @Body() body: BusinessEntryDraftRequestDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
@@ -113,10 +108,9 @@ export class BusinessEntryDefinitionController {
   }
 
   @Post(":sceneKey/freeze")
-  @RequireProjectRole("project.operating_profile.manage")
   freezeSubmissionSnapshot(
     @Param("sceneKey") sceneKey: string,
-    @Query("projectId") projectId: string,
+    @Query("projectId") projectId: string | undefined,
     @Body() body: BusinessEntryDraftRequestDto,
     @CurrentUser() user: AuthenticatedUser
   ) {

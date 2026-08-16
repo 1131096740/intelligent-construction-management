@@ -180,7 +180,7 @@ export class BusinessEntryExcelService {
 
   async exportTemplate(
     sceneKey: string,
-    projectId: string,
+    projectId: string | undefined,
     actorUserId: string
   ): Promise<{ buffer: Buffer; fileName: string }> {
     const definition = await this.definitions.getSceneDefinitionForOperation(
@@ -243,7 +243,7 @@ export class BusinessEntryExcelService {
 
   async preview(
     sceneKey: string,
-    projectId: string,
+    projectId: string | undefined,
     actorUserId: string,
     input: BusinessEntryExcelPreviewInput,
     file: BusinessEntryExcelUpload
@@ -303,16 +303,24 @@ export class BusinessEntryExcelService {
     assertBulkRowCount(fields, parsedRows.length);
 
     const operation: BusinessEntryOperation = "import";
+    const validationInputs = parsedRows.length > 0
+      ? parsedRows.map((row) => ({
+          definitionVersion: input.definitionVersion,
+          target: input.target,
+          values: row.values,
+          operation
+        }))
+      : [{
+          definitionVersion: input.definitionVersion,
+          target: input.target,
+          values: {},
+          operation
+        }];
     const results = await this.definitions.validateDraftBatch(
       sceneKey,
       projectId,
       actorUserId,
-      parsedRows.map((row) => ({
-        definitionVersion: input.definitionVersion,
-        target: input.target,
-        values: row.values,
-        operation
-      }))
+      validationInputs
     );
     return {
       zeroWrites: true,
