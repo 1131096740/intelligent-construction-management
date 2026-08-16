@@ -72,6 +72,15 @@ export class BusinessEntryDefinitionService {
     input: BusinessEntryDraftRequest
   ): Promise<BusinessEntryValidationResult> {
     const roleKeys = await this.loadRoleKeys(projectId, actorUserId);
+    return this.validateDraftWithRoles(sceneKey, projectId, roleKeys, input);
+  }
+
+  async validateDraftWithRoles(
+    sceneKey: string,
+    projectId: string,
+    roleKeys: readonly RoleKey[],
+    input: BusinessEntryDraftRequest
+  ): Promise<BusinessEntryValidationResult> {
     const payload = this.payload(sceneKey, input);
     this.assertTargetProjectScope(projectId, payload.target);
     return this.registry.validateDraft(

@@ -17,6 +17,11 @@ class OperatingTakeoverRowInputDto {
   @IsString()
   sceneKey?: string;
 
+  @IsOptional()
+  @IsInt({ message: "字段定义版本必须是整数" })
+  @Min(1, { message: "字段定义版本无效" })
+  definitionVersion?: number;
+
   @IsObject({ message: "接管行必须是业务字段对象" })
   values!: Record<string, unknown>;
 }

@@ -65,6 +65,7 @@ type TakeoverIssue = {
 
 interface TakeoverRowInput {
   sceneKey?: string;
+  definitionVersion?: number;
   values: Record<string, unknown>;
 }
 
@@ -156,11 +157,11 @@ export class OperatingTakeoverService {
   }
 
   async precheck(projectId: string, actorUserId: string, input: PrecheckOperatingTakeoverDto) {
-    await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
+    const roles = await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
     const project = await this.project(projectId);
     const rows = this.inputRows(input);
     const existing = await this.existingRows(projectId);
-    const result = await this.evaluateRows(projectId, actorUserId, rows, project.operatingLedgerEffectiveDate, existing);
+    const result = await this.evaluateRows(projectId, actorUserId, rows, project.operatingLedgerEffectiveDate, existing, this.batchCreatorValidationRoles(roles));
     return {
       ...result,
       zeroWrites: true,
@@ -201,7 +202,7 @@ export class OperatingTakeoverService {
     const rows = this.inputRows(input);
     if (!rows.length) throw new BadRequestException("历史接管批次至少需要一行业务事实");
     const existing = await this.existingRows(projectId);
-    const checked = await this.evaluateRows(projectId, actorUserId, rows, project.operatingLedgerEffectiveDate, existing);
+    const checked = await this.evaluateRows(projectId, actorUserId, rows, project.operatingLedgerEffectiveDate, existing, this.batchCreatorValidationRoles(roles));
     if (checked.summary.blockedRows > 0) {
       throw new BadRequestException({
         message: "历史接管预检存在阻断项，不能生成草稿",
@@ -306,9 +307,12 @@ export class OperatingTakeoverService {
       }
     });
     if (!batch) throw new NotFoundException("历史接管批次不存在，请刷新后重试");
+    const visibleRows = batch.rows.filter((row) =>
+      sceneDefinition(row.sceneKey)?.permissions?.view?.some((role) => roles.includes(role))
+    );
     return {
       ...this.serializeBatch(batch),
-      rows: batch.rows.map((row) => ({
+      rows: visibleRows.map((row) => ({
         id: row.id,
         rowNo: row.rowNo,
         sceneKey: row.sceneKey,
@@ -341,7 +345,7 @@ export class OperatingTakeoverService {
     if (!current) throw new NotFoundException("历史接管行不存在，请刷新后重试");
     if (current.batch.status === "activated") throw new ConflictException("批次已激活，只能追加更正或冲销，不能修改原接管行");
     if (current.revision !== input.expectedRevision) throw new ConflictException("接管行版本已变化，请刷新后再修改");
-    const checked = await this.evaluateRows(projectId, actorUserId, [{ sceneKey: current.sceneKey, values: input.values }], project.operatingLedgerEffectiveDate, await this.existingRows(projectId, rowId));
+    const checked = await this.evaluateRows(projectId, actorUserId, [{ sceneKey: current.sceneKey, definitionVersion: current.definitionVersion, values: input.values }], project.operatingLedgerEffectiveDate, await this.existingRows(projectId, rowId), undefined);
     const checkedRow = checked.rows[0];
     if (checked.summary.blockedRows > 0) throw new BadRequestException({ message: "接管行未通过业务校验", issues: checkedRow.issues });
     await this.prisma.$transaction(async (tx) => {
@@ -481,7 +485,7 @@ export class OperatingTakeoverService {
     return result;
   }
 
-  private async evaluateRows(projectId: string, actorUserId: string, rows: TakeoverRowInput[], effectiveDate: Date | null, existing: Array<{ sceneKey: string; rowFingerprint?: string | null; businessRef: string | null; occurredAt: Date | null; amountCents: bigint | null }>): Promise<TakeoverCheckResult> {
+  private async evaluateRows(projectId: string, actorUserId: string, rows: TakeoverRowInput[], effectiveDate: Date | null, existing: Array<{ sceneKey: string; rowFingerprint?: string | null; businessRef: string | null; occurredAt: Date | null; amountCents: bigint | null }>, validationRoles?: readonly RoleKey[]): Promise<TakeoverCheckResult> {
     const output: CheckedTakeoverRow[] = [];
     const fingerprintsInWorkbook = new Map<string, number>();
     for (const [index, input] of rows.entries()) {
@@ -499,7 +503,11 @@ export class OperatingTakeoverService {
         issues.push({ code: "invalid_value", severity: "error", message: error instanceof Error ? error.message : "接管行字段无效" });
       }
       let definitionVersion: number | null = definition.version;
-      const validation = await this.definitions.validateDraft(definition.key, projectId, actorUserId, { target: { entityType: "operating_takeover_row", entityId: projectId }, definitionVersion: definition.version, values: input.values, operation: "import" });
+      const requestedDefinitionVersion = input.definitionVersion ?? definition.version;
+      const validationInput = { target: { entityType: "operating_takeover_row", entityId: projectId }, definitionVersion: requestedDefinitionVersion, values: input.values, operation: "import" } as const;
+      const validation = validationRoles
+        ? await this.definitions.validateDraftWithRoles(definition.key, projectId, validationRoles, validationInput)
+        : await this.definitions.validateDraft(definition.key, projectId, actorUserId, validationInput);
       definitionVersion = validation.definitionVersion;
       if (!validation.valid) for (const error of validation.errors) issues.push({ code: error.code, severity: "error", fieldKey: error.fieldKey, message: error.message });
       for (const issue of semanticIssues(definition.key, input.values)) issues.push(issue);
@@ -562,20 +570,26 @@ export class OperatingTakeoverService {
       throw new BadRequestException("员工还款冲销必须填写原还款记录编号");
     }
     let returnImpactKind: "estimated_clearing_expense" | "confirmed_cost" | undefined;
-    let returnFundsImpactKind: "construction_enterprise_funds_release" | "construction_enterprise_funds_increase" | undefined;
-    if (row.sceneKey === "construction_enterprise_deduction" && deductionType === "return") {
+    let returnFundsImpactKind: "construction_enterprise_funds_release" | "construction_enterprise_funds_increase" | "construction_enterprise_funds_freeze" | "construction_enterprise_funds_decrease" | undefined;
+    if (row.sceneKey === "construction_enterprise_deduction" && ["return", "adjustment"].includes(deductionType ?? "")) {
       const target = await tx.operatingFact.findUnique({
         where: { id: adjustsFactId },
-        select: { projectId: true, factKind: true, impacts: { select: { impactKind: true } } }
+        select: { projectId: true, factKind: true, entryKind: true, impacts: { select: { impactKind: true } } }
       });
       const targetImpact = target?.impacts.find((impact) => ["estimated_clearing_expense", "confirmed_cost"].includes(impact.impactKind));
-      if (!target || target.projectId !== projectId || target.factKind !== "construction_enterprise_deduction" || !targetImpact) {
-        throw new BadRequestException("施工企业扣费退回必须引用同项目的原扣费事实");
+      if (!target || target.projectId !== projectId || target.factKind !== "construction_enterprise_deduction" || target.entryKind !== "original" || !targetImpact) {
+        throw new BadRequestException("施工企业扣费退补必须引用同项目的原扣费事实");
       }
       returnImpactKind = targetImpact.impactKind as "estimated_clearing_expense" | "confirmed_cost";
-      returnFundsImpactKind = target.impacts.some((impact) => impact.impactKind === "construction_enterprise_funds_freeze")
-        ? "construction_enterprise_funds_release"
-        : "construction_enterprise_funds_increase";
+      const targetWasFrozen = target.impacts.some((impact) => impact.impactKind === "construction_enterprise_funds_freeze");
+      if (deductionType === "return") {
+        returnFundsImpactKind = targetWasFrozen ? "construction_enterprise_funds_release" : "construction_enterprise_funds_increase";
+      } else {
+        const adjustmentDirection = textValue(values.adjustmentDirection);
+        returnFundsImpactKind = adjustmentDirection === "decrease"
+          ? targetWasFrozen ? "construction_enterprise_funds_release" : "construction_enterprise_funds_increase"
+          : targetWasFrozen ? "construction_enterprise_funds_freeze" : "construction_enterprise_funds_decrease";
+      }
     }
     const subjects = await this.subjects(tx, projectId, row.occurredAt, assignment, row.sceneKey, values);
     const impacts = this.impacts(row.sceneKey, amountCents, values, subjects, returnImpactKind, returnFundsImpactKind);
@@ -697,7 +711,7 @@ export class OperatingTakeoverService {
     }
   }
 
-  private impacts(sceneKey: string, amountCents: bigint, values: Record<string, unknown>, subjects: OperatingFactSubjects, returnImpactKind?: "estimated_clearing_expense" | "confirmed_cost", returnFundsImpactKind: "construction_enterprise_funds_release" | "construction_enterprise_funds_increase" = "construction_enterprise_funds_increase"): OperatingImpactInput[] {
+  private impacts(sceneKey: string, amountCents: bigint, values: Record<string, unknown>, subjects: OperatingFactSubjects, returnImpactKind?: "estimated_clearing_expense" | "confirmed_cost", returnFundsImpactKind: "construction_enterprise_funds_release" | "construction_enterprise_funds_increase" | "construction_enterprise_funds_freeze" | "construction_enterprise_funds_decrease" = "construction_enterprise_funds_increase"): OperatingImpactInput[] {
     const impact = (key: string, impactKind: OperatingImpactKind, direction: "increase" | "decrease" | "notice", subjectRole?: OperatingSubjectRole, subject?: OperatingSubjectReference): OperatingImpactInput => ({ idempotencyKey: `${key}:${amountCents.toString()}`, sourceImpactKey: key, impactKind, direction, amountCents, subjectRole, subject, costCategoryCode: textValue(values.costCategoryCode) as PrimaryCostCategoryCode | undefined, description: textValue(values.sourceDescription), impactSnapshot: { sceneKey } });
     switch (sceneKey) {
       case "owner_settlement": return [impact("income", "confirmed_income", "increase", "creditor", subjects.creditor), impact("receivable", "receivable_increase", "increase", "debtor", subjects.debtor)];
@@ -708,10 +722,10 @@ export class OperatingTakeoverService {
         const deductionType = textValue(values.deductionType);
         if (deductionType === "temporary_hold") return [impact("deduction", "estimated_clearing_expense", "increase", "cost_bearing_company", subjects.costBearingCompany), impact("funds", "construction_enterprise_funds_freeze", "increase", "cost_bearing_company", subjects.costBearingCompany)];
         if (deductionType === "final_deduction") return [impact("deduction", "confirmed_cost", "increase", "cost_bearing_company", subjects.costBearingCompany), impact("funds", "construction_enterprise_funds_decrease", "decrease", "cost_bearing_company", subjects.costBearingCompany)];
-        if (deductionType === "return") return [impact("deduction", returnImpactKind ?? "estimated_clearing_expense", "decrease", "cost_bearing_company", subjects.costBearingCompany), impact("funds", returnFundsImpactKind, returnFundsImpactKind === "construction_enterprise_funds_release" ? "decrease" : "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "return") return [impact("deduction", returnImpactKind ?? "estimated_clearing_expense", "decrease", "cost_bearing_company", subjects.costBearingCompany), impact("funds", returnFundsImpactKind, ["construction_enterprise_funds_release", "construction_enterprise_funds_decrease"].includes(returnFundsImpactKind) ? "decrease" : "increase", "cost_bearing_company", subjects.costBearingCompany)];
         if (deductionType === "adjustment") {
           const direction = textValue(values.adjustmentDirection) === "decrease" ? "decrease" : "increase";
-          return [impact("deduction", "confirmed_cost", direction, "cost_bearing_company", subjects.costBearingCompany), impact("funds", direction === "decrease" ? "construction_enterprise_funds_increase" : "construction_enterprise_funds_decrease", direction === "decrease" ? "increase" : "decrease", "cost_bearing_company", subjects.costBearingCompany)];
+          return [impact("deduction", returnImpactKind ?? "confirmed_cost", direction, "cost_bearing_company", subjects.costBearingCompany), impact("funds", returnFundsImpactKind, ["construction_enterprise_funds_release", "construction_enterprise_funds_decrease"].includes(returnFundsImpactKind) ? "decrease" : "increase", "cost_bearing_company", subjects.costBearingCompany)];
         }
         throw new BadRequestException("施工企业扣费类型不支持历史经营账投影");
       }
@@ -735,7 +749,7 @@ export class OperatingTakeoverService {
 
   private inputRows(input: PrecheckOperatingTakeoverDto): TakeoverRowInput[] {
     if (!Array.isArray(input.rows) || input.rows.length > 500) throw new BadRequestException("单次历史接管最多 500 行");
-    return input.rows.map((row) => ({ sceneKey: input.sceneKey ?? row.sceneKey, values: row.values }));
+    return input.rows.map((row) => ({ sceneKey: input.sceneKey ?? row.sceneKey, definitionVersion: row.definitionVersion, values: row.values }));
   }
 
   private visibleTakeoverValues(sceneKey: string, snapshot: Prisma.JsonValue, roles: readonly RoleKey[]) {
@@ -746,6 +760,11 @@ export class OperatingTakeoverService {
       .filter((field) => field.permissions?.view?.some((role) => roles.includes(role)))
       .map((field) => field.key));
     return Object.fromEntries(Object.entries(values).filter(([key]) => visibleFields.has(key)));
+  }
+
+  private batchCreatorValidationRoles(roles: readonly RoleKey[]) {
+    if (!roles.includes("contract_director")) return undefined;
+    return [...new Set(OPERATING_TAKEOVER_SCENE_DEFINITIONS.flatMap((definition) => definition.permissions?.import ?? []))];
   }
 
   private async assertNoActivatedFactDuplicate(tx: DbTransaction, projectId: string, rows: TakeoverFactRow[]) {

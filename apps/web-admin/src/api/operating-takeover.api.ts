@@ -40,6 +40,7 @@ export interface OperatingTakeoverRowReadModel {
   id: string;
   rowNo: number;
   sceneKey: string;
+  definitionVersion: number;
   values: Record<string, unknown>;
   amountYuan: string | null;
   evidenceLevel: string;
@@ -60,7 +61,7 @@ export interface OperatingTakeoverDetailReadModel extends OperatingTakeoverBatch
 
 export interface OperatingTakeoverPrecheckReadModel {
   summary: { totalRows: number; readyRows: number; blockedRows: number; warningRows: number };
-  rows: Array<{ rowNo: number; sceneKey: string; values: Record<string, unknown>; issues: Array<{ message: string; severity: string }> }>;
+  rows: Array<{ rowNo: number; sceneKey: string; definitionVersion: number | null; values: Record<string, unknown>; issues: Array<{ message: string; severity: string }> }>;
   zeroWrites: true;
   importFingerprint: string;
 }
@@ -135,7 +136,7 @@ export function fetchOperatingTakeoverDetail(projectId: string, batchId: string)
   return readJson<OperatingTakeoverDetailReadModel>(path(projectId, `/${encodeURIComponent(batchId)}`), "加载历史经营接管详情失败");
 }
 
-export function precheckOperatingTakeover(projectId: string, body: { sceneKey?: string; rows: Array<{ sceneKey?: string; values: Record<string, unknown> }> }) {
+export function precheckOperatingTakeover(projectId: string, body: { sceneKey?: string; rows: Array<{ sceneKey?: string; definitionVersion?: number; values: Record<string, unknown> }> }) {
   return postJson<OperatingTakeoverPrecheckReadModel>(path(projectId, "/precheck"), body, "历史经营接管预检失败");
 }
 
@@ -152,7 +153,7 @@ export function uploadOperatingTakeoverSourceFile(projectId: string, file: File)
   return postFormData<OperatingTakeoverSourceFileReadModel>(path(projectId, "/files"), formData, "上传历史经营接管原始文件失败");
 }
 
-export function createOperatingTakeoverBatch(projectId: string, body: { batchNo?: string; sceneKey?: string; sourceFileId?: string; rows: Array<{ sceneKey?: string; values: Record<string, unknown> }> }) {
+export function createOperatingTakeoverBatch(projectId: string, body: { batchNo?: string; sceneKey?: string; sourceFileId?: string; rows: Array<{ sceneKey?: string; definitionVersion?: number; values: Record<string, unknown> }> }) {
   return postJson<OperatingTakeoverDetailReadModel>(path(projectId), body, "创建历史经营接管批次失败");
 }
 

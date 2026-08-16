@@ -392,8 +392,8 @@ const payloadText = ref("[]");
 const excelFiles = ref<UploadFile[]>([]);
 const pendingSourceFile = ref<File | null>(null);
 const pendingSceneKey = ref<string | undefined>();
-const draftRows = ref<Array<{ sceneKey: string; values: Record<string, unknown> }>>([]);
-const pendingRows = ref<Array<{ sceneKey?: string; values: Record<string, unknown> }>>([]);
+const draftRows = ref<Array<{ sceneKey: string; definitionVersion?: number; values: Record<string, unknown> }>>([]);
+const pendingRows = ref<Array<{ sceneKey?: string; definitionVersion?: number; values: Record<string, unknown> }>>([]);
 const precheckResult = ref<OperatingTakeoverPrecheckReadModel | null>(null);
 const actions = ref<Record<string, boolean>>({});
 const confirmationProfessions = ref<Record<OperatingTakeoverProfession, boolean>>({ contract: false, finance: false });
@@ -497,11 +497,19 @@ async function loadProject() {
 async function precheck() {
   try {
     submitting.value = true;
-    const values = draftRows.value.length
+    const values: Array<{ sceneKey?: string; definitionVersion?: number; values: Record<string, unknown> }> = draftRows.value.length
       ? draftRows.value
       : (JSON.parse(payloadText.value) as Array<Record<string, unknown>>).map((value) => ({ sceneKey: selectedSceneKey.value, values: value }));
-    draftRows.value = values.map((row) => ({ sceneKey: row.sceneKey ?? selectedSceneKey.value, values: row.values }));
-    pendingRows.value = values.map((row) => ({ sceneKey: row.sceneKey, values: row.values }));
+    draftRows.value = values.map((row) => ({
+      sceneKey: row.sceneKey ?? selectedSceneKey.value,
+      definitionVersion: row.definitionVersion ?? scenes.value.find((scene) => scene.key === (row.sceneKey ?? selectedSceneKey.value))?.version,
+      values: row.values
+    }));
+    pendingRows.value = draftRows.value.map((row) => ({
+      sceneKey: row.sceneKey,
+      definitionVersion: row.definitionVersion,
+      values: row.values
+    }));
     pendingSceneKey.value = selectedSceneKey.value || undefined;
     pendingSourceFile.value = null;
     precheckResult.value = await precheckOperatingTakeoverWithCapability(selectedProjectId.value, { sceneKey: selectedSceneKey.value, rows: pendingRows.value });
@@ -522,7 +530,11 @@ async function precheckExcel() {
   try {
     submitting.value = true;
     precheckResult.value = await precheckOperatingTakeoverXlsxWithCapability(selectedProjectId.value, raw);
-    pendingRows.value = precheckResult.value.rows.map((row) => ({ sceneKey: row.sceneKey, values: row.values }));
+    pendingRows.value = precheckResult.value.rows.map((row) => ({
+      sceneKey: row.sceneKey,
+      definitionVersion: row.definitionVersion ?? undefined,
+      values: row.values
+    }));
     pendingSceneKey.value = undefined;
     pendingSourceFile.value = raw;
     message.value = "";
@@ -624,7 +636,11 @@ function saveDraftRow() {
     message.value = "请选择接管场景";
     return;
   }
-  const row = { sceneKey: draftSceneKey.value, values: nonEmptyValues(draftValues.value) };
+  const row = {
+    sceneKey: draftSceneKey.value,
+    definitionVersion: draftScene.value?.version,
+    values: nonEmptyValues(draftValues.value)
+  };
   if (draftRowIndex.value === null) draftRows.value.push(row);
   else draftRows.value.splice(draftRowIndex.value, 1, row);
   payloadText.value = JSON.stringify(draftRows.value.map((item) => item.values), null, 2);
@@ -750,7 +766,7 @@ async function createOperatingTakeoverBatchWithCapability(
   const capability = await fetchOperatingTakeoverCapability(projectId);
   const matchesRequestedProject = capability.projectId === projectId;
   if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("manage");
+  const operationAllowed = capability.actions.create === true;
   if (!operationAllowed) throw new Error("当前用户不能生成历史经营接管批次");
   return createOperatingTakeoverBatch(projectId, body);
 }
