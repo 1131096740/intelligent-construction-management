@@ -45,7 +45,7 @@ export class OperatingTakeoverExcelService {
     } catch {
       throw new BadRequestException("Excel 文件无法读取，请使用系统模板");
     }
-    const rows: Array<{ sceneKey: OperatingTakeoverSceneKey; values: Record<string, unknown> }> = [];
+    const rows: Array<{ sceneKey: OperatingTakeoverSceneKey; definitionVersion: number; values: Record<string, unknown> }> = [];
     const isCombinedWorkbook = workbook.worksheets.length > 1;
     for (const worksheet of workbook.worksheets) {
       const definition = this.definitionForWorksheet(worksheet.name, sceneKey, isCombinedWorkbook);
@@ -60,7 +60,7 @@ export class OperatingTakeoverExcelService {
           if (value !== undefined && value !== "") hasValue = true;
           values[key] = value;
         }
-        if (hasValue) rows.push({ sceneKey: definition.key, values });
+        if (hasValue) rows.push({ sceneKey: definition.key, definitionVersion: definition.version, values });
       }
     }
     if (!rows.length) throw new BadRequestException("Excel 中没有可导入的业务行");

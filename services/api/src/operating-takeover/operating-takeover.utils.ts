@@ -4,6 +4,7 @@ import {
   type EvidenceLevel,
   type OperatingTakeoverSceneKey
 } from "@jiangkong/shared-domain";
+import { isWithinPostgresBigIntRange } from "../money/money-storage-range";
 
 export const OPERATING_TAKEOVER_SOURCE_TYPE = "operating_takeover";
 export const OPERATING_TAKEOVER_BATCH_STATUS = [
@@ -43,7 +44,9 @@ export function parseAmountCents(value: unknown): bigint {
     throw new Error("金额必须是非负的元，最多保留两位小数");
   }
   const [yuan, cents = ""] = value.trim().split(".");
-  return BigInt(yuan) * 100n + BigInt((cents + "00").slice(0, 2));
+  const amountCents = BigInt(yuan) * 100n + BigInt((cents + "00").slice(0, 2));
+  if (!isWithinPostgresBigIntRange(amountCents)) throw new Error("金额超出系统可保存范围");
+  return amountCents;
 }
 
 export function parseDateOnly(value: unknown): Date {

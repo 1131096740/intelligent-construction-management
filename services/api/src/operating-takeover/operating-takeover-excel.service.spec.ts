@@ -25,6 +25,7 @@ describe("OperatingTakeoverExcelService", () => {
     expect(parsed.rows).toHaveLength(1);
     expect(parsed.rows[0]).toMatchObject({
       sceneKey: "historical_expense",
+      definitionVersion: 1,
       values: { businessRef: "历史-001", amountYuan: "100.05", evidenceLevel: "A" }
     });
   });

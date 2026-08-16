@@ -75,7 +75,7 @@ export class OperatingTakeoverController {
   ) {
     if (!file) throw new BadRequestException("请选择历史接管 Excel 文件");
     const parsed = await this.excel.parse(file.buffer, sceneKey);
-    return this.takeovers.precheck(projectId, user.id, { rows: parsed.rows } as PrecheckOperatingTakeoverDto);
+    return this.takeovers.precheck(projectId, user.id, { rows: parsed.rows });
   }
 
   @Post("files")

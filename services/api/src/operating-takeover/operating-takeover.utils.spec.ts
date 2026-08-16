@@ -11,6 +11,7 @@ describe("operating takeover pure rules", () => {
     expect(parseAmountCents(100.05)).toBe(10005n);
     expect(() => parseAmountCents(1.001)).toThrow();
     expect(() => parseAmountCents("1.001")).toThrow();
+    expect(() => parseAmountCents("92233720368547758.08")).toThrow("金额超出系统可保存范围");
   });
 
   it("blocks own payments after the operating-ledger effective date", () => {

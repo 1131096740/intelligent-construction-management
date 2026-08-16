@@ -20,6 +20,7 @@ describe("OperatingTakeoverService", () => {
     const result = await service.precheck("project-1", "user-1", {
       sceneKey: "historical_expense",
       rows: [{
+        definitionVersion: 1,
         values: {
           businessRef: "历史-001",
           occurredAt: "2026-08-01",
@@ -57,6 +58,7 @@ describe("OperatingTakeoverService", () => {
       rows: [
         {
           sceneKey: "employee_advance",
+          definitionVersion: 1,
           values: {
             businessRef: "员工-001",
             occurredAt: "2026-08-01",
@@ -69,6 +71,7 @@ describe("OperatingTakeoverService", () => {
         },
         {
           sceneKey: "construction_enterprise_deduction",
+          definitionVersion: 1,
           values: {
             businessRef: "扣费-001",
             occurredAt: "2026-08-02",
@@ -118,6 +121,55 @@ describe("OperatingTakeoverService", () => {
         }
       }]
     })).rejects.toThrow("合同部负责人创建");
+  });
+
+  it("keeps missing definition versions blocked instead of silently upgrading them", async () => {
+    const prisma = {
+      project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", operatingLedgerEffectiveDate: new Date("2026-08-16T00:00:00.000Z") }) },
+      operatingTakeoverRow: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const visibility = { effectiveRoleKeys: jest.fn().mockResolvedValue(["finance_staff"]) };
+    const definitions = {
+      validateDraft: jest.fn().mockResolvedValue({
+        valid: false,
+        definitionVersion: null,
+        errors: [{ code: "definition_version_required", message: "请携带当前字段定义版本" }]
+      })
+    };
+    const service = new OperatingTakeoverService(
+      prisma as never,
+      definitions as never,
+      visibility as never,
+      {} as never,
+      {} as never,
+      {} as never
+    );
+
+    const result = await service.precheck("project-1", "user-1", {
+      sceneKey: "historical_expense",
+      rows: [{
+        values: {
+          businessRef: "历史-版本缺失",
+          occurredAt: "2026-08-01",
+          amountYuan: "100.00",
+          counterpartyName: "供应商甲",
+          costCategoryCode: "material",
+          evidenceLevel: "A",
+          sourceDescription: "原始付款凭据"
+        }
+      }]
+    });
+
+    expect(result.summary).toMatchObject({ totalRows: 1, readyRows: 0, blockedRows: 1 });
+    expect(result.rows[0]?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "definition_version_required" })
+    ]));
+    expect(definitions.validateDraft).toHaveBeenCalledWith(
+      "historical_expense",
+      "project-1",
+      "user-1",
+      expect.objectContaining({ definitionVersion: undefined })
+    );
   });
 
   it("rejects a stale row revision before evaluating or writing the row", async () => {

@@ -503,7 +503,7 @@ export class OperatingTakeoverService {
         issues.push({ code: "invalid_value", severity: "error", message: error instanceof Error ? error.message : "接管行字段无效" });
       }
       let definitionVersion: number | null = definition.version;
-      const requestedDefinitionVersion = input.definitionVersion ?? definition.version;
+      const requestedDefinitionVersion = input.definitionVersion;
       const validationInput = { target: { entityType: "operating_takeover_row", entityId: projectId }, definitionVersion: requestedDefinitionVersion, values: input.values, operation: "import" } as const;
       const validation = validationRoles
         ? await this.definitions.validateDraftWithRoles(definition.key, projectId, validationRoles, validationInput)
