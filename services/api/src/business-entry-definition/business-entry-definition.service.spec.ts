@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException
 } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import * as ExcelJS from "exceljs";
 import {
   COMPANY_ENTITY_MAINTAINER_ROLES,
@@ -126,11 +127,99 @@ function projectVisibility(roleKeys: readonly string[]) {
   };
 }
 
+function snapshotStoreMock(saveStandalone = jest.fn()) {
+  return {
+    saveStandalone,
+    saveInTransaction: jest.fn()
+  };
+}
+
 describe("BusinessEntryDefinitionService", () => {
+  it("freezes and persists through the caller's existing Prisma transaction client", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([definition]);
+    const tx = {} as Prisma.TransactionClient;
+    const snapshots = {
+      saveStandalone: jest.fn(),
+      saveInTransaction: jest.fn().mockImplementation(
+        async (_tx, _projectId, _userId, snapshot) => snapshot
+      )
+    };
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([definition]),
+      projectVisibility(["finance_staff"]),
+      snapshots,
+      projectPrisma() as never
+    );
+
+    await expect(service.freezeSubmissionSnapshotInTransaction(
+      tx,
+      "project_operating_profile",
+      "project-1",
+      "user-1",
+      {
+        definitionVersion: 3,
+        target: { entityType: "project", entityId: "project-1" },
+        values: { takeoverStatus: "operating_with_takeover" }
+      },
+      "2026-08-17T10:00:00.000Z"
+    )).resolves.toMatchObject({
+      sceneKey: "project_operating_profile",
+      frozenAt: "2026-08-17T10:00:00.000Z"
+    });
+
+    expect(snapshots.saveInTransaction).toHaveBeenCalledWith(
+      tx,
+      "project-1",
+      "user-1",
+      expect.objectContaining({
+        target: { entityType: "project", entityId: "project-1" }
+      }),
+      undefined
+    );
+    expect(snapshots.saveStandalone).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the joined-transaction API is used for a global scene", async () => {
+    const registry = createBusinessEntryDefinitionRegistry([companyDefinition]);
+    const snapshots = snapshotStoreMock();
+    const service = new BusinessEntryDefinitionService(
+      registry,
+      accessRegistry([companyDefinition]),
+      { effectiveRoleScopes: jest.fn() },
+      snapshots,
+      {
+        project: { findUnique: jest.fn() },
+        userPosition: {
+          findMany: jest.fn().mockResolvedValue([{ positionId: "position-contract-staff" }])
+        },
+        position: { findMany: jest.fn().mockResolvedValue([{ key: "contract_staff" }]) }
+      } as never
+    );
+
+    await expect(service.freezeSubmissionSnapshotInTransaction(
+      {} as Prisma.TransactionClient,
+      "company_profile",
+      undefined,
+      "user-1",
+      {
+        definitionVersion: 1,
+        target: { entityType: "company_entity", entityId: "company-1" },
+        values: { name: "上海示例建设有限公司" }
+      },
+      "2026-08-17T10:00:00.000Z"
+    )).rejects.toThrow("全局业务场景须由所属领域在同一事务中持久化正式快照");
+
+    expect(snapshots.saveInTransaction).not.toHaveBeenCalled();
+    expect(snapshots.saveStandalone).not.toHaveBeenCalled();
+  });
+
   it("uses server-resolved project roles for validation and freezes the accepted version", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
     const visibility = projectVisibility(["finance_staff"]);
-    const snapshots = { save: jest.fn().mockImplementation(async (_projectId, _userId, snapshot) => snapshot) };
+    const snapshots = snapshotStoreMock(
+      jest.fn().mockImplementation(async (_projectId, _userId, snapshot) => snapshot)
+    );
     const service = new BusinessEntryDefinitionService(
       registry,
       accessRegistry([definition]),
@@ -167,7 +256,7 @@ describe("BusinessEntryDefinitionService", () => {
 
     expect(snapshot.definitionVersion).toBe(3);
     expect(snapshot.frozenAt).toBe("2026-08-16T10:00:00.000Z");
-    expect(snapshots.save).toHaveBeenCalledWith(
+    expect(snapshots.saveStandalone).toHaveBeenCalledWith(
       "project-1",
       "user-1",
       expect.objectContaining({ target: { entityType: "project", entityId: "project-1" } }),
@@ -182,7 +271,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([definition]),
       visibility,
-      { save: jest.fn() },
+      snapshotStoreMock(),
       projectPrisma() as never
     );
 
@@ -205,7 +294,7 @@ describe("BusinessEntryDefinitionService", () => {
   it("rejects wrong-domain and cross-project targets before validation or freeze", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition]);
     const visibility = projectVisibility(["finance_staff"]);
-    const snapshots = { save: jest.fn() };
+    const snapshots = snapshotStoreMock();
     const service = new BusinessEntryDefinitionService(
       registry,
       accessRegistry([definition]),
@@ -247,7 +336,7 @@ describe("BusinessEntryDefinitionService", () => {
         crossProjectInput
       )
     ).rejects.toThrow(BadRequestException);
-    expect(snapshots.save).not.toHaveBeenCalled();
+    expect(snapshots.saveStandalone).not.toHaveBeenCalled();
   });
 
   it("does not expose a definition to a project role without any visible fields", async () => {
@@ -257,7 +346,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([definition]),
       visibility,
-      { save: jest.fn() },
+      snapshotStoreMock(),
       projectPrisma() as never
     );
 
@@ -278,7 +367,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([definition]),
       visibility,
-      { save: jest.fn() },
+      snapshotStoreMock(),
       projectPrisma() as never
     );
 
@@ -299,7 +388,7 @@ describe("BusinessEntryDefinitionService", () => {
           projectRoleKeys: []
         })
       },
-      { save: jest.fn() },
+      snapshotStoreMock(),
       projectPrisma() as never
     );
 
@@ -320,7 +409,7 @@ describe("BusinessEntryDefinitionService", () => {
         registeredDefinitions,
         registeredAccess,
         { effectiveRoleScopes: jest.fn().mockResolvedValue(scopes) },
-        { save: jest.fn() },
+        snapshotStoreMock(),
         projectPrisma() as never
       );
 
@@ -351,7 +440,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([definition]),
       visibility,
-      { save: jest.fn() },
+      snapshotStoreMock(),
       projectPrisma() as never
     );
 
@@ -389,7 +478,7 @@ describe("BusinessEntryDefinitionService", () => {
   it("authorizes a registered global scene from global positions across definition, validation and freeze", async () => {
     const registry = createBusinessEntryDefinitionRegistry([definition, companyDefinition]);
     const visibility = { effectiveRoleScopes: jest.fn() };
-    const snapshots = { save: jest.fn() };
+    const snapshots = snapshotStoreMock();
     const prisma = {
       project: { findUnique: jest.fn() },
       userPosition: {
@@ -441,7 +530,7 @@ describe("BusinessEntryDefinitionService", () => {
       select: { positionId: true }
     });
     expect(visibility.effectiveRoleScopes).not.toHaveBeenCalled();
-    expect(snapshots.save).not.toHaveBeenCalled();
+    expect(snapshots.saveStandalone).not.toHaveBeenCalled();
   });
 
   it("fails closed when a global target resolver rejects a missing or foreign same-type id", async () => {
@@ -450,7 +539,7 @@ describe("BusinessEntryDefinitionService", () => {
       createBusinessEntryDefinitionRegistry([companyDefinition]),
       accessRegistry([companyDefinition], resolveGlobalTarget),
       { effectiveRoleScopes: jest.fn() },
-      { save: jest.fn() },
+      snapshotStoreMock(),
       {
         project: { findUnique: jest.fn() },
         userPosition: {
@@ -531,7 +620,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([companyDefinition]),
       { effectiveRoleScopes: jest.fn() },
-      { save: jest.fn() },
+      snapshotStoreMock(),
       {
         project: { findUnique: jest.fn() },
         userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "finance" }]) },
@@ -552,7 +641,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([companyDefinition]),
       { effectiveRoleScopes: jest.fn() },
-      { save: jest.fn() },
+      snapshotStoreMock(),
       {
         project: { findUnique: jest.fn() },
         userPosition: {
@@ -594,7 +683,7 @@ describe("BusinessEntryDefinitionService", () => {
       registry,
       accessRegistry([definition]),
       visibility,
-      { save: jest.fn() },
+      snapshotStoreMock(),
       projectPrisma() as never
     );
 

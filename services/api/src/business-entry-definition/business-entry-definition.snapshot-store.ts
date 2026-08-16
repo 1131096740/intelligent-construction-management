@@ -22,7 +22,14 @@ const BUSINESS_ENTRY_TARGET_REVISION_FIELDS = [
 ] as const;
 
 export interface BusinessEntrySnapshotStore {
-  save(
+  saveStandalone(
+    projectId: string,
+    frozenByUserId: string,
+    snapshot: BusinessEntryFrozenSnapshot,
+    expectedRevision?: number
+  ): Promise<BusinessEntryFrozenSnapshot>;
+  saveInTransaction(
+    tx: Prisma.TransactionClient,
     projectId: string,
     frozenByUserId: string,
     snapshot: BusinessEntryFrozenSnapshot,
@@ -107,16 +114,45 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
     private readonly operatingProfiles: ProjectOperatingProfileService
   ) {}
 
-  async save(
+  async saveStandalone(
     projectId: string,
     frozenByUserId: string,
     snapshot: BusinessEntryFrozenSnapshot,
     expectedRevision?: number
   ): Promise<BusinessEntryFrozenSnapshot> {
-    return this.saveAttempt(projectId, frozenByUserId, snapshot, expectedRevision, 0);
+    return this.saveStandaloneAttempt(
+      projectId,
+      frozenByUserId,
+      snapshot,
+      expectedRevision,
+      0
+    );
   }
 
-  private async saveAttempt(
+  async saveInTransaction(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    frozenByUserId: string,
+    snapshot: BusinessEntryFrozenSnapshot,
+    expectedRevision?: number
+  ): Promise<BusinessEntryFrozenSnapshot> {
+    try {
+      return await this.persistInTransaction(
+        tx,
+        projectId,
+        frozenByUserId,
+        snapshot,
+        expectedRevision
+      );
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new BusinessEntrySnapshotConflictError();
+      }
+      throw error;
+    }
+  }
+
+  private async saveStandaloneAttempt(
     projectId: string,
     frozenByUserId: string,
     snapshot: BusinessEntryFrozenSnapshot,
@@ -130,68 +166,13 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
       entityId: snapshot.target.entityId
     };
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.businessEntrySubmissionSnapshot.findMany({
-          where,
-          orderBy: { revision: "desc" }
-        });
-        const current = existing[0] ? snapshotFromRecord(existing[0]) : undefined;
-        const same = current && sameImmutableContent(current, snapshot) ? current : undefined;
-        if (same) {
-          return same;
-        }
-        const currentRevision = existing[0]?.revision ?? 0;
-        if (existing.length > 0 && expectedRevision === undefined) {
-          throw new BusinessEntrySnapshotConflictError();
-        }
-        if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
-          throw new BusinessEntrySnapshotConflictError();
-        }
-        const revision = currentRevision + 1;
-
-        if (snapshot.sceneKey === "project_operating_profile" && snapshot.target.entityType === "project") {
-          const input: UpdateProjectOperatingProfileInput = {};
-          if (Object.prototype.hasOwnProperty.call(snapshot.values, "operatingLedgerEffectiveDate")) {
-            input.operatingLedgerEffectiveDate = snapshot.values.operatingLedgerEffectiveDate as string | null;
-          }
-          if (Object.prototype.hasOwnProperty.call(snapshot.values, "takeoverCompletedDate")) {
-            input.takeoverCompletedDate = snapshot.values.takeoverCompletedDate as string | null;
-          }
-          if (Object.prototype.hasOwnProperty.call(snapshot.values, "takeoverStatus")) {
-            input.takeoverStatus = snapshot.values.takeoverStatus as string;
-          }
-          await this.operatingProfiles.updateProfileInTransaction(
-            tx,
-            projectId,
-            frozenByUserId,
-            input
-          );
-        }
-        const created = await tx.businessEntrySubmissionSnapshot.create({
-          data: {
-            ...where,
-            revision,
-            definitionVersion: snapshot.definitionVersion,
-            definitionSnapshot: jsonValue(snapshot.definition),
-            valuesSnapshot: jsonValue(snapshot.values),
-            frozenAt: new Date(snapshot.frozenAt),
-            frozenByUserId
-          }
-        });
-        await this.audit.record(tx, {
-          actorUserId: frozenByUserId,
-          action: "business_entry.freeze",
-          businessType: snapshot.target.entityType,
-          businessId: snapshot.target.entityId,
-          metadata: {
-            sceneKey: snapshot.sceneKey,
-            definitionVersion: snapshot.definitionVersion,
-            revision,
-            snapshotId: created.id
-          }
-        });
-        return snapshotFromRecord(created);
-      });
+      return await this.prisma.$transaction((tx) => this.persistInTransaction(
+        tx,
+        projectId,
+        frozenByUserId,
+        snapshot,
+        expectedRevision
+      ));
     } catch (error) {
       if (!isUniqueConstraintError(error)) throw error;
       const retry = await this.prisma.businessEntrySubmissionSnapshot.findMany({
@@ -202,7 +183,7 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
       const same = current && sameImmutableContent(current, snapshot) ? current : undefined;
       if (same) return same;
       if (attempt >= 3) throw new BusinessEntrySnapshotConflictError();
-      return this.saveAttempt(
+      return this.saveStandaloneAttempt(
         projectId,
         frozenByUserId,
         snapshot,
@@ -210,5 +191,79 @@ export class PrismaBusinessEntrySnapshotStore implements BusinessEntrySnapshotSt
         attempt + 1
       );
     }
+  }
+
+  private async persistInTransaction(
+    tx: Prisma.TransactionClient,
+    projectId: string,
+    frozenByUserId: string,
+    snapshot: BusinessEntryFrozenSnapshot,
+    expectedRevision: number | undefined
+  ): Promise<BusinessEntryFrozenSnapshot> {
+    const where = {
+      projectId,
+      sceneKey: snapshot.sceneKey,
+      entityType: snapshot.target.entityType,
+      entityId: snapshot.target.entityId
+    };
+    const existing = await tx.businessEntrySubmissionSnapshot.findMany({
+      where,
+      orderBy: { revision: "desc" }
+    });
+    const current = existing[0] ? snapshotFromRecord(existing[0]) : undefined;
+    const same = current && sameImmutableContent(current, snapshot) ? current : undefined;
+    if (same) return same;
+
+    const currentRevision = existing[0]?.revision ?? 0;
+    if (existing.length > 0 && expectedRevision === undefined) {
+      throw new BusinessEntrySnapshotConflictError();
+    }
+    if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
+      throw new BusinessEntrySnapshotConflictError();
+    }
+    const revision = currentRevision + 1;
+
+    if (snapshot.sceneKey === "project_operating_profile" && snapshot.target.entityType === "project") {
+      const input: UpdateProjectOperatingProfileInput = {};
+      if (Object.prototype.hasOwnProperty.call(snapshot.values, "operatingLedgerEffectiveDate")) {
+        input.operatingLedgerEffectiveDate = snapshot.values.operatingLedgerEffectiveDate as string | null;
+      }
+      if (Object.prototype.hasOwnProperty.call(snapshot.values, "takeoverCompletedDate")) {
+        input.takeoverCompletedDate = snapshot.values.takeoverCompletedDate as string | null;
+      }
+      if (Object.prototype.hasOwnProperty.call(snapshot.values, "takeoverStatus")) {
+        input.takeoverStatus = snapshot.values.takeoverStatus as string;
+      }
+      await this.operatingProfiles.updateProfileInTransaction(
+        tx,
+        projectId,
+        frozenByUserId,
+        input
+      );
+    }
+    const created = await tx.businessEntrySubmissionSnapshot.create({
+      data: {
+        ...where,
+        revision,
+        definitionVersion: snapshot.definitionVersion,
+        definitionSnapshot: jsonValue(snapshot.definition),
+        valuesSnapshot: jsonValue(snapshot.values),
+        frozenAt: new Date(snapshot.frozenAt),
+        frozenByUserId
+      }
+    });
+    await this.audit.record(tx, {
+      actorUserId: frozenByUserId,
+      action: "business_entry.freeze",
+      businessType: snapshot.target.entityType,
+      businessId: snapshot.target.entityId,
+      metadata: {
+        sceneKey: snapshot.sceneKey,
+        definitionVersion: snapshot.definitionVersion,
+        revision,
+        snapshotId: created.id
+      }
+    });
+    return snapshotFromRecord(created);
   }
 }
