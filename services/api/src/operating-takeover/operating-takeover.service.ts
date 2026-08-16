@@ -27,6 +27,7 @@ import { PrismaService } from "../database/prisma.service";
 import { FileService } from "../file/file.service";
 import {
   AppendOperatingFactInput,
+  type OperatingFactEntryKind,
   OperatingFactSubjects,
   OperatingImpactInput,
   OperatingLedgerService,
@@ -118,6 +119,7 @@ export class OperatingTakeoverService {
       scenes: await this.sceneList(projectId, actorUserId),
       actions: {
         manage: canPerform("operating_takeover.manage", roles),
+        create: roles.includes("contract_director"),
         confirm: canPerform("operating_takeover.confirm", roles),
         activate: canPerform("operating_takeover.activate", roles),
         fileUpload: canPerform("operating_takeover.file.upload", roles)
@@ -165,8 +167,32 @@ export class OperatingTakeoverService {
     };
   }
 
+  async uploadSourceFile(
+    projectId: string,
+    actorUserId: string,
+    input: {
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      buffer: Buffer;
+      idempotencyKey?: string;
+    }
+  ) {
+    await this.assertProjectAction(projectId, actorUserId, "operating_takeover.file.upload");
+    const file = await this.files.uploadPrivateFile({ ...input, uploadedByUserId: actorUserId });
+    return {
+      id: file.id,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      uploadedByUserId: file.uploadedByUserId,
+      createdAt: file.createdAt.toISOString()
+    };
+  }
+
   async createBatch(projectId: string, actorUserId: string, input: CreateOperatingTakeoverBatchDto) {
-    await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
+    const roles = await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
+    if (!roles.includes("contract_director")) throw new ForbiddenException("首次、分阶段或补充接管批次必须由合同部负责人创建");
     const project = await this.project(projectId);
     const rows = this.inputRows(input);
     if (!rows.length) throw new BadRequestException("历史接管批次至少需要一行业务事实");
@@ -401,9 +427,10 @@ export class OperatingTakeoverService {
       }
       const issues = await tx.operatingTakeoverIssue.findMany({ where: { batchId, status: "open", severity: { in: ["error", "confirmed_duplicate"] } } });
       if (issues.length || batch.rows.some((row) => row.duplicateStatus === "confirmed" || (row.duplicateStatus === "suspected" && !row.reviewConclusion))) throw new BadRequestException("存在未解决的阻断问题或重复说明，不能激活");
-      const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { operatingLedgerEffectiveDate: true } });
+      const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { operatingLedgerEffectiveDate: true, takeoverStatus: true } });
+      if (!project) throw new NotFoundException("项目不存在或已停用，请刷新后重试");
       const formalRows = batch.rows.filter((row) => row.evidenceLevel !== "C");
-      if (formalRows.length && !project?.operatingLedgerEffectiveDate) throw new BadRequestException("项目尚未设置经营账生效日期，不能激活正式历史事实");
+      if (formalRows.length && !project.operatingLedgerEffectiveDate) throw new BadRequestException("项目尚未设置经营账生效日期，不能激活正式历史事实");
       const generatedFactIds: string[] = [];
       const gapRowIds: string[] = [];
       for (const row of batch.rows) {
@@ -412,8 +439,8 @@ export class OperatingTakeoverService {
           await tx.operatingTakeoverRow.update({ where: { id: row.id }, data: { reviewStatus: "activated" } });
           continue;
         }
-        const input = await this.factInput(tx, projectId, batch, row, actorUserId);
-        const fact = await this.ledger.replayFromSourceInTransaction(tx, input, actorUserId, "original");
+        const mapped = await this.factInput(tx, projectId, batch, row, actorUserId);
+        const fact = await this.ledger.replayFromSourceInTransaction(tx, mapped.input, actorUserId, mapped.entryKind);
         generatedFactIds.push(fact.id);
         await tx.operatingTakeoverRow.update({ where: { id: row.id }, data: { reviewStatus: "activated", generatedFactId: fact.id } });
       }
@@ -421,6 +448,9 @@ export class OperatingTakeoverService {
         data: { idempotencyKey, batchId, revision: batch.revision, status: "activated", generatedFactIds, gapRowIds, activatedByUserId: actorUserId }
       });
       await tx.operatingTakeoverBatch.update({ where: { id: batchId }, data: { status: "activated", activatedAt: new Date(), activatedByUserId: actorUserId } });
+      if (project.takeoverStatus === "preparing") {
+        await tx.project.update({ where: { id: projectId }, data: { takeoverStatus: "operating_with_takeover" } });
+      }
       await this.audit.record(tx, { actorUserId, action: "operating_takeover.activate", businessType: "operating_takeover_batch", businessId: batchId, metadata: { generatedFactIds, gapRowIds } });
       return activation;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -467,6 +497,7 @@ export class OperatingTakeoverService {
       const validation = await this.definitions.validateDraft(definition.key, projectId, actorUserId, { target: { entityType: "operating_takeover_row", entityId: projectId }, values: input.values, operation: "import" });
       definitionVersion = validation.definitionVersion;
       if (!validation.valid) for (const error of validation.errors) issues.push({ code: error.code, severity: "error", fieldKey: error.fieldKey, message: error.message });
+      for (const issue of semanticIssues(definition.key, input.values)) issues.push(issue);
       if (normalized && isHistoricalPostEffectiveOwnPayment(definition.key, normalized.occurredAt, effectiveDate, normalized.values)) {
         issues.push({ code: "post_effective_payment", severity: "error", fieldKey: "actualPayerName", message: "经营账生效日后的我方付款不能使用历史接管模板", suggestion: "请走正式付款申请、审批和实付登记流程" });
       }
@@ -499,7 +530,7 @@ export class OperatingTakeoverService {
     return { rows: output, summary };
   }
 
-  private async factInput(tx: DbTransaction, projectId: string, batch: TakeoverFactBatch, row: TakeoverFactRow, actorUserId: string): Promise<AppendOperatingFactInput> {
+  private async factInput(tx: DbTransaction, projectId: string, batch: TakeoverFactBatch, row: TakeoverFactRow, actorUserId: string): Promise<{ input: AppendOperatingFactInput; entryKind: OperatingFactEntryKind }> {
     if (!(row.occurredAt instanceof Date)) throw new BadRequestException("历史接管行缺少发生日期，不能激活");
     const project = await tx.project.findUnique({ where: { id: projectId, isActive: true }, select: { operatingLedgerEffectiveDate: true } });
     if (!project?.operatingLedgerEffectiveDate) throw new BadRequestException("项目尚未设置经营账生效日期，不能激活");
@@ -510,14 +541,43 @@ export class OperatingTakeoverService {
     const values = row.valuesSnapshot as Record<string, unknown>;
     const definition = sceneDefinition(row.sceneKey);
     const factKind = (definition?.defaultFactKind ?? "historical_gap") as OperatingFactKind;
+    const entryType = textValue(values.entryType);
+    const deductionType = textValue(values.deductionType);
+    const adjustsFactId = textValue(values.adjustsFactId ?? values.originalFactId);
+    const entryKind: OperatingFactEntryKind =
+      row.sceneKey === "employee_advance" && entryType === "reversal"
+        ? "reversal"
+        : row.sceneKey === "construction_enterprise_deduction" && deductionType === "return"
+          ? "reversal"
+          : row.sceneKey === "construction_enterprise_deduction" && deductionType === "adjustment"
+            ? "correction"
+            : "original";
+    if (entryKind !== "original" && !adjustsFactId) throw new BadRequestException("退补或冲销必须填写原经营事实编号");
+    if (row.sceneKey === "employee_advance" && entryType === "reversal" && !textValue(values.sourceRepaymentId)) {
+      throw new BadRequestException("员工还款冲销必须填写原还款记录编号");
+    }
+    let returnImpactKind: "estimated_clearing_expense" | "confirmed_cost" | undefined;
+    if (row.sceneKey === "construction_enterprise_deduction" && deductionType === "return") {
+      const target = await tx.operatingFact.findUnique({
+        where: { id: adjustsFactId },
+        select: { projectId: true, factKind: true, impacts: { select: { impactKind: true } } }
+      });
+      const targetImpact = target?.impacts.find((impact) => ["estimated_clearing_expense", "confirmed_cost"].includes(impact.impactKind));
+      if (!target || target.projectId !== projectId || target.factKind !== "construction_enterprise_deduction" || !targetImpact) {
+        throw new BadRequestException("施工企业扣费退回必须引用同项目的原扣费事实");
+      }
+      returnImpactKind = targetImpact.impactKind as "estimated_clearing_expense" | "confirmed_cost";
+    }
     const subjects = await this.subjects(tx, projectId, row.occurredAt, assignment, row.sceneKey, values);
-    const impacts = this.impacts(row.sceneKey, amountCents, values, subjects);
+    const impacts = this.impacts(row.sceneKey, amountCents, values, subjects, returnImpactKind);
     if (!OPERATING_FACT_KINDS.includes(factKind) || !impacts.length) throw new BadRequestException("历史接管行未能生成合法经营事实");
     const confirmation = batch.confirmations?.find((item) => item.profession === "finance") ?? batch.confirmations?.[0];
     const confirmedAt = confirmation?.confirmedAt ?? new Date();
     const confirmedByUserId = confirmation?.confirmedByUserId ?? actorUserId;
     const operatingLedgerEffectiveDate = project.operatingLedgerEffectiveDate;
-    const direction = ["owner_settlement", "owner_payment", "construction_enterprise_company_payment"].includes(row.sceneKey) ? "inflow" : "outflow";
+    const direction = row.sceneKey === "employee_advance"
+      ? entryType === "repayment" ? "inflow" : entryType === "offset" ? "neutral" : "outflow"
+      : ["owner_settlement", "owner_payment", "construction_enterprise_company_payment"].includes(row.sceneKey) ? "inflow" : "outflow";
     const sourceSnapshot = {
       batchId: batch.id,
       batchNo: batch.batchNo,
@@ -541,11 +601,18 @@ export class OperatingTakeoverService {
         affiliateNameSnapshot: assignment.affiliateNameSnapshot,
         affiliateCreditCodeSnapshot: assignment.affiliateCreditCodeSnapshot ?? null,
         historicalTakeoverBatchId: batch.id,
+        entryKind,
+        adjustsFactId: adjustsFactId ?? null,
         subjects: canonicalize(subjects) as Prisma.InputJsonObject,
         impacts: impacts.map((impact) => ({ ...impact, amountCents: impact.amountCents.toString() })) as unknown as Prisma.InputJsonValue
-      }
+      },
+      entryType: entryType ?? null,
+      deductionType: deductionType ?? null,
+      adjustsFactId: adjustsFactId ?? null,
+      sourceRepaymentId: textValue(values.sourceRepaymentId) ?? null,
+      reversalOfEntryId: adjustsFactId ?? null
     } as unknown as Prisma.InputJsonObject;
-    return {
+    const input: AppendOperatingFactInput = {
       projectId,
       sourceType: OPERATING_TAKEOVER_SOURCE_TYPE,
       sourceBusinessId: row.id,
@@ -569,8 +636,10 @@ export class OperatingTakeoverService {
       historicalTakeoverBatchId: batch.id,
       sourceSnapshot,
       subjects,
-      impacts
+      impacts,
+      ...(adjustsFactId ? { adjustsFactId } : {})
     };
+    return { input, entryKind };
   }
 
   private async subjects(tx: DbTransaction, projectId: string, occurredAt: Date, assignment: { businessPartyId: string }, sceneKey: string, values: Record<string, unknown>): Promise<OperatingFactSubjects> {
@@ -599,7 +668,16 @@ export class OperatingTakeoverService {
       case "construction_enterprise_company_payment": return { actualPayer: constructionEnterprise, payee: await participant(values.payeeName ?? values.counterpartyName) };
       case "construction_enterprise_downstream_payment": return { actualPayer: constructionEnterprise, payee: await party(values.payeeName ?? values.counterpartyName, "downstream_counterparty") };
       case "construction_enterprise_deduction": return { costBearingCompany: constructionEnterprise };
-      case "employee_advance": return { debtor: employee(values.actualPayerName), creditor: employee(values.payeeName ?? values.counterpartyName) };
+      case "employee_advance": {
+        const employeeSubject = employee(values.employeeName);
+        const company = await participant(values.costBearingCompanyName);
+        const entryType = textValue(values.entryType);
+        if (entryType === "expense_advance") return { debtor: employeeSubject, creditor: company, actualPayer: employeeSubject, payee: await party(values.payeeName ?? values.counterpartyName, "downstream_counterparty"), costBearingCompany: company };
+        if (entryType === "disbursement") return { debtor: employeeSubject, creditor: company, actualPayer: company, payee: employeeSubject };
+        if (entryType === "offset") return { debtor: employeeSubject, creditor: company, costBearingCompany: company };
+        if (entryType === "repayment" || entryType === "reversal") return { debtor: employeeSubject, creditor: company, actualPayer: employeeSubject, payee: company };
+        throw new BadRequestException("员工往来类型不支持历史经营账投影");
+      }
       case "project_wage": return { costBearingCompany: await participant(values.costBearingCompanyName), payee: employee(values.payeeName ?? values.counterpartyName) };
       case "construction_enterprise_wage": return { costBearingCompany: constructionEnterprise, payee: employee(values.payeeName ?? values.counterpartyName) };
       case "fund_movement": return { actualPayer: await participant(values.actualPayerName), payee: await participant(values.payeeName) };
@@ -609,15 +687,30 @@ export class OperatingTakeoverService {
     }
   }
 
-  private impacts(sceneKey: string, amountCents: bigint, values: Record<string, unknown>, subjects: OperatingFactSubjects): OperatingImpactInput[] {
+  private impacts(sceneKey: string, amountCents: bigint, values: Record<string, unknown>, subjects: OperatingFactSubjects, returnImpactKind?: "estimated_clearing_expense" | "confirmed_cost"): OperatingImpactInput[] {
     const impact = (key: string, impactKind: OperatingImpactKind, direction: "increase" | "decrease" | "notice", subjectRole?: OperatingSubjectRole, subject?: OperatingSubjectReference): OperatingImpactInput => ({ idempotencyKey: `${key}:${amountCents.toString()}`, sourceImpactKey: key, impactKind, direction, amountCents, subjectRole, subject, costCategoryCode: textValue(values.costCategoryCode) as PrimaryCostCategoryCode | undefined, description: textValue(values.sourceDescription), impactSnapshot: { sceneKey } });
     switch (sceneKey) {
       case "owner_settlement": return [impact("income", "confirmed_income", "increase", "creditor", subjects.creditor), impact("receivable", "receivable_increase", "increase", "debtor", subjects.debtor)];
       case "owner_payment": return [impact("receivable", "receivable_decrease", "decrease", "actual_payer", subjects.actualPayer), impact("funds", "construction_enterprise_funds_increase", "increase", "payee", subjects.payee)];
       case "construction_enterprise_company_payment": return [impact("funds", "company_project_funds_increase", "increase", "payee", subjects.payee)];
       case "construction_enterprise_downstream_payment": return [impact("payable", "payable_decrease", "decrease", "payee", subjects.payee), impact("funds", "construction_enterprise_funds_decrease", "decrease", "actual_payer", subjects.actualPayer)];
-      case "construction_enterprise_deduction": return [impact("deduction", "estimated_clearing_expense", "increase", "cost_bearing_company", subjects.costBearingCompany)];
-      case "employee_advance": return [impact("advance", "company_advance_for_project_increase", "increase", "debtor", subjects.debtor), impact("advance-funds", "company_project_funds_decrease", "decrease", "actual_payer", subjects.debtor)];
+      case "construction_enterprise_deduction": {
+        const deductionType = textValue(values.deductionType);
+        if (deductionType === "temporary_hold") return [impact("deduction", "estimated_clearing_expense", "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "final_deduction") return [impact("deduction", "confirmed_cost", "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "return") return [impact("deduction", returnImpactKind ?? "estimated_clearing_expense", "decrease", "cost_bearing_company", subjects.costBearingCompany)];
+        if (deductionType === "adjustment") return [impact("deduction", "confirmed_cost", textValue(values.adjustmentDirection) === "decrease" ? "decrease" : "increase", "cost_bearing_company", subjects.costBearingCompany)];
+        throw new BadRequestException("施工企业扣费类型不支持历史经营账投影");
+      }
+      case "employee_advance": {
+        const entryType = textValue(values.entryType);
+        if (entryType === "expense_advance") return [impact("cost", "confirmed_cost", "increase", "cost_bearing_company", subjects.costBearingCompany), impact("receivable", "receivable_increase", "increase", "creditor", subjects.creditor)];
+        if (entryType === "disbursement") return [impact("receivable", "receivable_increase", "increase", "creditor", subjects.creditor), impact("funds", "company_project_funds_decrease", "decrease", "actual_payer", subjects.actualPayer)];
+        if (entryType === "offset") return [impact("receivable", "receivable_decrease", "decrease", "creditor", subjects.creditor)];
+        if (entryType === "repayment") return [impact("receivable", "receivable_decrease", "decrease", "creditor", subjects.creditor), impact("funds", "company_project_funds_increase", "increase", "payee", subjects.payee)];
+        if (entryType === "reversal") return [impact("receivable", "receivable_decrease", "increase", "creditor", subjects.creditor), impact("funds", "company_project_funds_increase", "decrease", "payee", subjects.payee)];
+        throw new BadRequestException("员工往来类型不支持历史经营账投影");
+      }
       case "project_wage":
       case "construction_enterprise_wage": return [impact("cost", "confirmed_cost", "increase", "cost_bearing_company", subjects.costBearingCompany), impact("payable", "payable_increase", "increase", "payee", subjects.payee)];
       case "fund_movement": return [impact("out", "company_project_funds_decrease", "decrease", "actual_payer", subjects.actualPayer), impact("in", "company_project_funds_increase", "increase", "payee", subjects.payee)];
@@ -694,4 +787,32 @@ function snapshotFingerprint(value: Prisma.JsonValue): string | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const fingerprintValue = (value as Record<string, Prisma.JsonValue>).fingerprint;
   return typeof fingerprintValue === "string" ? fingerprintValue : undefined;
+}
+
+function semanticIssues(sceneKey: string, values: Record<string, unknown>): TakeoverIssue[] {
+  const issues: TakeoverIssue[] = [];
+  if (sceneKey === "employee_advance") {
+    const entryType = textValue(values.entryType);
+    if (!entryType) issues.push({ code: "missing_entry_type", severity: "error", fieldKey: "entryType", message: "员工垫资、报销或借款冲账必须选择往来类型" });
+    if (entryType === "expense_advance" && !textValue(values.costCategoryCode)) {
+      issues.push({ code: "missing_cost_category", severity: "error", fieldKey: "costCategoryCode", message: "员工垫付未报销必须填写一级成本分类" });
+    }
+    if (entryType === "reversal" && !textValue(values.adjustsFactId)) {
+      issues.push({ code: "missing_original_fact", severity: "error", fieldKey: "adjustsFactId", message: "员工还款冲销必须填写原经营事实编号" });
+    }
+    if (entryType === "reversal" && !textValue(values.sourceRepaymentId)) {
+      issues.push({ code: "missing_repayment_reference", severity: "error", fieldKey: "sourceRepaymentId", message: "员工还款冲销必须填写原还款记录编号" });
+    }
+  }
+  if (sceneKey === "construction_enterprise_deduction") {
+    const deductionType = textValue(values.deductionType);
+    if (!deductionType) issues.push({ code: "missing_deduction_type", severity: "error", fieldKey: "deductionType", message: "施工企业扣费必须选择扣费类型" });
+    if (["return", "adjustment"].includes(deductionType ?? "") && !textValue(values.originalFactId)) {
+      issues.push({ code: "missing_original_fact", severity: "error", fieldKey: "originalFactId", message: "施工企业退补或调整必须填写原扣费事实编号" });
+    }
+    if (deductionType === "adjustment" && !textValue(values.adjustmentDirection)) {
+      issues.push({ code: "missing_adjustment_direction", severity: "error", fieldKey: "adjustmentDirection", message: "施工企业扣费调整必须填写调整方向" });
+    }
+  }
+  return issues;
 }

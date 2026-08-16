@@ -65,6 +65,23 @@ const paymentStatusOptions = options([
   { value: "partially_paid", label: "部分付款" },
   { value: "not_applicable", label: "不涉及付款" }
 ]);
+const employeeEntryTypeOptions = options([
+  { value: "expense_advance", label: "员工垫付未报销" },
+  { value: "disbursement", label: "借款发放" },
+  { value: "offset", label: "报销冲账" },
+  { value: "repayment", label: "员工还款" },
+  { value: "reversal", label: "还款冲销" }
+]);
+const deductionTypeOptions = options([
+  { value: "temporary_hold", label: "暂扣" },
+  { value: "final_deduction", label: "最终扣费" },
+  { value: "return", label: "退回" },
+  { value: "adjustment", label: "补扣或调整" }
+]);
+const adjustmentDirectionOptions = options([
+  { value: "increase", label: "增加扣费" },
+  { value: "decrease", label: "减少扣费" }
+]);
 const costCategoryOptions = PRIMARY_COST_CATEGORY_CODES.map((value) => ({
   value,
   label: PRIMARY_COST_CATEGORY_LABELS[value]
@@ -118,6 +135,20 @@ const commonFields: readonly BusinessEntryFieldDefinition[] = [
   field("note", "补充说明", "long_text", { format: { maxLength: 1000 } })
 ];
 
+const sceneFields: Partial<Record<OperatingTakeoverSceneKey, readonly BusinessEntryFieldDefinition[]>> = {
+  construction_enterprise_deduction: [
+    field("deductionType", "扣费类型", "single_select", { required: true, options: deductionTypeOptions }),
+    field("originalFactId", "原扣费事实编号", "text", { format: { maxLength: 100 } }),
+    field("adjustmentDirection", "调整方向", "single_select", { options: adjustmentDirectionOptions })
+  ],
+  employee_advance: [
+    field("employeeName", "员工姓名", "text", { required: true, format: { maxLength: 100 } }),
+    field("entryType", "员工往来类型", "single_select", { required: true, options: employeeEntryTypeOptions }),
+    field("sourceRepaymentId", "原还款记录编号", "text", { format: { maxLength: 100 } }),
+    field("adjustsFactId", "原经营事实编号", "text", { format: { maxLength: 100 } })
+  ]
+};
+
 const SCENE_METADATA: Readonly<Record<OperatingTakeoverSceneKey, {
   name: string;
   description: string;
@@ -169,7 +200,7 @@ const SCENE_METADATA: Readonly<Record<OperatingTakeoverSceneKey, {
     description: "接管员工垫付、报销清偿、借款和冲账事实。",
     requiredProfessions: ["finance"],
     defaultFactKind: "employee_loan",
-    requiredFields: ["actualPayerName"]
+    requiredFields: ["employeeName", "costBearingCompanyName"]
   },
   project_wage: {
     name: "我方项目管理人员工资",
@@ -217,7 +248,7 @@ function sceneDefinition(key: OperatingTakeoverSceneKey): OperatingTakeoverScene
     version: 1,
     requiredProfessions: metadata.requiredProfessions,
     defaultFactKind: metadata.defaultFactKind,
-    fields: commonFields.map((definition) => ({
+    fields: [...commonFields, ...(sceneFields[key] ?? [])].map((definition) => ({
       ...definition,
       required: definition.required || required.has(definition.key),
       permissions: {

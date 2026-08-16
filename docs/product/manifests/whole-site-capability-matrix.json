@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "c930453d8a0d496020530938a434b37399a7eff7e2374b772ebea83325704109",
+      "sha256": "ca71b5611f04add0bb96324e14067845368fea2f04d622e52ca2c4b6f57bca80",
       "status": "ready",
       "summary": {
-        "routeCount": 475
+        "routeCount": 476
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "5eb4676e230b812047f2cde3a9536cacf13042096058c9d625a70e025395064e",
+      "sha256": "56c7eddb42dd2a77e62fe5712808ffde08b9c86e677aca5afdeb4ad8c5590a33",
       "status": "ready",
       "summary": {
         "apiModuleCount": 18,
-        "exportedFunctionCount": 476,
-        "transportWrapperCount": 456,
+        "exportedFunctionCount": 479,
+        "transportWrapperCount": 459,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 478,
+        "mainRequestBindingCount": 481,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 478,
-        "productionConsumerCount": 354,
+        "requestEdgeCount": 481,
+        "productionConsumerCount": 357,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,74 +42,74 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "32c6a05988c0ea411040f97252d63f1d5361ea9e8b3ee872c6474e150354021e",
+      "sha256": "3c493dd8254c3bbf4818e36420caceef8b329db804488e5bed482825adc4b42c",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 247,
+        "registeredActionCount": 250,
         "pageActionCount": 51,
-        "backgroundActionCount": 196,
+        "backgroundActionCount": 199,
         "reachableVueFileCount": 128,
         "routeRootCount": 48,
         "totalVueFileCount": 146,
         "parsedVueFileCount": 146,
         "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 848,
+        "templateEventDirectiveCount": 859,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 238,
-        "candidateProductionMutationConsumerCount": 238,
-        "acceptedProductionMutationConsumerCount": 238,
-        "productionMutationConsumerPairCount": 238,
+        "coveredProductionMutationConsumerCount": 241,
+        "candidateProductionMutationConsumerCount": 241,
+        "acceptedProductionMutationConsumerCount": 241,
+        "productionMutationConsumerPairCount": 241,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "290243f772baa7d4f4766efd16e9929692f0c1d891fd6a978b17cbfdca224f6a",
+      "sha256": "dae1a6ff0fd4acf87365f5913a7d48e205f3676409d167e77b866059aec1922b",
       "status": "ready",
       "summary": {
-        "routeCount": 475,
-        "exactRouteCount": 475,
-        "normalizedRouteCount": 475,
+        "routeCount": 476,
+        "exactRouteCount": 476,
+        "normalizedRouteCount": 476,
         "classificationOverrideCount": 179,
         "consumerSurfaceOverrideCount": 4,
         "classificationOverrideSha256": "ca0d42b7d6a3b833154cc8e7c198046238a85a7219277c3132f22ddc6aa557cd",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 296,
-        "pageRouteCount": 297,
+        "derivedProductionPageCount": 297,
+        "pageRouteCount": 298,
         "externalTakeoverCount": 66,
         "exitCandidateCount": 109,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 345,
+          "web_api_wrapper": 348,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 1,
-          "none": 121
+          "none": 119
         },
         "blockerCount": 0
       }
     }
   },
   "summary": {
-    "routeCount": 475,
-    "pageRouteCount": 297,
+    "routeCount": 476,
+    "pageRouteCount": 298,
     "externalTakeoverRouteCount": 66,
     "exitCandidateRouteCount": 109,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 478,
+    "mainRequestBindingCount": 481,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 247,
-    "actionBindingCount": 278,
-    "acceptedActionBindingCount": 258,
+    "registeredActionCount": 250,
+    "actionBindingCount": 281,
+    "acceptedActionBindingCount": 261,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 238,
-    "coveredProductionMutationConsumerPairCount": 238,
+    "productionMutationConsumerPairCount": 241,
+    "coveredProductionMutationConsumerPairCount": 241,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -8255,11 +8255,53 @@
         "contractCutoverTombstoneWrite": false
       },
       "usage": "external_takeover",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "updateOperatingTakeoverRow",
+          "method": "PATCH",
+          "path": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "operating-takeover.update-row",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.update-row\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000updateOperatingTakeoverRow\u0000PATCH\u0000PATCH /projects/:param/operating-takeovers/:param/rows/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "manage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "updateOperatingTakeoverRow",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -21260,11 +21302,53 @@
         "contractCutoverTombstoneWrite": false
       },
       "usage": "external_takeover",
-      "consumerSurface": "none",
-      "wrapperRequests": [],
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "addOperatingTakeoverAttachmentGroup",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
-      "actions": [],
-      "mutationCoverage": "not_applicable",
+      "actions": [
+        {
+          "actionId": "operating-takeover.attach-files",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.attach-files\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000addOperatingTakeoverAttachmentGroup\u0000POST\u0000POST /projects/:param/operating-takeovers/:param/attachments\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "file_upload",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "addOperatingTakeoverAttachmentGroup",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
       "blockerCodes": []
     },
     {
@@ -21322,6 +21406,75 @@
           },
           "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
           "wrapper": "confirmOperatingTakeover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/files",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+        "controller": "OperatingTakeoverController",
+        "handler": "uploadSourceFile",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.file.upload",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "uploadOperatingTakeoverSourceFile",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/files",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.upload-source-file",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.upload-source-file\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000uploadOperatingTakeoverSourceFile\u0000POST\u0000POST /projects/:param/operating-takeovers/files\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "file_upload",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "uploadOperatingTakeoverSourceFile",
           "productionConsumers": [
             "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
           ],

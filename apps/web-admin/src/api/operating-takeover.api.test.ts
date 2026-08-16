@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activateOperatingTakeover,
+  addOperatingTakeoverAttachmentGroup,
   confirmOperatingTakeover,
   fetchOperatingTakeoverBatches,
   precheckOperatingTakeover,
-  precheckOperatingTakeoverXlsx
+  precheckOperatingTakeoverXlsx,
+  updateOperatingTakeoverRow,
+  uploadOperatingTakeoverSourceFile
 } from "./operating-takeover.api";
 
 const mockApiFetch = vi.fn();
@@ -48,5 +51,34 @@ describe("operating takeover api", () => {
     expect(path).toBe("/projects/project%2F1/operating-takeovers/precheck-xlsx?sceneKey=owner_payment");
     expect(init.method).toBe("POST");
     expect(init.body).toBeInstanceOf(FormData);
+  });
+
+  it("uploads the original Excel as a project-scoped source file", async () => {
+    await uploadOperatingTakeoverSourceFile(
+      "project/1",
+      new File(["xlsx"], "历史接管.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+    );
+
+    const [path, init] = mockApiFetch.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/projects/project%2F1/operating-takeovers/files");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+  });
+
+  it("keeps draft row updates and attachments batch-scoped", async () => {
+    await updateOperatingTakeoverRow("project/1", "batch/1", "row/1", {
+      expectedRevision: 1,
+      values: { businessRef: "历史-001" }
+    });
+    await addOperatingTakeoverAttachmentGroup("project/1", "batch/1", {
+      purpose: "付款凭据",
+      fileIds: ["00000000-0000-4000-8000-000000000003"]
+    });
+
+    expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
+      "/projects/project%2F1/operating-takeovers/batch%2F1/rows/row%2F1",
+      "/projects/project%2F1/operating-takeovers/batch%2F1/attachments"
+    ]);
+    expect(mockApiFetch.mock.calls.map(([, init]) => init?.method)).toEqual(["PATCH", "POST"]);
   });
 });

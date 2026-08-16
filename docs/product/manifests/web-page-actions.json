@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 247,
+    "registeredActionCount": 250,
     "pageActionCount": 51,
-    "backgroundActionCount": 196,
+    "backgroundActionCount": 199,
     "reachableVueFileCount": 128,
     "routeRootCount": 48,
     "totalVueFileCount": 146,
     "parsedVueFileCount": 146,
     "reachableProductionModuleCount": 229,
-    "templateEventDirectiveCount": 848,
+    "templateEventDirectiveCount": 859,
     "propCallbackDirectiveCount": 7,
-    "coveredProductionMutationConsumerCount": 238,
-    "candidateProductionMutationConsumerCount": 238,
-    "acceptedProductionMutationConsumerCount": 238,
-    "productionMutationConsumerPairCount": 238,
+    "coveredProductionMutationConsumerCount": 241,
+    "candidateProductionMutationConsumerCount": 241,
+    "acceptedProductionMutationConsumerCount": 241,
+    "productionMutationConsumerPairCount": 241,
     "blockerCount": 0
   },
   "evidence": {
@@ -7631,7 +7631,7 @@
         "event": "call",
         "handler": "activateOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 405,
+        "sourceLine": 771,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7682,6 +7682,71 @@
       ]
     },
     {
+      "id": "operating-takeover.attach-files",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "addOperatingTakeoverAttachmentGroupWithCapability",
+        "kind": "background_call",
+        "sourceLine": 807,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "file_upload",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "addOperatingTakeoverAttachmentGroup",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/attachments",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/attachments",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+            "controller": "OperatingTakeoverController",
+            "handler": "attachments",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.file.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "addOperatingTakeoverAttachmentGroupWithCapability",
+              "addOperatingTakeoverAttachmentGroup"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "operating-takeover.confirm",
       "usage": "background",
       "routePaths": [
@@ -7696,7 +7761,7 @@
         "event": "call",
         "handler": "confirmOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 392,
+        "sourceLine": 758,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7761,7 +7826,7 @@
         "event": "call",
         "handler": "createOperatingTakeoverBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 380,
+        "sourceLine": 746,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7826,7 +7891,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 355,
+        "sourceLine": 721,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7891,7 +7956,7 @@
         "event": "call",
         "handler": "precheckOperatingTakeoverXlsxWithCapability",
         "kind": "background_call",
-        "sourceLine": 367,
+        "sourceLine": 733,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7935,6 +8000,136 @@
             "localCallChain": [
               "precheckOperatingTakeoverXlsxWithCapability",
               "precheckOperatingTakeoverXlsx"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.update-row",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "updateOperatingTakeoverRowWithCapability",
+        "kind": "background_call",
+        "sourceLine": 793,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "updateOperatingTakeoverRow",
+          "method": "PATCH",
+          "path": "/projects/:param/operating-takeovers/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/projects/:projectId/operating-takeovers/:batchId/rows/:rowId",
+            "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+            "controller": "OperatingTakeoverController",
+            "handler": "updateRow",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "updateOperatingTakeoverRowWithCapability",
+              "updateOperatingTakeoverRow"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "operating-takeover.upload-source-file",
+      "usage": "background",
+      "routePaths": [
+        "/历史经营接管"
+      ],
+      "ownerRoutePaths": [
+        "/历史经营接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "uploadOperatingTakeoverFileWithCapability",
+        "kind": "background_call",
+        "sourceLine": 784,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "file_upload",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "uploadOperatingTakeoverSourceFile",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/files",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/operating-takeovers/files",
+            "normalizedKey": "POST /projects/:param/operating-takeovers/files",
+            "controller": "OperatingTakeoverController",
+            "handler": "uploadSourceFile",
+            "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "operating_takeover.file.upload"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "uploadOperatingTakeoverFileWithCapability",
+              "uploadOperatingTakeoverSourceFile"
             ]
           },
           "ticketFollowups": []

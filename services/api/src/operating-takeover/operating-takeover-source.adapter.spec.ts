@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { OperatingTakeoverSourceAdapter } from "./operating-takeover-source.adapter";
+import type { OperatingSourceSnapshot } from "../operating-ledger/operating-source-adapter";
 
 describe("OperatingTakeoverSourceAdapter", () => {
   it("reconstructs an immutable original fact from its stored source snapshot", () => {
@@ -50,5 +51,42 @@ describe("OperatingTakeoverSourceAdapter", () => {
     expect(mapped.input.amountCents).toBe(10005n);
     expect(mapped.input.impacts[0].amountCents).toBe(10005n);
     expect(mapped.input.sourceSnapshot).toBe(sourceSnapshot);
+  });
+
+  it("preserves correction metadata when replaying a frozen source snapshot", () => {
+    const adapter = new OperatingTakeoverSourceAdapter();
+    const sourceSnapshot = {
+      fact: {
+        entryKind: "correction",
+        adjustsFactId: "fact-original",
+        occurredAt: "2026-08-01T00:00:00.000Z",
+        confirmedAt: "2026-08-16T00:00:00.000Z",
+        confirmedByUserId: "finance-1",
+        factKind: "expense",
+        operatingLevel: "project",
+        evidenceLevel: "A",
+        amountCents: "10005",
+        currencyCode: "CNY",
+        direction: "outflow",
+        isBeforeOperatingLedgerEffectiveDate: true,
+        affiliateAssignmentId: "assignment-1",
+        affiliateBusinessPartyVersionId: "party-version-1",
+        affiliateNameSnapshot: "施工企业",
+        subjects: {},
+        impacts: []
+      }
+    }
+    const mapped = adapter.toOperatingFactInput({
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "row-2",
+      sourceBusinessCode: "OT-1-2",
+      sourceVersion: 2,
+      status: "confirmed",
+      sourceSnapshot
+    } as unknown as OperatingSourceSnapshot);
+
+    expect(mapped.entryKind).toBe("correction");
+    expect(mapped.input.adjustsFactId).toBe("fact-original");
   });
 });

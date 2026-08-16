@@ -8,7 +8,14 @@ export interface OperatingTakeoverSceneReadModel {
   version: number;
   defaultFactKind: string;
   requiredProfessions: string[];
-  fields: Array<{ key: string; label: string; type: string; required: boolean; excel: { column: string } }>;
+  fields: Array<{
+    key: string;
+    label: string;
+    type: string;
+    required: boolean;
+    options?: Array<{ value: string; label: string }>;
+    excel: { column: string };
+  }>;
 }
 
 export type OperatingTakeoverProfession = "contract" | "finance";
@@ -38,8 +45,11 @@ export interface OperatingTakeoverRowReadModel {
   evidenceLevel: string;
   reviewStatus: string;
   duplicateStatus: string;
+  duplicateNote: string | null;
+  reviewConclusion: string | null;
   revision: number;
   issues: Array<{ message: string; severity: string }>;
+  attachmentGroups: Array<{ id: string; rowId: string | null; purpose: string; links: Array<{ id: string; fileId: string }> }>;
 }
 
 export interface OperatingTakeoverDetailReadModel extends OperatingTakeoverBatchReadModel {
@@ -53,6 +63,15 @@ export interface OperatingTakeoverPrecheckReadModel {
   rows: Array<{ rowNo: number; sceneKey: string; values: Record<string, unknown>; issues: Array<{ message: string; severity: string }> }>;
   zeroWrites: true;
   importFingerprint: string;
+}
+
+export interface OperatingTakeoverSourceFileReadModel {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedByUserId: string;
+  createdAt: string;
 }
 
 async function ensureOk(response: Response, fallback: string): Promise<void> {
@@ -77,6 +96,16 @@ async function readJson<T>(requestPath: string, fallback: string): Promise<T> {
 async function postJson<T>(requestPath: string, body: unknown, fallback: string): Promise<T> {
   const response = await apiFetch(requestPath, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, fallback);
+  return response.json() as Promise<T>;
+}
+
+async function patchJson<T>(requestPath: string, body: unknown, fallback: string): Promise<T> {
+  const response = await apiFetch(requestPath, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -117,8 +146,18 @@ export function precheckOperatingTakeoverXlsx(projectId: string, file: File, sce
   return postFormData<OperatingTakeoverPrecheckReadModel>(path(projectId, `/precheck-xlsx${query}`), formData, "历史经营接管 Excel 预检失败");
 }
 
-export function createOperatingTakeoverBatch(projectId: string, body: { batchNo?: string; sceneKey?: string; rows: Array<{ sceneKey?: string; values: Record<string, unknown> }> }) {
+export function uploadOperatingTakeoverSourceFile(projectId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return postFormData<OperatingTakeoverSourceFileReadModel>(path(projectId, "/files"), formData, "上传历史经营接管原始文件失败");
+}
+
+export function createOperatingTakeoverBatch(projectId: string, body: { batchNo?: string; sceneKey?: string; sourceFileId?: string; rows: Array<{ sceneKey?: string; values: Record<string, unknown> }> }) {
   return postJson<OperatingTakeoverDetailReadModel>(path(projectId), body, "创建历史经营接管批次失败");
+}
+
+export function updateOperatingTakeoverRow(projectId: string, batchId: string, rowId: string, body: { expectedRevision: number; values: Record<string, unknown>; duplicateNote?: string; reviewConclusion?: string }) {
+  return patchJson<OperatingTakeoverDetailReadModel>(path(projectId, `/${encodeURIComponent(batchId)}/rows/${encodeURIComponent(rowId)}`), body, "保存历史经营接管行失败");
 }
 
 export function confirmOperatingTakeover(projectId: string, batchId: string, body: { profession: OperatingTakeoverProfession; expectedRevision: number; idempotencyKey: string }) {
@@ -127,6 +166,10 @@ export function confirmOperatingTakeover(projectId: string, batchId: string, bod
 
 export function activateOperatingTakeover(projectId: string, batchId: string, idempotencyKey: string) {
   return postJson<unknown>(path(projectId, `/${encodeURIComponent(batchId)}/activation`), { idempotencyKey }, "历史经营接管激活失败");
+}
+
+export function addOperatingTakeoverAttachmentGroup(projectId: string, batchId: string, body: { purpose: string; rowId?: string; fileIds: string[] }) {
+  return postJson<unknown>(path(projectId, `/${encodeURIComponent(batchId)}/attachments`), body, "关联历史经营接管附件失败");
 }
 
 export async function downloadOperatingTakeoverTemplate(projectId: string, sceneKey?: string) {

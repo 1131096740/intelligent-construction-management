@@ -16,7 +16,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
-import type { MemoryUploadedFile } from "../file/uploaded-file";
+import { normalizeUploadedOriginalName, type MemoryUploadedFile } from "../file/uploaded-file";
 import {
   AddOperatingTakeoverAttachmentGroupDto,
   ActivateOperatingTakeoverDto,
@@ -76,6 +76,25 @@ export class OperatingTakeoverController {
     if (!file) throw new BadRequestException("请选择历史接管 Excel 文件");
     const parsed = await this.excel.parse(file.buffer, sceneKey);
     return this.takeovers.precheck(projectId, user.id, { rows: parsed.rows } as PrecheckOperatingTakeoverDto);
+  }
+
+  @Post("files")
+  @RequireProjectRole("operating_takeover.file.upload")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadSourceFile(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: MemoryUploadedFile | undefined,
+    @Body("idempotencyKey") idempotencyKey?: string
+  ) {
+    if (!file) throw new BadRequestException("请选择历史经营接管资料文件");
+    return this.takeovers.uploadSourceFile(projectId, user.id, {
+      originalName: normalizeUploadedOriginalName(file.originalname),
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      buffer: file.buffer,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+    });
   }
 
   @Get()

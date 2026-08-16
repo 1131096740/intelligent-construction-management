@@ -126,6 +126,12 @@ export function normalizeTakeoverRow(
         payeeName: textValue(values.payeeName),
         paymentStatus: textValue(values.paymentStatus),
         costCategoryCode: textValue(values.costCategoryCode),
+        entryType: textValue(values.entryType),
+        deductionType: textValue(values.deductionType),
+        originalFactId: textValue(values.originalFactId),
+        adjustsFactId: textValue(values.adjustsFactId),
+        sourceRepaymentId: textValue(values.sourceRepaymentId),
+        adjustmentDirection: textValue(values.adjustmentDirection),
         evidenceLevel,
         sourceDescription: textValue(values.sourceDescription)
       }

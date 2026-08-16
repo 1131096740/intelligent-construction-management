@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
   type AppendOperatingFactInput,
+  type OperatingFactEntryKind,
   type OperatingFactSubjects,
   type OperatingImpactInput,
   type OperatingLedgerTransaction
@@ -37,6 +38,15 @@ export class OperatingTakeoverSourceAdapter implements OperatingSourceAdapter {
 
   toOperatingFactInput(snapshot: OperatingSourceSnapshot): OperatingSourceFactInput {
     const fact = object(snapshot.sourceSnapshot.fact);
+    const rawEntryKind = fact.entryKind === undefined || fact.entryKind === null ? "original" : String(fact.entryKind);
+    if (!OPERATING_FACT_ENTRY_KINDS.has(rawEntryKind as OperatingFactEntryKind)) {
+      throw new BadRequestException("历史接管来源快照登记类型不正确");
+    }
+    const entryKind = rawEntryKind as OperatingFactEntryKind;
+    const adjustsFactId = fact.adjustsFactId === undefined || fact.adjustsFactId === null ? undefined : String(fact.adjustsFactId);
+    if (entryKind !== "original" && !adjustsFactId) {
+      throw new BadRequestException("历史接管来源更正或冲销必须引用原经营事实");
+    }
     const subjects = object(fact.subjects) as unknown as OperatingFactSubjects;
     const impacts = Array.isArray(fact.impacts)
       ? fact.impacts.map((impact) => ({
@@ -68,14 +78,21 @@ export class OperatingTakeoverSourceAdapter implements OperatingSourceAdapter {
       historicalTakeoverBatchId: fact.historicalTakeoverBatchId ? String(fact.historicalTakeoverBatchId) : undefined,
       sourceSnapshot: snapshot.sourceSnapshot,
       subjects,
-      impacts
+      impacts,
+      ...(adjustsFactId ? { adjustsFactId } : {})
     };
     if (!input.sourceBusinessCode || !input.confirmedByUserId || Number.isNaN(input.occurredAt.getTime())) {
       throw new BadRequestException("历史接管来源快照不完整，不能重放");
     }
-    return { entryKind: "original", input };
+    return { entryKind, input };
   }
 }
+
+const OPERATING_FACT_ENTRY_KINDS: ReadonlySet<OperatingFactEntryKind> = new Set<OperatingFactEntryKind>([
+  "original",
+  "correction",
+  "reversal"
+]);
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new BadRequestException("历史接管来源快照结构不正确");

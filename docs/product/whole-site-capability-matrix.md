@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `c930453d8a0d496020530938a434b37399a7eff7e2374b772ebea83325704109` |
-| webApiWrappers | ready | `5eb4676e230b812047f2cde3a9536cacf13042096058c9d625a70e025395064e` |
-| webPageActions | ready | `32c6a05988c0ea411040f97252d63f1d5361ea9e8b3ee872c6474e150354021e` |
-| routeUsage | ready | `290243f772baa7d4f4766efd16e9929692f0c1d891fd6a978b17cbfdca224f6a` |
+| nestRoutes | ready | `ca71b5611f04add0bb96324e14067845368fea2f04d622e52ca2c4b6f57bca80` |
+| webApiWrappers | ready | `56c7eddb42dd2a77e62fe5712808ffde08b9c86e677aca5afdeb4ad8c5590a33` |
+| webPageActions | ready | `3c493dd8254c3bbf4818e36420caceef8b329db804488e5bed482825adc4b42c` |
+| routeUsage | ready | `dae1a6ff0fd4acf87365f5913a7d48e205f3676409d167e77b866059aec1922b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 475 |
-| pageRouteCount | 297 |
+| routeCount | 476 |
+| pageRouteCount | 298 |
 | externalTakeoverRouteCount | 66 |
 | exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 478 |
+| mainRequestBindingCount | 481 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 247 |
-| actionBindingCount | 278 |
-| acceptedActionBindingCount | 258 |
+| registeredActionCount | 250 |
+| actionBindingCount | 281 |
+| acceptedActionBindingCount | 261 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 238 |
-| coveredProductionMutationConsumerPairCount | 238 |
+| productionMutationConsumerPairCount | 241 |
+| coveredProductionMutationConsumerPairCount | 241 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -199,7 +199,7 @@
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
 | PATCH | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectOperatingProfile | project-operating-profile.save | covered | — |
-| PATCH | /projects/:projectId/operating-takeovers/:batchId/rows/:rowId | external_takeover | none | — | — | not_applicable | — |
+| PATCH | /projects/:projectId/operating-takeovers/:batchId/rows/:rowId | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#updateOperatingTakeoverRow | operating-takeover.update-row | covered | — |
 | PATCH | /projects/:projectId/participating-companies/:participantId/deactivation | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#deactivateProjectParticipatingCompany | project-operating-profile.deactivate-participating-company | covered | — |
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | project.update | covered | — |
 | PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.update-local-gate | covered | — |
@@ -407,8 +407,9 @@
 | POST | /projects/:projectId/financing-quotas/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
 | POST | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#activateOperatingTakeover | operating-takeover.activate | covered | — |
-| POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | none | — | — | not_applicable | — |
+| POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#addOperatingTakeoverAttachmentGroup | operating-takeover.attach-files | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#confirmOperatingTakeover | operating-takeover.confirm | covered | — |
+| POST | /projects/:projectId/operating-takeovers/files | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#uploadOperatingTakeoverSourceFile | operating-takeover.upload-source-file | covered | — |
 | POST | /projects/:projectId/operating-takeovers/precheck-xlsx | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#precheckOperatingTakeoverXlsx | operating-takeover.precheck-excel | covered | — |
 | POST | /projects/:projectId/operating-takeovers/precheck | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#precheckOperatingTakeover | operating-takeover.precheck | covered | — |
 | POST | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#createOperatingTakeoverBatch | operating-takeover.create-batch | covered | — |

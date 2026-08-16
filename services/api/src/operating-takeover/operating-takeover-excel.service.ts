@@ -46,8 +46,9 @@ export class OperatingTakeoverExcelService {
       throw new BadRequestException("Excel 文件无法读取，请使用系统模板");
     }
     const rows: Array<{ sceneKey: OperatingTakeoverSceneKey; values: Record<string, unknown> }> = [];
+    const isCombinedWorkbook = workbook.worksheets.length > 1;
     for (const worksheet of workbook.worksheets) {
-      const definition = this.definitionForWorksheet(worksheet.name, sceneKey);
+      const definition = this.definitionForWorksheet(worksheet.name, sceneKey, isCombinedWorkbook);
       if (!definition) continue;
       const headers = this.headers(worksheet, definition);
       for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
@@ -66,8 +67,10 @@ export class OperatingTakeoverExcelService {
     return { rows };
   }
 
-  private definitionForWorksheet(name: string, sceneKey?: string) {
-    if (sceneKey) return OPERATING_TAKEOVER_SCENE_DEFINITIONS.find((definition) => definition.key === sceneKey);
+  private definitionForWorksheet(name: string, sceneKey?: string, isCombinedWorkbook = false) {
+    if (sceneKey && !isCombinedWorkbook) {
+      return OPERATING_TAKEOVER_SCENE_DEFINITIONS.find((definition) => definition.key === sceneKey);
+    }
     return OPERATING_TAKEOVER_SCENE_DEFINITIONS.find((definition) => definition.name === name);
   }
 
