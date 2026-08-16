@@ -203,6 +203,13 @@
 | 备份隔离恢复与监控 | [x] | 自然异机备份、checksum、隔离恢复、健康/readiness 和监控证据通过 |
 | RC-09 / 阶段 F | [~] | 同机隔离部署 -> 回滚 -> 再部署通过；跨主机与整机故障未演练 |
 
+## POL-08 主线候选收据（2026-08-17）
+
+- [x] Issue #101 候选从 fresh fetch 后的 `origin/main@1b5df670282c200c32a4a12dd99599f38887e60e` 重组；按既定顺序完整接入 `9f8c78fe` 至 `9cd2641e` 的 12 提交链。仅两份生成型全站能力矩阵与主线发生内容冲突，均保留主线后按当前代码重新生成；最终相对基线仍与原候选严格一致为 71 个文件，未接入其他 Issue 行为。
+- [x] 本地验证：POL-08 定向 API 5 suites / 259 tests、定向 Web 3 files / 24 tests；全量 API 341 passed suites / 6241 passed tests / 29 skipped suites / 103 skipped tests；workspace typecheck、API/Web build、lint（0 errors；30 条既有 takeover 页面 warning）、`check:ui`、business-language、`check:business-errors`、全部 release manifests、动态门静态 runner 13/13 与 `git diff --check` 均通过。
+- [x] PostgreSQL 16 候选门已绑定 `1bd18cac32981ba89f8d2f0834e7ed070b017022` 通过：136 migrations，terminal migration `20260816120000_pol08_contract_lineage_operating_sources`，terminal checksum `1eff5e501fd82a23e5912b02e07969fbd6f9d69750b960e1c84c073038a308b0`，94 tests / 38 files，remaining 0/0；镜像 `postgres:16@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5`。本收据提交后仍须对最终精确 HEAD 重跑同一门禁，旧收据不直接继承。
+- [ ] 待完成 Standards/Spec 双轴独立复审、push、PR、CI、merge、远端 main SHA 与 Issue 关闭核验；未部署、未执行生产迁移、未写入生产数据库/COS、未执行真实归零或正式开放。
+
 ## 生产与运维边界
 
 - 生产业务写入、账号/权限变更、数据库修复、COS 对象删除或生命周期变更必须获得单独明确授权。
