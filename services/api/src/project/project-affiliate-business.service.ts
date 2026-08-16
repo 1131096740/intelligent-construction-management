@@ -629,7 +629,6 @@ export class ProjectAffiliateBusinessService {
           await assertSettlementAdjustmentCapacity(tx, {
             projectId,
             settlementLedgerId: target.ledgerId,
-            settlementFactId: target.id,
             entryKind,
             effectDirection,
             amountCents
@@ -1191,11 +1190,7 @@ export class ProjectAffiliateBusinessService {
         await assertSettlementEffectiveAmountCoversExistingPayments(
           tx,
           projectId,
-          settlementFact.ledgerId,
-          undefined,
-          settlementFact.entryKind === "original"
-            ? settlementFact.id
-            : settlementFact.adjustsFactId ?? undefined
+          settlementFact.ledgerId
         );
       }
       const roleKeys = await loadActorRoleKeys(tx, actorUserId, projectId);
@@ -1671,7 +1666,7 @@ async function loadActiveSettlementLedger(
   return { ...original, netAmountCents };
 }
 
-async function lockSettlementLedger(
+export async function lockSettlementLedger(
   tx: Prisma.TransactionClient,
   projectId: string,
   ledgerId: string
@@ -1691,7 +1686,6 @@ async function assertSettlementAdjustmentCapacity(
   input: {
     projectId: string;
     settlementLedgerId: string;
-    settlementFactId: string;
     entryKind: ProjectAffiliateEntryKind;
     effectDirection: EffectDirection;
     amountCents: bigint;
@@ -1717,17 +1711,16 @@ async function assertSettlementAdjustmentCapacity(
     tx,
     input.projectId,
     input.settlementLedgerId,
-    next,
-    input.settlementFactId
+    next
   );
 }
 
-async function assertSettlementEffectiveAmountCoversExistingPayments(
+export async function assertSettlementEffectiveAmountCoversExistingPayments(
   tx: Prisma.TransactionClient,
   projectId: string,
   settlementLedgerId: string,
   proposedNetAmountCents?: bigint,
-  settlementFactId?: string
+  additionalRemittanceAmountCents = 0n
 ) {
   const effectiveAmountCents =
     proposedNetAmountCents ??
@@ -1754,20 +1747,28 @@ async function assertSettlementEffectiveAmountCoversExistingPayments(
   if (effectiveAmountCents < paymentAmountCents) {
     throw new BadRequestException("施工企业结算有效金额不能低于已登记付款金额");
   }
-  const remittanceAmountCents = settlementFactId
+  const settlementFacts = await tx.projectAffiliateSettlementFact.findMany({
+    where: {
+      projectId,
+      ledgerId: settlementLedgerId,
+      status: { in: ["pending_confirm", "confirmed"] }
+    },
+    select: { id: true }
+  });
+  const remittanceAmountCents = settlementFacts.length
     ? netMoneyFacts(
         await tx.projectUpstreamFundFact.findMany({
           where: {
             projectId,
             factType: "affiliate_remittance_to_company",
-            affiliateSettlementFactId: settlementFactId,
+            affiliateSettlementFactId: { in: settlementFacts.map((fact) => fact.id) },
             status: { in: ["pending_confirm", "confirmed"] }
           },
           select: { effectDirection: true, amountCents: true }
         })
       )
     : 0n;
-  if (effectiveAmountCents < remittanceAmountCents) {
+  if (effectiveAmountCents < remittanceAmountCents + additionalRemittanceAmountCents) {
     throw new BadRequestException("施工企业结算有效金额不能低于已登记拨款金额");
   }
 }

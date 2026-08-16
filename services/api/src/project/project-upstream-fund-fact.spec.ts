@@ -17,6 +17,7 @@ function fundFact(overrides: Record<string, unknown> = {}) {
     basisType: "written",
     deductionCategory: null,
     upstreamSettlementId: null,
+    affiliateSettlementFactId: null,
     affiliateAssignmentId: "assignment-1",
     affiliateBusinessPartyVersionId: "party-version-1",
     affiliateNameSnapshot: "挂靠建设集团",
@@ -394,6 +395,7 @@ describe("ProjectService upstream fund facts", () => {
     const tx = {
       $queryRaw: jest.fn()
         .mockResolvedValueOnce([{ id: "fund-fact-1" }])
+        .mockResolvedValueOnce([{ id: "settlement-fact-1" }])
         .mockResolvedValueOnce([{ id: "finance-1", isActive: true }])
         .mockResolvedValueOnce([{
           id: "signature-version-1",
@@ -412,10 +414,21 @@ describe("ProjectService upstream fund facts", () => {
           factType: "affiliate_remittance_to_company",
           entryKind: "reversal",
           adjustsFactId: "fund-fact-original",
-          effectDirection: "decrease"
+          effectDirection: "decrease",
+          affiliateSettlementFactId: "settlement-fact-1"
         })),
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      projectAffiliateSettlementFact: {
+        findFirst: jest.fn().mockResolvedValue({ ledgerId: "settlement-ledger-1" }),
+        findMany: jest.fn().mockImplementation(({ select }: { select?: { id?: boolean } }) =>
+          select?.id
+            ? [{ id: "settlement-fact-1" }]
+            : [{ effectDirection: "increase", amountCents: 12000n }]
+        )
+      },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -583,6 +596,7 @@ describe("ProjectService upstream fund facts", () => {
       ...roleTables("finance_staff"),
       projectUpstreamFundFact: {
         findUnique: jest.fn().mockImplementation(async () => stored),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockImplementation(async ({ data }) => {
           stored = fundFact({
             ...data,
@@ -612,6 +626,9 @@ describe("ProjectService upstream fund facts", () => {
         findMany: jest.fn().mockResolvedValue([
           { effectDirection: "increase", amountCents: 12000n }
         ])
+      },
+      projectAffiliatePaymentFact: {
+        findMany: jest.fn().mockResolvedValue([])
       },
       invoiceRecord: {
         findFirst: jest.fn().mockResolvedValue({
@@ -647,7 +664,7 @@ describe("ProjectService upstream fund facts", () => {
 
     expect(replay).toEqual(first);
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.projectParticipatingCompany.findFirst.mock.invocationCallOrder[0]
     );
@@ -660,12 +677,16 @@ describe("ProjectService upstream fund facts", () => {
     expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
 
     tx.projectUpstreamFundFact.findUnique.mockResolvedValueOnce(null);
-    tx.projectAffiliateSettlementFact.findFirst.mockResolvedValueOnce({
-      amountCents: 12000n,
-      affiliateCompanyContractId: "another-company-contract",
-      affiliateAssignmentId: "assignment-1",
-      affiliateBusinessPartyVersionId: "party-version-1"
-    });
+    tx.projectAffiliateSettlementFact.findFirst
+      .mockResolvedValueOnce({ id: "settlement-fact-1", ledgerId: "settlement-ledger-1" })
+      .mockResolvedValueOnce({
+        id: "settlement-fact-1",
+        ledgerId: "settlement-ledger-1",
+        amountCents: 12000n,
+        affiliateCompanyContractId: "another-company-contract",
+        affiliateAssignmentId: "assignment-1",
+        affiliateBusinessPartyVersionId: "party-version-1"
+      });
     await expect(
       service.recordUpstreamFundFact("project-1", "finance-1", {
         ...input,

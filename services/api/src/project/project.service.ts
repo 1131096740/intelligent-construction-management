@@ -90,6 +90,10 @@ import type { TerminateProjectFinancingQuotaDto } from "./dto/terminate-project-
 import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { resolveCurrentProjectAffiliate } from "./project-affiliate-subject";
 import {
+  assertSettlementEffectiveAmountCoversExistingPayments,
+  lockSettlementLedger
+} from "./project-affiliate-business.service";
+import {
   assertProjectFinancingQuotaApprovalLifecycle,
   assertProjectFinancingQuotaApprovalSnapshot,
   indexProjectFinancingQuotaApprovalInstances,
@@ -1296,7 +1300,7 @@ export class ProjectService {
               throw new BadRequestException("拨款更正不得改变合同、结算、发票或我方公司主体");
             }
           }
-          await validateRemittanceLineage(tx, {
+          const validatedRemittanceLineage = await validateRemittanceLineage(tx, {
             projectId,
             counterpartyName,
             affiliate,
@@ -1305,6 +1309,13 @@ export class ProjectService {
             affiliateSettlementFactId: remittanceLineage.affiliateSettlementFactId!,
             invoiceRecordId: remittanceLineage.invoiceRecordId!
           });
+          await assertSettlementEffectiveAmountCoversExistingPayments(
+            tx,
+            projectId,
+            validatedRemittanceLineage.settlementLedgerId,
+            undefined,
+            effectDirection === "decrease" ? -amountCents : amountCents
+          );
         }
         if (remittanceLineage.companyEntityId) {
           await tx.$queryRaw(Prisma.sql`
@@ -1517,6 +1528,28 @@ export class ProjectService {
       }
       if (fact.status !== "pending_confirm") {
         throw new BadRequestException("当前上游资金事实状态不可确认");
+      }
+      if (fact.factType === "affiliate_remittance_to_company") {
+        if (!fact.affiliateSettlementFactId) {
+          throw new BadRequestException("施工企业拨款缺少关联结算");
+        }
+        const settlementFact = await tx.projectAffiliateSettlementFact.findFirst({
+          where: {
+            id: fact.affiliateSettlementFactId,
+            projectId,
+            status: "confirmed"
+          },
+          select: { ledgerId: true }
+        });
+        if (!settlementFact) {
+          throw new BadRequestException("施工企业拨款关联的结算不存在或尚未确认");
+        }
+        await lockSettlementLedger(tx, projectId, settlementFact.ledgerId);
+        await assertSettlementEffectiveAmountCoversExistingPayments(
+          tx,
+          projectId,
+          settlementFact.ledgerId
+        );
       }
 
       const roleKeys = await this.loadActorRoleKeys(tx, actorUserId, projectId);
@@ -3923,7 +3956,20 @@ async function validateRemittanceLineage(
     };
   }
 ) {
-  const [companyContract, settlementFacts, invoice] = await Promise.all([
+  const settlementReference = await tx.projectAffiliateSettlementFact.findFirst({
+    where: {
+      id: input.affiliateSettlementFactId,
+      projectId: input.projectId,
+      status: "confirmed"
+    },
+    select: { id: true, ledgerId: true }
+  });
+  if (!settlementReference) {
+    throw new BadRequestException("施工企业向我方公司拨款必须关联已确认且有效的施工企业结算");
+  }
+  await lockSettlementLedger(tx, input.projectId, settlementReference.ledgerId);
+
+  const [companyContract, settlementFact, ledgerFacts, invoice] = await Promise.all([
     tx.projectAffiliateCompanyContract.findFirst({
       where: {
         id: input.affiliateCompanyContractId,
@@ -3937,39 +3983,29 @@ async function validateRemittanceLineage(
         affiliateBusinessPartyVersionId: true
       }
     }),
-    (async () => {
-      const fact = await tx.projectAffiliateSettlementFact.findFirst({
-        where: {
-          id: input.affiliateSettlementFactId,
-          projectId: input.projectId,
-          status: "confirmed"
-        },
-        select: {
-          id: true,
-          ledgerId: true,
-          counterpartyName: true,
-          affiliateCompanyContractId: true,
-          affiliateAssignmentId: true,
-          affiliateBusinessPartyVersionId: true
-        }
-      });
-      if (!fact) return null;
-      const ledgerFacts = await tx.projectAffiliateSettlementFact.findMany({
-        where: {
-          projectId: input.projectId,
-          ledgerId: fact.ledgerId,
-          status: "confirmed"
-        },
-        select: { effectDirection: true, amountCents: true }
-      });
-      return {
-        ...fact,
-        netAmountCents: ledgerFacts.reduce(
-          (total, ledgerFact) => total + affiliateSettlementFactSignedAmount(ledgerFact),
-          0n
-        )
-      };
-    })(),
+    tx.projectAffiliateSettlementFact.findFirst({
+      where: {
+        id: input.affiliateSettlementFactId,
+        projectId: input.projectId,
+        status: "confirmed"
+      },
+      select: {
+        id: true,
+        ledgerId: true,
+        counterpartyName: true,
+        affiliateCompanyContractId: true,
+        affiliateAssignmentId: true,
+        affiliateBusinessPartyVersionId: true
+      }
+    }),
+    tx.projectAffiliateSettlementFact.findMany({
+      where: {
+        projectId: input.projectId,
+        ledgerId: settlementReference.ledgerId,
+        status: "confirmed"
+      },
+      select: { effectDirection: true, amountCents: true }
+    }),
     tx.invoiceRecord.findFirst({
       where: {
         id: input.invoiceRecordId,
@@ -3983,6 +4019,10 @@ async function validateRemittanceLineage(
       }
     })
   ]);
+  const netAmountCents = ledgerFacts.reduce(
+    (total, ledgerFact) => total + affiliateSettlementFactSignedAmount(ledgerFact),
+    0n
+  );
   if (
     !companyContract ||
     companyContract.companyEntityId !== input.companyEntityId ||
@@ -3994,13 +4034,13 @@ async function validateRemittanceLineage(
     throw new BadRequestException("施工企业向我方公司拨款的我方合同链路不匹配");
   }
   if (
-    !settlementFacts ||
-    settlementFacts.affiliateCompanyContractId !== input.affiliateCompanyContractId ||
-    settlementFacts.affiliateAssignmentId !== input.affiliate.assignmentId ||
-    settlementFacts.affiliateBusinessPartyVersionId !==
+    !settlementFact ||
+    settlementFact.affiliateCompanyContractId !== input.affiliateCompanyContractId ||
+    settlementFact.affiliateAssignmentId !== input.affiliate.assignmentId ||
+    settlementFact.affiliateBusinessPartyVersionId !==
       input.affiliate.businessPartyVersionId ||
-    settlementFacts.counterpartyName !== input.counterpartyName ||
-    settlementFacts.netAmountCents <= 0n
+    settlementFact.counterpartyName !== input.counterpartyName ||
+    netAmountCents <= 0n
   ) {
     throw new BadRequestException("施工企业向我方公司拨款必须关联已确认且有效的施工企业结算");
   }
@@ -4011,7 +4051,10 @@ async function validateRemittanceLineage(
   ) {
     throw new BadRequestException("施工企业向我方公司拨款必须关联我方开具给施工企业的有效发票");
   }
-  return { payableAmountCents: settlementFacts.netAmountCents };
+  return {
+    payableAmountCents: netAmountCents,
+    settlementLedgerId: settlementReference.ledgerId
+  };
 }
 
 function isProjectOptionPosition(positionKey: RoleKey | undefined): boolean {
