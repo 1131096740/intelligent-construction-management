@@ -2470,7 +2470,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5240,
+            "sourceLine": 5234,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
