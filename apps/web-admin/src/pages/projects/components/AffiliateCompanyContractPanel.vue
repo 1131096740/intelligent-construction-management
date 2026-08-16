@@ -21,6 +21,7 @@ import {
   type CompanyEntityModel
 } from "../../../api/company-entity.api";
 import SensitiveActionDialog from "../../../components/SensitiveActionDialog.vue";
+import { formatUnknownApiError } from "../../../api/error-message";
 
 const props = defineProps<{ projectId: string }>();
 
@@ -572,7 +573,7 @@ function statusLabel(value: string) {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+  return formatUnknownApiError(error, fallback);
 }
 </script>
 

@@ -2500,7 +2500,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5234,
+            "sourceLine": 5238,
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
             ]
@@ -4650,6 +4650,7 @@
             "normalizedPath": "/projects/:param/participating-company-options",
             "normalizedKey": "GET /projects/:param/participating-company-options",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
               "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
             ]
           }

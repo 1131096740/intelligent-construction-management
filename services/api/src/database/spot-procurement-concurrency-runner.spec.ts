@@ -72,7 +72,7 @@ describe("spot procurement PostgreSQL concurrency runner cleanup", () => {
       "utf8"
     );
 
-    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 133");
+    expect(runner).toContain("EXPECTED_MIGRATION_COUNT = 134");
     expect(
       runner.match(/"migrate",\s*"deploy"/gu) ?? []
     ).toHaveLength(2);

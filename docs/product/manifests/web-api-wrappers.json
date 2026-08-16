@@ -5067,7 +5067,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6930,
+          "sourceLine": 6934,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -5097,7 +5097,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6914,
+          "sourceLine": 6918,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -5127,7 +5127,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6914,
+          "sourceLine": 6918,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -5157,7 +5157,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5343,
+          "sourceLine": 5347,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -5186,7 +5186,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6914,
+          "sourceLine": 6918,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -5248,7 +5248,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5234,
+          "sourceLine": 5238,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -5333,7 +5333,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6957,
+          "sourceLine": 6961,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -5362,7 +5362,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6944,
+          "sourceLine": 6948,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -5391,7 +5391,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6972,
+          "sourceLine": 6976,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -5420,7 +5420,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6914,
+          "sourceLine": 6918,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -11702,6 +11702,7 @@
         "apps/web-admin/src/api/project-operating-profile.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
       ],
       "unreachableConsumers": []

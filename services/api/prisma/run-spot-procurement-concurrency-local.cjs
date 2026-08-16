@@ -12,7 +12,7 @@ const {
 
 const DATABASE_NAME =
   "jiangkong_spot_procurement_concurrency_verify";
-const EXPECTED_MIGRATION_COUNT = 133;
+const EXPECTED_MIGRATION_COUNT = 134;
 const root = path.resolve(__dirname, "../../..");
 const TERMINAL_MIGRATION =
   "20260816110000_pol10_operating_takeover";

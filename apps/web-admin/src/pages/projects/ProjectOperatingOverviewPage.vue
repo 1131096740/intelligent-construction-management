@@ -844,6 +844,7 @@ import {
 } from "../../api/core-flow-read.api";
 import type { DraftLedgerView, RoleKey } from "@jiangkong/shared-domain";
 import { fetchSpotProcurementCapabilities } from "../../api/spot-procurement.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import {
   createProjectOverviewRequestOwner,
   fetchProjectFinancingQuotaWorkbench,
@@ -1194,7 +1195,7 @@ async function loadProjects() {
       message.value = "暂无可用项目";
     }
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "加载项目失败";
+    message.value = formatUnknownApiError(error, "加载项目失败");
   } finally {
     loadingProjects.value = false;
   }
@@ -1233,7 +1234,7 @@ async function submitProject() {
     await loadOverview();
   } catch (error) {
     projectMessageTone.value = "danger";
-    projectMessage.value = error instanceof Error ? error.message : "新增项目失败";
+    projectMessage.value = formatUnknownApiError(error, "新增项目失败");
   } finally {
     projectSubmitting.value = false;
   }
@@ -1258,7 +1259,7 @@ async function submitProjectName() {
     await loadOverview();
   } catch (error) {
     projectMessageTone.value = "danger";
-    projectMessage.value = error instanceof Error ? error.message : "保存项目名称失败";
+    projectMessage.value = formatUnknownApiError(error, "保存项目名称失败");
   } finally {
     projectUpdating.value = false;
   }
@@ -1364,7 +1365,7 @@ async function loadExecutiveOverview() {
     executiveOverview.value = buildExecutiveProjectOverview(overviews);
   } catch (error) {
     executiveOverview.value = null;
-    executiveMessage.value = error instanceof Error ? error.message : "加载跨项目经营总览失败";
+    executiveMessage.value = formatUnknownApiError(error, "加载跨项目经营总览失败");
   } finally {
     loadingExecutiveOverview.value = false;
   }
@@ -1414,9 +1415,7 @@ async function loadOverview() {
           error:
             error instanceof ProjectFinancingQuotaApiError && error.status === 403
               ? ""
-              : error instanceof Error
-                ? error.message
-          : "读取项目垫资额度失败"
+              : formatUnknownApiError(error, "读取项目垫资额度失败")
         })),
       fetchProjectParticipatingCompanyOptions(projectId).catch(() => [])
     ]);
@@ -1454,7 +1453,7 @@ async function loadOverview() {
       financingQuotaWorkbench.value = null;
       financingQuotaError.value = "";
       selectedExpenseRow.value = null;
-      message.value = error instanceof Error ? error.message : "加载项目经营数据失败";
+      message.value = formatUnknownApiError(error, "加载项目经营数据失败");
     }
   } finally {
     if (
@@ -1529,7 +1528,7 @@ async function submitProjectExpense() {
     expenseMessageTone.value = "success";
     expenseMessage.value = "项目支出已提交审批，资金占用已刷新。";
   } catch (error) {
-    setExpenseError(error instanceof Error ? error.message : "提交项目支出失败");
+    setExpenseError(formatUnknownApiError(error, "提交项目支出失败"));
   } finally {
     expenseSubmitting.value = false;
   }
@@ -1581,7 +1580,7 @@ async function loadProjectExpenses() {
     selectedExpenseRow.value = null;
   } catch (error) {
     projectExpenses.value = null;
-    setExpenseError(error instanceof Error ? error.message : "读取项目支出台账失败，请重试。");
+    setExpenseError(formatUnknownApiError(error, "读取项目支出台账失败，请重试。"));
   } finally {
     expenseLedgerLoading.value = false;
   }
@@ -1673,7 +1672,7 @@ async function submitReceipt() {
         ? "到账差额已进入待核对，不会自动生成扣款或成本。"
         : "上游资金事实已保存待独立确认。";
   } catch (error) {
-    setReceiptError(error instanceof Error ? error.message : "登记上游资金事实失败");
+    setReceiptError(formatUnknownApiError(error, "登记上游资金事实失败"));
   } finally {
     receiptSubmitting.value = false;
   }
@@ -1750,7 +1749,7 @@ async function submitUpstreamFundConfirmation(values: { reason: string; password
     receiptMessage.value = "上游资金事实已确认，并冻结确认人的手写签名版本。";
   } catch (error) {
     upstreamFundConfirmationError.value =
-      error instanceof Error ? error.message : "确认上游资金事实失败";
+      formatUnknownApiError(error, "确认上游资金事实失败");
   } finally {
     upstreamFundConfirmationBusy.value = false;
   }
@@ -1952,7 +1951,7 @@ async function runExpenseAction(actionKey: string, action: (row: ProjectExpenseR
     expenseActionMessageTone.value = "success";
     expenseActionMessage.value = "支出单处理完成，项目经营数据已刷新。";
   } catch (error) {
-    setExpenseActionError(error instanceof Error ? error.message : "支出单处理失败");
+    setExpenseActionError(formatUnknownApiError(error, "支出单处理失败"));
   } finally {
     expenseActionBusy.value = "";
   }
