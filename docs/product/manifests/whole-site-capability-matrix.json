@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8a8787a00e8020e15c645246b999b837e1ea1e16c47efd1830735c0cdb5dc80e",
+      "sha256": "30c8ed3f8f06506b9fe8a6a31bcb4720fbe45e132632c5c848dc31c0f9e099ca",
       "status": "ready",
       "summary": {
         "apiModuleCount": 19,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "bad36a058b07095fcc064dcce8a4d95eb987588ba32d7da6b0118e9eed5c9fae",
+      "sha256": "29391fdf9af8dfb6166ea2f4b0dca31dbe68cdb3faf8b05264d60b3be41d2e0d",
       "status": "ready",
       "summary": {
         "registeredActionCount": 250,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "e7bd3b7471aeb4f8d5ab2bb3efc1032af156abe5de5f01159c2e9c30b89043b6",
+      "sha256": "0137882e19534c1e6f31fb26ebe9fdc4de94e36fc23570f616a354a5507144ca",
       "status": "ready",
       "summary": {
         "routeCount": 478,
@@ -5485,6 +5485,7 @@
           "normalizedKey": "GET /projects/:param/participating-company-options",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
           ],
           "testConsumers": [
