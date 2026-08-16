@@ -6,22 +6,22 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `ca71b5611f04add0bb96324e14067845368fea2f04d622e52ca2c4b6f57bca80` |
-| webApiWrappers | ready | `fb97f3867d3942e034282bdb78093f089ee337c548b426293c23dd04adade8b1` |
-| webPageActions | ready | `cdedf003f4bdd2477ee63b6f9448bbb6a586d3bce1d66be9920b57c94a42ff2c` |
-| routeUsage | ready | `c7ff8083ecff24892302b5bcf3594a510fbe7f61fc46019821046824169b0101` |
+| nestRoutes | ready | `2d59113ea1adc58d475f49afb7834a645813c777672e412d687d5820225753ee` |
+| webApiWrappers | ready | `8a8787a00e8020e15c645246b999b837e1ea1e16c47efd1830735c0cdb5dc80e` |
+| webPageActions | ready | `bad36a058b07095fcc064dcce8a4d95eb987588ba32d7da6b0118e9eed5c9fae` |
+| routeUsage | ready | `3cc63dd73ee77d454d1023abc89151d9bbe1f2855955a95806cf150092daa769` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 476 |
+| routeCount | 478 |
 | pageRouteCount | 298 |
-| externalTakeoverRouteCount | 66 |
+| externalTakeoverRouteCount | 68 |
 | exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 481 |
+| mainRequestBindingCount | 486 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -52,7 +52,8 @@
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
-| GET | /business-entry-definitions/:sceneKey | external_takeover | none | — | — | not_applicable | — |
+| GET | /business-entry-definitions/:sceneKey | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#fetchBusinessEntryDefinition | — | not_applicable | — |
+| GET | /business-entry-definitions/:sceneKey/excel-template | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#downloadBusinessEntryExcelTemplate | — | not_applicable | — |
 | GET | /business-parties/:partyId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessParty | — | not_applicable | — |
 | GET | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listBusinessParties | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
@@ -216,8 +217,9 @@
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/refresh | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/wx-login | exit_candidate | none | — | — | not_applicable | — |
-| POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | none | — | — | not_applicable | — |
-| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | — | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/excel-preview | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#previewBusinessEntryExcel | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#freezeBusinessEntrySnapshot | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | apps/web-admin/src/api/business-entry.api.ts#validateBusinessEntryDraft | — | not_applicable | — |
 | POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | — |
 | POST | /business-parties | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | — | not_applicable | — |
 | POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | — |

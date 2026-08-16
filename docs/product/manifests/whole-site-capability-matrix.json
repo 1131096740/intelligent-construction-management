@@ -14,24 +14,24 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "ca71b5611f04add0bb96324e14067845368fea2f04d622e52ca2c4b6f57bca80",
+      "sha256": "2d59113ea1adc58d475f49afb7834a645813c777672e412d687d5820225753ee",
       "status": "ready",
       "summary": {
-        "routeCount": 476
+        "routeCount": 478
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "fb97f3867d3942e034282bdb78093f089ee337c548b426293c23dd04adade8b1",
+      "sha256": "8a8787a00e8020e15c645246b999b837e1ea1e16c47efd1830735c0cdb5dc80e",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 18,
-        "exportedFunctionCount": 479,
-        "transportWrapperCount": 459,
+        "apiModuleCount": 19,
+        "exportedFunctionCount": 484,
+        "transportWrapperCount": 464,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 481,
+        "mainRequestBindingCount": 486,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 481,
+        "requestEdgeCount": 486,
         "productionConsumerCount": 357,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
@@ -42,18 +42,18 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "cdedf003f4bdd2477ee63b6f9448bbb6a586d3bce1d66be9920b57c94a42ff2c",
+      "sha256": "bad36a058b07095fcc064dcce8a4d95eb987588ba32d7da6b0118e9eed5c9fae",
       "status": "ready",
       "summary": {
         "registeredActionCount": 250,
         "pageActionCount": 51,
         "backgroundActionCount": 199,
-        "reachableVueFileCount": 128,
+        "reachableVueFileCount": 129,
         "routeRootCount": 48,
-        "totalVueFileCount": 146,
-        "parsedVueFileCount": 146,
-        "reachableProductionModuleCount": 229,
-        "templateEventDirectiveCount": 859,
+        "totalVueFileCount": 153,
+        "parsedVueFileCount": 153,
+        "reachableProductionModuleCount": 230,
+        "templateEventDirectiveCount": 860,
         "propCallbackDirectiveCount": 7,
         "coveredProductionMutationConsumerCount": 241,
         "candidateProductionMutationConsumerCount": 241,
@@ -64,19 +64,19 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "c7ff8083ecff24892302b5bcf3594a510fbe7f61fc46019821046824169b0101",
+      "sha256": "3cc63dd73ee77d454d1023abc89151d9bbe1f2855955a95806cf150092daa769",
       "status": "ready",
       "summary": {
-        "routeCount": 476,
-        "exactRouteCount": 476,
-        "normalizedRouteCount": 476,
-        "classificationOverrideCount": 179,
+        "routeCount": 478,
+        "exactRouteCount": 478,
+        "normalizedRouteCount": 478,
+        "classificationOverrideCount": 181,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "ca0d42b7d6a3b833154cc8e7c198046238a85a7219277c3132f22ddc6aa557cd",
+        "classificationOverrideSha256": "0df26d55d654883c3e394895d625fd8d25ab56e6d6d52081673001b24a24fdb3",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
         "derivedProductionPageCount": 297,
         "pageRouteCount": 298,
-        "externalTakeoverCount": 66,
+        "externalTakeoverCount": 68,
         "exitCandidateCount": 109,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
@@ -86,20 +86,20 @@
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 1,
-          "none": 119
+          "none": 121
         },
         "blockerCount": 0
       }
     }
   },
   "summary": {
-    "routeCount": 476,
+    "routeCount": 478,
     "pageRouteCount": 298,
-    "externalTakeoverRouteCount": 66,
+    "externalTakeoverRouteCount": 68,
     "exitCandidateRouteCount": 109,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 481,
+    "mainRequestBindingCount": 486,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
@@ -839,7 +839,60 @@
       },
       "usage": "external_takeover",
       "consumerSurface": "none",
-      "wrapperRequests": [],
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "fetchBusinessEntryDefinition",
+          "method": "GET",
+          "path": "/business-entry-definitions/:param?:param",
+          "normalizedKey": "GET /business-entry-definitions/:param",
+          "bodyKind": "none",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/business-entry.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/business-entry-definitions/:sceneKey/excel-template",
+        "normalizedKey": "GET /business-entry-definitions/:param/excel-template",
+        "controller": "BusinessEntryDefinitionController",
+        "handler": "downloadExcelTemplate",
+        "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.operating_profile.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "downloadBusinessEntryExcelTemplate",
+          "method": "GET",
+          "path": "/business-entry-definitions/:param/excel-template?:param",
+          "normalizedKey": "GET /business-entry-definitions/:param/excel-template",
+          "bodyKind": "none",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/business-entry.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -9217,6 +9270,46 @@
     {
       "route": {
         "method": "POST",
+        "path": "/business-entry-definitions/:sceneKey/excel-preview",
+        "normalizedKey": "POST /business-entry-definitions/:param/excel-preview",
+        "controller": "BusinessEntryDefinitionController",
+        "handler": "previewExcel",
+        "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.operating_profile.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "previewBusinessEntryExcel",
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/excel-preview?:param",
+          "normalizedKey": "POST /business-entry-definitions/:param/excel-preview",
+          "bodyKind": "form_data",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/business-entry.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/business-entry-definitions/:sceneKey/freeze",
         "normalizedKey": "POST /business-entry-definitions/:param/freeze",
         "controller": "BusinessEntryDefinitionController",
@@ -9235,7 +9328,20 @@
       },
       "usage": "external_takeover",
       "consumerSurface": "none",
-      "wrapperRequests": [],
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "freezeBusinessEntrySnapshot",
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/freeze?:param",
+          "normalizedKey": "POST /business-entry-definitions/:param/freeze",
+          "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/business-entry.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -9262,7 +9368,20 @@
       },
       "usage": "external_takeover",
       "consumerSurface": "none",
-      "wrapperRequests": [],
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+          "wrapper": "validateBusinessEntryDraft",
+          "method": "POST",
+          "path": "/business-entry-definitions/:param/validate?:param",
+          "normalizedKey": "POST /business-entry-definitions/:param/validate",
+          "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": [
+            "apps/web-admin/src/api/business-entry.api.test.ts"
+          ]
+        }
+      ],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
