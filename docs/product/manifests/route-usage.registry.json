@@ -3,14 +3,14 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 476,
-    "classificationOverrideCount": 179,
+    "routeCount": 478,
+    "classificationOverrideCount": 181,
     "derivedProductionPageCount": 297,
-    "classificationOverrideSha256": "ca0d42b7d6a3b833154cc8e7c198046238a85a7219277c3132f22ddc6aa557cd",
+    "classificationOverrideSha256": "0df26d55d654883c3e394895d625fd8d25ab56e6d6d52081673001b24a24fdb3",
     "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
     "usageCounts": {
       "page": 298,
-      "external_takeover": 66,
+      "external_takeover": 68,
       "exit_candidate": 109,
       "internal_task": 3,
       "unclassified": 0
@@ -21,7 +21,7 @@
       "signed_ticket_delivery": 1,
       "machine_probe": 2,
       "operator_endpoint": 1,
-      "none": 119
+      "none": 121
     }
   },
   "overrides": [
@@ -1068,6 +1068,18 @@
       "path": "/business-entry-definitions/:sceneKey",
       "usage": "external_takeover",
       "reason": "controlled_business_entry_definition_backend_surface"
+    },
+    {
+      "method": "GET",
+      "path": "/business-entry-definitions/:sceneKey/excel-template",
+      "usage": "external_takeover",
+      "reason": "pol_18_controlled_business_entry_excel_adapter_pending_pol_19_page_migration"
+    },
+    {
+      "method": "POST",
+      "path": "/business-entry-definitions/:sceneKey/excel-preview",
+      "usage": "external_takeover",
+      "reason": "pol_18_controlled_business_entry_excel_adapter_pending_pol_19_page_migration"
     },
     {
       "method": "POST",

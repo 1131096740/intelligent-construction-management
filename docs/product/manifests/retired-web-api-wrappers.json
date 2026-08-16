@@ -3,6 +3,18 @@
   "purpose": "PR1-GLR-03 explicit non-production wrapper retirement evidence",
   "entries": [
     {
+      "apiFile": "apps/web-admin/src/api/business-entry.api.ts",
+      "classification": "test_only",
+      "reason": "POL-18 provides tested adapter APIs without a production consumer; POL-19 page migration is separately blocked and not authorized by Issue #111.",
+      "wrappers": [
+        "downloadBusinessEntryExcelTemplate",
+        "fetchBusinessEntryDefinition",
+        "freezeBusinessEntrySnapshot",
+        "previewBusinessEntryExcel",
+        "validateBusinessEntryDraft"
+      ]
+    },
+    {
       "apiFile": "apps/web-admin/src/api/company-entity.api.ts",
       "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests.",

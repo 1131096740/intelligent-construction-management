@@ -24,5 +24,17 @@ describe("BusinessEntryDefinitionController", () => {
         BusinessEntryDefinitionController.prototype.freezeSubmissionSnapshot
       )
     ).toBe("project.operating_profile.manage");
+    expect(
+      reflector.get(
+        REQUIRED_PROJECT_ACTION_KEY,
+        BusinessEntryDefinitionController.prototype.downloadExcelTemplate
+      )
+    ).toBe("project.operating_profile.manage");
+    expect(
+      reflector.get(
+        REQUIRED_PROJECT_ACTION_KEY,
+        BusinessEntryDefinitionController.prototype.previewExcel
+      )
+    ).toBe("project.operating_profile.manage");
   });
 });

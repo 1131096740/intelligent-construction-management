@@ -12,6 +12,7 @@ import {
   PrismaBusinessEntrySnapshotStore
 } from "./business-entry-definition.snapshot-store";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY as registry } from "./business-entry-definition.scene-registry";
+import { BusinessEntryExcelService } from "./business-entry-excel.service";
 
 @Module({
   imports: [AuthModule, AuditModule, ProjectModule],
@@ -19,8 +20,9 @@ import { BUSINESS_ENTRY_DEFINITION_REGISTRY as registry } from "./business-entry
   providers: [
     { provide: BUSINESS_ENTRY_DEFINITION_REGISTRY, useValue: registry },
     { provide: BUSINESS_ENTRY_SNAPSHOT_STORE, useClass: PrismaBusinessEntrySnapshotStore },
-    BusinessEntryDefinitionService
+    BusinessEntryDefinitionService,
+    BusinessEntryExcelService
   ],
-  exports: [BusinessEntryDefinitionService]
+  exports: [BusinessEntryDefinitionService, BusinessEntryExcelService]
 })
 export class BusinessEntryDefinitionModule {}
