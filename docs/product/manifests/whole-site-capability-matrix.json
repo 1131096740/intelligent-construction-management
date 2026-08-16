@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "70026e0a857762843f911992d7b866a2b50255903708b766a902bf1ed240eedd",
+      "sha256": "c930453d8a0d496020530938a434b37399a7eff7e2374b772ebea83325704109",
       "status": "ready",
       "summary": {
-        "routeCount": 460
+        "routeCount": 475
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "4073d728baba51d69ac962b9c809cb25d3f3578d458558ccfdb85940beea2388",
+      "sha256": "5eb4676e230b812047f2cde3a9536cacf13042096058c9d625a70e025395064e",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 17,
-        "exportedFunctionCount": 467,
-        "transportWrapperCount": 447,
+        "apiModuleCount": 18,
+        "exportedFunctionCount": 476,
+        "transportWrapperCount": 456,
         "pureExportCount": 20,
-        "mainRequestBindingCount": 469,
+        "mainRequestBindingCount": 478,
         "ticketFollowupCount": 3,
-        "requestEdgeCount": 469,
-        "productionConsumerCount": 345,
+        "requestEdgeCount": 478,
+        "productionConsumerCount": 354,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,74 +42,74 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "dcdad358fbf9b523f5a39864c8c24850455693263ce07c72f342e1ccdef476cb",
+      "sha256": "32c6a05988c0ea411040f97252d63f1d5361ea9e8b3ee872c6474e150354021e",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 242,
+        "registeredActionCount": 247,
         "pageActionCount": 51,
-        "backgroundActionCount": 191,
-        "reachableVueFileCount": 127,
-        "routeRootCount": 47,
-        "totalVueFileCount": 145,
-        "parsedVueFileCount": 145,
-        "reachableProductionModuleCount": 227,
-        "templateEventDirectiveCount": 838,
+        "backgroundActionCount": 196,
+        "reachableVueFileCount": 128,
+        "routeRootCount": 48,
+        "totalVueFileCount": 146,
+        "parsedVueFileCount": 146,
+        "reachableProductionModuleCount": 229,
+        "templateEventDirectiveCount": 848,
         "propCallbackDirectiveCount": 7,
-        "coveredProductionMutationConsumerCount": 233,
-        "candidateProductionMutationConsumerCount": 233,
-        "acceptedProductionMutationConsumerCount": 233,
-        "productionMutationConsumerPairCount": 233,
+        "coveredProductionMutationConsumerCount": 238,
+        "candidateProductionMutationConsumerCount": 238,
+        "acceptedProductionMutationConsumerCount": 238,
+        "productionMutationConsumerPairCount": 238,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "cf282b4f1bdeb007813f2c6bf0871c2bb29ed3dcd7ffef4802de853add741088",
+      "sha256": "290243f772baa7d4f4766efd16e9929692f0c1d891fd6a978b17cbfdca224f6a",
       "status": "ready",
       "summary": {
-        "routeCount": 460,
-        "exactRouteCount": 460,
-        "normalizedRouteCount": 460,
-        "classificationOverrideCount": 173,
+        "routeCount": 475,
+        "exactRouteCount": 475,
+        "normalizedRouteCount": 475,
+        "classificationOverrideCount": 179,
         "consumerSurfaceOverrideCount": 4,
-        "classificationOverrideSha256": "23dd7054af6cef3f8bdf8f43b03a3f8c391f235fd44e4e86127c7057127369be",
+        "classificationOverrideSha256": "ca0d42b7d6a3b833154cc8e7c198046238a85a7219277c3132f22ddc6aa557cd",
         "consumerSurfaceOverrideSha256": "8f88a3b724cf4991ab78bd7cccbc3f115dbe3de71ec3781cf3ba85dde2ab41d1",
-        "derivedProductionPageCount": 287,
-        "pageRouteCount": 288,
-        "externalTakeoverCount": 60,
+        "derivedProductionPageCount": 296,
+        "pageRouteCount": 297,
+        "externalTakeoverCount": 66,
         "exitCandidateCount": 109,
         "internalTaskCount": 3,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 336,
+          "web_api_wrapper": 345,
           "auth_store": 5,
           "signed_ticket_delivery": 1,
           "machine_probe": 2,
           "operator_endpoint": 1,
-          "none": 115
+          "none": 121
         },
         "blockerCount": 0
       }
     }
   },
   "summary": {
-    "routeCount": 460,
-    "pageRouteCount": 288,
-    "externalTakeoverRouteCount": 60,
+    "routeCount": 475,
+    "pageRouteCount": 297,
+    "externalTakeoverRouteCount": 66,
     "exitCandidateRouteCount": 109,
     "internalTaskRouteCount": 3,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 469,
+    "mainRequestBindingCount": 478,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 242,
-    "actionBindingCount": 273,
-    "acceptedActionBindingCount": 253,
+    "registeredActionCount": 247,
+    "actionBindingCount": 278,
+    "acceptedActionBindingCount": 258,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 233,
-    "coveredProductionMutationConsumerPairCount": 233,
+    "productionMutationConsumerPairCount": 238,
+    "coveredProductionMutationConsumerPairCount": 238,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -813,6 +813,33 @@
           ]
         }
       ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/business-entry-definitions/:sceneKey",
+        "normalizedKey": "GET /business-entry-definitions/:param",
+        "controller": "BusinessEntryDefinitionController",
+        "handler": "getSceneDefinition",
+        "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.operating_profile.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -5189,6 +5216,195 @@
     {
       "route": {
         "method": "GET",
+        "path": "/projects/:projectId/operating-takeovers/:batchId",
+        "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+        "controller": "OperatingTakeoverController",
+        "handler": "detail",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "fetchOperatingTakeoverDetail",
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/:param",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/operating-takeovers/capability",
+        "normalizedKey": "GET /projects/:param/operating-takeovers/capability",
+        "controller": "OperatingTakeoverController",
+        "handler": "capability",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "fetchOperatingTakeoverCapability",
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/capability",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/operating-takeovers",
+        "normalizedKey": "GET /projects/:param/operating-takeovers",
+        "controller": "OperatingTakeoverController",
+        "handler": "list",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "fetchOperatingTakeoverBatches",
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedKey": "GET /projects/:param/operating-takeovers",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/operating-takeovers/scenes",
+        "normalizedKey": "GET /projects/:param/operating-takeovers/scenes",
+        "controller": "OperatingTakeoverController",
+        "handler": "scenes",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/operating-takeovers/workbook-template",
+        "normalizedKey": "GET /projects/:param/operating-takeovers/workbook-template",
+        "controller": "OperatingTakeoverController",
+        "handler": "workbookTemplate",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "downloadOperatingTakeoverTemplate",
+          "method": "GET",
+          "path": "/projects/:param/operating-takeovers/workbook-template",
+          "normalizedKey": "GET /projects/:param/operating-takeovers/workbook-template",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/projects/:projectId/participating-company-options",
         "normalizedKey": "GET /projects/:param/participating-company-options",
         "controller": "ProjectController",
@@ -5788,6 +6004,7 @@
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue"
           ],
@@ -8021,6 +8238,33 @@
     {
       "route": {
         "method": "PATCH",
+        "path": "/projects/:projectId/operating-takeovers/:batchId/rows/:rowId",
+        "normalizedKey": "PATCH /projects/:param/operating-takeovers/:param/rows/:param",
+        "controller": "OperatingTakeoverController",
+        "handler": "updateRow",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
         "path": "/projects/:projectId/participating-companies/:participantId/deactivation",
         "normalizedKey": "PATCH /projects/:param/participating-companies/:param/deactivation",
         "controller": "ProjectController",
@@ -8921,6 +9165,60 @@
         "contractCutoverTombstoneWrite": false
       },
       "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/business-entry-definitions/:sceneKey/freeze",
+        "normalizedKey": "POST /business-entry-definitions/:param/freeze",
+        "controller": "BusinessEntryDefinitionController",
+        "handler": "freezeSubmissionSnapshot",
+        "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.operating_profile.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/business-entry-definitions/:sceneKey/validate",
+        "normalizedKey": "POST /business-entry-definitions/:param/validate",
+        "controller": "BusinessEntryDefinitionController",
+        "handler": "validateDraft",
+        "sourceFile": "services/api/src/business-entry-definition/business-entry-definition.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.operating_profile.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
       "consumerSurface": "none",
       "wrapperRequests": [],
       "authTransports": [],
@@ -20864,6 +21162,376 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/:batchId/activation",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/:param/activation",
+        "controller": "OperatingTakeoverController",
+        "handler": "activate",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.activate",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "activateOperatingTakeover",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/activation",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/activation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.activate",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.activate\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000activateOperatingTakeover\u0000POST\u0000POST /projects/:param/operating-takeovers/:param/activation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "activate",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "activateOperatingTakeover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/:batchId/attachments",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/:param/attachments",
+        "controller": "OperatingTakeoverController",
+        "handler": "attachments",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.file.upload",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "external_takeover",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/:batchId/confirmations",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/:param/confirmations",
+        "controller": "OperatingTakeoverController",
+        "handler": "confirm",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "confirmOperatingTakeover",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/:param/confirmations",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.confirm",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.confirm\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000confirmOperatingTakeover\u0000POST\u0000POST /projects/:param/operating-takeovers/:param/confirmations\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "confirmOperatingTakeover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/precheck-xlsx",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/precheck-xlsx",
+        "controller": "OperatingTakeoverController",
+        "handler": "precheckXlsx",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "precheckOperatingTakeoverXlsx",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck-xlsx",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck-xlsx",
+          "bodyKind": "form_data",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.precheck-excel",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.precheck-excel\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000precheckOperatingTakeoverXlsx\u0000POST\u0000POST /projects/:param/operating-takeovers/precheck-xlsx\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "manage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "precheckOperatingTakeoverXlsx",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers/precheck",
+        "normalizedKey": "POST /projects/:param/operating-takeovers/precheck",
+        "controller": "OperatingTakeoverController",
+        "handler": "precheck",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "precheckOperatingTakeover",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers/precheck",
+          "normalizedKey": "POST /projects/:param/operating-takeovers/precheck",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/operating-takeover.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.precheck",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.precheck\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000precheckOperatingTakeover\u0000POST\u0000POST /projects/:param/operating-takeovers/precheck\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "manage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "precheckOperatingTakeover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/operating-takeovers",
+        "normalizedKey": "POST /projects/:param/operating-takeovers",
+        "controller": "OperatingTakeoverController",
+        "handler": "create",
+        "sourceFile": "services/api/src/operating-takeover/operating-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "operating_takeover.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "createOperatingTakeoverBatch",
+          "method": "POST",
+          "path": "/projects/:param/operating-takeovers",
+          "normalizedKey": "POST /projects/:param/operating-takeovers",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "operating-takeover.create-batch",
+          "bindingIndex": 0,
+          "identity": "operating-takeover.create-batch\u0000apps/web-admin/src/api/operating-takeover.api.ts\u0000createOperatingTakeoverBatch\u0000POST\u0000POST /projects/:param/operating-takeovers\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "manage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/operating-takeover.api.ts",
+          "wrapper": "createOperatingTakeoverBatch",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,

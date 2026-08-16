@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `70026e0a857762843f911992d7b866a2b50255903708b766a902bf1ed240eedd` |
-| webApiWrappers | ready | `4073d728baba51d69ac962b9c809cb25d3f3578d458558ccfdb85940beea2388` |
-| webPageActions | ready | `dcdad358fbf9b523f5a39864c8c24850455693263ce07c72f342e1ccdef476cb` |
-| routeUsage | ready | `cf282b4f1bdeb007813f2c6bf0871c2bb29ed3dcd7ffef4802de853add741088` |
+| nestRoutes | ready | `c930453d8a0d496020530938a434b37399a7eff7e2374b772ebea83325704109` |
+| webApiWrappers | ready | `5eb4676e230b812047f2cde3a9536cacf13042096058c9d625a70e025395064e` |
+| webPageActions | ready | `32c6a05988c0ea411040f97252d63f1d5361ea9e8b3ee872c6474e150354021e` |
+| routeUsage | ready | `290243f772baa7d4f4766efd16e9929692f0c1d891fd6a978b17cbfdca224f6a` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 460 |
-| pageRouteCount | 288 |
-| externalTakeoverRouteCount | 60 |
+| routeCount | 475 |
+| pageRouteCount | 297 |
+| externalTakeoverRouteCount | 66 |
 | exitCandidateRouteCount | 109 |
 | internalTaskRouteCount | 3 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 469 |
+| mainRequestBindingCount | 478 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 242 |
-| actionBindingCount | 273 |
-| acceptedActionBindingCount | 253 |
+| registeredActionCount | 247 |
+| actionBindingCount | 278 |
+| acceptedActionBindingCount | 258 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 233 |
-| coveredProductionMutationConsumerPairCount | 233 |
+| productionMutationConsumerPairCount | 238 |
+| coveredProductionMutationConsumerPairCount | 238 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -52,6 +52,7 @@
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
 | GET | /audit-logs | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchAuditLogs | — | not_applicable | — |
 | GET | /audit-logs/file-downloads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchFileDownloadAudits | — | not_applicable | — |
+| GET | /business-entry-definitions/:sceneKey | external_takeover | none | — | — | not_applicable | — |
 | GET | /business-parties/:partyId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#getBusinessParty | — | not_applicable | — |
 | GET | /business-parties | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listBusinessParties | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
@@ -135,6 +136,11 @@
 | GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request<br>project-financing-quota.review-approve<br>project-financing-quota.review-reject<br>project-financing-quota.terminate | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectOperatingProfile | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/capability | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverCapability | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverBatches | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/scenes | external_takeover | none | — | — | not_applicable | — |
+| GET | /projects/:projectId/operating-takeovers/workbook-template | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#downloadOperatingTakeoverTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/participating-company-options | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectParticipatingCompanyOptions | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
@@ -193,6 +199,7 @@
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
 | PATCH | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectOperatingProfile | project-operating-profile.save | covered | — |
+| PATCH | /projects/:projectId/operating-takeovers/:batchId/rows/:rowId | external_takeover | none | — | — | not_applicable | — |
 | PATCH | /projects/:projectId/participating-companies/:participantId/deactivation | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#deactivateProjectParticipatingCompany | project-operating-profile.deactivate-participating-company | covered | — |
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | project.update | covered | — |
 | PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.update-local-gate | covered | — |
@@ -209,6 +216,8 @@
 | POST | /auth/logout | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/refresh | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/wx-login | exit_candidate | none | — | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/freeze | external_takeover | none | — | — | not_applicable | — |
+| POST | /business-entry-definitions/:sceneKey/validate | external_takeover | none | — | — | not_applicable | — |
 | POST | /business-parties/:partyId/versions | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessPartyVersion | — | not_applicable | — |
 | POST | /business-parties | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#createBusinessParty | — | not_applicable | — |
 | POST | /company-entities/:id/status | exit_candidate | none | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | — | not_applicable | — |
@@ -397,6 +406,12 @@
 | POST | /projects/:projectId/financing-quotas/:quotaId/termination | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction | project-financing-quota.terminate | covered | — |
 | POST | /projects/:projectId/financing-quotas/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
 | POST | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
+| POST | /projects/:projectId/operating-takeovers/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#activateOperatingTakeover | operating-takeover.activate | covered | — |
+| POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | none | — | — | not_applicable | — |
+| POST | /projects/:projectId/operating-takeovers/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#confirmOperatingTakeover | operating-takeover.confirm | covered | — |
+| POST | /projects/:projectId/operating-takeovers/precheck-xlsx | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#precheckOperatingTakeoverXlsx | operating-takeover.precheck-excel | covered | — |
+| POST | /projects/:projectId/operating-takeovers/precheck | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#precheckOperatingTakeover | operating-takeover.precheck | covered | — |
+| POST | /projects/:projectId/operating-takeovers | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#createOperatingTakeoverBatch | operating-takeover.create-batch | covered | — |
 | POST | /projects/:projectId/owner-contracts/:ownerContractId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectOwnerContract | — | not_applicable | — |
 | POST | /projects/:projectId/owner-contracts | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectOwnerContract | — | not_applicable | — |
 | POST | /projects/:projectId/participating-companies | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#addProjectParticipatingCompany | project-operating-profile.add-participating-company | covered | — |

@@ -114,6 +114,7 @@ export class OperatingTakeoverService {
   async capability(projectId: string, actorUserId: string) {
     const roles = await this.assertProjectAction(projectId, actorUserId, "operating_takeover.manage");
     return {
+      projectId,
       scenes: await this.sceneList(projectId, actorUserId),
       actions: {
         manage: canPerform("operating_takeover.manage", roles),
@@ -121,6 +122,12 @@ export class OperatingTakeoverService {
         activate: canPerform("operating_takeover.activate", roles),
         fileUpload: canPerform("operating_takeover.file.upload", roles)
       },
+      availableActions: [
+        canPerform("operating_takeover.manage", roles) ? "manage" : null,
+        canPerform("operating_takeover.confirm", roles) ? "confirm" : null,
+        canPerform("operating_takeover.activate", roles) ? "activate" : null,
+        canPerform("operating_takeover.file.upload", roles) ? "file_upload" : null
+      ].filter((action): action is string => action !== null),
       confirmationProfessions: {
         contract: roles.includes("contract_director"),
         finance: roles.includes("finance_director")

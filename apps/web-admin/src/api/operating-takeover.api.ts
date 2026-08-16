@@ -55,7 +55,7 @@ export interface OperatingTakeoverPrecheckReadModel {
   importFingerprint: string;
 }
 
-async function responseJson<T>(response: Response, fallback: string): Promise<T> {
+async function ensureOk(response: Response, fallback: string): Promise<void> {
   if (!response.ok) {
     let detail = "";
     try {
@@ -66,6 +66,27 @@ async function responseJson<T>(response: Response, fallback: string): Promise<T>
     }
     throw new Error(formatApiErrorMessage(detail, response.status, fallback));
   }
+}
+
+async function readJson<T>(requestPath: string, fallback: string): Promise<T> {
+  const response = await apiFetch(requestPath);
+  await ensureOk(response, fallback);
+  return response.json() as Promise<T>;
+}
+
+async function postJson<T>(requestPath: string, body: unknown, fallback: string): Promise<T> {
+  const response = await apiFetch(requestPath, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response, fallback);
+  return response.json() as Promise<T>;
+}
+
+async function postFormData<T>(requestPath: string, body: FormData, fallback: string): Promise<T> {
+  const response = await apiFetch(requestPath, { method: "POST", body });
+  await ensureOk(response, fallback);
   return response.json() as Promise<T>;
 }
 
@@ -74,38 +95,38 @@ function path(projectId: string, suffix = "") {
 }
 
 export function fetchOperatingTakeoverCapability(projectId: string) {
-  return apiFetch(path(projectId, "/capability")).then((response) => responseJson<{ scenes: OperatingTakeoverSceneReadModel[]; actions: Record<string, boolean>; confirmationProfessions: Record<OperatingTakeoverProfession, boolean> }>(response, "加载历史经营接管能力失败"));
+  return readJson<{ projectId: string; scenes: OperatingTakeoverSceneReadModel[]; actions: Record<string, boolean>; availableActions: string[]; confirmationProfessions: Record<OperatingTakeoverProfession, boolean> }>(path(projectId, "/capability"), "加载历史经营接管能力失败");
 }
 
 export function fetchOperatingTakeoverBatches(projectId: string) {
-  return apiFetch(path(projectId)).then((response) => responseJson<OperatingTakeoverBatchReadModel[]>(response, "加载历史经营接管批次失败"));
+  return readJson<OperatingTakeoverBatchReadModel[]>(path(projectId), "加载历史经营接管批次失败");
 }
 
 export function fetchOperatingTakeoverDetail(projectId: string, batchId: string) {
-  return apiFetch(path(projectId, `/${encodeURIComponent(batchId)}`)).then((response) => responseJson<OperatingTakeoverDetailReadModel>(response, "加载历史经营接管详情失败"));
+  return readJson<OperatingTakeoverDetailReadModel>(path(projectId, `/${encodeURIComponent(batchId)}`), "加载历史经营接管详情失败");
 }
 
 export function precheckOperatingTakeover(projectId: string, body: { sceneKey?: string; rows: Array<{ sceneKey?: string; values: Record<string, unknown> }> }) {
-  return apiFetch(path(projectId, "/precheck"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((response) => responseJson<OperatingTakeoverPrecheckReadModel>(response, "历史经营接管预检失败"));
+  return postJson<OperatingTakeoverPrecheckReadModel>(path(projectId, "/precheck"), body, "历史经营接管预检失败");
 }
 
 export function precheckOperatingTakeoverXlsx(projectId: string, file: File, sceneKey?: string) {
   const formData = new FormData();
   formData.append("file", file);
   const query = sceneKey ? `?sceneKey=${encodeURIComponent(sceneKey)}` : "";
-  return apiFetch(path(projectId, `/precheck-xlsx${query}`), { method: "POST", body: formData }).then((response) => responseJson<OperatingTakeoverPrecheckReadModel>(response, "历史经营接管 Excel 预检失败"));
+  return postFormData<OperatingTakeoverPrecheckReadModel>(path(projectId, `/precheck-xlsx${query}`), formData, "历史经营接管 Excel 预检失败");
 }
 
 export function createOperatingTakeoverBatch(projectId: string, body: { batchNo?: string; sceneKey?: string; rows: Array<{ sceneKey?: string; values: Record<string, unknown> }> }) {
-  return apiFetch(path(projectId), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((response) => responseJson<OperatingTakeoverDetailReadModel>(response, "创建历史经营接管批次失败"));
+  return postJson<OperatingTakeoverDetailReadModel>(path(projectId), body, "创建历史经营接管批次失败");
 }
 
 export function confirmOperatingTakeover(projectId: string, batchId: string, body: { profession: OperatingTakeoverProfession; expectedRevision: number; idempotencyKey: string }) {
-  return apiFetch(path(projectId, `/${encodeURIComponent(batchId)}/confirmations`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((response) => responseJson<unknown>(response, "历史经营接管专业确认失败"));
+  return postJson<unknown>(path(projectId, `/${encodeURIComponent(batchId)}/confirmations`), body, "历史经营接管专业确认失败");
 }
 
 export function activateOperatingTakeover(projectId: string, batchId: string, idempotencyKey: string) {
-  return apiFetch(path(projectId, `/${encodeURIComponent(batchId)}/activation`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idempotencyKey }) }).then((response) => responseJson<unknown>(response, "历史经营接管激活失败"));
+  return postJson<unknown>(path(projectId, `/${encodeURIComponent(batchId)}/activation`), { idempotencyKey }, "历史经营接管激活失败");
 }
 
 export async function downloadOperatingTakeoverTemplate(projectId: string, sceneKey?: string) {

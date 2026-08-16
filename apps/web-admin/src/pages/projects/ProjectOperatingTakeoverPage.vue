@@ -291,7 +291,7 @@ async function precheck() {
     submitting.value = true;
     const values = JSON.parse(payloadText.value) as Array<Record<string, unknown>>;
     pendingRows.value = values.map((value) => ({ values: value }));
-    precheckResult.value = await precheckOperatingTakeover(selectedProjectId.value, { sceneKey: selectedSceneKey.value, rows: pendingRows.value });
+    precheckResult.value = await precheckOperatingTakeoverWithCapability(selectedProjectId.value, { sceneKey: selectedSceneKey.value, rows: pendingRows.value });
     message.value = "";
   } catch (error) {
     message.value = error instanceof Error ? error.message : "预检失败";
@@ -308,7 +308,7 @@ async function precheckExcel() {
   }
   try {
     submitting.value = true;
-    precheckResult.value = await precheckOperatingTakeoverXlsx(selectedProjectId.value, raw, selectedSceneKey.value || undefined);
+    precheckResult.value = await precheckOperatingTakeoverXlsxWithCapability(selectedProjectId.value, raw, selectedSceneKey.value || undefined);
     pendingRows.value = precheckResult.value.rows.map((row) => ({ sceneKey: row.sceneKey, values: row.values }));
     message.value = "";
   } catch (error) {
@@ -323,7 +323,7 @@ async function createBatch() {
   try {
     submitting.value = true;
     if (!pendingRows.value.length) return;
-    detail.value = await createOperatingTakeoverBatch(selectedProjectId.value, { sceneKey: selectedSceneKey.value, rows: pendingRows.value });
+    detail.value = await createOperatingTakeoverBatchWithCapability(selectedProjectId.value, { sceneKey: selectedSceneKey.value, rows: pendingRows.value });
     batches.value = await fetchOperatingTakeoverBatches(selectedProjectId.value);
   } catch (error) {
     message.value = error instanceof Error ? error.message : "生成批次失败";
@@ -342,14 +342,77 @@ function canConfirmProfession(profession: OperatingTakeoverProfession) {
 
 async function confirm(profession: OperatingTakeoverProfession) {
   if (!detail.value) return;
-  await confirmOperatingTakeover(selectedProjectId.value, detail.value.id, { profession, expectedRevision: detail.value.revision, idempotencyKey: crypto.randomUUID() });
+  await confirmOperatingTakeoverWithCapability(selectedProjectId.value, detail.value.id, { profession, expectedRevision: detail.value.revision, idempotencyKey: crypto.randomUUID() });
   detail.value = await fetchOperatingTakeoverDetail(selectedProjectId.value, detail.value.id);
 }
 
 async function activate() {
   if (!detail.value) return;
-  await activateOperatingTakeover(selectedProjectId.value, detail.value.id, crypto.randomUUID());
+  await activateOperatingTakeoverWithCapability(selectedProjectId.value, detail.value.id, crypto.randomUUID());
   detail.value = await fetchOperatingTakeoverDetail(selectedProjectId.value, detail.value.id);
+}
+
+async function precheckOperatingTakeoverWithCapability(
+  projectId: string,
+  body: Parameters<typeof precheckOperatingTakeover>[1]
+) {
+  const capability = await fetchOperatingTakeoverCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("manage");
+  if (!operationAllowed) throw new Error("当前用户不能预检历史经营接管");
+  return precheckOperatingTakeover(projectId, body);
+}
+
+async function precheckOperatingTakeoverXlsxWithCapability(
+  projectId: string,
+  file: File,
+  sceneKey?: string
+) {
+  const capability = await fetchOperatingTakeoverCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("manage");
+  if (!operationAllowed) throw new Error("当前用户不能预检历史经营接管 Excel");
+  return precheckOperatingTakeoverXlsx(projectId, file, sceneKey);
+}
+
+async function createOperatingTakeoverBatchWithCapability(
+  projectId: string,
+  body: Parameters<typeof createOperatingTakeoverBatch>[1]
+) {
+  const capability = await fetchOperatingTakeoverCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("manage");
+  if (!operationAllowed) throw new Error("当前用户不能生成历史经营接管批次");
+  return createOperatingTakeoverBatch(projectId, body);
+}
+
+async function confirmOperatingTakeoverWithCapability(
+  projectId: string,
+  batchId: string,
+  body: Parameters<typeof confirmOperatingTakeover>[2]
+) {
+  const capability = await fetchOperatingTakeoverCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("confirm");
+  if (!operationAllowed) throw new Error("当前用户不能确认历史经营接管");
+  return confirmOperatingTakeover(projectId, batchId, body);
+}
+
+async function activateOperatingTakeoverWithCapability(
+  projectId: string,
+  batchId: string,
+  idempotencyKey: string
+) {
+  const capability = await fetchOperatingTakeoverCapability(projectId);
+  const matchesRequestedProject = capability.projectId === projectId;
+  if (!matchesRequestedProject) throw new Error("历史经营接管项目已变化，请刷新后重试");
+  const operationAllowed = capability.availableActions.includes("activate");
+  if (!operationAllowed) throw new Error("当前用户不能激活历史经营接管");
+  return activateOperatingTakeover(projectId, batchId, idempotencyKey);
 }
 
 async function downloadTemplate() {
