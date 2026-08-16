@@ -1688,6 +1688,8 @@ export class SettlementReadService {
       return { label: "最终结算文件生成失败", tone: "danger" };
     }
     const views: Record<string, { label: string; tone: CoreFlowTone }> = {
+      draft: { label: "草稿", tone: "default" },
+      in_approval: { label: "审批中", tone: "primary" },
       approval_pending: { label: "审批中", tone: "primary" },
       approval_rejected: { label: "审批退回", tone: "danger" },
       withdrawn: { label: "已撤回", tone: "danger" },
@@ -1696,6 +1698,8 @@ export class SettlementReadService {
       archive_pending: { label: "待归档确认", tone: "primary" },
       pending_archive_confirm: { label: "待归档确认", tone: "primary" },
       effective: { label: "已生效", tone: "success" },
+      partially_paid: { label: "部分已付款", tone: "warning" },
+      paid: { label: "已付款", tone: "success" },
       rejected: { label: "已退回", tone: "danger" },
       voided: { label: "已作废", tone: "danger" }
     };

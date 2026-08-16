@@ -747,6 +747,7 @@ import type { CoreFlowTone, SettlementDetailReadModel } from "@jiangkong/shared-
 import type { UploadFile } from "tdesign-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
 import {
   confirmSettlementArchive,
@@ -1126,7 +1127,7 @@ async function reloadSettlementDetail() {
     if (requestId !== settlementDetailRequestId || settlementId !== routeSettlementId()) return false;
     settlementApprovalCapability.value = null;
     settlementDetail.value = null;
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "读取结算详情失败");
     settlementDetailLoadError.value = `未能读取结算详情：${reason}。当前页面数据不能用于业务判断，请确认账号权限和网络状态后重试。`;
     return false;
   } finally {
@@ -1201,7 +1202,7 @@ function selectedUploadFile(files: UploadFile[]) {
 
 function setActionError(error: unknown, fallback: string) {
   archiveActionMessageTone.value = "danger";
-  archiveActionMessage.value = error instanceof Error ? `${error.message}。请修正后重试。` : fallback;
+  archiveActionMessage.value = `${formatUnknownApiError(error, fallback)}。请修正后重试。`;
 }
 
 function openSensitiveAction(
@@ -1234,7 +1235,7 @@ async function runArchiveAction(key: string, action: () => Promise<unknown>) {
     return true;
   } catch (error) {
     archiveActionMessageTone.value = "danger";
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "操作失败");
     archiveActionMessage.value = `操作未完成：${reason}。已保留当前输入，请核对后重试。`;
     return false;
   } finally {
@@ -1832,7 +1833,7 @@ async function failSettlementWithdrawal(
   }
 
   archiveActionMessageTone.value = "danger";
-  const message = error instanceof Error ? error.message : "未知错误";
+  const message = formatUnknownApiError(error, "结算审批撤回失败");
   archiveActionMessage.value = `结算审批撤回未完成：${message}`;
   sensitiveAction.error = archiveActionMessage.value;
 }

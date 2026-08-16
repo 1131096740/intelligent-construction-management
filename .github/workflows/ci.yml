@@ -54,6 +54,7 @@ jobs:
 
       - name: Verify business error and operations safety gates
         run: |
+          node scripts/check-business-language.mjs
           node services/api/scripts/check-business-errors.self-test.cjs
           pnpm --filter @jiangkong/api check:business-errors
           bash scripts/ops/go-live-safety-self-test.sh

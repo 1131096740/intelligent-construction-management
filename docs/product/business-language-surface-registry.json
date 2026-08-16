@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "surfaces": [
+    {
+      "id": "audit-read-model",
+      "paths": [
+        "services/api/src/audit/audit.service.ts",
+        "apps/web-admin/src/pages/audit/audit-log.config.ts",
+        "apps/web-admin/src/pages/audit/AuditLogPage.vue"
+      ],
+      "forbiddenLiterals": [
+        "actionKey:",
+        "traceId:",
+        "fileId:",
+        "追溯编号",
+        "error instanceof Error ? error.message"
+      ]
+    },
+    {
+      "id": "historical-contract-takeover-excel",
+      "paths": ["services/api/src/contract-takeover/contract-takeover-excel.service.ts"],
+      "forbiddenLiterals": [
+        "签约主体编号",
+        "清单标识",
+        "项目标识",
+        "修订号",
+        "revisionNo",
+        "文件类型：",
+        "字节"
+      ]
+    },
+    {
+      "id": "settlement-import-excel",
+      "paths": ["services/api/src/settlement/settlement-import.service.ts"],
+      "forbiddenLiterals": [
+        "本期人工金额(分)",
+        "后台金额(分)",
+        "__系统清单项标识",
+        "后台校验",
+        "系统匹配列"
+      ]
+    },
+    {
+      "id": "settlement-documents",
+      "paths": ["services/api/src/settlement/settlement-document-renderer.ts"],
+      "forbiddenLiterals": [
+        "草稿 DRAFT",
+        "文件 revision",
+        "文件版本",
+        "冻结版",
+        "修订版",
+        "税务修订",
+        "修订 ${input.taxFactRevision"
+      ]
+    },
+    {
+      "id": "settlement-workbench-page-errors",
+      "paths": ["apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"],
+      "forbiddenLiterals": ["error.message", "修订号", "修订版", "冻结版"]
+    },
+    {
+      "id": "settlement-list-page-errors",
+      "paths": ["apps/web-admin/src/pages/settlements/SettlementListPage.vue"],
+      "forbiddenLiterals": ["error.message", "修订号", "修订版", "冻结版"]
+    },
+    {
+      "id": "settlement-recovery-page-errors",
+      "paths": ["apps/web-admin/src/pages/settlements/components/SettlementRecoveryLedgerPanel.vue"],
+      "forbiddenLiterals": ["error.message", "修订号", "冻结版", "修订版"]
+    },
+    {
+      "id": "settlement-signature-language",
+      "paths": [
+        "apps/web-admin/src/pages/settlements/components/SettlementCounterpartySignedPdfPanel.vue",
+        "apps/web-admin/src/pages/settlements/settlement-workbench.state.ts"
+      ],
+      "forbiddenLiterals": ["修订号", "修订版", "冻结版"]
+    },
+    {
+      "id": "contract-takeover-page-errors",
+      "paths": ["apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"],
+      "forbiddenLiterals": ["error.message"]
+    }
+  ],
+  "automaticScans": [
+    {
+      "id": "changed-web-pages",
+      "root": "apps/web-admin/src/pages",
+      "extensions": [".vue"],
+      "forbiddenRegexes": [
+        "\\b(?:error|candidateResult\\.error)\\.message\\b",
+        "\\$\\{(?:error|candidateResult\\.error)\\.message\\}",
+        "修订号",
+        "修订版",
+        "冻结版"
+      ]
+    }
+  ],
+  "artifactEvidence": [
+    {
+      "id": "settlement-excel-pdf-artifacts",
+      "path": "services/api/src/settlement/settlement-document-renderer.spec.ts",
+      "requiredLiterals": [
+        "renderSettlementDraftExcel",
+        "renderSettlementArchivePdf",
+        "expectNoTechnicalExportText",
+        "xlsx.load",
+        "toString(\"latin1\")"
+      ]
+    },
+    {
+      "id": "historical-contract-takeover-excel-artifact",
+      "path": "services/api/src/contract-takeover/contract-takeover-excel.service.spec.ts",
+      "requiredLiterals": ["exportTemplate", "xlsx.load", "revisionNo", "pricing_fact_internal"]
+    },
+    {
+      "id": "settlement-import-excel-artifacts",
+      "path": "services/api/src/settlement/settlement-import.service.spec.ts",
+      "requiredLiterals": ["exportTemplate", "exportResult", "exportErrors", "xlsx.load", "后台金额(分)"]
+    }
+  ],
+  "exceptions": [
+    {
+      "path": "services/api/src/money/decimal-money.ts",
+      "literal": "分",
+      "reason": "数据库金额存储和内部错误契约保留分值；不得直接进入普通业务页面或制品"
+    },
+    {
+      "path": "services/api/scripts/check-business-errors.cjs",
+      "literal": "ALLOWED_INTERNAL_ERRORS",
+      "reason": "后端技术异常由既有 AST 规则和结构化例外清单治理"
+    }
+  ]
+}

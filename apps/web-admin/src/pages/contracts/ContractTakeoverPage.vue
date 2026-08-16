@@ -1800,6 +1800,7 @@ import {
   type UserOptionReadModel
 } from "../../api/core-flow-read.api";
 import type { ContractTaxFactCurrentReadModel } from "../../api/contract-tax-facts.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
 import EvidenceFileCards from "../../components/EvidenceFileCards.vue";
 import BusinessDraftAction, {
@@ -2702,7 +2703,7 @@ function financeSavePayments(payments: FinanceSidePaymentForm[]) {
 
 function isRetryableSideSaveError(error: unknown) {
   if (error instanceof TypeError) return true;
-  const text = error instanceof Error ? error.message : String(error);
+  const text = String(error);
   return /network|fetch|timeout|temporarily unavailable|网络|超时/u.test(text);
 }
 
@@ -2754,9 +2755,7 @@ async function saveContractSide(
   } catch (error) {
     const retryable = isRetryableSideSaveError(error);
     failTakeoverSideSave(state, attempt, retryable);
-    contractSideStatus.value = error instanceof Error
-      ? `合同侧保存失败：${error.message}`
-      : "合同侧保存失败，已保留当前输入";
+    contractSideStatus.value = formatUnknownApiError(error, "合同侧保存失败，已保留当前输入");
     if (retryable) scheduleContractSideSave();
     return false;
   }
@@ -2790,7 +2789,7 @@ async function saveFinanceSide(
   } catch (error) {
     const retryable = isRetryableSideSaveError(error);
     failTakeoverSideSave(state, attempt, retryable);
-    const errorText = error instanceof Error ? error.message : "财务侧保存失败";
+    const errorText = formatUnknownApiError(error, "财务侧保存失败");
     financeSideStatus.value =
       /依据|基线|revision|修订|冲突/u.test(errorText)
         ? `财务依据已过期；已保留当前财务侧输入。${errorText}`
@@ -2841,7 +2840,7 @@ async function uploadContractSideEvidence(file: File) {
     });
     setMessage("结算依据已上传，合同侧将在两秒内自动保存", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "上传结算依据失败", "danger");
+    setMessage(formatUnknownApiError(error, "上传结算依据失败"), "danger");
   }
 }
 
@@ -2868,7 +2867,7 @@ async function uploadFinancePaymentVoucher(payload: { rowKey: string; file: File
     });
     setMessage("付款凭证已上传，财务侧将在两秒内自动保存", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "上传付款凭证失败", "danger");
+    setMessage(formatUnknownApiError(error, "上传付款凭证失败"), "danger");
   }
 }
 
@@ -2890,7 +2889,7 @@ async function uploadFinanceExcessEvidence(file: File) {
     });
     setMessage("超额分类依据已上传，财务侧将在两秒内自动保存", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "上传超额分类依据失败", "danger");
+    setMessage(formatUnknownApiError(error, "上传超额分类依据失败"), "danger");
   }
 }
 
@@ -2921,7 +2920,7 @@ async function reloadFinanceBasisPreservingInput() {
     scheduleFinanceSideSave();
   } catch (error) {
     financeSideStatus.value =
-      error instanceof Error ? error.message : "重新读取财务依据失败，已保留当前输入";
+      formatUnknownApiError(error, "重新读取财务依据失败，已保留当前输入");
   }
 }
 const importPrecheckText = ref("");
@@ -3480,7 +3479,7 @@ async function loadProjects() {
       setMessage("暂无可用项目", "default");
     }
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "加载项目失败", "danger");
+    setMessage(formatUnknownApiError(error, "加载项目失败"), "danger");
   } finally {
     loadingProjects.value = false;
   }
@@ -3524,7 +3523,7 @@ async function loadResponsibleUsers() {
     responsibleUsers.value = await fetchApprovalDelegationUserOptions();
   } catch (error) {
     responsibleUsers.value = [];
-    setMessage(error instanceof Error ? error.message : "加载人员选择列表失败", "danger");
+    setMessage(formatUnknownApiError(error, "加载人员选择列表失败"), "danger");
   }
 }
 
@@ -3574,9 +3573,7 @@ async function loadTakeovers() {
     }
     if (candidateResult.error) {
       setMessage(
-        candidateResult.error instanceof Error
-          ? `${candidateResult.error.message}。历史接管台账已加载，但暂不能选择系统匹配主体。`
-          : "历史接管台账已加载，但暂不能选择系统匹配主体，请稍后重试。",
+        `${formatUnknownApiError(candidateResult.error, "系统匹配主体暂不可用")}。历史接管台账已加载，但暂不能选择系统匹配主体。`,
         "danger"
       );
     }
@@ -3588,7 +3585,7 @@ async function loadTakeovers() {
     selectedTakeoverId.value = "";
     resetDepartmentStates();
     resetEvidenceDownloadForm(null);
-    setMessage(error instanceof Error ? error.message : "加载历史合同接管台账失败", "danger");
+    setMessage(formatUnknownApiError(error, "加载历史合同接管台账失败"), "danger");
   } finally {
     if (requestCurrent()) {
       loadingTakeovers.value = false;
@@ -3613,9 +3610,7 @@ async function exportTakeoverLedger() {
     setMessage("历史合同接管台账已导出，仅包含当前项目和当前账号可见信息", "success");
   } catch (error) {
     setMessage(
-      error instanceof Error
-        ? `${error.message}。请检查网络与权限后重试。`
-        : "历史合同接管台账导出失败，请检查网络与权限后重试。",
+      `${formatUnknownApiError(error, "历史合同接管台账导出失败")}。请检查网络与权限后重试。`,
       "danger"
     );
   } finally {
@@ -3640,9 +3635,7 @@ async function exportSelectedTakeover() {
     setMessage("历史合同接管详情已导出，税务修订记录已包含在文件中", "success");
   } catch (error) {
     setMessage(
-      error instanceof Error
-        ? `${error.message}。请检查网络与权限后重试。`
-        : "历史合同接管详情导出失败，请检查网络与权限后重试。",
+      `${formatUnknownApiError(error, "历史合同接管详情导出失败")}。请检查网络与权限后重试。`,
       "danger"
     );
   } finally {
@@ -3666,7 +3659,7 @@ async function downloadImportTemplate() {
     await downloadContractTakeoverImportTemplate(projectId);
     setMessage("历史合同接管模板已下载，请按模板填写后上传预检", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "下载历史合同接管模板失败", "danger");
+    setMessage(formatUnknownApiError(error, "下载历史合同接管模板失败"), "danger");
   } finally {
     templateDownloading.value = false;
   }
@@ -3713,7 +3706,7 @@ async function previewExcelImport() {
     setMessage(precheckMessage.message, precheckMessage.tone);
   } catch (error) {
     excelPreviewResult.value = null;
-    setMessage(error instanceof Error ? error.message : "Excel 预检失败", "danger");
+    setMessage(formatUnknownApiError(error, "Excel 预检失败"), "danger");
   } finally {
     excelPreviewing.value = false;
   }
@@ -3767,7 +3760,7 @@ async function applyExcelImport() {
     await loadTakeovers();
     selectedTakeoverId.value = result.created[0]?.id ?? selectedTakeoverId.value;
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "生成接管草稿失败", "danger");
+    setMessage(formatUnknownApiError(error, "生成接管草稿失败"), "danger");
   } finally {
     excelApplying.value = false;
   }
@@ -3798,7 +3791,7 @@ async function submitImportPrecheck() {
     setMessage(precheckMessage.message, precheckMessage.tone);
   } catch (error) {
     importPrecheckResult.value = null;
-    setMessage(error instanceof Error ? error.message : "导入预检失败", "danger");
+    setMessage(formatUnknownApiError(error, "导入预检失败"), "danger");
   } finally {
     prechecking.value = false;
   }
@@ -3846,7 +3839,7 @@ async function generateImportDrafts() {
     await loadTakeovers();
     selectedTakeoverId.value = result.created[0]?.id ?? selectedTakeoverId.value;
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "生成接管草稿失败", "danger");
+    setMessage(formatUnknownApiError(error, "生成接管草稿失败"), "danger");
   } finally {
     generatingImportDrafts.value = false;
   }
@@ -3904,7 +3897,7 @@ async function confirmImportBatchReview() {
     pendingImportBatchReview.value = null;
     setMessage(`接管批次已更新为“${updated.statusLabel}”`, "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "接管批次复核失败", "danger");
+    setMessage(formatUnknownApiError(error, "接管批次复核失败"), "danger");
   } finally {
     reviewingImportBatchAction.value = "";
   }
@@ -3931,9 +3924,7 @@ async function openBatchAbandonment(batch: ContractTakeoverImportBatchReadModel)
     batchAbandonVisible.value = true;
   } catch (error) {
     setMessage(
-      error instanceof Error
-        ? `${error.message}。未改变任何接管记录，请重试预览。`
-        : "批次草稿预览失败，未改变任何接管记录，请稍后重试。",
+      `${formatUnknownApiError(error, "批次草稿预览失败")}。未改变任何接管记录，请重试预览。`,
       "danger"
     );
   } finally {
@@ -3972,9 +3963,7 @@ async function applyBatchAbandonment(values: { reason: string; password: string 
     setMessage(`已清理 ${result.abandonedCount} 条接管草稿或申请`, "success");
     await loadTakeovers();
   } catch (error) {
-    batchAbandonError.value = error instanceof Error
-      ? `${error.message}。未完成批次清理，请重新预览后再试。`
-      : "批次清理未完成，请重新预览后再试。";
+    batchAbandonError.value = `${formatUnknownApiError(error, "批次清理未完成")}。未完成批次清理，请重新预览后再试。`;
   } finally {
     batchAbandonApplying.value = false;
   }
@@ -4059,7 +4048,7 @@ async function selectTakeover(takeover: ContractTakeoverReadModel) {
     resetEvidenceDownloadForm(detail);
   } catch (error) {
     if (!selectionRequestCurrent(true)) return;
-    setMessage(error instanceof Error ? error.message : "加载接管详情失败", "danger");
+    setMessage(formatUnknownApiError(error, "加载接管详情失败"), "danger");
   }
 }
 
@@ -4072,9 +4061,7 @@ async function refreshSelectedTaxFacts() {
     takeovers.value = takeovers.value.map((item) => (item.id === detail.id ? detail : item));
   } catch (error) {
     setMessage(
-      error instanceof Error
-        ? `${error.message}。修订记录已保存，但当前合同事实未能刷新，请稍后重试。`
-        : "修订记录已保存，但当前合同事实未能刷新，请稍后重试。",
+      `${formatUnknownApiError(error, "当前合同事实未能刷新")}。修订记录已保存，请稍后重试。`,
       "danger"
     );
   }
@@ -4173,7 +4160,7 @@ async function submitCreate() {
     await loadTakeovers();
     await selectTakeover(saved);
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "保存历史合同接管失败", "danger");
+    setMessage(formatUnknownApiError(error, "保存历史合同接管失败"), "danger");
   } finally {
     creating.value = false;
   }
@@ -4238,7 +4225,7 @@ async function submitReview(takeover: ContractTakeoverReadModel) {
     selectedTakeoverId.value = updated.id;
     setMessage("已提交业务复核", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "提交复核失败", "danger");
+    setMessage(formatUnknownApiError(error, "提交复核失败"), "danger");
   }
 }
 
@@ -4290,7 +4277,7 @@ async function submitEvidenceFile() {
     }
     setMessage("接管资料已上传并绑定到当前合同", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "上传接管资料失败", "danger");
+    setMessage(formatUnknownApiError(error, "上传接管资料失败"), "danger");
   } finally {
     evidenceUploading.value = false;
   }
@@ -4334,7 +4321,7 @@ async function submitHistoricalPaymentVoucher() {
     }
     setMessage("历史付款凭证已补齐，请由接管责任人核对后重新提交复核", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "上传历史付款凭证失败", "danger");
+    setMessage(formatUnknownApiError(error, "上传历史付款凭证失败"), "danger");
   } finally {
     historicalPaymentVoucherUploading.value = false;
   }
@@ -4368,7 +4355,7 @@ async function submitEvidenceFileDownload() {
     setMessage("已生成短时效下载链接，请在新窗口完成下载。", "success");
   } catch (error) {
     evidenceDownloadConfirmError.value =
-      error instanceof Error ? error.message : "生成接管资料下载链接失败";
+      formatUnknownApiError(error, "生成接管资料下载链接失败");
   } finally {
     evidenceDownloading.value = false;
   }
@@ -4472,7 +4459,7 @@ async function submitDepartmentAction(values: {
     );
   } catch (error) {
     departmentActionError.value =
-      error instanceof Error ? error.message : "部门确认操作失败";
+      formatUnknownApiError(error, "部门确认操作失败");
   } finally {
     departmentActionLoading.value = false;
   }
@@ -4539,7 +4526,7 @@ async function submitAppliedCorrection(payload: {
     await refreshDepartmentDetail(takeover.id);
     setMessage("接管更正已提交主管复核，原事实与凭证保持不变", "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "提交接管更正失败", "danger");
+    setMessage(formatUnknownApiError(error, "提交接管更正失败"), "danger");
   } finally {
     appliedCorrectionSubmitting.value = false;
   }
@@ -4600,7 +4587,7 @@ async function confirmCorrectionReview(values: {
     );
   } catch (error) {
     correctionReviewError.value =
-      error instanceof Error ? error.message : "复核接管更正失败";
+      formatUnknownApiError(error, "复核接管更正失败");
   } finally {
     appliedCorrectionReviewing.value = false;
   }
@@ -4644,7 +4631,7 @@ async function submitCorrectionAttachmentDownload(values: {
     setMessage("已生成更正依据短时效下载链接，请在新窗口完成下载。", "success");
   } catch (error) {
     correctionAttachmentDownloadError.value =
-      error instanceof Error ? error.message : "生成更正依据下载链接失败";
+      formatUnknownApiError(error, "生成更正依据下载链接失败");
   } finally {
     correctionAttachmentDownloading.value = false;
   }
@@ -4683,7 +4670,7 @@ async function submitCompanyEntityCorrection() {
     await selectTakeover(takeover);
     setMessage(result.message, "success");
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : "提交主体匹配更正失败", "danger");
+    setMessage(formatUnknownApiError(error, "提交主体匹配更正失败"), "danger");
   } finally {
     companyEntityCorrectionSubmitting.value = false;
   }
@@ -4741,7 +4728,7 @@ async function confirmCompanyEntityCorrectionReview(values: {
     setMessage(result.message, "success");
   } catch (error) {
     companyEntityCorrectionReviewError.value =
-      error instanceof Error ? error.message : "处理主体匹配更正失败";
+      formatUnknownApiError(error, "处理主体匹配更正失败");
   } finally {
     companyEntityCorrectionReviewingId.value = "";
   }
@@ -4812,7 +4799,7 @@ async function submitHistoricalChangeBaseline(values: { password: string }) {
       { allowZero: true }
     );
   } catch (error) {
-    changeBaselineError.value = error instanceof Error ? error.message : "历史变更基线金额格式不正确";
+    changeBaselineError.value = formatUnknownApiError(error, "历史变更基线金额格式不正确");
     return;
   }
 
@@ -4852,7 +4839,7 @@ async function submitHistoricalChangeBaseline(values: { password: string }) {
     invalidateChangeBaselineContext(true);
   } catch (error) {
     if (!requestIsCurrent()) return;
-    changeBaselineError.value = error instanceof Error ? error.message : "确认历史变更基线失败";
+    changeBaselineError.value = formatUnknownApiError(error, "确认历史变更基线失败");
   } finally {
     if (requestIsCurrent()) {
       changeBaselineSubmitting.value = false;
@@ -4905,7 +4892,7 @@ async function returnSelectedTakeoverForSupplement(values: { reason: string; pas
     supplementReturnTarget.value = null;
     setMessage("已退回补充，合同员可补齐资料后重新提交复核", "success");
   } catch (error) {
-    supplementReturnError.value = error instanceof Error ? error.message : "退回补充失败";
+    supplementReturnError.value = formatUnknownApiError(error, "退回补充失败");
   } finally {
     supplementReturning.value = false;
   }

@@ -68,7 +68,7 @@ describe("settlement workbench state", () => {
     expect(settlementSignatureNextAction(current)).toEqual({
       step: 5,
       label: "提交结算审批",
-      reason: "当前修订版的参与人、冻结版和乙方签章扫描件均已就绪。"
+      reason: "当前结算事实的参与人、冻结结算单和乙方签章扫描件均已就绪。"
     });
     expect(settlementSignatureStateAfterLinkFailure(current)).toEqual(current);
     expect(settlementSignatureStateAfterDraftRevision(current, 4)).toEqual({

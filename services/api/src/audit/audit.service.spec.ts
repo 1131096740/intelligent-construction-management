@@ -42,9 +42,9 @@ describe("AuditService", () => {
     expect(result.rows[0]).toMatchObject({
       id: "audit-1",
       actor: "张三",
-      action: "file.download",
+      action: "实际下载",
       actionTone: "warning",
-      businessTarget: "file-1",
+      businessTarget: "相关业务",
       resultRisk: "需复核"
     });
     expect(result.rows[1].actor).toBe("系统");
@@ -151,8 +151,10 @@ describe("AuditService", () => {
       action: "生成下载票据",
       fileName: "HT-2026-001.pdf",
       downloadReason: "合同归档复核",
-      traceId: "audit-ticket-1",
-      sensitive: "未返回短链/token/COS地址"
+      actionKind: "ticket",
+      businessType: "文件",
+      businessTarget: "相关业务",
+      auditNote: "已按权限记录，未返回文件链接或访问凭证"
     });
     expect(result.rows.map((row) => row.action)).toEqual([
       "生成下载票据",
@@ -198,7 +200,7 @@ describe("AuditService", () => {
 
     const result = await service.listRecent("1");
 
-    expect(result.rows[0].trace).toContain("[redacted]");
+    expect(result.rows[0].trace).toBe("审计详情已留存");
     expect(result.rows[0].trace).not.toContain("secret-token");
     expect(result.rows[0].trace).not.toContain("/files/file-1/download");
   });

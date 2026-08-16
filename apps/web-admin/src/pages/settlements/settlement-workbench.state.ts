@@ -83,7 +83,7 @@ export function settlementSignatureNextAction(
     return {
       step: 1,
       label: "先保存结算草稿",
-      reason: "冻结版和签章文件必须绑定已保存的草稿修订号。"
+      reason: "冻结结算单和签章文件必须绑定已保存的结算事实。"
     };
   }
   if (!state.reviewerUserId) {
@@ -96,7 +96,7 @@ export function settlementSignatureNextAction(
   if (!state.frozenDocumentId || !state.frozenFileId) {
     return {
       step: 3,
-      label: "生成当前修订版冻结结算单",
+      label: "生成冻结结算单",
       reason: "请先生成并下载系统冻结的 A4 横向结算单，再交乙方签章。"
     };
   }
@@ -111,13 +111,13 @@ export function settlementSignatureNextAction(
     return {
       step: 4,
       label: "确认关联乙方签章扫描件",
-      reason: "文件已上传但尚未与当前草稿修订版绑定，请核对声明后确认关联。"
+      reason: "文件已上传但尚未与当前结算事实绑定，请核对声明后确认关联。"
     };
   }
   return {
     step: 5,
     label: "提交结算审批",
-    reason: "当前修订版的参与人、冻结版和乙方签章扫描件均已就绪。"
+    reason: "当前结算事实的参与人、冻结结算单和乙方签章扫描件均已就绪。"
   };
 }
 

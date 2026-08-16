@@ -189,7 +189,7 @@
       <div class="settlement-draft-lifecycle__head">
         <div>
           <strong>草稿结束操作</strong>
-          <span>操作前会重新读取当前草稿，并以修订号和服务端能力复核。</span>
+          <span>操作前会重新读取当前草稿，并以当前草稿状态和服务端能力复核。</span>
         </div>
         <t-space>
           <t-button
@@ -907,8 +907,8 @@
     </SensitiveActionDialog>
     <SensitiveActionDialog
       v-model="frozenDownloadDialogVisible"
-      title="下载当前修订版冻结结算单"
-      description="冻结版包含结算业务事实和签名占位。下载行为会记录审计，请确认用于本次乙方线下签章。"
+      title="下载冻结结算单"
+      description="冻结结算单包含结算业务事实和签名占位。下载行为会记录审计，请确认用于本次乙方线下签章。"
       confirm-text="生成下载链接"
       require-reason
       require-password
@@ -1009,6 +1009,7 @@ import {
   type SettlementParticipantOptionsReadModel
 } from "../../api/settlement-workbench.api";
 import { fetchSettlementTemplateRecommendations } from "../../api/settlement-template.api";
+import { formatUnknownApiError } from "../../api/error-message";
 import { centsTextToYuanText } from "../../lib/money";
 import {
   findContractOption,
@@ -1782,7 +1783,7 @@ const workflowNextAction = computed(() => {
     return {
       step: 1 as const,
       label: "保存当前结算事实",
-      reason: "页面存在未保存更改；保存后旧冻结版和扫描件会失效，请按新修订号继续。"
+      reason: "页面存在未保存更改；保存后当前冻结结算单和扫描件会失效，请重新生成冻结结算单。"
     };
   }
   return settlementSignatureNextAction({
@@ -1937,7 +1938,7 @@ async function selectImportFile(files: UploadFile[], context: UploadChangeContex
     }
   } catch (error) {
     if (requestId === importRequestId) {
-      pageMessage.value = error instanceof Error ? error.message : "结算 Excel 上传预检失败。";
+      pageMessage.value = formatUnknownApiError(error, "结算 Excel 上传预检失败。");
       pageMessageTone.value = "error";
     }
   } finally {
@@ -1968,7 +1969,7 @@ function applyPartialImport() {
     pageMessageTone.value = "warning";
     schedulePreview();
   } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : "载入正确行失败，请重新预检。";
+    pageMessage.value = formatUnknownApiError(error, "载入正确行失败，请重新预检。");
     pageMessageTone.value = "error";
   }
 }
@@ -2055,7 +2056,7 @@ async function confirmApplyImport() {
     pageMessageTone.value = "success";
   } catch (error) {
     if (requestId === importApplyRequestId) {
-      pageMessage.value = error instanceof Error ? error.message : "应用结算 Excel 导入失败。";
+      pageMessage.value = formatUnknownApiError(error, "应用结算 Excel 导入失败。");
       pageMessageTone.value = "error";
     }
   } finally {
@@ -2095,7 +2096,7 @@ async function runImportDownload(
           : "结算导入结果已下载。";
     pageMessageTone.value = "success";
   } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : "下载结算 Excel 文件失败。";
+      pageMessage.value = formatUnknownApiError(error, "下载结算 Excel 文件失败。");
     pageMessageTone.value = "error";
   } finally {
     importDownloadBusy.value = "";
@@ -2242,7 +2243,7 @@ async function requestCanonicalPreview() {
     }
   } catch (error) {
     if (requestId === previewRequestId) {
-      pageMessage.value = error instanceof Error ? error.message : "后台核算结算明细失败。";
+      pageMessage.value = formatUnknownApiError(error, "后台核算结算明细失败。");
       pageMessageTone.value = "error";
       anomalyDrawerVisible.value = true;
     }
@@ -2289,7 +2290,7 @@ function onLineAttachmentUpdated(revision: number) {
   linkedOriginalDocumentId.value = "";
   linkedOriginalDeclaration.value = null;
   counterpartyEvidenceEpoch.value += 1;
-  pageMessage.value = "结算明细附件已更新；请按新修订号重新生成冻结结算单。";
+  pageMessage.value = "结算明细附件已更新；请重新生成冻结结算单。";
   pageMessageTone.value = "success";
 }
 
@@ -2311,7 +2312,7 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
   } catch (error) {
-    pageMessage.value = error instanceof Error ? error.message : "加载项目失败。";
+      pageMessage.value = formatUnknownApiError(error, "加载项目失败。");
     pageMessageTone.value = "error";
   } finally {
     loadingProjects.value = false;
@@ -2349,7 +2350,7 @@ async function loadContractsForProject(
   } catch (error) {
     if (current()) {
       pageMessage.value =
-        error instanceof Error ? error.message : "加载有效合同失败。";
+        formatUnknownApiError(error, "加载有效合同失败。");
       pageMessageTone.value = "error";
     }
   } finally {
@@ -2402,7 +2403,7 @@ async function loadSourceLines() {
     }
   } catch (error) {
     if (requestId === sourceRequestId) {
-      const message = error instanceof Error ? error.message : "加载合同清单或结算模板失败。";
+      const message = formatUnknownApiError(error, "加载合同清单或结算模板失败。");
       if (
         canApplySettlementTemplateRecommendation(
           recommendationRequestId,
@@ -2434,7 +2435,7 @@ async function loadParticipantOptions(contractVersionId: string) {
     if (contractVersionId !== selectedContractVersionId.value) return;
     participantOptions.value = { route: "", options: [] };
     participantLoadError.value =
-      error instanceof Error ? error.message : "加载项目现场复核人失败";
+      formatUnknownApiError(error, "加载项目现场复核人失败");
   } finally {
     if (contractVersionId === selectedContractVersionId.value) {
       participantLoading.value = false;
@@ -2552,7 +2553,7 @@ async function persistDraft(showSuccessMessage: boolean) {
     return saved;
   } catch (error) {
     saveLocalRecovery();
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     pageMessage.value = `结算草稿未能保存：${reason}。本页已填写内容仍然保留，请修正后重试。`;
     pageMessageTone.value = "error";
     return null;
@@ -2668,12 +2669,12 @@ function hideInvalidSettlementDraftLifecycleCapability(error: unknown) {
 
 function setDeletePristineDraftError(error: unknown) {
   deletePristineDraftError.value =
-    error instanceof Error ? error.message : "删除结算草稿失败，请刷新后重试。";
+    formatUnknownApiError(error, "删除结算草稿失败，请刷新后重试。");
 }
 
 function setAbandonApplicationError(error: unknown) {
   abandonApplicationError.value =
-    error instanceof Error ? error.message : "放弃结算申请失败，请刷新后重试。";
+    formatUnknownApiError(error, "放弃结算申请失败，请刷新后重试。");
 }
 
 function beginSettlementDraftLifecycleAction() {
@@ -2791,11 +2792,11 @@ async function generateFrozenDocument() {
       linkedOriginalDeclaration.value = null;
       counterpartyEvidenceEpoch.value += 1;
     }
-    pageMessage.value = "当前修订版冻结结算单已生成，请下载后交乙方完成线下签章。";
+    pageMessage.value = "冻结结算单已生成，请下载后交乙方完成线下签章。";
     pageMessageTone.value = "success";
   } catch (error) {
     pageMessage.value =
-      `${error instanceof Error ? error.message : "生成冻结结算单失败"}。` +
+      `${formatUnknownApiError(error, "生成冻结结算单失败")}。` +
       "草稿和已填写内容均已保留，请按提示处理后重试。";
     pageMessageTone.value = "error";
   } finally {
@@ -2826,12 +2827,12 @@ async function uploadCounterpartySignedPdf(file: File) {
     linkedOriginalDocumentId.value = "";
     linkedOriginalDeclaration.value = null;
     counterpartyEvidenceEpoch.value += 1;
-    pageMessage.value = "文件已安全上传；请逐项核对签章声明并确认关联当前修订版。";
+    pageMessage.value = "文件已安全上传；请逐项核对签章声明并确认关联当前结算事实。";
     pageMessageTone.value = "success";
   } catch (error) {
     counterpartyPanelRef.value?.resetLocalEvidence();
     pageMessage.value =
-      `${error instanceof Error ? error.message : "上传乙方签章扫描件失败"}。` +
+      `${formatUnknownApiError(error, "上传乙方签章扫描件失败")}。` +
       "当前草稿、人员选择和上一次已上传结果均已保留，可直接重试。";
     pageMessageTone.value = "error";
   } finally {
@@ -2872,11 +2873,11 @@ async function linkCounterpartySignedPdf(declaration: SettlementCounterpartyDecl
     );
     linkedOriginalDocumentId.value = linked.id;
     linkedOriginalDeclaration.value = { ...declaration };
-    pageMessage.value = "乙方完整签章扫描件已校验并关联当前修订版，可以提交审批。";
+    pageMessage.value = "乙方完整签章扫描件已校验并关联当前结算事实，可以提交审批。";
     pageMessageTone.value = "success";
   } catch (error) {
     pageMessage.value =
-      `${error instanceof Error ? error.message : "关联乙方签章扫描件失败"}。` +
+      `${formatUnknownApiError(error, "关联乙方签章扫描件失败")}。` +
       "已填写内容、现场复核人和已上传文件均已保留，请按提示核对后重试。";
     pageMessageTone.value = "error";
   } finally {
@@ -2920,7 +2921,7 @@ async function preparePdfReview(values: { reason: string; password: string }) {
     pdfReviewTicketDialogVisible.value = false;
     pdfReviewDialogVisible.value = true;
   } catch (error) {
-    pdfReviewTicketError.value = error instanceof Error ? error.message : "生成 PDF 核对链接失败";
+    pdfReviewTicketError.value = formatUnknownApiError(error, "生成 PDF 核对链接失败");
   } finally {
     pdfReviewTicketBusy.value = false;
   }
@@ -2938,11 +2939,11 @@ async function downloadFrozenDocument(values: { reason: string; password: string
     });
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener,noreferrer");
     frozenDownloadDialogVisible.value = false;
-    pageMessage.value = "冻结结算单下载链接已生成，请核对修订号后交乙方签章。";
+    pageMessage.value = "冻结结算单下载链接已生成，请核对冻结结算单内容后交乙方签章。";
     pageMessageTone.value = "success";
   } catch (error) {
     frozenDownloadError.value =
-      error instanceof Error ? error.message : "生成冻结结算单下载链接失败";
+      formatUnknownApiError(error, "生成冻结结算单下载链接失败");
   } finally {
     frozenDownloadBusy.value = false;
   }
@@ -2965,7 +2966,7 @@ function toFrozenDocumentSummary(
 
 async function submitSettlement() {
   if (!frozenDocument.value || !linkedOriginalDocumentId.value) {
-    pageMessage.value = "请先完成当前修订版冻结结算单和乙方签章扫描件关联。";
+    pageMessage.value = "请先完成冻结结算单和乙方签章扫描件关联。";
     pageMessageTone.value = "warning";
     return;
   }
@@ -2979,7 +2980,7 @@ async function submitSettlement() {
   try {
     const saved = activeDraft.value;
     if (!saved || isDirty.value) {
-      pageMessage.value = "请先保存当前结算事实，并重新完成当前修订版签章文件。";
+      pageMessage.value = "请先保存当前结算事实，并重新完成签章文件。";
       pageMessageTone.value = "warning";
       return;
     }
@@ -2991,7 +2992,7 @@ async function submitSettlement() {
     pageMessageTone.value = "success";
     await router.push(`/结算管理/${encodeURIComponent(settlement.id)}`);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "未知错误");
     pageMessage.value =
       `结算草稿已保存，不受本次失败影响；审批尚未发起：${reason}。` +
       "请按提示补齐合同税务或价格事实后，再打开本草稿提交。";
@@ -3416,7 +3417,7 @@ async function loadRequestedDraftFromRoute() {
   } catch (error) {
     if (settlementDraftRouteLoadCurrent(requestId, requestedProject, draftId)) {
       pageMessage.value =
-        error instanceof Error ? error.message : "恢复结算草稿失败。";
+        formatUnknownApiError(error, "恢复结算草稿失败。");
       pageMessageTone.value = "error";
     }
   } finally {
@@ -3458,7 +3459,7 @@ async function refreshFinalPreparation(
     if (current()) {
       finalPreparation.value = null;
       pageMessage.value =
-        error instanceof Error ? error.message : "读取最终结算准备情况失败。";
+        formatUnknownApiError(error, "读取最终结算准备情况失败。");
       pageMessageTone.value = "warning";
     }
   }

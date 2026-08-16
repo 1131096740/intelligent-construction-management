@@ -459,6 +459,9 @@ describe("SettlementReadService", () => {
     const statusView = (service as unknown as { statusView(status: string): { label: string } })
       .statusView;
 
+    expect(statusView.call(service, "in_approval").label).toBe("审批中");
+    expect(statusView.call(service, "partially_paid").label).toBe("部分已付款");
+    expect(statusView.call(service, "paid").label).toBe("已付款");
     expect(statusView.call(service, "internal_status").label).toBe("结算状态未读取");
   });
 

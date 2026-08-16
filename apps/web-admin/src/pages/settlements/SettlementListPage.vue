@@ -251,6 +251,7 @@
 import { MessagePlugin } from "tdesign-vue-next";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { formatUnknownApiError } from "../../api/error-message";
 import type { SettlementWorkbenchView } from "@jiangkong/shared-domain";
 import {
   copyAbandonedSettlementDraft,
@@ -403,7 +404,7 @@ async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycl
     await MessagePlugin.success("已复制为新的结算草稿，旧记录保持只读历史。");
     await router.push({ path: "/结算工作台/新建", query: { project: row.projectId, draftId: created.id } });
   } catch (error) {
-    await MessagePlugin.error(error instanceof Error ? error.message : "结算草稿复制失败，请刷新后重试。");
+    await MessagePlugin.error(formatUnknownApiError(error, "结算草稿复制失败，请刷新后重试。"));
   } finally {
     copyingId.value = "";
   }
@@ -420,7 +421,7 @@ async function copySettlementDraftWithCapability(
   );
   if (!operationAllowed) throw new Error("当前用户不能复制该结算草稿");
   const lifecycleUpdatedAt = row.lifecycleUpdatedAt;
-  if (!lifecycleUpdatedAt) throw new Error("结算草稿修订时间缺失，请刷新台账后重试");
+  if (!lifecycleUpdatedAt) throw new Error("结算草稿状态信息不完整，请刷新台账后重试");
   return copyAbandonedSettlementDraft(
     row.projectId,
     row.id,
@@ -489,7 +490,7 @@ async function loadSettlementLedger() {
     lifecycleSummary.value = result.summary;
     lifecycleMeta.value = result.meta;
   } catch (error) {
-    const reason = error instanceof Error ? error.message : "未知错误";
+    const reason = formatUnknownApiError(error, "结算台账读取失败，请检查网络与权限后重试。");
     errorMessage.value = `结算记录读取失败：${reason}。这不代表当前没有结算记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
     ledgerLoading.value = false;
@@ -507,11 +508,7 @@ async function exportSettlementLedger() {
     await downloadSettlementLedgerExport();
     await MessagePlugin.success("结算台账已导出，内容仅包含当前账号可见范围。");
   } catch (error) {
-    await MessagePlugin.error(
-      error instanceof Error
-        ? `${error.message}。请检查网络与权限后重试。`
-        : "结算台账导出失败，请检查网络与权限后重试。"
-    );
+    await MessagePlugin.error(formatUnknownApiError(error, "结算台账导出失败，请检查网络与权限后重试。"));
   } finally {
     exportLoading.value = false;
   }
