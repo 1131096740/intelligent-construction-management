@@ -183,7 +183,7 @@ const GROUPS = [
       RUN_PROJECT_EXTERNAL_UPSTREAM_DB_TESTS: "1",
       RUN_PROJECT_AFFILIATE_DB_TESTS: "1"
     },
-    pendingTests: 37,
+    pendingTests: 40,
     requiresOperatingLedgerWriteSecret: true
   }
 ];

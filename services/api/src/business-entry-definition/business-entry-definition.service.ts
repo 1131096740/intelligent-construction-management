@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import {
   BusinessEntryDefinitionError,
   BusinessEntryDraftValidationError,
@@ -128,6 +129,42 @@ export class BusinessEntryDefinitionService {
     input: BusinessEntryDraftRequest,
     frozenAt?: string
   ): Promise<BusinessEntryFrozenSnapshot> {
+    return this.freezeSubmissionSnapshotWithPersistence(
+      undefined,
+      sceneKey,
+      projectId,
+      actorUserId,
+      input,
+      frozenAt
+    );
+  }
+
+  async freezeSubmissionSnapshotInTransaction(
+    tx: Prisma.TransactionClient,
+    sceneKey: string,
+    projectId: string | undefined,
+    actorUserId: string,
+    input: BusinessEntryDraftRequest,
+    frozenAt?: string
+  ): Promise<BusinessEntryFrozenSnapshot> {
+    return this.freezeSubmissionSnapshotWithPersistence(
+      tx,
+      sceneKey,
+      projectId,
+      actorUserId,
+      input,
+      frozenAt
+    );
+  }
+
+  private async freezeSubmissionSnapshotWithPersistence(
+    tx: Prisma.TransactionClient | undefined,
+    sceneKey: string,
+    projectId: string | undefined,
+    actorUserId: string,
+    input: BusinessEntryDraftRequest,
+    frozenAt?: string
+  ): Promise<BusinessEntryFrozenSnapshot> {
     const { access, roleKeys } = await this.authorizeScene(sceneKey, projectId, actorUserId);
     const payload = this.payload(sceneKey, input);
     await this.assertTargetScope(projectId, access, payload.target);
@@ -142,9 +179,30 @@ export class BusinessEntryDefinitionService {
         { frozenAt, operation }
       );
       // Global owning domains persist this immutable snapshot in their own transaction.
-      // The existing snapshot store is deliberately project-bound; POL-19P1 does not widen it.
-      if (access.target.scope === "global") return snapshot;
-      return await this.snapshots.save(projectId!, actorUserId, snapshot, input.expectedRevision);
+      // The project-bound store cannot satisfy that contract, so the joined API must fail closed.
+      if (access.target.scope === "global") {
+        if (tx) {
+          throw new BadRequestException(
+            "全局业务场景须由所属领域在同一事务中持久化正式快照"
+          );
+        }
+        return snapshot;
+      }
+      if (tx) {
+        return await this.snapshots.saveInTransaction(
+          tx,
+          projectId!,
+          actorUserId,
+          snapshot,
+          input.expectedRevision
+        );
+      }
+      return await this.snapshots.saveStandalone(
+        projectId!,
+        actorUserId,
+        snapshot,
+        input.expectedRevision
+      );
     } catch (error) {
       if (error instanceof BusinessEntryDraftValidationError) {
         throw new BadRequestException({

@@ -22,6 +22,7 @@ const snapshot: BusinessEntryFrozenSnapshot = {
 };
 
 const record = {
+  id: "snapshot-1",
   sceneKey: snapshot.sceneKey,
   entityType: snapshot.target.entityType,
   entityId: snapshot.target.entityId,
@@ -33,6 +34,120 @@ const record = {
 };
 
 describe("PrismaBusinessEntrySnapshotStore", () => {
+  function createTransactionalHarness(options?: { snapshotFailure?: Error }) {
+    let committed = {
+      projectName: "原始项目名称",
+      snapshots: [] as typeof record[]
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => {
+        const working = {
+          projectName: committed.projectName,
+          snapshots: [...committed.snapshots]
+        };
+        const tx = {
+          project: {
+            update: jest.fn(async ({ data }: { data: { name: string } }) => {
+              working.projectName = data.name;
+              return { id: "project-1", name: working.projectName };
+            })
+          },
+          businessEntrySubmissionSnapshot: {
+            findMany: jest.fn(async () => [...working.snapshots].reverse()),
+            create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+              if (options?.snapshotFailure) throw options.snapshotFailure;
+              const created = {
+                ...record,
+                ...data,
+                definitionSnapshot: data.definitionSnapshot ?? record.definitionSnapshot,
+                valuesSnapshot: data.valuesSnapshot ?? record.valuesSnapshot,
+                frozenAt: data.frozenAt ?? record.frozenAt
+              } as typeof record;
+              working.snapshots.push(created);
+              return created;
+            })
+          }
+        } as unknown as Prisma.TransactionClient;
+        const result = await callback(tx);
+        committed = working;
+        return result;
+      })
+    } as unknown as PrismaService;
+    return {
+      prisma,
+      state: () => committed
+    };
+  }
+
+  it("rolls back the formal snapshot when the caller's outer business transaction fails", async () => {
+    const harness = createTransactionalHarness();
+    const store = new PrismaBusinessEntrySnapshotStore(
+      harness.prisma,
+      { record: jest.fn() } as never,
+      { updateProfileInTransaction: jest.fn() } as never
+    );
+
+    await expect(
+      harness.prisma.$transaction(async (tx) => {
+        await store.saveInTransaction(tx, "project-1", "user-1", snapshot);
+        await tx.project.update({
+          where: { id: "project-1" },
+          data: { name: "外层业务写入" }
+        });
+        throw new Error("外层业务写入失败");
+      })
+    ).rejects.toThrow("外层业务写入失败");
+
+    expect(harness.state()).toEqual({
+      projectName: "原始项目名称",
+      snapshots: []
+    });
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back the caller's formal business write when snapshot freezing fails", async () => {
+    const harness = createTransactionalHarness({
+      snapshotFailure: new Error("快照冻结失败")
+    });
+    const store = new PrismaBusinessEntrySnapshotStore(
+      harness.prisma,
+      { record: jest.fn() } as never,
+      { updateProfileInTransaction: jest.fn() } as never
+    );
+
+    await expect(
+      harness.prisma.$transaction(async (tx) => {
+        await tx.project.update({
+          where: { id: "project-1" },
+          data: { name: "正式业务写入" }
+        });
+        await store.saveInTransaction(tx, "project-1", "user-1", snapshot);
+      })
+    ).rejects.toThrow("快照冻结失败");
+
+    expect(harness.state()).toEqual({
+      projectName: "原始项目名称",
+      snapshots: []
+    });
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps standalone freezing as an explicit legal path", async () => {
+    const harness = createTransactionalHarness();
+    const store = new PrismaBusinessEntrySnapshotStore(
+      harness.prisma,
+      { record: jest.fn() } as never,
+      { updateProfileInTransaction: jest.fn() } as never
+    );
+
+    await expect(
+      store.saveStandalone("project-1", "user-1", snapshot)
+    ).resolves.toEqual(snapshot);
+
+    expect(harness.state().snapshots).toHaveLength(1);
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   it("persists one immutable snapshot per formal business target", async () => {
     const audit = { record: jest.fn() };
     const prisma = {
@@ -49,7 +164,7 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
       operatingProfiles as never
     );
 
-    const saved = await store.save("project-1", "user-1", snapshot);
+    const saved = await store.saveStandalone("project-1", "user-1", snapshot);
 
     expect(prisma.businessEntrySubmissionSnapshot.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,9 +207,9 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
       { updateProfileInTransaction: jest.fn() } as never
     );
 
-    await expect(store.save("project-1", "user-2", snapshot)).resolves.toEqual(snapshot);
+    await expect(store.saveStandalone("project-1", "user-2", snapshot)).resolves.toEqual(snapshot);
     await expect(
-      store.save("project-1", "user-2", {
+      store.saveStandalone("project-1", "user-2", {
         ...snapshot,
         values: { takeoverStatus: "takeover_completed" }
       }, 1)
@@ -117,7 +232,7 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
       { updateProfileInTransaction: jest.fn() } as never
     );
 
-    await expect(store.save("project-1", "user-1", snapshot)).rejects.toThrow(
+    await expect(store.saveStandalone("project-1", "user-1", snapshot)).rejects.toThrow(
       "database unavailable"
     );
     expect(findMany).toHaveBeenCalledTimes(1);
@@ -147,7 +262,7 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
       { updateProfileInTransaction: jest.fn() } as never
     );
 
-    await expect(store.save("project-1", "user-1", snapshot)).resolves.toEqual(snapshot);
+    await expect(store.saveStandalone("project-1", "user-1", snapshot)).resolves.toEqual(snapshot);
     expect(findMany).toHaveBeenCalledTimes(2);
   });
 
@@ -171,7 +286,7 @@ describe("PrismaBusinessEntrySnapshotStore", () => {
       { updateProfileInTransaction: jest.fn() } as never
     );
 
-    await expect(store.save("project-1", "user-1", snapshot, 2)).resolves.toMatchObject({
+    await expect(store.saveStandalone("project-1", "user-1", snapshot, 2)).resolves.toMatchObject({
       revision: 3
     });
     expect(prisma.businessEntrySubmissionSnapshot.create).toHaveBeenCalledTimes(1);
