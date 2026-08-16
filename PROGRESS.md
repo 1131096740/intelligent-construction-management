@@ -22,6 +22,8 @@
 
 ## 当前正在推进
 
+- [x] 依赖审计安全维护（2026-08-16）：从 `origin/main@bd1b414981328458246699fe9653cd66d0570c54` 在独立分支复核原 5 个 moderate advisory。以最小 pnpm overrides/lockfile 升级 `postcss` 8.5.18→8.5.26、`file-type` 20.4.1→21.3.2（覆盖两条 advisory）、`uuid` 8.3.2→11.1.1；重新审计仅剩 `@nestjs/core` 10.4.22 的 SSE advisory。静态复核确认项目无 `@Sse`/SSE 路由，升级要求 Nest 11 major，未强行迁移；该项记录为当前代码路径 not_actionable，后续纳入 Nest major maintenance。全量测试 shared 176、Web 1957、API 6177 passed/100 skipped，typecheck/lint/build/UI 规则通过；真实 ExcelJS 写缓冲和 Nest FileTypeValidator smoke 通过。未部署、未访问生产、未执行生产数据/数据库写入。
+
 ### P0：仓库与协作控制面收敛
 
 - [x] 根工作区恢复为干净 `main`，历史偏离状态已保存在独立 archive/recovery 分支，没有覆盖用户改动。
