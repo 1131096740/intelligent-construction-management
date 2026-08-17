@@ -804,18 +804,28 @@ function createBusinessZeroingDatabase(prisma, policy) {
             tx,
             `SELECT pg_advisory_xact_lock(${EXECUTION_LOCK_ID}) IS NULL AS "locked"`
           );
-          const loadExistingTerminalState = (action) =>
+          const loadExistingTerminalState = (action, status) =>
             query(
               tx,
               `SELECT "id" FROM "AuditLog"
-                WHERE "action" = $1 AND "businessType" = $2 AND "businessId" = $3`,
+                WHERE "action" = $1
+                  AND "businessType" = $2
+                  AND "businessId" = $3
+                  AND "metadata"->>'status' = $4`,
               action,
               "test_business_zeroing",
-              event.batchId
+              event.batchId,
+              status
             );
           const [existingCompleted, existingTerminal] = await Promise.all([
-            loadExistingTerminalState("test_business_zeroing.controlled_execution"),
-            loadExistingTerminalState("test_business_zeroing.terminal_commit")
+            loadExistingTerminalState(
+              "test_business_zeroing.controlled_execution",
+              "completed"
+            ),
+            loadExistingTerminalState(
+              "test_business_zeroing.terminal_commit",
+              "terminal_committed"
+            )
           ]);
           invariant(existingCompleted.length === 0, "本批次 completed 审计已存在，禁止重复提交");
           invariant(existingTerminal.length === 0, "本批次权威终态已存在，禁止重复提交");

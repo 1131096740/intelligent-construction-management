@@ -3067,6 +3067,102 @@ test("后置审计要求 completed 与 terminal marker 各精确一条", async (
   );
 });
 
+test("终态提交不把合法阶段审计误判为 completed 或 terminal_committed", async () => {
+  const batchId = "pol22-stage-audits-only";
+  const existingEvents = [
+    "started",
+    "object_recovery_planned",
+    "object_deletion_progress",
+    "completion_pending"
+  ].map((status, index) => ({
+    id: `stage-${index}`,
+    action: "test_business_zeroing.controlled_execution",
+    businessType: "test_business_zeroing",
+    businessId: batchId,
+    status
+  }));
+  existingEvents.push({
+    id: "non-terminal-marker",
+    action: "test_business_zeroing.terminal_commit",
+    businessType: "test_business_zeroing",
+    businessId: batchId,
+    status: "completion_pending"
+  });
+  assert.equal(
+    existingEvents.filter(
+      (event) =>
+        event.action === "test_business_zeroing.controlled_execution" &&
+        event.status === "completed"
+    ).length,
+    0
+  );
+  assert.equal(
+    existingEvents.filter(
+      (event) =>
+        event.action === "test_business_zeroing.terminal_commit" &&
+        event.status === "terminal_committed"
+    ).length,
+    0
+  );
+
+  const calls = [];
+  const insertedEvents = [];
+  const transactionClient = {
+    async $queryRawUnsafe(sql, ...values) {
+      if (/pg_advisory_xact_lock/u.test(sql)) {
+        calls.push("lock");
+        return [{ locked: true }];
+      }
+      if (/SELECT "id" FROM "AuditLog"/u.test(sql)) {
+        const [action, businessType, businessId, status] = values;
+        calls.push(["guard", action, status ?? null]);
+        return existingEvents
+          .filter(
+            (event) =>
+              event.action === action &&
+              event.businessType === businessType &&
+              event.businessId === businessId &&
+              (!/"metadata"->>'status' = \$4/u.test(sql) || event.status === status)
+          )
+          .map((event) => ({ id: event.id }));
+      }
+      if (/INSERT INTO "AuditLog"/u.test(sql)) {
+        const event = JSON.parse(values[4]);
+        insertedEvents.push(event);
+        calls.push(["insert", event.status]);
+        return [];
+      }
+      throw new Error(`未处理 SQL：${sql}`);
+    }
+  };
+  const database = createBusinessZeroingDatabase(
+    {
+      async $transaction(work) {
+        return work(transactionClient);
+      }
+    },
+    BUSINESS_ZEROING_POLICY
+  );
+
+  await database.commitTerminalAudit({
+    event: { batchId, status: "completed" },
+    verifyLease: async () => calls.push("lease")
+  });
+
+  assert.deepEqual(
+    insertedEvents.map((event) => event.status),
+    ["completed", "terminal_committed"]
+  );
+  assert.deepEqual(calls, [
+    "lock",
+    ["guard", "test_business_zeroing.controlled_execution", "completed"],
+    ["guard", "test_business_zeroing.terminal_commit", "terminal_committed"],
+    ["insert", "completed"],
+    ["insert", "terminal_committed"],
+    "lease"
+  ]);
+});
+
 test("终态提交遇到预存 completed 且无 terminal 时必须回滚", async () => {
   const insertedEvents = [];
   const transactionClient = {
@@ -3100,6 +3196,44 @@ test("终态提交遇到预存 completed 且无 terminal 时必须回滚", async
         verifyLease: async () => undefined
       }),
     /completed.*已存在/u
+  );
+  assert.deepEqual(insertedEvents, []);
+});
+
+test("终态提交遇到预存 terminal_committed 且无 completed 时必须回滚", async () => {
+  const insertedEvents = [];
+  const transactionClient = {
+    async $queryRawUnsafe(sql, ...values) {
+      if (/pg_advisory_xact_lock/u.test(sql)) return [{ locked: true }];
+      if (/SELECT "id" FROM "AuditLog"/u.test(sql)) {
+        return values[0] === "test_business_zeroing.terminal_commit" &&
+          values[3] === "terminal_committed"
+          ? [{ id: "existing-terminal" }]
+          : [];
+      }
+      if (/INSERT INTO "AuditLog"/u.test(sql)) {
+        insertedEvents.push(JSON.parse(values[4]));
+        return [];
+      }
+      throw new Error(`未处理 SQL：${sql}`);
+    }
+  };
+  const database = createBusinessZeroingDatabase(
+    {
+      async $transaction(work) {
+        return work(transactionClient);
+      }
+    },
+    BUSINESS_ZEROING_POLICY
+  );
+
+  await assert.rejects(
+    () =>
+      database.commitTerminalAudit({
+        event: { batchId: "pol22-existing-terminal", status: "completed" },
+        verifyLease: async () => undefined
+      }),
+    /权威终态.*已存在/u
   );
   assert.deepEqual(insertedEvents, []);
 });
